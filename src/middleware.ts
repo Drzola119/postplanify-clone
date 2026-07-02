@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, getCurrentUser } from "@/lib/firebase/admin";
 
+const SESSION_COOKIE = "pp_session";
 const PROTECTED_PREFIXES = ["/dashboard"];
 
 export async function middleware(request: NextRequest) {
@@ -8,25 +8,21 @@ export async function middleware(request: NextRequest) {
   const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
   if (!isProtected) return NextResponse.next();
 
+  // If server-side admin SDK isn't configured, let everything through
+  // and rely on client-side auth guards instead
   if (!process.env.FIREBASE_PRIVATE_KEY) {
-    // Server auth not configured, rely on client-side auth
     return NextResponse.next();
   }
 
+  // Only check cookie existence here (Edge-compatible).
+  // Actual verification happens in API routes (Node.js runtime).
   const session = request.cookies.get(SESSION_COOKIE)?.value;
   if (!session) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(loginUrl);
   }
-  const user = await getCurrentUser();
-  if (!user) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("next", pathname);
-    const res = NextResponse.redirect(loginUrl);
-    res.cookies.set(SESSION_COOKIE, "", { path: "/", maxAge: 0 });
-    return res;
-  }
+
   return NextResponse.next();
 }
 

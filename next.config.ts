@@ -14,6 +14,19 @@ const TOOL_ALIASES: Record<string, string> = {
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          {
+            key: "Cross-Origin-Opener-Policy",
+            value: "same-origin-allow-popups",
+          },
+        ],
+      },
+    ];
+  },
   async rewrites() {
     return [
       { source: "/tools/instagram-engagement-calculator", destination: "/tools/instagram-engagement" },
