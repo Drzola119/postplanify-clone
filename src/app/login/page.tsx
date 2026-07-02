@@ -27,30 +27,6 @@ function LoginForm() {
   const [submitting, setSubmitting] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  if (auth.status === "disabled") {
-    return (
-      <CenteredCard>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Auth is not configured
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Add your Firebase web app config to <code className="rounded bg-zinc-100 px-1 py-0.5">.env.local</code>:
-        </p>
-        <pre className="mt-3 rounded-md bg-zinc-900 p-3 text-xs text-zinc-100 overflow-x-auto">
-{`NEXT_PUBLIC_FIREBASE_API_KEY=...
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=...
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=...`}
-        </pre>
-        <p className="mt-3 text-xs text-muted-foreground">
-          Then restart the dev server.
-        </p>
-        <Link href="/" className="mt-6 inline-block text-sm text-muted-foreground hover:text-foreground">
-          ← Back to home
-        </Link>
-      </CenteredCard>
-    );
-  }
-
   async function exchangeSession() {
     const idToken = await auth.getIdToken();
     if (!idToken) throw new Error("No ID token");

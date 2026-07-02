@@ -18,22 +18,6 @@ export default function SignupPage() {
   const [submitting, setSubmitting] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  if (auth.status === "disabled") {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4 py-12">
-        <div className="w-full max-w-sm rounded-xl border border-border bg-card p-8 shadow-sm">
-          <h1 className="text-2xl font-semibold tracking-tight">Auth not configured</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Add your Firebase web app config to <code className="rounded bg-zinc-100 px-1 py-0.5">.env.local</code> and restart the dev server.
-          </p>
-          <Link href="/" className="mt-6 inline-block text-sm text-muted-foreground hover:text-foreground">
-            ← Back to home
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
   async function exchangeSession() {
     const idToken = await auth.getIdToken();
     if (!idToken) throw new Error("No ID token");
