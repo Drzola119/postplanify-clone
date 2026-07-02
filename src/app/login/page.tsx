@@ -37,6 +37,10 @@ function LoginForm() {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
+      if (res.status === 500 && data.error?.includes("Server auth not configured")) {
+        console.warn("Server auth not configured. Relying on client-side auth.");
+        return; // Ignore and proceed
+      }
       throw new Error(data.error || "Failed to create session");
     }
   }

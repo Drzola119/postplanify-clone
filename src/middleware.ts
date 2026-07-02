@@ -8,6 +8,11 @@ export async function middleware(request: NextRequest) {
   const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
   if (!isProtected) return NextResponse.next();
 
+  if (!process.env.FIREBASE_PRIVATE_KEY) {
+    // Server auth not configured, rely on client-side auth
+    return NextResponse.next();
+  }
+
   const session = request.cookies.get(SESSION_COOKIE)?.value;
   if (!session) {
     const loginUrl = new URL("/login", request.url);
