@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDrawer } from "@/components/dashboard/drawer-provider";
+import { UserMenu } from "@/components/dashboard/user-menu";
 
 type NavItem = { label: string; href: string; icon: React.ComponentType<{ className?: string }>; badge?: number };
 
@@ -245,24 +246,7 @@ export function DashboardSidebar() {
       )}
 
       {/* User profile */}
-      {!collapsed && (
-        <div className="border-t border-zinc-200 p-3 flex items-center gap-2.5">
-          <div className="size-9 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
-            Z
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold truncate">Zack Wick</p>
-            <p className="text-[11px] text-zinc-500 truncate">zwick2264@gmail.com</p>
-          </div>
-          <button
-            type="button"
-            className="size-7 inline-flex items-center justify-center rounded-md hover:bg-zinc-100 text-zinc-500"
-            aria-label="More options"
-          >
-            <MoreVertical className="size-4" />
-          </button>
-        </div>
-      )}
+      {!collapsed && <UserMenu />}
 
       {!collapsed && (
         <div className="px-3 pb-3 flex items-center gap-1.5">
