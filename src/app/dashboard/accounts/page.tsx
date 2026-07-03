@@ -204,6 +204,114 @@ const AVAILABLE_PLATFORMS: { name: string; platform: Platform; key: string; conn
   { name: "Google Business", platform: "facebook", key: "google-business", connectUrl: "https://app.upload-post.com/connect/google_business" },
 ];
 
+type IntegrationKey = "unsplash" | "google-drive" | "canva" | "dropbox";
+
+interface IntegrationMeta {
+  key: IntegrationKey;
+  name: string;
+  description: string;
+  authUrl: string;
+  brand: { color: string; bg: string };
+  steps: string[];
+}
+
+const INTEGRATIONS: IntegrationMeta[] = [
+  {
+    key: "unsplash",
+    name: "Unsplash",
+    description: "Browse and import royalty-free photos directly into your posts.",
+    authUrl: "https://unsplash.com/developers",
+    brand: { color: "#000000", bg: "#FFFFFF" },
+    steps: [
+      "Create a free developer account at unsplash.com/developers.",
+      "Register a new app to obtain an Access Key.",
+      "Paste the Access Key into PostPlanify → Settings → Integrations → Unsplash.",
+    ],
+  },
+  {
+    key: "google-drive",
+    name: "Google Drive",
+    description: "Pick images, videos, and PDFs straight from your Drive folders.",
+    authUrl: "https://console.cloud.google.com/apis/credentials",
+    brand: { color: "#1A73E8", bg: "#E8F0FE" },
+    steps: [
+      "Open Google Cloud Console and create (or select) a project.",
+      "Enable the Google Drive API and configure an OAuth consent screen.",
+      "Create OAuth credentials and paste the Client ID + Secret into PostPlanify → Settings → Integrations → Google Drive.",
+    ],
+  },
+  {
+    key: "canva",
+    name: "Canva",
+    description: "Import your Canva designs and edit them in a click.",
+    authUrl: "https://www.canva.com/developers/",
+    brand: { color: "#00C4CC", bg: "#E5FAFA" },
+    steps: [
+      "Sign up for the Canva Developers program and create an integration.",
+      "Add PostPlanify as an authorized redirect URI.",
+      "Copy the Client ID and Secret into PostPlanify → Settings → Integrations → Canva.",
+    ],
+  },
+  {
+    key: "dropbox",
+    name: "Dropbox",
+    description: "Browse and import files from any Dropbox folder.",
+    authUrl: "https://www.dropbox.com/developers/apps",
+    brand: { color: "#0061FF", bg: "#E5EFFF" },
+    steps: [
+      "Go to the Dropbox App Console and create a scoped app (Full Dropbox).",
+      "Set the OAuth 2 redirect URI to https://trustiify.agency/api/integrations/dropbox/callback.",
+      "Paste the App key and secret into PostPlanify → Settings → Integrations → Dropbox.",
+    ],
+  },
+];
+
+const INTEGRATIONS_LS_KEY = "postplanify.connectedIntegrations";
+
+function IntegrationIcon({ k, className }: { k: IntegrationKey; className?: string }) {
+  const sz = className ?? "w-6 h-6";
+  switch (k) {
+    case "unsplash":
+      return (
+        <svg viewBox="0 0 48 48" className={sz} aria-hidden>
+          <path d="M28 6h12v12h-4V14h-8V6zM16 6H4v12h4v-4h8V6z" fill="#000" />
+          <circle cx="24" cy="30" r="12" fill="#000" />
+        </svg>
+      );
+    case "google-drive":
+      return (
+        <svg viewBox="0 0 48 48" className={sz} aria-hidden>
+          <path d="M15.6 7.4l-9 15.6 6.5 0 9-15.6z" fill="#0066DA" />
+          <path d="M32.4 7.4l-9 15.6 6.5 0 9-15.6z" fill="#00AC47" />
+          <path d="M9 27l6.5 11.3 6.5-11.3z" fill="#EA4335" />
+          <path d="M22 27l6.5 11.3 6.5-11.3z" fill="#00832D" />
+          <path d="M15.6 7.4L24 23l6.5-11.3z" fill="#008329" />
+        </svg>
+      );
+    case "canva":
+      return (
+        <span
+          className={`inline-flex items-center justify-center rounded-md font-bold text-white ${sz}`}
+          style={{ backgroundColor: "#00C4CC", fontSize: "1rem" }}
+        >
+          C
+        </span>
+      );
+    case "dropbox":
+      return (
+        <svg viewBox="0 0 48 48" className={sz} aria-hidden>
+          <path d="M14 6 L24 13 L34 6 L24 0 Z" fill="#0061FF" />
+          <path d="M14 24 L24 31 L34 24 L24 18 Z" fill="#0061FF" />
+          <path d="M0 16 L10 23 L20 16 L10 9 Z" fill="#0061FF" />
+          <path d="M28 16 L38 9 L48 16 L38 23 Z" fill="#0061FF" />
+          <path d="M0 34 L10 41 L20 34 L10 27 Z" fill="#0061FF" />
+          <path d="M28 34 L38 27 L48 34 L38 41 Z" fill="#0061FF" />
+          <path d="M14 42 L24 49 L34 42 L24 35 Z" fill="#0061FF" />
+        </svg>
+      );
+  }
+}
+
 interface Toast {
   id: number;
   message: string;
@@ -220,6 +328,50 @@ export default function AccountsPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [learnOpen, setLearnOpen] = useState(false);
+
+  // Integration connections (Unsplash / Drive / Canva / Dropbox).
+  // Tracked locally so the UI can show "Connected" once credentials are added in Settings.
+  const [connectedIntegrations, setConnectedIntegrations] = useState<Set<IntegrationKey>>(
+    () => new Set<IntegrationKey>()
+  );
+  const [setupIntegration, setSetupIntegration] = useState<IntegrationKey | null>(null);
+
+  // Load connection state from localStorage on mount.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(INTEGRATIONS_LS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as string[];
+        const valid = INTEGRATIONS.map((i) => i.key) as string[];
+        setConnectedIntegrations(new Set(parsed.filter((k) => valid.includes(k)) as IntegrationKey[]));
+      }
+    } catch {
+      // Ignore corruption — start with empty set.
+    }
+  }, []);
+
+  function persistIntegrations(next: Set<IntegrationKey>) {
+    setConnectedIntegrations(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(INTEGRATIONS_LS_KEY, JSON.stringify(Array.from(next)));
+    }
+  }
+
+  function markConnected(k: IntegrationKey) {
+    const next = new Set(connectedIntegrations);
+    next.add(k);
+    persistIntegrations(next);
+    showToast(`${INTEGRATIONS.find((i) => i.key === k)?.name ?? k} marked as connected.`, "success");
+    setSetupIntegration(null);
+  }
+
+  function disconnect(k: IntegrationKey) {
+    const next = new Set(connectedIntegrations);
+    next.delete(k);
+    persistIntegrations(next);
+    showToast(`${INTEGRATIONS.find((i) => i.key === k)?.name ?? k} disconnected.`, "info");
+  }
 
   const showToast = (message: string, type: Toast["type"] = "success") => {
     const id = Date.now() + Math.random();
@@ -414,6 +566,82 @@ export default function AccountsPage() {
             </div>
           </div>
         </div>
+
+        {/* Card 3: Available Integrations (Unsplash / Drive / Canva / Dropbox) */}
+        <div className="rounded-xl border border-zinc-200 bg-white text-zinc-950 shadow-sm">
+          <div className="flex flex-col space-y-1.5 p-6">
+            <div className="font-semibold leading-none tracking-tight">
+              Available Integrations
+            </div>
+            <div className="text-sm text-zinc-500">
+              Connect cloud storage and design tools to import media directly into your posts.
+            </div>
+          </div>
+          <div className="p-6 pt-0">
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+              {INTEGRATIONS.map((it) => {
+                const isConnected = connectedIntegrations.has(it.key);
+                return (
+                  <div
+                    key={it.key}
+                    className={`p-4 rounded-lg border bg-white flex items-start gap-3 transition-colors ${
+                      isConnected ? "border-emerald-300" : "border-zinc-200 hover:border-zinc-300"
+                    }`}
+                  >
+                    <IntegrationIcon k={it.key} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-zinc-900">{it.name}</span>
+                        {isConnected ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700">
+                            <CheckCircle2 className="size-3" />
+                            Connected
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="text-xs text-zinc-500 mt-0.5 line-clamp-2">{it.description}</p>
+                      <div className="mt-2 flex items-center gap-2">
+                        {isConnected ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setSetupIntegration(it.key)}
+                              className="inline-flex items-center justify-center h-7 px-3 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-900 text-xs font-medium"
+                            >
+                              Manage
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => disconnect(it.key)}
+                              className="inline-flex items-center justify-center h-7 px-3 rounded-md text-rose-600 hover:bg-rose-50 text-xs font-medium"
+                            >
+                              Disconnect
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setSetupIntegration(it.key)}
+                            className="inline-flex items-center justify-center h-8 px-4 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium"
+                          >
+                            Connect
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-4 p-3 rounded-lg bg-zinc-100 border border-zinc-200 flex items-start gap-2">
+              <Info className="size-3.5 mt-0.5 shrink-0 text-zinc-500" />
+              <p className="text-xs text-zinc-500">
+                Integrations use your own provider credentials and are stored encrypted. They only get
+                used to import media for your posts — never to send messages, post, or access private data.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Toast container */}
@@ -441,6 +669,17 @@ export default function AccountsPage() {
           account={accounts.find((a) => a.id === confirmDeleteId)!}
           onConfirm={handleDeleteConfirm}
           onCancel={() => setConfirmDeleteId(null)}
+        />
+      )}
+
+      {/* Integration Setup Modal */}
+      {setupIntegration && (
+        <IntegrationSetupModal
+          meta={INTEGRATIONS.find((i) => i.key === setupIntegration)!}
+          isConnected={connectedIntegrations.has(setupIntegration)}
+          onClose={() => setSetupIntegration(null)}
+          onMarkConnected={() => markConnected(setupIntegration)}
+          onDisconnect={() => disconnect(setupIntegration)}
         />
       )}
     </div>
@@ -588,6 +827,125 @@ function ConfirmDeleteModal({
           >
             Remove
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IntegrationSetupModal({
+  meta,
+  isConnected,
+  onClose,
+  onMarkConnected,
+  onDisconnect,
+}: {
+  meta: IntegrationMeta;
+  isConnected: boolean;
+  onClose: () => void;
+  onMarkConnected: () => void;
+  onDisconnect: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl border border-zinc-200 shadow-2xl max-w-lg w-full overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3 p-6 border-b border-zinc-200">
+          <div className="size-12 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: meta.brand.bg }}>
+            <IntegrationIcon k={meta.key} className="w-7 h-7" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-lg font-semibold text-zinc-900 flex items-center gap-2">
+              {isConnected ? `Manage ${meta.name}` : `Connect ${meta.name}`}
+              {isConnected ? (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
+                  <CheckCircle2 className="size-3.5" />
+                  Connected
+                </span>
+              ) : null}
+            </h3>
+            <p className="text-sm text-zinc-500 mt-1">{meta.description}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="size-7 inline-flex items-center justify-center rounded-md hover:bg-zinc-100 text-zinc-500 shrink-0"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
+              Setup steps
+            </p>
+            <ol className="space-y-2">
+              {meta.steps.map((s, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-zinc-700">
+                  <span
+                    className="size-5 shrink-0 inline-flex items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                    style={{ backgroundColor: meta.brand.color }}
+                  >
+                    {i + 1}
+                  </span>
+                  <span className="leading-relaxed">{s}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <a
+            href={meta.authUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-900 text-sm font-medium w-full"
+          >
+            Open {meta.name} developer console
+            <ExternalLink className="size-3.5" />
+          </a>
+
+          <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 flex items-start gap-2">
+            <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
+            <p>
+              {isConnected
+                ? "You can revoke access anytime from here or from your provider account."
+                : "After adding credentials in Settings, come back and click below to enable importing."}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-6 py-3 bg-zinc-50 border-t border-zinc-200">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center justify-center h-9 px-4 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 text-sm font-medium"
+          >
+            Close
+          </button>
+          {isConnected ? (
+            <button
+              type="button"
+              onClick={onDisconnect}
+              className="inline-flex items-center justify-center h-9 px-4 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium"
+            >
+              Disconnect
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onMarkConnected}
+              className="inline-flex items-center justify-center h-9 px-4 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium"
+            >
+              Mark as connected
+            </button>
+          )}
         </div>
       </div>
     </div>
