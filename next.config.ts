@@ -26,21 +26,7 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: "/login",
-        headers: [
-          { key: "Cache-Control", value: "no-store, must-revalidate" },
-          { key: "Pragma", value: "no-cache" },
-        ],
-      },
-      {
-        source: "/signup",
-        headers: [
-          { key: "Cache-Control", value: "no-store, must-revalidate" },
-          { key: "Pragma", value: "no-cache" },
-        ],
-      },
-      {
-        source: "/dashboard/:path*",
+        source: "/((?!api|_next|static|.*\\..*$).*)",
         headers: [
           { key: "Cache-Control", value: "no-store, must-revalidate" },
           { key: "Pragma", value: "no-cache" },

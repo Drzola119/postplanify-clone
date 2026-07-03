@@ -33,6 +33,28 @@ export default function RootLayout({
       lang="en"
       className={`${inter.variable} h-full antialiased`}
     >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.addEventListener('error', function(e) {
+                var target = e.target;
+                if (target && (target.tagName === 'LINK' || target.tagName === 'SCRIPT')) {
+                  var url = target.src || target.href;
+                  if (url && (url.indexOf('/_next/static/') !== -1 || url.indexOf('.css') !== -1 || url.indexOf('.js') !== -1)) {
+                    var lastReload = sessionStorage.getItem('last_chunk_reload');
+                    var now = Date.now();
+                    if (!lastReload || (now - parseInt(lastReload, 10) > 10000)) {
+                      sessionStorage.setItem('last_chunk_reload', now.toString());
+                      window.location.reload();
+                    }
+                  }
+                }
+              }, true);
+            `,
+          }}
+        />
+      </head>
       <body className="min-h-full flex flex-col">
         <AuthProvider>
           <ToastProvider>{children}</ToastProvider>
