@@ -67,7 +67,7 @@ const MEDIA_TABS: { id: MediaTab; label: string }[] = [
 const MAX_FILES = 10;
 
 export default function CreatePostPage() {
-  const { toast } = useToast();
+  const { toast, dismiss } = useToast();
 
   // Account selection (default: all 9 — match original pre-selected state).
   const [selected, setSelected] = useState<Set<PlatformId>>(
@@ -89,6 +89,7 @@ export default function CreatePostPage() {
 
   // Dialogs
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  const [aiGenerating, setAiGenerating] = useState(false);
   const [unsplashOpen, setUnsplashOpen] = useState(false);
   const [canvaOpen, setCanvaOpen] = useState(false);
   const [driveOpen, setDriveOpen] = useState(false);
@@ -358,6 +359,96 @@ export default function CreatePostPage() {
     });
   }
 
+  async function handleGenerateCaptions(opts: {
+    tone: string;
+    includeHashtags: boolean;
+    useEmojis: boolean;
+    extra: string;
+  }) {
+    const active = mediaItems[activeMedia];
+    if (!active) {
+      toast({ title: "Upload an image or video first", tone: "warning" });
+      return;
+    }
+    if (selectedPlatforms.length === 0) {
+      toast({ title: "Pick at least one account", tone: "warning" });
+      return;
+    }
+    const imageUrl = active.kind === "image" ? active.cdnUrl || active.url : null;
+    const videoTitle =
+      active.kind === "video"
+        ? active.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim()
+        : null;
+    if (!imageUrl && !videoTitle) {
+      toast({ title: "Upload an image or video first", tone: "warning" });
+      return;
+    }
+
+    setAiGenerating(true);
+    const tid = toast({
+      title: "Generating captions…",
+      description: imageUrl ? "Analyzing image with Groq vision model" : "Drafting from video title",
+      tone: "info",
+    });
+    try {
+      const res = await fetch("/api/ai/caption", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tone: opts.tone,
+          includeHashtags: opts.includeHashtags,
+          useEmojis: opts.useEmojis,
+          extra: opts.extra,
+          imageUrl,
+          videoTitle,
+          platforms: selectedPlatforms.map((p) => ({
+            id: p.id,
+            name: p.name,
+            charLimit: p.charLimit,
+          })),
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        caption?: string;
+        error?: string;
+      };
+      if (!res.ok || !data.ok || !data.caption) {
+        toast({
+          title: "Caption generation failed",
+          description: data.error ?? `HTTP ${res.status}`,
+          tone: "error",
+        });
+        return;
+      }
+      const caption = data.caption.trim();
+      if (sameForAll) {
+        setCaptions((prev) => ({ ...prev, __all: caption }));
+      } else {
+        setCaptions((prev) => {
+          const next = { ...prev };
+          for (const p of selectedPlatforms) next[p.id] = caption;
+          return next;
+        });
+      }
+      toast({
+        title: "Captions generated",
+        description: `Applied to ${selectedPlatforms.length} account${selectedPlatforms.length === 1 ? "" : "s"}`,
+        tone: "success",
+      });
+      setAiDialogOpen(false);
+    } catch (err) {
+      toast({
+        title: "Caption generation failed",
+        description: err instanceof Error ? err.message : "Network error",
+        tone: "error",
+      });
+    } finally {
+      setAiGenerating(false);
+      if (tid) dismiss(tid);
+    }
+  }
+
   function captionFor(id: PlatformId): string {
     if (sameForAll) return captions.__all ?? "";
     return captions[id] ?? "";
@@ -541,13 +632,18 @@ export default function CreatePostPage() {
       <AICaptionsDialog
         open={aiDialogOpen}
         onClose={() => setAiDialogOpen(false)}
-        onGenerate={(opts) =>
-          toast({
-            title: "Generating captions",
-            description: `Tone: ${opts.tone}${opts.includeHashtags ? " · #tags" : ""}${opts.useEmojis ? " · emojis" : ""}`,
-            tone: "info",
-          })
+        onGenerate={handleGenerateCaptions}
+        imageUrl={
+          activeMediaItem?.kind === "image"
+            ? activeMediaItem.cdnUrl || activeMediaItem.url
+            : null
         }
+        videoTitle={
+          activeMediaItem?.kind === "video"
+            ? activeMediaItem.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim()
+            : null
+        }
+        isGenerating={aiGenerating}
       />
       <UnsplashDialog
         open={unsplashOpen}
@@ -1376,7 +1472,7 @@ function CaptionsCard({
           />
         </div>
 
-        <div className="flex-1 overflow-y-auto min-h-0 space-y-4 pr-1">
+        <div className="flex-1 min-h-0 pr-1">
           {platforms.length === 0 ? (
             <div className="flex flex-col items-center justify-center text-center py-12 min-h-[300px]">
               <div className="size-12 rounded-full bg-zinc-100 flex items-center justify-center mb-3">
@@ -1388,22 +1484,37 @@ function CaptionsCard({
               </p>
             </div>
           ) : sameForAll ? (
-            <AccountPreviewCard
-              platform={{ ...platforms[0], charLimit: 2200, borderClass: "border-zinc-300", textClass: "text-zinc-700", name: "All platforms" }}
-              value={getCaption(platforms[0].id)}
-              onChange={(v) => setCaption(platforms[0].id, v)}
-              hasVideo={hasVideo}
-            />
-          ) : (
-            platforms.map((p) => (
+            <div className="h-full overflow-y-auto rounded-lg">
               <AccountPreviewCard
-                key={p.id}
-                platform={p}
-                value={getCaption(p.id)}
-                onChange={(v) => setCaption(p.id, v)}
+                platform={{ ...platforms[0], charLimit: 2200, borderClass: "border-zinc-300", textClass: "text-zinc-700", name: "All platforms" }}
+                value={getCaption(platforms[0].id)}
+                onChange={(v) => setCaption(platforms[0].id, v)}
                 hasVideo={hasVideo}
               />
-            ))
+            </div>
+          ) : platforms.length === 1 ? (
+            <div className="h-full overflow-y-auto rounded-lg">
+              <AccountPreviewCard
+                platform={platforms[0]}
+                value={getCaption(platforms[0].id)}
+                onChange={(v) => setCaption(platforms[0].id, v)}
+                hasVideo={hasVideo}
+              />
+            </div>
+          ) : (
+            // Multi-platform: 2-col grid keeps each caption box a usable size even with 9 platforms.
+            // Each card scrolls internally so long captions don't push others off-screen.
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 h-full overflow-y-auto">
+              {platforms.map((p) => (
+                <AccountPreviewCard
+                  key={p.id}
+                  platform={p}
+                  value={getCaption(p.id)}
+                  onChange={(v) => setCaption(p.id, v)}
+                  hasVideo={hasVideo}
+                />
+              ))}
+            </div>
           )}
         </div>
 

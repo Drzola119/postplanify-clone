@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, History, Sparkles, Inbox } from "lucide-react";
+import { AlertTriangle, History, Sparkles, Inbox, ImageIcon, Film, Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
 
@@ -13,7 +13,13 @@ interface AICaptionsDialogProps {
     includeHashtags: boolean;
     useEmojis: boolean;
     extra: string;
-  }) => void;
+  }) => void | Promise<void>;
+  /** Optional previews shown so the user knows what the model will see. */
+  imageUrl?: string | null;
+  /** Optional video title (e.g. filename minus extension). */
+  videoTitle?: string | null;
+  /** While the parent is awaiting the API. Disables the Generate button. */
+  isGenerating?: boolean;
 }
 
 const TONES = [
@@ -25,42 +31,122 @@ const TONES = [
   { id: "motivational", emoji: "🚀", label: "Motivational" },
 ];
 
-export function AICaptionsDialog({ open, onClose, onGenerate }: AICaptionsDialogProps) {
+export function AICaptionsDialog({
+  open,
+  onClose,
+  onGenerate,
+  imageUrl,
+  videoTitle,
+  isGenerating,
+}: AICaptionsDialogProps) {
   const [tone, setTone] = useState("default");
   const [hashtags, setHashtags] = useState(true);
   const [emojis, setEmojis] = useState(true);
   const [extra, setExtra] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
 
+  const hasContext = !!imageUrl || !!videoTitle;
+  const mediaLabel = imageUrl ? "this image" : videoTitle ? `video “${videoTitle}”` : "your account";
+  const canGenerate = hasContext && !isGenerating;
+
+  async function handleClick() {
+    if (!canGenerate) return;
+    await onGenerate({ tone, includeHashtags: hashtags, useEmojis: emojis, extra });
+  }
+
   return (
     <>
       <Modal
         open={open && !historyOpen}
-        onClose={onClose}
+        onClose={() => {
+          if (!isGenerating) onClose();
+        }}
         title="Generate AI Captions"
-        description="Let AI draft captions tailored to your selected accounts."
+        description={
+          hasContext
+            ? `Drafts will be tailored to ${mediaLabel}.`
+            : "Upload an image or video first so the model has context."
+        }
         size="lg"
         footer={
           <button
             type="button"
-            onClick={() => {
-              onGenerate({ tone, includeHashtags: hashtags, useEmojis: emojis, extra });
-              onClose();
-            }}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-zinc-950 hover:bg-zinc-800 text-white px-4 h-10 text-sm font-medium"
+            onClick={handleClick}
+            disabled={!canGenerate}
+            className={cn(
+              "w-full inline-flex items-center justify-center gap-2 rounded-md px-4 h-10 text-sm font-medium transition-colors",
+              canGenerate
+                ? "bg-zinc-950 hover:bg-zinc-800 text-white"
+                : "bg-zinc-200 text-zinc-500 cursor-not-allowed"
+            )}
           >
-            <Sparkles className="size-4" />
-            Generate Captions
+            {isGenerating ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Generating…
+              </>
+            ) : (
+              <>
+                <Sparkles className="size-4" />
+                {hasContext ? "Generate Captions" : "Upload media to generate"}
+              </>
+            )}
           </button>
         }
       >
         <div className="space-y-4">
+          {/* Context preview */}
+          {hasContext ? (
+            <div className="flex items-center gap-3 rounded-md border border-zinc-200 bg-zinc-50/60 p-2.5">
+              {imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={imageUrl}
+                  alt="Reference"
+                  className="size-12 rounded-md object-cover border border-zinc-200"
+                />
+              ) : (
+                <div className="size-12 rounded-md bg-zinc-900 text-white flex items-center justify-center">
+                  <Film className="size-5" />
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-medium text-zinc-700 flex items-center gap-1.5">
+                  {imageUrl ? (
+                    <>
+                      <ImageIcon className="size-3.5" />
+                      Will analyze this image
+                    </>
+                  ) : (
+                    <>
+                      <Film className="size-3.5" />
+                      Will caption from video title
+                    </>
+                  )}
+                </p>
+                <p className="text-xs text-zinc-500 truncate">
+                  {imageUrl
+                    ? imageUrl.split("/").pop()?.split("?")[0] ?? "image"
+                    : videoTitle}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2.5">
+              <ImageIcon className="size-4 text-zinc-500 flex-shrink-0 mt-0.5" />
+              <div className="text-xs text-zinc-700">
+                <span className="font-semibold">No media uploaded yet.</span>{" "}
+                Upload an image (we&apos;ll describe it) or a video (we&apos;ll use the title).
+              </div>
+            </div>
+          )}
+
           {/* Workspace warning */}
           <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5">
             <AlertTriangle className="size-4 text-amber-600 flex-shrink-0 mt-0.5" />
             <div className="text-xs text-amber-900">
               <span className="font-semibold">Workspace Description Required.</span>{" "}
-              For optimal caption generation, please ensure your workspace's description is up to
+              For optimal caption generation, please ensure your workspace&apos;s description is up to
               date.{" "}
               <button
                 type="button"
