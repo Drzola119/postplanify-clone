@@ -37,20 +37,44 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              window.addEventListener('error', function(e) {
-                var target = e.target;
-                if (target && (target.tagName === 'LINK' || target.tagName === 'SCRIPT')) {
-                  var url = target.src || target.href;
-                  if (url && (url.indexOf('/_next/static/') !== -1 || url.indexOf('.css') !== -1 || url.indexOf('.js') !== -1)) {
-                    var lastReload = sessionStorage.getItem('last_chunk_reload');
-                    var now = Date.now();
-                    if (!lastReload || (now - parseInt(lastReload, 10) > 10000)) {
-                      sessionStorage.setItem('last_chunk_reload', now.toString());
-                      window.location.reload();
-                    }
+              (function() {
+                function reloadWithCacheBuster() {
+                  var lastReload = sessionStorage.getItem('last_chunk_reload');
+                  var now = Date.now();
+                  if (!lastReload || (now - parseInt(lastReload, 10) > 15000)) {
+                    sessionStorage.setItem('last_chunk_reload', now.toString());
+                    var url = new URL(window.location.href);
+                    url.searchParams.set('cb', now.toString());
+                    window.location.replace(url.toString());
                   }
                 }
-              }, true);
+
+                window.addEventListener('error', function(e) {
+                  var target = e.target;
+                  if (target && (target.tagName === 'LINK' || target.tagName === 'SCRIPT')) {
+                    var url = target.src || target.href;
+                    if (url && (url.indexOf('/_next/static/') !== -1 || url.indexOf('.css') !== -1 || url.indexOf('.js') !== -1)) {
+                      reloadWithCacheBuster();
+                    }
+                  }
+                }, true);
+
+                window.addEventListener('unhandledrejection', function(e) {
+                  var reason = e.reason;
+                  if (reason && (reason.name === 'ChunkLoadError' || /Loading chunk|Failed to fetch/i.test(reason.message || ''))) {
+                    reloadWithCacheBuster();
+                  }
+                });
+
+                if (typeof window !== 'undefined' && window.location.search.indexOf('cb=') !== -1) {
+                  try {
+                    var url = new URL(window.location.href);
+                    url.searchParams.delete('cb');
+                    var cleanUrl = url.pathname + url.search + url.hash;
+                    window.history.replaceState({}, document.title, cleanUrl);
+                  } catch (err) {}
+                }
+              })();
             `,
           }}
         />
@@ -63,4 +87,5 @@ export default function RootLayout({
     </html>
   );
 }
-// last deploy: 2026-07-03T12:00:15Z - cdn-purge-noop
+// last deploy: 2026-07-03T13:21:00Z - cdn-purge-noop
+
