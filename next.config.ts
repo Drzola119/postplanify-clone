@@ -46,13 +46,6 @@ const nextConfig: NextConfig = {
           { key: "Pragma", value: "no-cache" },
         ],
       },
-      {
-        source: "/test-cd",
-        headers: [
-          { key: "Cache-Control", value: "no-store, must-revalidate" },
-          { key: "Pragma", value: "no-cache" },
-        ],
-      },
     ];
   },
   async rewrites() {
