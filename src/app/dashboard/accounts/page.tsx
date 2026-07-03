@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   RefreshCw,
   BookOpen,
@@ -10,11 +10,11 @@ import {
   Grid3x3,
   X,
   Loader2,
-  Search,
   ExternalLink,
   Trash2,
   XCircle,
   ChevronDown,
+  AlertTriangle,
 } from "lucide-react";
 
 type Platform =
@@ -30,29 +30,41 @@ type Platform =
 
 interface ConnectedAccount {
   id: string;
+  profileUsername: string;
   platform: Platform;
   handle: string;
-  img?: string;
-  initials?: string;
-  initialsBg?: string;
-  initialsColor?: string;
-  validityDays?: number;
-  hasGridPreview?: boolean;
+  displayName: string | null;
+  img: string | null;
+  reauthRequired: boolean;
+}
+
+interface ProfileMeta {
+  username: string;
+  redirectUrl: string | null;
+  blocked: boolean;
+}
+
+interface ApiResponse {
+  ok: boolean;
+  accounts: ConnectedAccount[];
+  profiles: ProfileMeta[];
+  plan: string | null;
+  limit: number | null;
 }
 
 const PLATFORM_META: Record<
   Platform,
-  { label: string; badgeColor: string; badgeBg: string }
+  { label: string; badgeColor: string }
 > = {
-  bluesky: { label: "Bluesky", badgeColor: "text-sky-500", badgeBg: "" },
-  instagram: { label: "Instagram", badgeColor: "text-pink-600", badgeBg: "" },
-  pinterest: { label: "Pinterest", badgeColor: "text-rose-600", badgeBg: "" },
-  threads: { label: "Threads", badgeColor: "text-zinc-900", badgeBg: "" },
-  tiktok: { label: "TikTok", badgeColor: "text-zinc-900", badgeBg: "" },
-  youtube: { label: "YouTube", badgeColor: "text-red-600", badgeBg: "" },
-  facebook: { label: "Facebook", badgeColor: "text-blue-600", badgeBg: "" },
-  linkedin: { label: "LinkedIn", badgeColor: "text-blue-700", badgeBg: "" },
-  x: { label: "X", badgeColor: "text-zinc-900", badgeBg: "" },
+  bluesky: { label: "Bluesky", badgeColor: "text-sky-500" },
+  instagram: { label: "Instagram", badgeColor: "text-pink-600" },
+  pinterest: { label: "Pinterest", badgeColor: "text-rose-600" },
+  threads: { label: "Threads", badgeColor: "text-zinc-900" },
+  tiktok: { label: "TikTok", badgeColor: "text-zinc-900" },
+  youtube: { label: "YouTube", badgeColor: "text-red-600" },
+  facebook: { label: "Facebook", badgeColor: "text-blue-600" },
+  linkedin: { label: "LinkedIn", badgeColor: "text-blue-700" },
+  x: { label: "X", badgeColor: "text-zinc-900" },
 };
 
 function PlatformBadge({ platform }: { platform: Platform }) {
@@ -179,194 +191,18 @@ function PlatformIconLarge({ platform, className }: { platform: Platform; classN
   }
 }
 
-const INITIAL_ACCOUNTS: ConnectedAccount[] = [
-  {
-    id: "1",
-    platform: "bluesky",
-    handle: "nicklorance.bsky.social",
-    img: "https://cdn.bsky.app/img/avatar/plain/did:plc:rxzikv2qahzbwx7kggut2fiq/bafkreibbjbshetcjzi6cionfd3f62wzbhtmad7raj43h3pd3753vothaxy",
-    validityDays: undefined,
-    hasGridPreview: false,
-  },
-  {
-    id: "2",
-    platform: "instagram",
-    handle: "nicklorance7",
-    img: "https://cdn.postplanify.com/social-profile-pictures/ba9a528b-b3e7-41b5-979d-18b6773bd130/profile-1782204326749.jpg",
-    validityDays: 56,
-    hasGridPreview: false,
-  },
-  {
-    id: "3",
-    platform: "pinterest",
-    handle: "nicklorance7",
-    img: "https://cdn.postplanify.com/social-profile-pictures/ba9a528b-b3e7-41b5-979d-18b6773bd130/profile-1782203009982.jpg",
-    validityDays: 361,
-    hasGridPreview: false,
-  },
-  {
-    id: "4",
-    platform: "instagram",
-    handle: "nicklorance7",
-    img: "https://cdn.postplanify.com/social-profile-pictures/ba9a528b-b3e7-41b5-979d-18b6773bd130/profile-1782204326749.jpg",
-    validityDays: 56,
-    hasGridPreview: true,
-  },
-  {
-    id: "5",
-    platform: "tiktok",
-    handle: "nick_lorance",
-    img: "https://cdn.postplanify.com/social-profile-pictures/ba9a528b-b3e7-41b5-979d-18b6773bd130/profile-1782203631115.jpg",
-    validityDays: 361,
-    hasGridPreview: true,
-  },
-  {
-    id: "6",
-    platform: "youtube",
-    handle: "Zakaria 11",
-    img: "https://cdn.postplanify.com/social-profile-pictures/ba9a528b-b3e7-41b5-979d-18b6773bd130/profile-1782203779482.jpg",
-    validityDays: undefined,
-    hasGridPreview: false,
-  },
-  {
-    id: "7",
-    platform: "threads",
-    handle: "nick lorance life",
-    img: "https://cdn.postplanify.com/social-profile-pictures/ba9a528b-b3e7-41b5-979d-18b6773bd130/profile-1782202379534.jpg",
-    validityDays: 56,
-    hasGridPreview: false,
-  },
-  {
-    id: "8",
-    platform: "linkedin",
-    handle: "Nick Lorance",
-    initials: "N",
-    initialsBg: "bg-blue-700",
-    initialsColor: "text-white",
-    validityDays: 56,
-    hasGridPreview: false,
-  },
-  {
-    id: "9",
-    platform: "x",
-    handle: "LoranceNic36048",
-    img: "https://cdn.postplanify.com/social-profile-pictures/ba9a528b-b3e7-41b5-979d-18b6773bd130/profile-1782208486182.jpg",
-    validityDays: undefined,
-    hasGridPreview: false,
-  },
+const AVAILABLE_PLATFORMS: { name: string; platform: Platform; key: string; connectUrl: string }[] = [
+  { name: "Facebook", platform: "facebook", key: "facebook", connectUrl: "https://app.upload-post.com/connect/facebook" },
+  { name: "Instagram", platform: "instagram", key: "instagram", connectUrl: "https://app.upload-post.com/connect/instagram" },
+  { name: "X", platform: "x", key: "x", connectUrl: "https://app.upload-post.com/connect/x" },
+  { name: "YouTube", platform: "youtube", key: "youtube", connectUrl: "https://app.upload-post.com/connect/youtube" },
+  { name: "TikTok", platform: "tiktok", key: "tiktok", connectUrl: "https://app.upload-post.com/connect/tiktok" },
+  { name: "LinkedIn", platform: "linkedin", key: "linkedin", connectUrl: "https://app.upload-post.com/connect/linkedin" },
+  { name: "Threads", platform: "threads", key: "threads", connectUrl: "https://app.upload-post.com/connect/threads" },
+  { name: "Pinterest", platform: "pinterest", key: "pinterest", connectUrl: "https://app.upload-post.com/connect/pinterest" },
+  { name: "Bluesky", platform: "bluesky", key: "bluesky", connectUrl: "https://app.upload-post.com/connect/bluesky" },
+  { name: "Google Business", platform: "facebook", key: "google-business", connectUrl: "https://app.upload-post.com/connect/google_business" },
 ];
-
-const AVAILABLE_PLATFORMS: { name: string; platform: Platform; key: string }[] = [
-  { name: "Facebook", platform: "facebook", key: "facebook" },
-  { name: "Instagram", platform: "instagram", key: "instagram" },
-  { name: "X", platform: "x", key: "x" },
-  { name: "YouTube", platform: "youtube", key: "youtube" },
-  { name: "TikTok", platform: "tiktok", key: "tiktok" },
-  { name: "LinkedIn", platform: "linkedin", key: "linkedin" },
-  { name: "Threads", platform: "threads", key: "threads" },
-  { name: "Pinterest", platform: "pinterest", key: "pinterest" },
-  { name: "Bluesky", platform: "bluesky", key: "bluesky" },
-  { name: "Google Business", platform: "facebook", key: "google-business" },
-];
-
-interface TutorialContent {
-  title: string;
-  author: string;
-  role: string;
-  videoTitle: string;
-  videoId?: string;
-  intro?: string;
-  optionsHeading?: string;
-  options?: string[];
-  requirements: string[];
-  notes?: string[];
-}
-
-const TUTORIAL_CONTENT: Record<string, TutorialContent> = {
-  facebook: {
-    title: "Connect a Facebook account",
-    author: "Written by Hasan Cagli",
-    role: "Founder of PostPlanify",
-    videoTitle: "Connecting Facebook Account on PostPlanify",
-    requirements: [
-      "Must be a Facebook Page (not a personal profile)",
-      "Requires Admin or Full Control access to the page",
-    ],
-  },
-  instagram: {
-    title: "Connect a Instagram account",
-    author: "Written by Hasan Cagli",
-    role: "Founder of PostPlanify",
-    videoTitle: "Connecting Instagram Account on PostPlanify",
-    optionsHeading: "You have 2 connection options:",
-    options: ["Instagram Direct", "Facebook Page Linked"],
-    requirements: [
-      "Requires a Professional or Business account",
-      "Switch: Settings → Account → Switch to Professional Account",
-    ],
-  },
-  x: {
-    title: "Connect a X (Twitter) account",
-    author: "Written by Hasan Cagli",
-    role: "Founder of PostPlanify",
-    videoTitle: "Connecting X Account on PostPlanify",
-    requirements: [],
-  },
-  youtube: {
-    title: "Connect a YouTube account",
-    author: "Written by Hasan Cagli",
-    role: "Founder of PostPlanify",
-    videoTitle: "Connecting YouTube Account on PostPlanify",
-    requirements: [
-      "Phone verification required for custom thumbnails",
-      "Enable at: Studio → Settings → Channel → Feature Eligibility",
-    ],
-  },
-  tiktok: {
-    title: "Connect a TikTok account",
-    author: "Written by Hasan Cagli",
-    role: "Founder of PostPlanify",
-    videoTitle: "Connecting TikTok Account on PostPlanify",
-    requirements: [],
-  },
-  linkedin: {
-    title: "Connect a LinkedIn account",
-    author: "Written by Hasan Cagli",
-    role: "Founder of PostPlanify",
-    videoTitle: "Connecting LinkedIn Account on PostPlanify",
-    intro: "You can connect both LinkedIn company pages and personal profiles.",
-    requirements: [
-      "Requires Super Admin role for company pages",
-      "Personal profiles connect without restrictions",
-    ],
-  },
-  threads: {
-    title: "Connect a Threads account",
-    author: "Written by Hasan Cagli",
-    role: "Founder of PostPlanify",
-    videoTitle: "",
-    requirements: [
-      "Log into Threads in your browser first, then connect here",
-    ],
-  },
-  pinterest: {
-    title: "Connect a Pinterest account",
-    author: "Written by Hasan Cagli",
-    role: "Founder of PostPlanify",
-    videoTitle: "Connecting Pinterest Account on PostPlanify",
-    requirements: [],
-  },
-  bluesky: {
-    title: "Connect a Bluesky account",
-    author: "Written by Hasan Cagli",
-    role: "Founder of PostPlanify",
-    videoTitle: "Connecting Bluesky Account on PostPlanify",
-    requirements: [],
-    notes: [
-      "Note: Bluesky connections cannot be refreshed. If you need to reconnect, you'll need to disconnect and reconnect the account.",
-    ],
-  },
-};
 
 interface Toast {
   id: number;
@@ -375,16 +211,15 @@ interface Toast {
 }
 
 export default function AccountsPage() {
-  const [accounts, setAccounts] = useState<ConnectedAccount[]>(INITIAL_ACCOUNTS);
-  const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
+  const [profiles, setProfiles] = useState<ProfileMeta[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshingAll, setRefreshingAll] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [connectingId, setConnectingId] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [learnOpen, setLearnOpen] = useState(false);
-  const [activeTutorial, setActiveTutorial] = useState<string | null>(null);
-  const [gridPreviewAccount, setGridPreviewAccount] = useState<ConnectedAccount | null>(null);
-  const [supportModalOpen, setSupportModalOpen] = useState(false);
 
   const showToast = (message: string, type: Toast["type"] = "success") => {
     const id = Date.now() + Math.random();
@@ -394,34 +229,58 @@ export default function AccountsPage() {
     }, 3000);
   };
 
-  const handleRefresh = (id: string) => {
-    setRefreshingId(id);
-    showToast("Refreshing account...", "info");
-    setTimeout(() => {
-      setRefreshingId(null);
-      showToast("Account refreshed successfully", "success");
-    }, 1500);
+  const fetchAccounts = async () => {
+    setError(null);
+    try {
+      const res = await fetch("/api/social-accounts/list", { cache: "no-store" });
+      const data: ApiResponse = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error((data as unknown as { error?: string }).error || "Failed to load accounts");
+      }
+      setAccounts(data.accounts);
+      setProfiles(data.profiles);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to load accounts";
+      setError(msg);
+      setAccounts([]);
+      setProfiles([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDeleteConfirm = () => {
+  useEffect(() => {
+    fetchAccounts();
+  }, []);
+
+  const handleRefreshAll = async () => {
+    setRefreshingAll(true);
+    showToast("Refreshing accounts from upload-post.com...", "info");
+    await fetchAccounts();
+    setRefreshingAll(false);
+    if (!error) {
+      showToast("Accounts refreshed successfully", "success");
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
     if (!confirmDeleteId) return;
     const id = confirmDeleteId;
     setDeletingId(id);
     setConfirmDeleteId(null);
-    setTimeout(() => {
-      setAccounts((prev) => prev.filter((a) => a.id !== id));
-      setDeletingId(null);
-      showToast("Account disconnected", "success");
-    }, 800);
+    // upload-post.com does not expose a disconnect endpoint via this JWT;
+    // removing the account locally and asking the user to revoke via upload-post.com.
+    setAccounts((prev) => prev.filter((a) => a.id !== id));
+    setDeletingId(null);
+    showToast(
+      "Account removed from view. To revoke at source, disconnect it from upload-post.com.",
+      "info"
+    );
   };
 
-  const handleConnect = (platformKey: string) => {
-    setConnectingId(platformKey);
-    showToast(`Connecting to ${platformKey}...`, "info");
-    setTimeout(() => {
-      setConnectingId(null);
-      showToast("Redirecting to authentication...", "info");
-    }, 1500);
+  const handleConnect = (platformKey: string, connectUrl: string) => {
+    window.open(connectUrl, "_blank", "noopener,noreferrer");
+    showToast(`Opening ${platformKey} connect page in new tab...`, "info");
   };
 
   return (
@@ -430,43 +289,43 @@ export default function AccountsPage() {
         {/* Header */}
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
           <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <h2 className="text-3xl font-bold tracking-tight">Social Accounts</h2>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setLearnOpen((v) => !v)}
-                  className="inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950 disabled:pointer-events-none disabled:opacity-50 border border-zinc-200 bg-white hover:bg-zinc-50 h-8 rounded-md px-3 text-xs"
-                >
-                  <BookOpen className="size-4" />
-                  <span className="text-sm ml-1.5">Learn</span>
-                  <ChevronDown className="size-4" />
-                </button>
-                {learnOpen && (
-                  <div className="absolute left-0 top-full mt-2 w-64 rounded-lg border border-zinc-200 bg-white shadow-lg p-1 z-20">
-                    {AVAILABLE_PLATFORMS.filter((p) => p.key !== "google-business").map((p) => (
-                      <button
-                        key={p.key}
-                        type="button"
-                        onClick={() => {
-                          setLearnOpen(false);
-                          setActiveTutorial(p.key);
-                        }}
-                        className="w-full flex items-center gap-2 text-left px-3 py-2 rounded-md text-sm hover:bg-zinc-50"
-                      >
-                        <BookOpen className="size-4 shrink-0 text-zinc-500" />
-                        <span>Connect a {p.name} account</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+            <h2 className="text-3xl font-bold tracking-tight">Social Accounts</h2>
             <p className="text-muted-foreground">
               Connect and manage your social media accounts
             </p>
           </div>
+          <button
+            type="button"
+            onClick={handleRefreshAll}
+            disabled={refreshingAll || loading}
+            className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+          >
+            {refreshingAll ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <RefreshCw className="size-4" />
+            )}
+            Refresh
+          </button>
         </div>
+
+        {/* Error banner */}
+        {error && !loading && (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 flex items-start gap-3">
+            <AlertTriangle className="size-5 text-rose-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-rose-900">Could not load accounts</p>
+              <p className="text-xs text-rose-700 mt-0.5">{error}</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleRefreshAll}
+              className="text-xs font-medium text-rose-700 hover:text-rose-900 underline"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         {/* Card 1: Connected Accounts */}
         <div className="rounded-xl border border-zinc-200 bg-white text-zinc-950 shadow-sm">
@@ -475,25 +334,41 @@ export default function AccountsPage() {
               Connected Accounts
             </div>
             <div className="text-sm text-zinc-500">
-              Manage your connected social media accounts
+              {profiles.length > 0
+                ? `${accounts.length} account${accounts.length === 1 ? "" : "s"} across ${profiles.length} profile${profiles.length === 1 ? "" : "s"} on upload-post.com`
+                : "Manage your connected social media accounts"}
             </div>
           </div>
           <div className="p-6 pt-0">
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                {accounts.map((account) => (
-                  <ConnectedAccountCard
-                    key={account.id}
-                    account={account}
-                    isRefreshing={refreshingId === account.id}
-                    isDeleting={deletingId === account.id}
-                    onRefresh={() => handleRefresh(account.id)}
-                    onDelete={() => setConfirmDeleteId(account.id)}
-                    onGridPreview={() => setGridPreviewAccount(account)}
-                  />
-                ))}
+            {loading ? (
+              <div className="flex items-center justify-center py-12 gap-3 text-sm text-zinc-500">
+                <Loader2 className="size-5 animate-spin" />
+                Loading connected accounts from upload-post.com...
               </div>
-            </div>
+            ) : accounts.length === 0 && !error ? (
+              <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
+                <div className="size-12 rounded-full bg-zinc-100 flex items-center justify-center">
+                  <Info className="size-6 text-zinc-400" />
+                </div>
+                <p className="text-sm font-medium text-zinc-900">No accounts connected yet</p>
+                <p className="text-xs text-zinc-500 max-w-sm">
+                  Use the &quot;Connect&quot; buttons below to link your social media accounts.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {accounts.map((account) => (
+                    <ConnectedAccountCard
+                      key={account.id}
+                      account={account}
+                      isDeleting={deletingId === account.id}
+                      onDelete={() => setConfirmDeleteId(account.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -509,18 +384,10 @@ export default function AccountsPage() {
                   Connect new social media accounts
                 </div>
               </div>
-              {/* Warning banner */}
               <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md text-xs">
                 <AlertCircle className="size-4 text-amber-600 shrink-0" />
                 <span className="text-amber-800">
-                  Connection works best on Chrome or Edge.{" "}
-                  <button
-                    type="button"
-                    onClick={() => setSupportModalOpen(true)}
-                    className="text-amber-800 underline hover:no-underline font-medium"
-                  >
-                    Having other issues?
-                  </button>
+                  Connection works best on Chrome or Edge.
                 </span>
               </div>
             </div>
@@ -533,12 +400,10 @@ export default function AccountsPage() {
                     key={p.key}
                     name={p.name}
                     platform={p.platform}
-                    isConnecting={connectingId === p.key}
-                    onConnect={() => handleConnect(p.name)}
+                    onConnect={() => handleConnect(p.name, p.connectUrl)}
                   />
                 ))}
               </div>
-              {/* Footer note */}
               <div className="p-3 rounded-lg bg-zinc-100 border border-zinc-200 flex items-start gap-2">
                 <Info className="size-3.5 mt-0.5 shrink-0 text-zinc-500" />
                 <p className="text-xs text-zinc-500">
@@ -578,50 +443,22 @@ export default function AccountsPage() {
           onCancel={() => setConfirmDeleteId(null)}
         />
       )}
-
-      {/* Grid Preview Modal */}
-      {gridPreviewAccount && (
-        <GridPreviewModal
-          account={gridPreviewAccount}
-          onClose={() => setGridPreviewAccount(null)}
-        />
-      )}
-
-      {/* Support Modal */}
-      {supportModalOpen && (
-        <SupportModal onClose={() => setSupportModalOpen(false)} />
-      )}
-
-      {/* Tutorial Drawer */}
-      {activeTutorial && (
-        <TutorialDrawer
-          platformKey={activeTutorial}
-          onClose={() => setActiveTutorial(null)}
-        />
-      )}
     </div>
   );
 }
 
 function ConnectedAccountCard({
   account,
-  isRefreshing,
   isDeleting,
-  onRefresh,
   onDelete,
-  onGridPreview,
 }: {
   account: ConnectedAccount;
-  isRefreshing: boolean;
   isDeleting: boolean;
-  onRefresh: () => void;
   onDelete: () => void;
-  onGridPreview: () => void;
 }) {
   return (
     <div className={`group flex items-center justify-between p-4 rounded-lg border border-zinc-200 hover:border-zinc-300 transition-colors bg-white ${isDeleting ? "opacity-50 pointer-events-none" : ""}`}>
       <div className="flex items-center gap-4 min-w-0">
-        {/* Avatar with platform badge */}
         <div className="relative w-11 h-11 shrink-0">
           {account.img ? (
             <img
@@ -630,8 +467,8 @@ function ConnectedAccountCard({
               className="rounded-full w-11 h-11 object-cover bg-zinc-100"
             />
           ) : (
-            <div className={`rounded-full w-11 h-11 flex items-center justify-center text-sm font-semibold ${account.initialsBg} ${account.initialsColor}`}>
-              {account.initials}
+            <div className="rounded-full w-11 h-11 flex items-center justify-center text-sm font-semibold bg-zinc-200 text-zinc-700">
+              {account.handle.charAt(0).toUpperCase()}
             </div>
           )}
           <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 bg-white rounded-full flex items-center justify-center shadow-sm border border-zinc-200">
@@ -639,52 +476,35 @@ function ConnectedAccountCard({
           </div>
         </div>
 
-        {/* Username + status */}
         <div className="space-y-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="font-medium text-sm text-zinc-900 truncate">
               {account.handle}
             </p>
-            {account.validityDays !== undefined ? (
+            {account.reauthRequired ? (
+              <span className="inline-flex items-center gap-1 text-xs text-amber-700">
+                <AlertCircle className="size-3" />
+                Re-auth required
+              </span>
+            ) : (
               <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
                 <CheckCircle2 className="size-3" />
-                Valid for {account.validityDays} days
+                Connected
               </span>
-            ) : null}
+            )}
           </div>
+          {account.displayName && account.displayName !== account.handle && (
+            <p className="text-xs text-zinc-500 truncate">{account.displayName}</p>
+          )}
         </div>
       </div>
 
-      {/* Action buttons */}
       <div className="flex items-center gap-2 shrink-0">
-        {account.hasGridPreview && (
-          <button
-            type="button"
-            onClick={onGridPreview}
-            className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 text-xs font-medium"
-          >
-            <Grid3x3 className="size-3.5" />
-            Grid Preview
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={isRefreshing}
-          className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
-        >
-          {isRefreshing ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="size-3.5" />
-          )}
-          Refresh
-        </button>
         <button
           type="button"
           onClick={onDelete}
           disabled={isDeleting}
-          aria-label="Delete account"
+          aria-label="Remove account from view"
           className="inline-flex items-center justify-center size-8 rounded-md bg-rose-500 hover:bg-rose-600 disabled:opacity-50 disabled:cursor-not-allowed text-white"
         >
           {isDeleting ? (
@@ -701,12 +521,10 @@ function ConnectedAccountCard({
 function PlatformCard({
   name,
   platform,
-  isConnecting,
   onConnect,
 }: {
   name: string;
   platform: Platform;
-  isConnecting: boolean;
   onConnect: () => void;
 }) {
   return (
@@ -718,17 +536,10 @@ function PlatformCard({
       <button
         type="button"
         onClick={onConnect}
-        disabled={isConnecting}
-        className="inline-flex items-center justify-center h-8 px-6 rounded-md bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium whitespace-nowrap min-w-[100px]"
+        className="inline-flex items-center justify-center h-8 px-6 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium whitespace-nowrap min-w-[100px]"
       >
-        {isConnecting ? (
-          <>
-            <Loader2 className="size-3.5 mr-1.5 animate-spin" />
-            Connecting...
-          </>
-        ) : (
-          "Connect"
-        )}
+        Connect
+        <ExternalLink className="size-3 ml-1.5" />
       </button>
     </div>
   );
@@ -754,11 +565,11 @@ function ConfirmDeleteModal({
             <Trash2 className="size-5 text-rose-600" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-zinc-900">Disconnect account?</h3>
+            <h3 className="text-lg font-semibold text-zinc-900">Remove account?</h3>
             <p className="text-sm text-zinc-500 mt-1">
-              Are you sure you want to disconnect{" "}
-              <span className="font-semibold text-zinc-900">{account.handle}</span>?
-              You can reconnect it anytime.
+              This hides <span className="font-semibold text-zinc-900">{account.handle}</span>{" "}
+              from this view. To fully revoke at source, disconnect it from your
+              upload-post.com dashboard.
             </p>
           </div>
         </div>
@@ -775,219 +586,8 @@ function ConfirmDeleteModal({
             onClick={onConfirm}
             className="inline-flex items-center justify-center h-9 px-4 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium"
           >
-            Disconnect
+            Remove
           </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function GridPreviewModal({
-  account,
-  onClose,
-}: {
-  account: ConnectedAccount;
-  onClose: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div
-        className="bg-white rounded-xl border border-zinc-200 max-w-2xl w-full max-h-[80vh] overflow-y-auto shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between p-4 border-b border-zinc-200">
-          <div>
-            <h3 className="text-lg font-semibold text-zinc-900">Grid Preview</h3>
-            <p className="text-sm text-zinc-500">{account.handle}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="size-8 inline-flex items-center justify-center rounded-md hover:bg-zinc-100 text-zinc-500"
-            aria-label="Close"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-        <div className="p-4">
-          <div className="grid grid-cols-3 gap-1">
-            {Array.from({ length: 9 }).map((_, i) => (
-              <div
-                key={i}
-                className="aspect-square bg-gradient-to-br from-zinc-100 to-zinc-200 rounded"
-              />
-            ))}
-          </div>
-          <p className="text-xs text-zinc-500 text-center mt-4">
-            Sample grid preview for {account.handle}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SupportModal({ onClose }: { onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div
-        className="bg-white rounded-xl border border-zinc-200 p-6 max-w-md w-full shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between mb-4">
-          <h3 className="text-lg font-semibold text-zinc-900">Need help connecting?</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="size-8 inline-flex items-center justify-center rounded-md hover:bg-zinc-100 text-zinc-500"
-            aria-label="Close"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-        <p className="text-sm text-zinc-600 mb-4">
-          If you&apos;re having trouble connecting your accounts, try these steps:
-        </p>
-        <ol className="space-y-2 text-sm text-zinc-600 list-decimal list-inside mb-6">
-          <li>Use the latest version of Chrome or Edge</li>
-          <li>Disable browser extensions that block popups</li>
-          <li>Clear your browser cookies and cache</li>
-          <li>Make sure third-party cookies are enabled</li>
-        </ol>
-        <div className="flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex items-center justify-center h-9 px-4 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 text-sm font-medium"
-          >
-            Close
-          </button>
-          <a
-            href="mailto:support@postplanify.com"
-            className="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium"
-          >
-            Contact Support
-            <ExternalLink className="size-3.5" />
-          </a>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TutorialDrawer({
-  platformKey,
-  onClose,
-}: {
-  platformKey: string;
-  onClose: () => void;
-}) {
-  const content = TUTORIAL_CONTENT[platformKey];
-  if (!content) return null;
-
-  const platform = AVAILABLE_PLATFORMS.find((p) => p.key === platformKey);
-
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/50" onClick={onClose}>
-      <div
-        className="bg-white w-full max-w-[480px] h-full overflow-y-auto shadow-2xl flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-start justify-between p-6 border-b border-zinc-200 shrink-0">
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="size-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm shrink-0">
-              HC
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-lg font-semibold text-zinc-900 leading-tight">
-                {content.title}
-              </h3>
-              <p className="text-xs text-zinc-500 mt-1">
-                {content.author} • {content.role}
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="size-8 inline-flex items-center justify-center rounded-md hover:bg-zinc-100 text-zinc-500 shrink-0"
-            aria-label="Close"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 p-6 space-y-5">
-          {/* Video embed */}
-          {content.videoTitle && (
-            <div className="rounded-lg overflow-hidden border border-zinc-200 bg-zinc-900 aspect-video relative">
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <div className="size-16 rounded-full bg-red-600 mx-auto flex items-center justify-center mb-2">
-                    <svg viewBox="0 0 24 24" className="size-8 text-white fill-current">
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  </div>
-                  <p className="text-white text-sm font-medium px-4">{content.videoTitle}</p>
-                  <p className="text-zinc-400 text-xs mt-1">Hasan | Social Media Growth</p>
-                </div>
-              </div>
-              <div className="absolute top-3 right-3 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                Watch on YouTube
-              </div>
-            </div>
-          )}
-
-          {/* Intro */}
-          {content.intro && (
-            <p className="text-sm text-zinc-700 leading-relaxed">
-              {content.intro}
-            </p>
-          )}
-
-          {/* Options */}
-          {content.optionsHeading && content.options && (
-            <div>
-              <p className="text-sm text-zinc-700 mb-2">{content.optionsHeading}</p>
-              <ul className="space-y-1">
-                {content.options.map((opt, i) => (
-                  <li key={i} className="flex items-center gap-2 text-sm text-zinc-700">
-                    <span className="size-1.5 rounded-full bg-zinc-400 shrink-0" />
-                    {opt}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Requirements */}
-          {content.requirements.length > 0 && (
-            <div>
-              <p className="text-sm font-semibold text-zinc-900 mb-2">Requirements:</p>
-              <ul className="space-y-1.5">
-                {content.requirements.map((req, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-zinc-700">
-                    <span className="size-1.5 rounded-full bg-zinc-400 mt-2 shrink-0" />
-                    <span>{req}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Notes */}
-          {content.notes && content.notes.length > 0 && (
-            <div className="space-y-1.5 pt-2 border-t border-zinc-200">
-              {content.notes.map((note, i) => (
-                <p key={i} className="text-xs text-zinc-500 leading-relaxed">
-                  {note}
-                </p>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </div>
