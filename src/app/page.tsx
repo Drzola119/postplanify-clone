@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { AnnouncementBar } from "@/components/sections/AnnouncementBar";
 import { Header } from "@/components/sections/Header";
 import { Hero } from "@/components/sections/Hero";
