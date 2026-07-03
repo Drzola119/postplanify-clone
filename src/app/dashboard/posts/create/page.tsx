@@ -31,6 +31,9 @@ import { QuoteTweetInput } from "@/components/dashboard/quote-tweet-input";
 import { AccountThumb } from "@/components/dashboard/account-thumb";
 import { AICaptionsDialog } from "@/components/dashboard/ai-captions-dialog";
 import { UnsplashDialog } from "@/components/dashboard/unsplash-dialog";
+import { CanvaDialog, type ImportedFile } from "@/components/dashboard/canva-dialog";
+import { GoogleDriveDialog } from "@/components/dashboard/google-drive-dialog";
+import { DropboxDialog } from "@/components/dashboard/dropbox-dialog";
 import { CoverImageModal } from "@/components/dashboard/cover-image-modal";
 import { CollaboratorsModal } from "@/components/dashboard/collaborators-modal";
 import { TagUsersInput } from "@/components/dashboard/tag-users-input";
@@ -87,6 +90,9 @@ export default function CreatePostPage() {
   // Dialogs
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [unsplashOpen, setUnsplashOpen] = useState(false);
+  const [canvaOpen, setCanvaOpen] = useState(false);
+  const [driveOpen, setDriveOpen] = useState(false);
+  const [dropboxOpen, setDropboxOpen] = useState(false);
   const [coverModalOpen, setCoverModalOpen] = useState(false);
   const [collaboratorsModalOpen, setCollaboratorsModalOpen] = useState(false);
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
@@ -219,6 +225,37 @@ export default function CreatePostPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleExternalImport(items: ImportedFile[]) {
+    if (items.length === 0) return;
+    toast({
+      title: `Importing ${items.length} file${items.length > 1 ? "s" : ""}…`,
+      tone: "info",
+    });
+    const fetched: File[] = [];
+    const failures: string[] = [];
+    await Promise.all(
+      items.map(async (item) => {
+        try {
+          const res = await fetch(item.url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const blob = await res.blob();
+          const mime = item.mimeType || blob.type || "image/jpeg";
+          fetched.push(new File([blob], item.name, { type: mime }));
+        } catch (err) {
+          failures.push(item.name);
+        }
+      })
+    );
+    if (failures.length > 0) {
+      toast({
+        title: `${failures.length} import${failures.length === 1 ? "" : "s"} failed`,
+        description: failures.slice(0, 3).join(", ") + (failures.length > 3 ? "…" : ""),
+        tone: "warning",
+      });
+    }
+    if (fetched.length > 0) await handleFiles(fetched);
   }
 
   async function handleFiles(files: File[]) {
@@ -404,11 +441,9 @@ export default function CreatePostPage() {
             fileInputRef={fileInputRef}
             onOpenUnsplash={() => setUnsplashOpen(true)}
             onOpenGenerateAI={() => setAiDialogOpen(true)}
-            onOpenCanva={() =>
-              toast({ title: "Canva not connected", description: "Visit Settings to connect", tone: "info" })
-            }
-            onOpenDrive={() => toast({ title: "Google Drive picker", tone: "info" })}
-            onOpenDropbox={() => toast({ title: "Dropbox picker", tone: "info" })}
+            onOpenCanva={() => setCanvaOpen(true)}
+            onOpenDrive={() => setDriveOpen(true)}
+            onOpenDropbox={() => setDropboxOpen(true)}
             zoom={zoom}
             onZoomChange={setZoom}
             collaboratorsCount={collaborators.length}
@@ -514,7 +549,26 @@ export default function CreatePostPage() {
           })
         }
       />
-      <UnsplashDialog open={unsplashOpen} onClose={() => setUnsplashOpen(false)} />
+      <UnsplashDialog
+        open={unsplashOpen}
+        onClose={() => setUnsplashOpen(false)}
+        onImport={handleExternalImport}
+      />
+      <CanvaDialog
+        open={canvaOpen}
+        onClose={() => setCanvaOpen(false)}
+        onImport={handleExternalImport}
+      />
+      <GoogleDriveDialog
+        open={driveOpen}
+        onClose={() => setDriveOpen(false)}
+        onImport={handleExternalImport}
+      />
+      <DropboxDialog
+        open={dropboxOpen}
+        onClose={() => setDropboxOpen(false)}
+        onImport={handleExternalImport}
+      />
 
       <CoverImageModal
         open={coverModalOpen}
