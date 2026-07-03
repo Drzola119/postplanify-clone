@@ -40,12 +40,20 @@ import { HashtagsDropdown } from "@/components/dashboard/hashtags-dropdown";
 type MediaTab = "media" | "paste";
 type MediaItem = {
   id: string;
+  /** Local object URL for preview. Revoked on remove. */
   url: string;
+  /** Bunny CDN url — only present after upload completes. */
+  cdnUrl?: string;
+  /** Path returned from /api/media/upload, used by /api/media/delete. */
+  storedPath?: string;
   name: string;
   size: number;
   width: number;
   height: number;
   kind: "image" | "video";
+  /** Per-file upload status (so the UI can show pending / failed without breaking preview). */
+  uploadStatus: "uploading" | "ready" | "error";
+  uploadError?: string;
 };
 
 const MEDIA_TABS: { id: MediaTab; label: string }[] = [
@@ -98,6 +106,9 @@ export default function CreatePostPage() {
   const [zoom, setZoom] = useState(300);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Set true while the publish API call is in flight.
+  const [submitting, setSubmitting] = useState(false);
+
   const selectedPlatforms = useMemo(
     () => PLATFORMS.filter((p) => selected.has(p.id)),
     [selected]
@@ -126,6 +137,8 @@ export default function CreatePostPage() {
   }
 
   function startOver() {
+    // Revoke any leftover object URLs to avoid memory leaks.
+    for (const m of mediaItems) if (m.url) URL.revokeObjectURL(m.url);
     setSelected(new Set());
     setCaptions({});
     setSameForAll(false);
@@ -141,31 +154,103 @@ export default function CreatePostPage() {
     toast({ title: "Reset", description: "Composer cleared", tone: "info" });
   }
 
+  function captionForCurrent(): string {
+    const cap = sameForAll
+      ? (captions.__all ?? "")
+      : (captions[Array.from(selected)[0] ?? PLATFORMS[0].id] ?? "");
+    return cap.trim();
+  }
+
+  async function publishPost(scheduledAt: Date | null) {
+    const platforms = Array.from(selected);
+    if (platforms.length === 0) {
+      toast({ title: "Pick at least one account", tone: "warning" });
+      return;
+    }
+    const caption = captionForCurrent();
+    if (!caption) {
+      toast({ title: "Caption is empty", tone: "warning" });
+      return;
+    }
+    const readyMedia = mediaItems.filter((m) => m.cdnUrl);
+    if (readyMedia.length === 0) {
+      toast({ title: "Upload at least one media file", tone: "warning" });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/posts/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platforms,
+          caption,
+          mediaUrls: readyMedia.map((m) => m.cdnUrl),
+          scheduledAt: scheduledAt ? scheduledAt.toISOString() : null,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        jobId?: string;
+        error?: string;
+      };
+      if (!res.ok || !data.ok) {
+        toast({
+          title: scheduledAt ? "Schedule failed" : "Publish failed",
+          description: data.error ?? `HTTP ${res.status}`,
+          tone: "error",
+        });
+        return;
+      }
+      toast({
+        title: scheduledAt ? "Post scheduled" : "Post published",
+        description: scheduledAt
+          ? scheduledAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+          : `Job ${data.jobId?.slice(0, 8)} sent to workflow`,
+        tone: "success",
+      });
+      if (!scheduledAt) startOver();
+    } catch (err) {
+      toast({
+        title: scheduledAt ? "Schedule failed" : "Publish failed",
+        description: err instanceof Error ? err.message : "Network error",
+        tone: "error",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function handleFiles(files: File[]) {
     const remaining = Math.max(0, MAX_FILES - mediaItems.length);
     const accepted = files.slice(0, remaining);
-    const newItems: MediaItem[] = [];
+    const built: { item: MediaItem; file: File }[] = [];
     for (const file of accepted) {
-      const url = URL.createObjectURL(file);
+      const localUrl = URL.createObjectURL(file);
       const kind: "image" | "video" = file.type.startsWith("video/") ? "video" : "image";
       let width = 0;
       let height = 0;
       if (kind === "image") {
-        const dims = await readImageSize(url);
+        const dims = await readImageSize(localUrl);
         width = dims.w;
         height = dims.h;
       }
-      newItems.push({
-        id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        url,
-        name: file.name,
-        size: file.size,
-        width,
-        height,
-        kind,
+      built.push({
+        file,
+        item: {
+          id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          url: localUrl,
+          name: file.name,
+          size: file.size,
+          width,
+          height,
+          kind,
+          uploadStatus: "uploading",
+        },
       });
     }
-    if (newItems.length === 0) return;
+    if (built.length === 0) return;
+    const newItems = built.map((b) => b.item);
     setMediaItems((prev) => {
       const next = [...prev, ...newItems];
       setActiveMedia(next.length - newItems.length);
@@ -173,12 +258,60 @@ export default function CreatePostPage() {
     });
     toast({
       title: `${newItems.length} file${newItems.length > 1 ? "s" : ""} added`,
-      description: "Ready to publish",
-      tone: "success",
+      description: "Uploading to Bunny CDN…",
+      tone: "info",
     });
+
+    // Fire uploads in parallel; each one mutates its own item in state by id.
+    await Promise.all(
+      built.map(async ({ item, file }) => {
+        try {
+          const fd = new FormData();
+          fd.append("file", file);
+          fd.append("folder", "posts");
+          const res = await fetch("/api/media/upload", { method: "POST", body: fd });
+          const data = (await res.json().catch(() => ({}))) as {
+            ok?: boolean;
+            url?: string;
+            storedPath?: string;
+            error?: string;
+          };
+          if (!res.ok || !data.ok || !data.url || !data.storedPath) {
+            throw new Error(data.error ?? `HTTP ${res.status}`);
+          }
+          setMediaItems((prev) =>
+            prev.map((m) =>
+              m.id === item.id
+                ? { ...m, cdnUrl: data.url, storedPath: data.storedPath, uploadStatus: "ready" as const }
+                : m
+            )
+          );
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Upload failed";
+          setMediaItems((prev) =>
+            prev.map((m) =>
+              m.id === item.id
+                ? { ...m, uploadStatus: "error" as const, uploadError: msg }
+                : m
+            )
+          );
+        }
+      })
+    );
   }
 
   function removeMedia(id: string) {
+    const target = mediaItems.find((m) => m.id === id);
+    if (target?.url) URL.revokeObjectURL(target.url);
+    if (target?.storedPath) {
+      // Fire-and-forget delete on Bunny. If it fails we still drop the row locally —
+      // an orphan in the user's storage folder isn't harmful.
+      void fetch("/api/media/delete", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storedPath: target.storedPath }),
+      }).catch(() => {});
+    }
     setMediaItems((prev) => {
       const idx = prev.findIndex((m) => m.id === id);
       const next = prev.filter((m) => m.id !== id);
@@ -350,7 +483,7 @@ export default function CreatePostPage() {
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
             <button
               type="button"
-              disabled={!hasAnyContent}
+              disabled={!hasAnyContent || submitting}
               onClick={() => setScheduleModalOpen(true)}
               className="inline-flex items-center justify-center gap-2 rounded-md border border-zinc-200 bg-white px-4 h-9 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -358,18 +491,12 @@ export default function CreatePostPage() {
             </button>
             <button
               type="button"
-              disabled={!hasAnyContent}
-              onClick={() =>
-                toast({
-                  title: "Post published",
-                  description: mediaItems.length > 0 ? `${mediaItems.length} file(s) attached` : undefined,
-                  tone: "success",
-                })
-              }
+              disabled={!hasAnyContent || submitting}
+              onClick={() => publishPost(null)}
               className="inline-flex items-center justify-center gap-2 rounded-md bg-zinc-950 hover:bg-zinc-800 text-white px-4 h-9 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Send className="size-3.5" />
-              Publish Now
+              {submitting ? "Publishing…" : "Publish Now"}
             </button>
           </div>
         </div>
@@ -418,11 +545,7 @@ export default function CreatePostPage() {
         onClose={() => setScheduleModalOpen(false)}
         onConfirm={(d) => {
           setScheduleModalOpen(false);
-          toast({
-            title: "Post scheduled",
-            description: d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }),
-            tone: "success",
-          });
+          void publishPost(d);
         }}
       />
 

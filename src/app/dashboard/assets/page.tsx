@@ -183,36 +183,66 @@ export default function AssetsPage() {
     else setSelected(new Set(filtered.map((a) => a.id)));
   };
 
-  // File upload handlers
+  // File upload handlers — track both PendingFile id (UI) and the original File object so we
+  // can actually PUT the bytes to Bunny when the user clicks "Upload".
+  const pendingFileMap = useRef(new Map<string, File>());
+
   const handleFiles = (files: FileList | null) => {
     if (!files) return;
-    const newPending: PendingFile[] = Array.from(files).map((f) => ({
-      id: Math.random().toString(36).slice(2),
-      name: f.name,
-      size: f.size,
-      progress: 0,
-      status: "queued",
-    }));
+    const newPending: PendingFile[] = [];
+    Array.from(files).forEach((f) => {
+      const id = Math.random().toString(36).slice(2);
+      pendingFileMap.current.set(id, f);
+      newPending.push({
+        id,
+        name: f.name,
+        size: f.size,
+        progress: 0,
+        status: "queued",
+      });
+    });
     setPendingFiles((prev) => [...prev, ...newPending]);
   };
 
   const removePending = (id: string) => {
+    pendingFileMap.current.delete(id);
     setPendingFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
-  const startUpload = () => {
-    setPendingFiles((prev) => prev.map((f) => ({ ...f, status: "uploading" as const, progress: 0 })));
-    // Simulate upload progress
-    pendingFiles.forEach((file) => {
-      let progress = 0;
-      const interval = setInterval(() => {
-        progress += 10;
-        setPendingFiles((prev) =>
-          prev.map((f) => (f.id === file.id ? { ...f, progress: Math.min(progress, 100), status: progress >= 100 ? "done" : "uploading" } : f))
-        );
-        if (progress >= 100) clearInterval(interval);
-      }, 200);
-    });
+  const startUpload = async () => {
+    const toUpload = pendingFiles.filter((p) => p.status === "queued" || p.status === "error");
+    if (toUpload.length === 0) return;
+    setPendingFiles((prev) =>
+      prev.map((f) => (toUpload.some((u) => u.id === f.id) ? { ...f, status: "uploading" as const, progress: 0 } : f))
+    );
+    await Promise.all(
+      toUpload.map(async (pf) => {
+        const file = pendingFileMap.current.get(pf.id);
+        if (!file) {
+          setPendingFiles((prev) =>
+            prev.map((f) => (f.id === pf.id ? { ...f, status: "error", progress: 0 } : f))
+          );
+          return;
+        }
+        try {
+          const fd = new FormData();
+          fd.append("file", file);
+          fd.append("folder", "assets");
+          const res = await fetch("/api/media/upload", { method: "POST", body: fd });
+          const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+          if (!res.ok || !data.ok) {
+            throw new Error(data.error ?? `HTTP ${res.status}`);
+          }
+          setPendingFiles((prev) =>
+            prev.map((f) => (f.id === pf.id ? { ...f, status: "done", progress: 100 } : f))
+          );
+        } catch {
+          setPendingFiles((prev) =>
+            prev.map((f) => (f.id === pf.id ? { ...f, status: "error", progress: 0 } : f))
+          );
+        }
+      })
+    );
   };
 
   return (
