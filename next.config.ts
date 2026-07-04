@@ -47,6 +47,7 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     return [
+      { source: "/_next/static/chunks/:path*", destination: "/api/chunks/:path*" },
       { source: "/tools/instagram-engagement-calculator", destination: "/tools/instagram-engagement" },
       { source: "/tools/instagram-grid-maker", destination: "/tools/instagram-grid" },
       { source: "/tools/tiktok-engagement-calculator", destination: "/tools/tiktok-engagement" },
