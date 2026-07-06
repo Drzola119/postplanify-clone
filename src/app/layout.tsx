@@ -82,32 +82,80 @@ export default function RootLayout({
                   }
                 });
 
-                // Clean up unused CSS preloads after window load to silence the
-                // Chrome warning: "was preloaded using link preload but not used
-                // within a few seconds from the window's load event." This is a
-                // benign Next.js + Turbopack race where route prefetching preloads
-                // CSS that isn't applied to the current page.
+                // Clean up unused CSS preloads to silence the Chrome warning:
+                // "was preloaded using link preload but not used within a few
+                // seconds from the window's load event."
+                //
+                // Next.js + Turbopack route prefetching injects <link rel=preload
+                // href=*.css> tags dynamically when the user hovers a Link. If
+                // the user never visits that route, Chrome logs the warning.
+                // Removing the tag AFTER Chrome has already fired the preload
+                // request does NOT undo the warning, so we have to:
+                //   1. Run cleanup at multiple times (DOM ready, load, +100ms,
+                //      +500ms, +1s, +2s).
+                //   2. Watch for newly-added preloads with MutationObserver
+                //      and remove them as soon as they appear, before Chrome
+                //      can request the resource.
+                function hasMatchingStylesheet(href) {
+                  if (!href) return false;
+                  var sheets = document.querySelectorAll('link[rel="stylesheet"]');
+                  for (var i = 0; i < sheets.length; i++) {
+                    if (sheets[i].getAttribute('href') === href) return true;
+                  }
+                  return false;
+                }
+
                 function cleanupUnusedCssPreloads() {
                   var links = document.querySelectorAll('link[rel="preload"][href*=".css"]');
                   for (var i = 0; i < links.length; i++) {
                     var link = links[i];
                     var href = link.getAttribute('href');
                     if (!href) continue;
-                    // If a stylesheet with the same href is already in the DOM,
-                    // the preload was used — leave it.
-                    if (document.querySelector('link[rel="stylesheet"][href="' + href + '"]')) continue;
-                    // Otherwise drop the preload so Chrome stops warning.
+                    if (hasMatchingStylesheet(href)) continue;
+                    // Drop the preload immediately so Chrome does not fetch it.
                     link.parentNode && link.parentNode.removeChild(link);
                   }
                 }
-                if (document.readyState === 'complete') {
+
+                function scheduleCleanup() {
                   cleanupUnusedCssPreloads();
+                  setTimeout(cleanupUnusedCssPreloads, 100);
+                  setTimeout(cleanupUnusedCssPreloads, 500);
+                  setTimeout(cleanupUnusedCssPreloads, 1000);
+                  setTimeout(cleanupUnusedCssPreloads, 2000);
+                }
+
+                if (document.readyState === 'complete') {
+                  scheduleCleanup();
                 } else {
-                  window.addEventListener('load', function() {
-                    // Run on next tick so any same-page <link rel=stylesheet>
-                    // insertions have a chance to register.
-                    setTimeout(cleanupUnusedCssPreloads, 50);
+                  window.addEventListener('load', scheduleCleanup);
+                }
+
+                // Catch future preloads injected by route prefetch and remove
+                // them before Chrome can fire the preload request.
+                if (typeof MutationObserver !== 'undefined') {
+                  var observer = new MutationObserver(function(mutations) {
+                    for (var m = 0; m < mutations.length; m++) {
+                      var added = mutations[m].addedNodes;
+                      for (var k = 0; k < added.length; k++) {
+                        var n = added[k];
+                        if (!n || n.tagName !== 'LINK') continue;
+                        if (n.rel !== 'preload') continue;
+                        var href = n.getAttribute('href') || '';
+                        if (href.indexOf('.css') === -1) continue;
+                        // Defer one tick so we don't interfere with whatever
+                        // immediately converts this preload into a stylesheet.
+                        (function(node, h) {
+                          setTimeout(function() {
+                            if (!hasMatchingStylesheet(h) && node.parentNode) {
+                              node.parentNode.removeChild(node);
+                            }
+                          }, 0);
+                        })(n, href);
+                      }
+                    }
                   });
+                  observer.observe(document.head, { childList: true, subtree: true });
                 }
 
                 // Clean the cb= param from the address bar after a successful reload.

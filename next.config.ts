@@ -50,6 +50,10 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     return [
+      // The Next.js image optimizer is not bundled in `output: "standalone"`,
+      // so `/_next/image?...` would 404 even though `images.unoptimized` is
+      // true. Route these requests through our own file-serving proxy.
+      { source: "/_next/image", destination: "/api/image-proxy" },
       { source: "/_next/static/chunks/:path*", destination: "/api/chunks/:path*" },
       { source: "/tools/instagram-engagement-calculator", destination: "/tools/instagram-engagement" },
       { source: "/tools/instagram-grid-maker", destination: "/tools/instagram-grid" },
