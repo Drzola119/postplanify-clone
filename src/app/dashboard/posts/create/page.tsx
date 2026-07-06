@@ -70,8 +70,10 @@ const MAX_FILES = 10;
 export default function CreatePostPage() {
   const { toast, dismiss } = useToast();
 
-  // Account selection (default: none — matches production postplanify.com empty-state).
-  const [selected, setSelected] = useState<Set<PlatformId>>(() => new Set());
+  // Account selection (default: ALL platforms — matches production postplanify.com where every platform is selected on first visit).
+  const [selected, setSelected] = useState<Set<PlatformId>>(
+    () => new Set(PLATFORMS.map((p) => p.id))
+  );
   const [remember, setRemember] = useState(true);
   const [feedType, setFeedType] = useState<"feed" | "story">("feed");
 
@@ -1314,7 +1316,7 @@ function AccountsCard({
         </div>
 
         <div className="max-h-64 overflow-y-auto -mx-1 px-1">
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {PLATFORMS.map((p) => {
               const isSel = selected.has(p.id);
               const disabledByMedia = onlyImage && p.videoOnly;
@@ -1327,7 +1329,7 @@ function AccountsCard({
                   onClick={() => !disabled && onToggle(p.id)}
                   disabled={disabled}
                   className={cn(
-                    "flex items-center gap-2 p-2 rounded-lg flex-1 min-w-[200px] text-left transition-colors",
+                    "flex items-center gap-2 p-2 rounded-lg text-left transition-colors",
                     disabled
                       ? "opacity-50 cursor-not-allowed"
                       : "hover:bg-accent cursor-pointer"

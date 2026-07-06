@@ -32,11 +32,11 @@ export function AccountPreviewCard({ platform, value, onChange, hasVideo }: Acco
   const pct = Math.min(100, (value.length / platform.charLimit) * 100);
   const hasText = value.trim().length > 0;
 
-  const showComment = ["instagram", "twitter", "linkedin", "threads", "facebook"].includes(
+  const showComment = ["instagram", "twitter", "linkedin", "threads", "facebook", "tiktok", "pinterest"].includes(
     platform.id
   );
-  const showMention = ["linkedin", "facebook"].includes(platform.id);
-  const showLocation = ["instagram", "facebook"].includes(platform.id);
+  const showMention = ["linkedin", "facebook", "instagram", "twitter", "tiktok"].includes(platform.id);
+  const showLocation = ["instagram", "facebook", "tiktok", "linkedin"].includes(platform.id);
 
   return (
     <div className={cn("rounded-lg border bg-card overflow-hidden h-full flex flex-col", platform.borderClass)}>
@@ -82,7 +82,7 @@ export function AccountPreviewCard({ platform, value, onChange, hasVideo }: Acco
             disabled={!hasText}
           />
           <ActionButton icon={<Smile className="size-3.5" />} title="Emoji" />
-          <ActionButton icon={<Bookmark className="size-3.5" />} title="Saved captions" />
+          <ActionButton icon={<Bookmark className="size-3.5" />} title="Saved captions" label="Saved" />
           <ActionButton
             icon={<Sparkles className="size-3.5" />}
             title="AI suggestions"
@@ -93,12 +93,16 @@ export function AccountPreviewCard({ platform, value, onChange, hasVideo }: Acco
             <ActionButton
               icon={<Plus className="size-3.5" />}
               title="Comment"
-              label={platform.id === "instagram" ? "Comment" : undefined}
+              label={platform.id === "threads" ? "Thread / Comment" : "Comment"}
               disabled={!hasText}
             />
           ) : null}
           {showMention ? (
-            <ActionButton icon={<AtSign className="size-3.5" />} title="Mention" />
+            <ActionButton
+              icon={<AtSign className="size-3.5" />}
+              title="Mention"
+              label="Mention"
+            />
           ) : null}
           {showLocation ? (
             <ActionButton

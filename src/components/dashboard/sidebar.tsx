@@ -78,12 +78,12 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
     >
       <Icon className="size-4 shrink-0" />
       <span className="flex-1 truncate">{item.label}</span>
-      {typeof item.badge === "number" && item.badge > 0 && (
+      {typeof item.badge === "number" && item.badge >= 0 ? (
         <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-zinc-500">
           <span className="text-orange-500">🔥</span>
           {item.badge}
         </span>
-      )}
+      ) : null}
     </Link>
   );
 }
@@ -114,9 +114,9 @@ function DrawerNavButton({
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="px-3 pt-5 pb-1.5 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">
+    <h2 className="px-3 pt-5 pb-1.5 text-[11px] font-bold tracking-wider text-zinc-500 uppercase">
       {children}
-    </p>
+    </h2>
   );
 }
 

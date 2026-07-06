@@ -74,7 +74,7 @@ export function CommunitySelector({ value = "profile", onChange }: CommunitySele
         <span className="truncate">
           {current.label}
           {current.hint ? (
-            <span className="text-zinc-400 ml-1">/ {current.hint}</span>
+            <span className="text-zinc-400">{current.hint}</span>
           ) : null}
         </span>
         <ChevronDown
