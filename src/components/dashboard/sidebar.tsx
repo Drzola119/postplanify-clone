@@ -47,6 +47,7 @@ const MAIN: NavItem[] = [
 const CONFIG: NavItem[] = [
   { label: "Workspaces", href: "/dashboard/brands", icon: Building2 },
   { label: "Accounts", href: "/dashboard/accounts", icon: Users },
+  { label: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 
 type DrawerKey = "schedule" | "hashtags" | "labels";
@@ -60,7 +61,7 @@ const OTHER: NavItem[] = [
   { label: "Get Support", href: "mailto:support@postplanify.com", icon: LifeBuoy },
   { label: "Earn 40% Referral", href: "/affiliates", icon: DollarSign },
   { label: "Link in Bio", href: "/dashboard/link-in-bio", icon: Link2 },
-  { label: "API Keys", href: "/dashboard/api-keys", icon: Key },
+  { label: "API Keys", href: "/dashboard/api-keys", icon: Key, badge: 6 },
 ];
 
 function NavLink({ item, active }: { item: NavItem; active: boolean }) {

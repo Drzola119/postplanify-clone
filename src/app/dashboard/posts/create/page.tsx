@@ -39,6 +39,7 @@ import { CollaboratorsModal } from "@/components/dashboard/collaborators-modal";
 import { TagUsersInput } from "@/components/dashboard/tag-users-input";
 import { ScheduleModal } from "@/components/dashboard/schedule-modal";
 import { HashtagsDropdown } from "@/components/dashboard/hashtags-dropdown";
+import { OnboardingWidget } from "@/components/dashboard/onboarding-widget";
 
 type MediaTab = "media" | "paste";
 type MediaItem = {
@@ -69,10 +70,8 @@ const MAX_FILES = 10;
 export default function CreatePostPage() {
   const { toast, dismiss } = useToast();
 
-  // Account selection (default: all 9 — match original pre-selected state).
-  const [selected, setSelected] = useState<Set<PlatformId>>(
-    () => new Set(PLATFORMS.map((p) => p.id))
-  );
+  // Account selection (default: none — matches production postplanify.com empty-state).
+  const [selected, setSelected] = useState<Set<PlatformId>>(() => new Set());
   const [remember, setRemember] = useState(true);
   const [feedType, setFeedType] = useState<"feed" | "story">("feed");
 
@@ -463,7 +462,7 @@ export default function CreatePostPage() {
     Object.values(captions).some((v) => v.trim().length > 0);
 
   return (
-    <div className="p-6 max-w-[1280px] mx-auto">
+    <div className="p-6 max-w-[1400px] mx-auto">
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-3 pb-6">
         <div className="flex items-center gap-3">
@@ -516,8 +515,8 @@ export default function CreatePostPage() {
         </div>
       </div>
 
-      {/* 3-step layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+      {/* 3-step layout: left (Media+Accounts) | center (Captions) | right (Onboarding widget) */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_300px] gap-4 items-start">
         {/* Left column: Media (top) + Accounts (bottom) */}
         <div className="space-y-4">
           <MediaCard
@@ -575,7 +574,7 @@ export default function CreatePostPage() {
           ) : null}
         </div>
 
-        {/* Right column: Captions */}
+        {/* Center column: Captions */}
         <CaptionsCard
           platforms={selectedPlatforms}
           sameForAll={sameForAll}
@@ -593,6 +592,17 @@ export default function CreatePostPage() {
           hasVideo={hasVideo}
           toast={toast}
         />
+
+        {/* Right column: Onboarding widget — matches production postplanify.com */}
+        <div className="lg:sticky lg:top-4">
+          <OnboardingWidget
+            steps={[
+              { label: "Choose your goals", completed: true },
+              { label: "Connect a social account", completed: true },
+              { label: "Schedule your first post", completed: false, href: "/dashboard/posts" },
+            ]}
+          />
+        </div>
       </div>
 
       {/* Sticky bottom action bar */}
