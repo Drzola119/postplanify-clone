@@ -82,6 +82,34 @@ export default function RootLayout({
                   }
                 });
 
+                // Clean up unused CSS preloads after window load to silence the
+                // Chrome warning: "was preloaded using link preload but not used
+                // within a few seconds from the window's load event." This is a
+                // benign Next.js + Turbopack race where route prefetching preloads
+                // CSS that isn't applied to the current page.
+                function cleanupUnusedCssPreloads() {
+                  var links = document.querySelectorAll('link[rel="preload"][href*=".css"]');
+                  for (var i = 0; i < links.length; i++) {
+                    var link = links[i];
+                    var href = link.getAttribute('href');
+                    if (!href) continue;
+                    // If a stylesheet with the same href is already in the DOM,
+                    // the preload was used — leave it.
+                    if (document.querySelector('link[rel="stylesheet"][href="' + href + '"]')) continue;
+                    // Otherwise drop the preload so Chrome stops warning.
+                    link.parentNode && link.parentNode.removeChild(link);
+                  }
+                }
+                if (document.readyState === 'complete') {
+                  cleanupUnusedCssPreloads();
+                } else {
+                  window.addEventListener('load', function() {
+                    // Run on next tick so any same-page <link rel=stylesheet>
+                    // insertions have a chance to register.
+                    setTimeout(cleanupUnusedCssPreloads, 50);
+                  });
+                }
+
                 // Clean the cb= param from the address bar after a successful reload.
                 if (window.location.search.indexOf('cb=') !== -1) {
                   try {
