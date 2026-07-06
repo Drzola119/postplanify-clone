@@ -1033,6 +1033,7 @@ function makePlatformPage(slug: string, name: string, emoji: string, _accent: st
       layout: "tiles",
       items: opts?.featuresItems ?? SCHED_TILES,
     },
+    demoVideo: { youtubeId: "I-STsuP3Lfk", title: "See PostPlanify in action", duration: "6 mins" },
     whyChoose: {
       heading: `Why Choose PostPlanify for ${name}?`,
       subheading: opts?.whyChooseSubheading ?? `Everything you need to grow and manage your ${name} presence efficiently`,

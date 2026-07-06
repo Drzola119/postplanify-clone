@@ -1303,12 +1303,11 @@ export function MarketingPageTemplate({ data }: { data: MarketingPageData }) {
     return (
       <>
         <PageHero data={data} />
-        <ProblemSection data={data} />
-        {data.howItWorks && <HowItWorksSection data={data} />}
-        <FeaturesGridSection data={data} />
-        <TestimonialsSection />
-        <LiveStatsSection />
         {data.demoVideo && <DemoVideoSection youtubeId={data.demoVideo.youtubeId} title={data.demoVideo.title} duration={data.demoVideo.duration} />}
+        <ProblemSection data={data} />
+        <TestimonialsSection />
+        <FeaturesGridSection data={data} />
+        <LiveStatsSection />
         <PricingToggle />
         <WhyChooseSection data={data} />
         {data.whatYouCanSchedule && <WhatYouCanScheduleSection data={data} />}
@@ -1317,6 +1316,7 @@ export function MarketingPageTemplate({ data }: { data: MarketingPageData }) {
         {data.repurposeAcrossPlatforms && <RepurposeSection data={data} />}
         {data.faq && data.faq.length > 0 && <FAQSection items={data.faq} />}
         {data.seoContent && <SeoContentSection data={data} />}
+        {data.midCta && <MidCtaSection data={data} />}
         {data.relatedResources && <RelatedResourcesSection data={data} />}
       </>
     );
