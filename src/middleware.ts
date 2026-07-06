@@ -5,6 +5,18 @@ const PROTECTED_PREFIXES = ["/dashboard"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // The Next.js image optimizer is not bundled in `output: "standalone"`,
+  // so `/_next/image?...` would 404 even though `images.unoptimized` is
+  // true. Forward these requests to our file-serving proxy in middleware
+  // because Next.js's built-in handler intercepts the rewrite before
+  // it can match.
+  if (pathname === "/_next/image") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/api/image-proxy";
+    return NextResponse.rewrite(url);
+  }
+
   const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
   if (!isProtected) return NextResponse.next();
 
@@ -30,5 +42,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*"],
+  matcher: ["/dashboard/:path*", "/_next/image"],
 };
