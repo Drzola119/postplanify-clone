@@ -14,6 +14,9 @@ const TOOL_ALIASES: Record<string, string> = {
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  images: {
+    unoptimized: true,
+  },
   async headers() {
     return [
       {
