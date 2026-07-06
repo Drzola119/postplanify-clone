@@ -11,17 +11,31 @@ export async function GET(
   const pathSegments = (resolvedParams && resolvedParams.path) || [];
   const fileName = pathSegments.join("/");
 
-  // Construct the absolute path to the file in the .next/static/chunks directory
-  const filePath = path.join(
-    process.cwd(),
-    ".next",
-    "static",
-    "chunks",
-    fileName
+  // Define candidate file paths where the static chunks could be located
+  const candidates = [
+    path.join(process.cwd(), ".next", "static", "chunks", fileName),
+    path.join(process.cwd(), ".next", "standalone", ".next", "static", "chunks", fileName),
+    path.join(process.cwd(), "..", ".next", "static", "chunks", fileName),
+    path.join(process.cwd(), ".next", "standalone", "static", "chunks", fileName),
+    path.join(process.cwd(), "static", "chunks", fileName),
+    path.resolve(process.cwd(), ".next/static/chunks", fileName),
+  ];
+
+  let filePath = "";
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      filePath = candidate;
+      break;
+    }
+  }
+
+  // Log details to server logs for diagnostics
+  console.log(
+    `[Chunk Proxy] Request: "${fileName}" | Resolved: "${filePath || "NOT FOUND"}" | cwd: "${process.cwd()}"`
   );
 
-  // If the file exists on the server's local disk, read and return it
-  if (fs.existsSync(filePath)) {
+  // If the file exists, read and serve it
+  if (filePath) {
     try {
       const fileBuffer = fs.readFileSync(filePath);
       const contentType = fileName.endsWith(".css") ? "text/css" : "application/javascript";
@@ -41,9 +55,13 @@ export async function GET(
   if (fileName.endsWith(".js")) {
     const reloadScript =
       `console.warn("Chunk 404 resolved by proxy reload: ${fileName}");\n` +
-      `var url = new URL(window.location.href);\n` +
-      `url.searchParams.set("cb", Date.now().toString());\n` +
-      `window.location.replace(url.toString());\n`;
+      `if (!window.location.search.includes("cb=")) {\n` +
+      `  var url = new URL(window.location.href);\n` +
+      `  url.searchParams.set("cb", Date.now().toString());\n` +
+      `  window.location.replace(url.toString());\n` +
+      `} else {\n` +
+      `  console.error("Chunk still missing after cache-busting reload: ${fileName}");\n` +
+      `}\n`;
 
     return new NextResponse(reloadScript, {
       headers: {
