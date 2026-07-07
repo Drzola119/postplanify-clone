@@ -55,7 +55,7 @@ export function AccountPreviewCard({
   const showLocation = ["instagram", "facebook", "tiktok", "linkedin"].includes(platform.id);
 
   return (
-    <div className={cn("rounded-lg border bg-card overflow-hidden h-full flex flex-col", platform.borderClass)}>
+    <div className={cn("rounded-lg border bg-card overflow-hidden flex flex-col", platform.borderClass)}>
       <div className="px-3 py-2 border-b flex items-center justify-between gap-2 bg-zinc-50/50 flex-shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <span className={cn("text-sm flex-shrink-0", platform.textClass)}>{platform.icon}</span>
@@ -71,14 +71,14 @@ export function AccountPreviewCard({
           </div>
         </div>
       </div>
-      <div className="relative flex-1 min-h-0">
+      <div className="relative">
         <textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           placeholder={`Write your caption for ${platform.name}...`}
-          className="w-full h-full min-h-[180px] resize-none bg-transparent text-base border-0 focus:outline-none p-3 pb-12 placeholder:text-zinc-400 overflow-y-auto"
+          className="w-full min-h-[180px] resize-none bg-transparent text-base border-0 focus:outline-none p-3 pb-12 placeholder:text-zinc-400 overflow-y-auto"
         />
         <div
           className={cn(

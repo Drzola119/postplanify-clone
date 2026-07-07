@@ -1471,8 +1471,8 @@ function CaptionsCard({
   toast,
 }: CaptionsCardProps) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm h-full flex flex-col">
-      <div className="p-4 flex-1 flex flex-col overflow-hidden gap-3">
+    <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm flex flex-col">
+      <div className="p-4 flex flex-col gap-3">
         <div className="flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2">
             <StepCircle n={3} />
@@ -1520,7 +1520,7 @@ function CaptionsCard({
           />
         </div>
 
-        <div className="flex-1 min-h-0 pr-1">
+        <div className="pr-1">
           {platforms.length === 0 ? (
             <div className="flex flex-col items-center justify-center text-center py-12 min-h-[300px]">
               <div className="size-12 rounded-full bg-zinc-100 flex items-center justify-center mb-3">
@@ -1532,7 +1532,7 @@ function CaptionsCard({
               </p>
             </div>
           ) : sameForAll ? (
-            <div className="h-full overflow-y-auto rounded-lg">
+            <div className="overflow-y-auto max-h-[60vh] rounded-lg">
               <AccountPreviewCard
                 platform={{ ...platforms[0], charLimit: 2200, borderClass: "border-zinc-300", textClass: "text-zinc-700", name: "All platforms" }}
                 value={getCaption(platforms[0].id)}
@@ -1541,7 +1541,7 @@ function CaptionsCard({
               />
             </div>
           ) : platforms.length === 1 ? (
-            <div className="h-full overflow-y-auto rounded-lg">
+            <div className="overflow-y-auto max-h-[60vh] rounded-lg">
               <AccountPreviewCard
                 platform={platforms[0]}
                 value={getCaption(platforms[0].id)}
@@ -1556,7 +1556,7 @@ function CaptionsCard({
           ) : (
             // Multi-platform: vertical stack ensures each caption card sits in its own
             // discrete row with no overlap, matching the reference layout exactly.
-            <div className="h-full overflow-y-auto space-y-3 rounded-lg">
+            <div className="overflow-y-auto max-h-[60vh] space-y-3 rounded-lg pr-1">
               {platforms.map((p) => (
                 <AccountPreviewCard
                   key={p.id}
