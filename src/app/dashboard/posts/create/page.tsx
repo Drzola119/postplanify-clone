@@ -43,6 +43,7 @@ import { HashtagsDropdown } from "@/components/dashboard/hashtags-dropdown";
 import { PlatformTileBar } from "@/components/dashboard/platform-tile-bar";
 import { CropModal } from "@/components/dashboard/crop-modal";
 import { AltTextModal } from "@/components/dashboard/alt-text-modal";
+import { LearnPanel, type LearnSectionId } from "@/components/dashboard/learn-panel";
 
 type MediaTab = "media" | "paste";
 type MediaItem = {
@@ -104,6 +105,8 @@ export default function CreatePostPage() {
   const [cropModalOpen, setCropModalOpen] = useState(false);
   const [altTextModalOpen, setAltTextModalOpen] = useState(false);
   const [tagUsersModalOpen, setTagUsersModalOpen] = useState(false);
+  const [learnOpen, setLearnOpen] = useState(false);
+  const [learnSection, setLearnSection] = useState<LearnSectionId | undefined>(undefined);
 
   // Video cover features
   const [customCoverUrl, setCustomCoverUrl] = useState<string | null>(null);
@@ -475,14 +478,6 @@ export default function CreatePostPage() {
       <div className="flex flex-wrap items-end justify-between gap-3 pb-6">
         <div className="flex items-center gap-3">
           <h1 className="text-[30px] font-bold leading-[36px] tracking-tight">Create New Post</h1>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50"
-          >
-            <span aria-hidden>📚</span>
-            Learn
-            <span className="text-zinc-400">▾</span>
-          </button>
         </div>
 
         <div className="flex items-center gap-4 flex-wrap">
@@ -491,6 +486,19 @@ export default function CreatePostPage() {
             onToggle={toggleAccount}
             onSelectAll={selectAll}
             onDeselectAll={deselectAll}
+            getPreviewProps={(id) => {
+              const active = mediaItems[activeMedia];
+              const mediaUrl = active ? active.cdnUrl ?? active.url : null;
+              return {
+                caption: captionFor(id),
+                mediaUrl,
+                mediaKind: active?.kind ?? null,
+              };
+            }}
+            onOpenLearn={(section) => {
+              setLearnSection(section);
+              setLearnOpen(true);
+            }}
           />
           <button
             type="button"
@@ -709,6 +717,15 @@ export default function CreatePostPage() {
           setScheduleModalOpen(false);
           void publishPost(d);
         }}
+      />
+
+      <LearnPanel
+        open={learnOpen}
+        onClose={() => {
+          setLearnOpen(false);
+          setLearnSection(undefined);
+        }}
+        initialSection={learnSection}
       />
 
       {/* Hidden custom cover file input */}
