@@ -19,6 +19,10 @@ import {
   Send,
   Hash,
   Info,
+  Crop,
+  FileText,
+  AtSign,
+  Users,
 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
@@ -26,9 +30,6 @@ import { PLATFORMS, type PlatformId } from "@/lib/platforms";
 import { StepCircle } from "@/components/dashboard/step-circle";
 import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
 import { AccountPreviewCard } from "@/components/dashboard/account-preview-card";
-import { CommunitySelector } from "@/components/dashboard/community-selector";
-import { QuoteTweetInput } from "@/components/dashboard/quote-tweet-input";
-import { AccountThumb } from "@/components/dashboard/account-thumb";
 import { AICaptionsDialog } from "@/components/dashboard/ai-captions-dialog";
 import { UnsplashDialog } from "@/components/dashboard/unsplash-dialog";
 import { CanvaDialog, type ImportedFile } from "@/components/dashboard/canva-dialog";
@@ -39,7 +40,9 @@ import { CollaboratorsModal } from "@/components/dashboard/collaborators-modal";
 import { TagUsersInput } from "@/components/dashboard/tag-users-input";
 import { ScheduleModal } from "@/components/dashboard/schedule-modal";
 import { HashtagsDropdown } from "@/components/dashboard/hashtags-dropdown";
-import { OnboardingWidget } from "@/components/dashboard/onboarding-widget";
+import { PlatformTileBar } from "@/components/dashboard/platform-tile-bar";
+import { CropModal } from "@/components/dashboard/crop-modal";
+import { AltTextModal } from "@/components/dashboard/alt-text-modal";
 
 type MediaTab = "media" | "paste";
 type MediaItem = {
@@ -98,6 +101,9 @@ export default function CreatePostPage() {
   const [coverModalOpen, setCoverModalOpen] = useState(false);
   const [collaboratorsModalOpen, setCollaboratorsModalOpen] = useState(false);
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [altTextModalOpen, setAltTextModalOpen] = useState(false);
+  const [tagUsersModalOpen, setTagUsersModalOpen] = useState(false);
 
   // Video cover features
   const [customCoverUrl, setCustomCoverUrl] = useState<string | null>(null);
@@ -479,33 +485,13 @@ export default function CreatePostPage() {
           </button>
         </div>
 
-        <div className="flex items-center gap-4">
-          {selected.size === 0 ? (
-            <div className="flex items-center gap-2 text-sm text-zinc-500">
-              <Eye className="size-4 text-zinc-400" />
-              <span>No accounts selected for preview.</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-sm">
-              <Check className="size-4 text-emerald-500" />
-              <span className="font-medium">Post in:</span>
-              <div className="flex items-center -space-x-1.5 flex-wrap gap-y-1">
-                {selectedPlatforms.map((p) => (
-                  <AccountThumb
-                    key={p.id}
-                    platform={p}
-                    onEdit={() =>
-                      toast({ title: `Edit ${p.name}`, description: p.handle, tone: "info" })
-                    }
-                    onRemove={() => {
-                      toggleAccount(p.id);
-                      toast({ title: `Removed ${p.name}`, tone: "info" });
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+        <div className="flex items-center gap-4 flex-wrap">
+          <PlatformTileBar
+            selected={selected}
+            onToggle={toggleAccount}
+            onSelectAll={selectAll}
+            onDeselectAll={deselectAll}
+          />
           <button
             type="button"
             onClick={startOver}
@@ -517,9 +503,9 @@ export default function CreatePostPage() {
         </div>
       </div>
 
-      {/* 3-step layout: left (Media+Accounts) | center (Captions) | right (Onboarding widget) */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_300px] gap-4 items-start">
-        {/* Left column: Media (top) + Accounts (bottom) */}
+      {/* 2-column layout: left (Media + Accounts + Cover) | right (Captions) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        {/* Left column: Media (top) + Accounts (bottom) + CoverSections (when video) */}
         <div className="space-y-4">
           <MediaCard
             tab={mediaTab}
@@ -540,6 +526,9 @@ export default function CreatePostPage() {
             onZoomChange={setZoom}
             collaboratorsCount={collaborators.length}
             onOpenCollaborators={() => setCollaboratorsModalOpen(true)}
+            onOpenCrop={() => setCropModalOpen(true)}
+            onOpenAltText={() => setAltTextModalOpen(true)}
+            onOpenTagUsers={() => setTagUsersModalOpen(true)}
             customCoverUrl={customCoverUrl}
             frameCoverUrl={frameCoverUrl}
             onOpenCoverModal={() => setCoverModalOpen(true)}
@@ -576,7 +565,7 @@ export default function CreatePostPage() {
           ) : null}
         </div>
 
-        {/* Center column: Captions */}
+        {/* Right column: Captions */}
         <CaptionsCard
           platforms={selectedPlatforms}
           sameForAll={sameForAll}
@@ -594,17 +583,6 @@ export default function CreatePostPage() {
           hasVideo={hasVideo}
           toast={toast}
         />
-
-        {/* Right column: Onboarding widget — matches production postplanify.com */}
-        <div className="lg:sticky lg:top-4">
-          <OnboardingWidget
-            steps={[
-              { label: "Choose your goals", completed: true },
-              { label: "Connect a social account", completed: true },
-              { label: "Schedule your first post", completed: false, href: "/dashboard/posts" },
-            ]}
-          />
-        </div>
       </div>
 
       {/* Sticky bottom action bar */}
@@ -702,6 +680,28 @@ export default function CreatePostPage() {
         onClose={() => setCollaboratorsModalOpen(false)}
       />
 
+      <CropModal
+        open={cropModalOpen}
+        onClose={() => setCropModalOpen(false)}
+        imageUrl={activeMediaItem?.kind === "image" ? activeMediaItem.url : null}
+        onApply={() => {
+          setCropModalOpen(false);
+          toast({ title: "Crop applied", tone: "success" });
+        }}
+      />
+
+      <AltTextModal
+        open={altTextModalOpen}
+        onClose={() => setAltTextModalOpen(false)}
+        imageUrl={activeMediaItem?.kind === "image" ? activeMediaItem.url : null}
+        onSave={(value) => {
+          toast({
+            title: value ? "Alt text saved" : "Alt text cleared",
+            tone: "success",
+          });
+        }}
+      />
+
       <ScheduleModal
         open={scheduleModalOpen}
         onClose={() => setScheduleModalOpen(false)}
@@ -753,6 +753,9 @@ interface MediaCardProps {
   onZoomChange: (n: number) => void;
   collaboratorsCount: number;
   onOpenCollaborators: () => void;
+  onOpenCrop: () => void;
+  onOpenAltText: () => void;
+  onOpenTagUsers: () => void;
   customCoverUrl: string | null;
   frameCoverUrl: string | null;
   onOpenCoverModal: () => void;
@@ -779,6 +782,9 @@ function MediaCard({
   onZoomChange,
   collaboratorsCount,
   onOpenCollaborators,
+  onOpenCrop,
+  onOpenAltText,
+  onOpenTagUsers,
   customCoverUrl,
   frameCoverUrl,
   onOpenCoverModal,
@@ -839,6 +845,9 @@ function MediaCard({
             onZoomChange={onZoomChange}
             collaboratorsCount={collaboratorsCount}
             onOpenCollaborators={onOpenCollaborators}
+            onOpenCrop={onOpenCrop}
+            onOpenAltText={onOpenAltText}
+            onOpenTagUsers={onOpenTagUsers}
           />
         ) : (
           <EmptyState
@@ -999,6 +1008,9 @@ function UploadedState({
   onZoomChange,
   collaboratorsCount,
   onOpenCollaborators,
+  onOpenCrop,
+  onOpenAltText,
+  onOpenTagUsers,
 }: {
   items: MediaItem[];
   activeIndex: number;
@@ -1008,8 +1020,12 @@ function UploadedState({
   onZoomChange: (n: number) => void;
   collaboratorsCount: number;
   onOpenCollaborators: () => void;
+  onOpenCrop: () => void;
+  onOpenAltText: () => void;
+  onOpenTagUsers: () => void;
 }) {
   const active = items[activeIndex];
+  const isImage = active.kind === "image";
   return (
     <div className="space-y-3">
       {/* Zoom slider — appears when media is uploaded (matches original: icon + slider + icon) */}
@@ -1079,16 +1095,30 @@ function UploadedState({
         </div>
       </div>
 
-      {/* Action row — only Collaborators in clone (original has no Crop/Alt text/Tag users buttons here) */}
+      {/* Action row — Crop / Alt text / Tag users / Collaborators (matches reference) */}
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
+        <MediaAction
+          icon={<Crop className="size-3.5" />}
+          label="Crop"
+          onClick={onOpenCrop}
+          disabled={!isImage}
+        />
+        <MediaAction
+          icon={<FileText className="size-3.5" />}
+          label="Alt text"
+          onClick={onOpenAltText}
+          disabled={!isImage}
+        />
+        <MediaAction
+          icon={<AtSign className="size-3.5" />}
+          label="Tag users (0)"
+          onClick={onOpenTagUsers}
+        />
+        <MediaAction
+          icon={<Users className="size-3.5" />}
+          label={`Collaborators (${collaboratorsCount})`}
           onClick={onOpenCollaborators}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white text-black border border-zinc-200 rounded-md text-xs font-medium hover:bg-zinc-50"
-        >
-          <span aria-hidden>👥</span>
-          <span>Collaborators ({collaboratorsCount})</span>
-        </button>
+        />
       </div>
     </div>
   );
@@ -1098,15 +1128,21 @@ function MediaAction({
   icon,
   label,
   prefix,
+  onClick,
+  disabled,
 }: {
   icon: React.ReactNode;
   label: string;
   prefix?: string;
+  onClick?: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
-      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white text-black border-2 border-black rounded-md text-xs font-medium hover:bg-zinc-50"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white text-black border-2 border-black rounded-md text-xs font-medium hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed"
     >
       {icon}
       {prefix ? <span className="font-bold">{prefix}</span> : null}
@@ -1435,7 +1471,7 @@ function CaptionsCard({
   toast,
 }: CaptionsCardProps) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm lg:max-h-[calc(100vh-200px)] flex flex-col">
+    <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm h-full flex flex-col">
       <div className="p-4 flex-1 flex flex-col overflow-hidden gap-3">
         <div className="flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2">
@@ -1511,12 +1547,16 @@ function CaptionsCard({
                 value={getCaption(platforms[0].id)}
                 onChange={(v) => setCaption(platforms[0].id, v)}
                 hasVideo={hasVideo}
+                community={community}
+                onCommunityChange={onCommunityChange}
+                quoteTweet={quoteTweet}
+                onQuoteTweetChange={onQuoteTweetChange}
               />
             </div>
           ) : (
-            // Multi-platform: 2-col grid keeps each caption box a usable size even with 9 platforms.
-            // Each card scrolls internally so long captions don't push others off-screen.
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 h-full overflow-y-auto">
+            // Multi-platform: vertical stack ensures each caption card sits in its own
+            // discrete row with no overlap, matching the reference layout exactly.
+            <div className="h-full overflow-y-auto space-y-3 rounded-lg">
               {platforms.map((p) => (
                 <AccountPreviewCard
                   key={p.id}
@@ -1524,22 +1564,22 @@ function CaptionsCard({
                   value={getCaption(p.id)}
                   onChange={(v) => setCaption(p.id, v)}
                   hasVideo={hasVideo}
+                  community={community}
+                  onCommunityChange={onCommunityChange}
+                  quoteTweet={quoteTweet}
+                  onQuoteTweetChange={onQuoteTweetChange}
                 />
               ))}
             </div>
           )}
         </div>
 
-        {/* Tag Users + Community + Quote Tweet — sticky at bottom of card */}
-        <div className="flex-shrink-0 border-t pt-3 space-y-3">
-          {showTagUsers ? (
+        {/* Tag Users — sticky at bottom of card (shared across platforms) */}
+        {showTagUsers ? (
+          <div className="flex-shrink-0 border-t pt-3">
             <TagUsersInput value={tagUsers} onChange={onTagUsersChange} />
-          ) : null}
-          <div className="relative pl-7">
-            <CommunitySelector value={community} onChange={onCommunityChange} />
           </div>
-          <QuoteTweetInput value={quoteTweet} onChange={onQuoteTweetChange} />
-        </div>
+        ) : null}
       </div>
     </div>
   );

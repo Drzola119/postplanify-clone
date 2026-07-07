@@ -15,18 +15,34 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PlatformMeta } from "@/lib/platforms";
+import { CommunitySelector } from "@/components/dashboard/community-selector";
+import { QuoteTweetInput } from "@/components/dashboard/quote-tweet-input";
 
 interface AccountPreviewCardProps {
   platform: PlatformMeta;
   value: string;
   onChange: (v: string) => void;
   hasVideo?: boolean;
+  community?: string;
+  onCommunityChange?: (v: string) => void;
+  quoteTweet?: string;
+  onQuoteTweetChange?: (v: string) => void;
 }
 
 // Per-account caption card shown inside the Captions card.
 // Matches original: 7 common action buttons (Bold/Italic/Underline/Emoji/Saved/AI/Hashtag)
 // plus platform-specific extras (Comment, Mention, Location, Trial Reels for IG when video).
-export function AccountPreviewCard({ platform, value, onChange, hasVideo }: AccountPreviewCardProps) {
+// Also renders platform-specific auxiliary inputs (community for IG, quote tweet for X).
+export function AccountPreviewCard({
+  platform,
+  value,
+  onChange,
+  hasVideo,
+  community,
+  onCommunityChange,
+  quoteTweet,
+  onQuoteTweetChange,
+}: AccountPreviewCardProps) {
   const [focused, setFocused] = useState(false);
   const counter = `${value.length}/${platform.charLimit}`;
   const pct = Math.min(100, (value.length / platform.charLimit) * 100);
@@ -121,6 +137,18 @@ export function AccountPreviewCard({ platform, value, onChange, hasVideo }: Acco
           ) : null}
         </div>
       </div>
+
+      {/* Platform-specific auxiliary inputs (rendered at bottom of card) */}
+      {platform.id === "instagram" && onCommunityChange ? (
+        <div className="px-3 py-3 border-t bg-zinc-50/30 flex-shrink-0">
+          <CommunitySelector value={community} onChange={onCommunityChange} />
+        </div>
+      ) : null}
+      {platform.id === "twitter" && onQuoteTweetChange ? (
+        <div className="px-3 py-3 border-t bg-zinc-50/30 flex-shrink-0">
+          <QuoteTweetInput value={quoteTweet ?? ""} onChange={onQuoteTweetChange} />
+        </div>
+      ) : null}
     </div>
   );
 }
