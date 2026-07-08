@@ -3,9 +3,9 @@
 import { Suspense, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
-  Users, Eye, ThumbsUp, BarChart3, ChevronDown, ChevronRight, Calendar, RefreshCw,
+  Users, Eye, BarChart3, ChevronDown, ChevronRight, Calendar, RefreshCw,
   Heart, MessageCircle, Repeat2, Bookmark, Share2, MousePointerClick, MessageSquare, Play,
-  TrendingUp, Globe,
+  TrendingUp, Globe, MoreHorizontal, CheckCircle2,
 } from "lucide-react";
 
 // ============================================================
@@ -36,40 +36,75 @@ interface AccountSummary {
   totalLikes?: number;
   totalViews?: number;
   subscribers?: number;
+  listed?: number;
+  monthlyViews?: number;
+  pins?: number;
+  isError?: boolean;
+  errorMessage?: string;
+  contentTypes?: { images: number; videos: number; text: number; imageViews?: number };
 }
 
 // ============================================================
-// Mock data — same accounts as the live postplanify
+// Accounts (9 connected — 8 unique platforms, 2 Bluesky)
 // ============================================================
 const ACCOUNTS: AccountSummary[] = [
-  { id: "f7d35d06-c1e3-4f35-856f-44e894afe89b", name: "Zakaria 11", handle: "@zakaria_119", platform: "youtube", initials: "Z", subscribers: 1, videos: 5, totalViews: 9, syncedAgo: "1h ago" },
-  { id: "d4fd9445-2853-4fa3-b457-3a139f0d9909", name: "nicklorance.bsky.social", handle: "@nicklorance.bsky.social", platform: "bluesky", initials: "🦋", followers: 16, following: 33, posts: 23, syncedAgo: "1h ago" },
-  { id: "f1e8da8f-ae54-4d49-af95-7503ffa81836", name: "Nick Lorance", handle: "@nicklorance7", platform: "threads", initials: "N", followers: 0, posts: 0, syncedAgo: "1h ago" },
-  { id: "8cd534e3-fdb9-4bb8-822d-b666f386dfb5", name: "nick_lorance", handle: "@nick_lorance", platform: "tiktok", initials: "n", followers: 2, following: 1, videos: 20, totalLikes: 140, syncedAgo: "1h ago" },
-  { id: "cc9882eb-2491-453e-8a19-9e7430d6fa7e", name: "nick lorance life", handle: "@nick-lorance-life", platform: "facebook", initials: "N", bio: "Personal blog", followers: 0, posts: 16, totalViews: 221, syncedAgo: "19h ago" },
-  { id: "f7c4825f-1880-4a3a-9fd5-c5d1fa5bbccc", name: "LoranceNic36048", handle: "@LoranceNic36048", platform: "twitter", initials: "N", followers: 0, syncedAgo: "3h ago" },
+  { id: "yt-zakaria", name: "Zakaria 11", handle: "@zakaria_119", platform: "youtube", initials: "Z",
+    subscribers: 1, videos: 6, totalViews: 9, syncedAgo: "47m ago" },
+  { id: "pin-nick", name: "nicklorance7", handle: "pinterest.com/nicklorance7", platform: "pinterest", initials: "N",
+    followers: 0, monthlyViews: 0, pins: 14, syncedAgo: "42m ago" },
+  { id: "fb-nicklife", name: "nick lorance life", handle: "Personal blog", platform: "facebook", initials: "N",
+    bio: "Personal blog", followers: 0, posts: 1, totalViews: 0, syncedAgo: "14h ago" },
+  { id: "th-nick", name: "Nick Lorance", handle: "@nicklorance7", platform: "threads", initials: "N",
+    avatar: "https://scontent-dus1-1.cdninstagram.com/v/t51.82787-19/694687640_18106157872753132_4330973063129979937_n.jpg",
+    followers: 2, following: 11, posts: 25, syncedAgo: "4h ago",
+    contentTypes: { images: 100, videos: 0, text: 0, imageViews: 1 } },
+  { id: "bs-nick", name: "Nick Lorance", handle: "@nicklorance7", platform: "bluesky", initials: "N",
+    followers: 0, syncedAgo: "40m ago" },
+  { id: "tt-nick", name: "nick_lorance", handle: "@nick_lorance", platform: "tiktok", initials: "n",
+    followers: 3, following: 1, videos: 22, totalLikes: 183, syncedAgo: "3h ago" },
+  { id: "li-nick", name: "LinkedIn Account", handle: "@nick-lorance", platform: "linkedin", initials: "N",
+    syncedAgo: "—", isError: true,
+    errorMessage: "LinkedIn analytics are not available for this account. Please reconnect with the required permissions." },
+  { id: "x-nick", name: "nick lorance", handle: "@LoranceNic36048", platform: "twitter", initials: "N",
+    followers: 0, following: 12, posts: 42, totalLikes: 0, listed: 0, syncedAgo: "2h ago" },
+  { id: "bs-bsky", name: "nicklorance.bsky.social", handle: "@nicklorance.bsky.social", platform: "bluesky", initials: "🦋",
+    avatar: "https://cdn.bsky.app/img/avatar/plain/did:plc:rxzikv2qahzbwx7kggut2fiq/bafkreibbjbshetcjzi6cionfd3f62wzbhtmad7raj43h3pd3753vothaxy",
+    followers: 17, following: 33, posts: 26, syncedAgo: "41m ago" },
 ];
 
+// Per-platform accent for header card border-l-4
+const PLATFORM_ACCENT: Record<Platform, { color: string; leftClass: string }> = {
+  youtube:    { color: "#FF0000", leftClass: "border-l-red-500" },
+  instagram:  { color: "#E1306C", leftClass: "border-l-pink-500" },
+  twitter:    { color: "#000000", leftClass: "border-l-zinc-900" },
+  tiktok:     { color: "#000000", leftClass: "border-l-zinc-900" },
+  facebook:   { color: "#1877F2", leftClass: "border-l-blue-600" },
+  threads:    { color: "#000000", leftClass: "border-l-pink-500" },
+  linkedin:   { color: "#0A66C2", leftClass: "border-l-blue-700" },
+  pinterest:  { color: "#E60023", leftClass: "border-l-red-600" },
+  bluesky:    { color: "#1185FE", leftClass: "border-l-sky-500" },
+};
+
 // ============================================================
-// Platform icon (colored square badge w/ letter)
+// Platform avatar / icon
 // ============================================================
 function PlatformIcon({ platform, className = "" }: { platform: Platform; className?: string }) {
-  const map: Record<Platform, { color: string; letter: string }> = {
-    youtube: { color: "#FF0000", letter: "▶" },
-    instagram: { color: "#E1306C", letter: "📷" },
-    twitter: { color: "#000000", letter: "𝕏" },
-    tiktok: { color: "#000000", letter: "♪" },
-    facebook: { color: "#1877F2", letter: "f" },
-    threads: { color: "#000000", letter: "@" },
-    linkedin: { color: "#0A66C2", letter: "in" },
-    pinterest: { color: "#E60023", letter: "P" },
-    bluesky: { color: "#1185FE", letter: "🦋" },
+  const map: Record<Platform, { bg: string; letter: string }> = {
+    youtube:   { bg: "#FF0000", letter: "▶" },
+    instagram: { bg: "linear-gradient(135deg, #feda75 0%, #fa7e1e 25%, #d62976 50%, #962fbf 75%, #4f5bd5 100%)", letter: "📷" },
+    twitter:   { bg: "#000000", letter: "𝕏" },
+    tiktok:    { bg: "#000000", letter: "♪" },
+    facebook:  { bg: "#1877F2", letter: "f" },
+    threads:   { bg: "#000000", letter: "@" },
+    linkedin:  { bg: "#0A66C2", letter: "in" },
+    pinterest: { bg: "#E60023", letter: "P" },
+    bluesky:   { bg: "#1185FE", letter: "🦋" },
   };
   const info = map[platform];
   return (
     <span
       className={`inline-flex items-center justify-center size-4 rounded-md text-[10px] font-bold text-white shrink-0 ${className}`}
-      style={{ backgroundColor: info.color }}
+      style={{ background: info.bg }}
       aria-label={platform}
     >
       {info.letter}
@@ -77,131 +112,103 @@ function PlatformIcon({ platform, className = "" }: { platform: Platform; classN
   );
 }
 
-function PlatformAvatar({ platform, name, initials, size = 40 }: { platform: Platform; name: string; initials?: string; size?: number }) {
-  const letter = initials ?? name[0]?.toUpperCase() ?? "?";
-  const map: Record<Platform, string> = {
-    youtube: "#FF0000",
-    instagram: "linear-gradient(135deg, #feda75 0%, #fa7e1e 25%, #d62976 50%, #962fbf 75%, #4f5bd5 100%)",
-    twitter: "#000000",
-    tiktok: "#000000",
-    facebook: "#1877F2",
-    threads: "#000000",
-    linkedin: "#0A66C2",
-    pinterest: "#E60023",
-    bluesky: "#1185FE",
-  };
+function PlatformAvatar({ platform, name, initials, avatar, size = 56 }: { platform: Platform; name: string; initials?: string; avatar?: string; size?: number }) {
+  const ringClass = {
+    youtube: "ring-red-500/20", instagram: "ring-pink-500/20", twitter: "ring-zinc-500/30",
+    tiktok: "ring-zinc-500/30", facebook: "ring-blue-500/20", threads: "ring-pink-500/20",
+    linkedin: "ring-blue-500/20", pinterest: "ring-red-500/20", bluesky: "ring-sky-500/20",
+  }[platform];
+
   return (
     <div
-      className="rounded-full flex items-center justify-center text-white font-semibold shrink-0"
-      style={{
-        width: size, height: size, fontSize: size * 0.4,
-        background: map[platform],
-      }}
+      className={`relative shrink-0 rounded-full ring-2 ${ringClass} shadow-md overflow-hidden bg-gradient-to-br from-zinc-300 to-zinc-500 flex items-center justify-center`}
+      style={{ width: size, height: size }}
     >
-      {letter}
+      {avatar ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={avatar} alt={name} className="w-full h-full object-cover" />
+      ) : (
+        <span className="text-white font-semibold" style={{ fontSize: size * 0.4 }}>
+          {initials ?? name[0]?.toUpperCase() ?? "?"}
+        </span>
+      )}
     </div>
   );
 }
 
 // ============================================================
-// Sparkline mini chart
+// Content Types donut (Threads/Instagram only)
 // ============================================================
-function Sparkline({ data, color, width = 80, height = 36 }: { data: number[]; color: string; width?: number; height?: number }) {
-  if (!data || data.length === 0) return null;
-  const max = Math.max(...data, 1);
-  const min = Math.min(...data, 0);
-  const range = max - min || 1;
-  const points = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * width;
-    const y = height - ((v - min) / range) * height;
-    return [x, y] as const;
-  });
-  const path = points.map((p, i) => `${i === 0 ? "M" : "L"}${p[0]},${p[1]}`).join(" ");
-  const area = `${path} L${width},${height} L0,${height} Z`;
+function ContentTypesDonut({ data }: { data: { images: number; videos: number; text: number; imageViews?: number } }) {
+  const total = data.images + data.videos + data.text;
+  if (total === 0) return null;
+  const size = 80;
+  const stroke = 12;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const segs = [
+    { value: data.images, color: "#ec4899" },
+    { value: data.videos, color: "#8b5cf6" },
+    { value: data.text, color: "#06b6d4" },
+  ];
+  let offset = 0;
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible">
-      <path d={area} fill={color} fillOpacity={0.12} />
-      <path d={path} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    <div className="flex items-center gap-4">
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#f4f4f5" strokeWidth={stroke} />
+          {segs.map((s, i) => {
+            if (s.value === 0) return null;
+            const length = (s.value / total) * circumference;
+            const el = (
+              <circle
+                key={i}
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                fill="none"
+                stroke={s.color}
+                strokeWidth={stroke}
+                strokeDasharray={`${length} ${circumference - length}`}
+                strokeDashoffset={-offset}
+              />
+            );
+            offset += length;
+            return el;
+          })}
+        </svg>
+      </div>
+      <div className="space-y-1 text-[11px]">
+        <div className="flex items-center gap-1.5">
+          <span className="size-2 rounded-full bg-pink-500" /> Images {data.images}%{data.imageViews !== undefined && <span className="text-zinc-400 ml-1">{data.imageViews} views</span>}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="size-2 rounded-full bg-violet-500" /> Videos {data.videos}%
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="size-2 rounded-full bg-cyan-500" /> Text {data.text}%
+        </div>
+      </div>
+    </div>
   );
 }
 
 // ============================================================
-// Line chart for right column
+// Trend mini chart with "Collecting data..." placeholder
 // ============================================================
-function LineChart({
-  series, dates, yMax, height = 128, xLabels = [],
-}: {
-  series: { label: string; color: string; data: number[] }[];
-  dates: string[];
-  yMax?: number;
-  height?: number;
-  xLabels?: string[];
+function MiniTrend({ data, color, yMax, change, collecting }: {
+  data: number[]; color: string; yMax?: number; change?: string; collecting?: boolean;
 }) {
-  const padding = { top: 10, right: 8, bottom: 22, left: 30 };
-  const width = 539;
-  const all = series.flatMap(s => s.data);
-  const max = yMax ?? Math.max(...all, 1) * 1.1;
-  const min = 0;
-  const cw = width - padding.left - padding.right;
-  const ch = height - padding.top - padding.bottom;
-
-  const makePath = (data: number[]) =>
-    data.map((v, i) => {
-      const x = padding.left + (i / (data.length - 1)) * cw;
-      const y = padding.top + ch - ((v - min) / (max - min)) * ch;
-      return `${i === 0 ? "M" : "L"}${x},${y}`;
-    }).join(" ");
-
-  const makeArea = (data: number[]) => {
-    const line = makePath(data);
-    const last = padding.left + cw;
-    return `${line} L${last},${padding.top + ch} L${padding.left},${padding.top + ch} Z`;
-  };
-
-  // Y-axis ticks
-  const yTicks = [];
-  const tickCount = 4;
-  for (let i = 0; i <= tickCount; i++) {
-    const value = (max / tickCount) * i;
-    yTicks.push({ value, y: padding.top + ch - (i / tickCount) * ch });
+  if (collecting || !data || data.length === 0 || data.every(v => v === 0)) {
+    return (
+      <div className="h-14 flex items-center justify-center text-[11px] text-zinc-400 italic">
+        Collecting data...
+      </div>
+    );
   }
-
-  return (
-    <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="w-full h-auto">
-      {yTicks.map((t, i) => (
-        <text key={i} x={padding.left - 6} y={t.y + 3} textAnchor="end" fontSize="9" fill="rgb(161, 161, 170)">
-          {Math.round(t.value)}
-        </text>
-      ))}
-      {series.map((s, i) => (
-        <g key={i}>
-          <path d={makeArea(s.data)} fill={s.color} fillOpacity={0.12} />
-          <path d={makePath(s.data)} fill="none" stroke={s.color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-        </g>
-      ))}
-      {dates.map((d, i) => {
-        const x = padding.left + (i / (dates.length - 1)) * cw;
-        return (
-          <text key={i} x={x} y={height - 6} textAnchor="middle" fontSize="10" fill="rgb(115, 115, 115)">
-            {d}
-          </text>
-        );
-      })}
-      {xLabels.length > 0 && xLabels.map((xl, i) => (
-        <text key={i} x={padding.left + 4} y={padding.top + 10} fontSize="9" fill="rgb(115, 115, 115)">{xl}</text>
-      ))}
-    </svg>
-  );
-}
-
-// ============================================================
-// Mini trend chart for Trends section (with optional change %)
-// ============================================================
-function MiniTrend({ data, color, yMax, height = 56 }: { data: number[]; color: string; yMax?: number; height?: number }) {
-  if (!data || data.length === 0) return null;
   const max = yMax ?? Math.max(...data, 1) * 1.1;
   const width = 180;
+  const height = 56;
   const padding = { top: 4, right: 4, bottom: 4, left: 4 };
   const cw = width - padding.left - padding.right;
   const ch = height - padding.top - padding.bottom;
@@ -210,7 +217,6 @@ function MiniTrend({ data, color, yMax, height = 56 }: { data: number[]; color: 
     const y = padding.top + ch - (v / max) * ch;
     return `${i === 0 ? "M" : "L"}${x},${y}`;
   }).join(" ");
-  // Dots on each point
   const dots = data.map((v, i) => {
     const x = padding.left + (i / (data.length - 1)) * cw;
     const y = padding.top + ch - (v / max) * ch;
@@ -227,52 +233,64 @@ function MiniTrend({ data, color, yMax, height = 56 }: { data: number[]; color: 
 }
 
 // ============================================================
-// Best Times heatmap (M T W T F S S x 4 time slots)
+// Metric card spec
 // ============================================================
-function BestTimesHeatmap({ data }: { data: number[][] }) {
-  const days = ["M", "T", "W", "T", "F", "S", "S"];
-  const times = ["12a", "6a", "12p", "6p"];
-  const max = Math.max(...data.flat(), 1);
+type MetricColor = "indigo" | "red" | "purple" | "orange" | "teal" | "blue" | "green" | "sky" | "amber" | "cyan" | "rose" | "violet" | "emerald" | "pink" | "fuchsia";
+type MetricIcon = "eye" | "heart" | "message" | "reply" | "repost" | "quote" | "bookmark" | "share" | "click" | "trending" | "chart" | "play";
 
+interface MetricCardSpec {
+  label: string;
+  value: string;
+  sub: string;
+  color: MetricColor;
+  icon: MetricIcon;
+}
+
+const COLOR_CLASSES: Record<MetricColor, { bg: string; text: string; sub: string }> = {
+  indigo:   { bg: "bg-gradient-to-br from-indigo-50 to-indigo-100/50 border-indigo-200",   text: "text-indigo-700",   sub: "text-indigo-600/70" },
+  red:      { bg: "bg-gradient-to-br from-red-50 to-red-100/50 border-red-200",             text: "text-red-700",      sub: "text-red-600/70" },
+  rose:     { bg: "bg-gradient-to-br from-rose-50 to-rose-100/50 border-rose-200",          text: "text-rose-700",     sub: "text-rose-600/70" },
+  purple:   { bg: "bg-gradient-to-br from-purple-50 to-purple-100/50 border-purple-200",    text: "text-purple-700",   sub: "text-purple-600/70" },
+  violet:   { bg: "bg-gradient-to-br from-violet-50 to-violet-100/50 border-violet-200",    text: "text-violet-700",   sub: "text-violet-600/70" },
+  orange:   { bg: "bg-gradient-to-br from-orange-50 to-orange-100/50 border-orange-200",    text: "text-orange-700",   sub: "text-orange-600/70" },
+  teal:     { bg: "bg-gradient-to-br from-teal-50 to-teal-100/50 border-teal-200",          text: "text-teal-700",     sub: "text-teal-600/70" },
+  emerald:  { bg: "bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-emerald-200",text: "text-emerald-700",  sub: "text-emerald-600/70" },
+  green:    { bg: "bg-gradient-to-br from-green-50 to-green-100/50 border-green-200",      text: "text-green-700",    sub: "text-green-600/70" },
+  blue:     { bg: "bg-gradient-to-br from-blue-50 to-blue-100/50 border-blue-200",          text: "text-blue-700",     sub: "text-blue-600/70" },
+  sky:      { bg: "bg-gradient-to-br from-sky-50 to-sky-100/50 border-sky-200",             text: "text-sky-700",      sub: "text-sky-600/70" },
+  amber:    { bg: "bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200",       text: "text-amber-700",    sub: "text-amber-600/70" },
+  cyan:     { bg: "bg-gradient-to-br from-cyan-50 to-cyan-100/50 border-cyan-200",          text: "text-cyan-700",     sub: "text-cyan-600/70" },
+  pink:     { bg: "bg-gradient-to-br from-pink-50 to-pink-100/50 border-pink-200",          text: "text-pink-700",     sub: "text-pink-600/70" },
+  fuchsia:  { bg: "bg-gradient-to-br from-fuchsia-50 to-fuchsia-100/50 border-fuchsia-200",text: "text-fuchsia-700",  sub: "text-fuchsia-600/70" },
+};
+
+function MetricCardIcon({ icon, className = "size-3.5" }: { icon: MetricIcon; className?: string }) {
+  switch (icon) {
+    case "eye": return <Eye className={className} />;
+    case "heart": return <Heart className={className} />;
+    case "message": return <MessageCircle className={className} />;
+    case "reply": return <MessageCircle className={className} />;
+    case "repost": return <Repeat2 className={className} />;
+    case "quote": return <MessageSquare className={className} />;
+    case "bookmark": return <Bookmark className={className} />;
+    case "share": return <Share2 className={className} />;
+    case "click": return <MousePointerClick className={className} />;
+    case "trending": return <TrendingUp className={className} />;
+    case "chart": return <BarChart3 className={className} />;
+    case "play": return <Play className={className} />;
+  }
+}
+
+function MetricCard({ spec }: { spec: MetricCardSpec }) {
+  const c = COLOR_CLASSES[spec.color];
   return (
-    <div>
-      <div className="grid grid-cols-[28px_1fr] gap-1">
-        <div></div>
-        <div className="grid grid-cols-4 gap-1">
-          {times.map(t => (
-            <div key={t} className="text-center text-[10px] text-zinc-500">{t}</div>
-          ))}
-        </div>
-        {days.map((day, di) => (
-          <div key={di} className="contents">
-            <div className="text-center text-[10px] text-zinc-500 leading-[28px]">{day}</div>
-            <div className="grid grid-cols-4 gap-1">
-              {data[di]?.map((v, ti) => {
-                const intensity = v / max;
-                return (
-                  <div
-                    key={ti}
-                    className="h-7 rounded"
-                    style={{
-                      backgroundColor: v === 0 ? "#f4f4f5" : `rgba(16, 185, 129, ${0.2 + intensity * 0.8})`,
-                    }}
-                    title={`${day} ${times[ti]}: ${v}`}
-                  />
-                );
-              })}
-            </div>
-          </div>
-        ))}
+    <div className={`rounded-xl border ${c.bg} p-4`}>
+      <div className={`text-[11px] font-bold tracking-wide ${c.text} flex items-center gap-1.5`}>
+        <MetricCardIcon icon={spec.icon} />
+        {spec.label}
       </div>
-      <div className="flex items-center justify-end gap-2 mt-2 text-[10px] text-zinc-500">
-        <span>Less</span>
-        <div className="flex">
-          {[0.2, 0.4, 0.6, 0.8, 1].map(i => (
-            <div key={i} className="size-3" style={{ backgroundColor: `rgba(16, 185, 129, ${i})` }} />
-          ))}
-        </div>
-        <span>More</span>
-      </div>
+      <div className="text-2xl font-bold text-zinc-900 mt-1 tabular-nums">{spec.value}</div>
+      <div className={`text-[11px] ${c.sub}`}>{spec.sub}</div>
     </div>
   );
 }
@@ -281,7 +299,7 @@ function BestTimesHeatmap({ data }: { data: number[][] }) {
 // Time filter pill group
 // ============================================================
 function TimeFilter({ value, onChange }: { value: Period; onChange: (p: Period) => void }) {
-  const options: { value: Period; label: string; icon?: boolean }[] = [
+  const options: { value: Period; label: string }[] = [
     { value: "7d", label: "7d" },
     { value: "14d", label: "14d" },
     { value: "30d", label: "30d" },
@@ -307,25 +325,36 @@ function TimeFilter({ value, onChange }: { value: Period; onChange: (p: Period) 
 }
 
 // ============================================================
-// Account avatar
+// Account avatar (avatar + small platform badge)
 // ============================================================
-function AccountAvatar({ account }: { account: AccountSummary }) {
+function AccountAvatar({ account, size = 32 }: { account: AccountSummary; size?: number }) {
   return (
-    <div className="relative shrink-0">
-      <div className="size-8 rounded-full bg-gradient-to-br from-zinc-300 to-zinc-400 flex items-center justify-center text-xs font-semibold text-zinc-700 overflow-hidden">
-        {account.initials ?? account.name[0]?.toUpperCase()}
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <div
+        className="rounded-full bg-gradient-to-br from-zinc-300 to-zinc-400 flex items-center justify-center text-zinc-700 font-semibold overflow-hidden"
+        style={{ width: size, height: size, fontSize: size * 0.4 }}
+      >
+        {account.avatar ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={account.avatar} alt={account.name} className="w-full h-full object-cover" />
+        ) : (
+          account.initials ?? account.name[0]?.toUpperCase()
+        )}
       </div>
-      <span className="absolute -bottom-0.5 -right-0.5 size-4 rounded-full bg-white flex items-center justify-center border border-zinc-200">
-        <PlatformIcon platform={account.platform} className="size-3" />
+      <span
+        className="absolute -bottom-0.5 -right-0.5 rounded-full bg-white flex items-center justify-center border border-zinc-200"
+        style={{ width: size * 0.45, height: size * 0.45 }}
+      >
+        <PlatformIcon platform={account.platform} className="size-2.5" />
       </span>
     </div>
   );
 }
 
 // ============================================================
-// Compare + Overview dropdowns
+// Overview dropdown
 // ============================================================
-function OverviewDropdown() {
+function OverviewDropdown({ currentId }: { currentId?: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -335,7 +364,7 @@ function OverviewDropdown() {
     else router.push(pathname);
   };
   return (
-    <div className="relative" onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}>
+    <div className="relative">
       <button
         type="button"
         onClick={() => setOpen(!open)}
@@ -349,7 +378,7 @@ function OverviewDropdown() {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
-          <div className="absolute right-0 top-full mt-1 z-50 w-72 rounded-xl border border-zinc-200 bg-white shadow-lg overflow-hidden">
+          <div className="absolute right-0 top-full mt-1 z-50 w-72 rounded-xl border border-zinc-200 bg-white shadow-lg overflow-hidden max-h-[420px] overflow-y-auto">
             <button
               type="button"
               onClick={() => go(undefined)}
@@ -363,10 +392,11 @@ function OverviewDropdown() {
                 key={a.id}
                 type="button"
                 onClick={() => go(a.id)}
-                className="flex items-center gap-2.5 w-full px-4 py-2 hover:bg-zinc-50 text-left"
+                className={`flex items-center gap-2.5 w-full px-4 py-2 hover:bg-zinc-50 text-left ${currentId === a.id ? "bg-zinc-50" : ""}`}
               >
                 <AccountAvatar account={a} />
-                <span className="text-[13px] text-zinc-700 truncate">{a.name}</span>
+                <span className="text-[13px] text-zinc-700 truncate flex-1">{a.name}</span>
+                {currentId === a.id && <CheckCircle2 className="size-3.5 text-zinc-900 shrink-0" />}
               </button>
             ))}
           </div>
@@ -376,15 +406,12 @@ function OverviewDropdown() {
   );
 }
 
-// ============================================================
-// Timezone dropdown
-// ============================================================
 function TimezoneDropdown() {
   const [open, setOpen] = useState(false);
   const [tz, setTz] = useState("Lagos (+01:00)");
   const options = ["UTC (+00:00)", "Lagos (+01:00)", "Cairo (+02:00)", "Paris (+01:00)", "New York (-05:00)", "Los Angeles (-08:00)"];
   return (
-    <div className="relative" onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}>
+    <div className="relative">
       <button
         type="button"
         onClick={() => setOpen(!open)}
@@ -415,240 +442,357 @@ function TimezoneDropdown() {
 }
 
 // ============================================================
-// Per-account analytics view data
+// Avatar row (click switches account)
 // ============================================================
-interface MetricCard {
-  label: string;
-  value: string;
-  sub: string;
-  bg: string;
-  textColor: string;
+function AvatarRow({ currentId, onSelect }: { currentId: string; onSelect: (id: string) => void }) {
+  return (
+    <div className="flex items-center -space-x-2">
+      {ACCOUNTS.map((a) => {
+        const isActive = currentId === a.id;
+        return (
+          <button
+            key={a.id}
+            type="button"
+            onClick={() => onSelect(a.id)}
+            aria-label={a.name}
+            aria-current={isActive ? "true" : undefined}
+            className={`relative w-9 h-9 sm:w-11 sm:h-11 rounded-full transition-all duration-200 flex-shrink-0 ${
+              isActive
+                ? "ring-2 ring-zinc-900 ring-offset-2 ring-offset-white scale-110 z-10"
+                : "opacity-50 hover:opacity-80"
+            }`}
+            style={{ padding: 0, border: "none", background: "transparent" }}
+          >
+            <AccountAvatar account={a} size={44} />
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
-const PER_ACCOUNT_DATA: Record<string, {
-  updatedAt: string;
-  updatedRelative: string;
+// ============================================================
+// LinkedIn error state
+// ============================================================
+function AnalyticsErrorState({ message }: { message: string }) {
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white p-12 flex flex-col items-center justify-center text-center">
+      <div className="size-16 rounded-full bg-pink-100 flex items-center justify-center mb-4">
+        <TrendingUp className="size-7 text-pink-600" />
+      </div>
+      <h2 className="text-xl font-bold text-rose-700 mb-2">Unable to Load Analytics</h2>
+      <p className="text-[13px] text-rose-700/80 max-w-md mb-6">{message}</p>
+      <a
+        href="/dashboard/accounts"
+        className="inline-flex items-center justify-center rounded-md bg-zinc-900 px-5 h-10 text-[13px] font-medium text-white hover:bg-zinc-800"
+      >
+        Go to Accounts
+      </a>
+    </div>
+  );
+}
+
+// ============================================================
+// Per-platform analytics config
+// ============================================================
+interface TrendSeries {
+  data: number[];
+  color: string;
+  collecting?: boolean;
+  change?: string;
+}
+interface PlatformAnalyticsConfig {
   headerMetrics: { value: string; label: string; color: string; icon: React.ReactNode }[];
-  metrics: MetricCard[];
-  trends: {
-    followers: number[];
-    views: number[];
-    viewsChange?: string;
-    engagement: number[];
-    engagementChange?: string;
-    interactions: number[];
-    interactionsChange?: string;
-    bestTimes: number[][];
-  };
+  metrics: MetricCardSpec[];
+  trends: { followers: TrendSeries; views: TrendSeries; engagement: TrendSeries; interactions: TrendSeries };
   table: {
     title: string;
     count: string;
     columns: string[];
-    rows: { thumb?: string; col1: string; col2: string; values: (string | number)[]; engRate?: string; actions?: boolean }[];
+    rows: { thumb?: string; col1: string; col2: string; values: (string | number)[]; engRate?: string }[];
   };
-}> = {
+  banner?: string;
+  updatedAt: string;
+  updatedRelative: string;
+}
+
+const PLATFORM_ANALYTICS: Record<Platform, PlatformAnalyticsConfig> = {
   youtube: {
-    updatedAt: "Jun 27, 2026, 09:49 AM",
-    updatedRelative: "6 minutes ago",
+    updatedAt: "Jul 8, 2026, 02:56 PM",
+    updatedRelative: "47 minutes ago",
     headerMetrics: [
       { value: "1", label: "Subscribers", color: "#ef4444", icon: <Users className="size-4 text-white" /> },
-      { value: "5", label: "Videos", color: "#a855f7", icon: <Play className="size-4 text-white" /> },
+      { value: "6", label: "Videos", color: "#a855f7", icon: <Play className="size-4 text-white" /> },
       { value: "9", label: "Total Views", color: "#3b82f6", icon: <Eye className="size-4 text-white" /> },
     ],
     metrics: [
-      { label: "VIEWS", value: "26", sub: "Total views", bg: "bg-blue-50", textColor: "text-blue-700" },
-      { label: "LIKES", value: "1", sub: "Total likes", bg: "bg-rose-50", textColor: "text-rose-700" },
-      { label: "COMMENTS", value: "0", sub: "Total comments", bg: "bg-violet-50", textColor: "text-violet-700" },
-      { label: "ENGAGEMENT", value: "2.04%", sub: "Avg rate", bg: "bg-orange-50", textColor: "text-orange-700" },
-      { label: "INTERACTIONS", value: "1", sub: "Total", bg: "bg-emerald-50", textColor: "text-emerald-700" },
+      { label: "VIEWS", value: "0", sub: "Total views", color: "indigo", icon: "eye" },
+      { label: "LIKES", value: "0", sub: "Total likes", color: "red", icon: "heart" },
+      { label: "COMMENTS", value: "0", sub: "Total comments", color: "purple", icon: "message" },
+      { label: "ENGAGEMENT", value: "0.00%", sub: "Avg rate", color: "orange", icon: "trending" },
+      { label: "INTERACTIONS", value: "0", sub: "Total", color: "teal", icon: "chart" },
     ],
     trends: {
-      followers: [1, 1, 1, 1, 1],
-      views: [9, 0, 0, 0, 0],
-      engagement: [0, 0, 0, 0, 0],
-      interactions: [1, 0, 0, 0, 0],
-      bestTimes: [
-        [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0],
-        [0, 0, 0, 1], [0, 0, 0, 0], [0, 0, 0, 0],
-      ],
+      followers: { data: [1, 1, 1, 1, 1], color: "#3b82f6" },
+      views: { data: [0, 0, 0, 0, 0], color: "#8b5cf6", collecting: true },
+      engagement: { data: [0, 0, 0, 0, 0], color: "#f97316", collecting: true },
+      interactions: { data: [0, 0, 0, 0, 0], color: "#10b981", collecting: true },
     },
     table: {
       title: "Video Performance",
-      count: "7 videos",
+      count: "1 videos",
       columns: ["Video", "Title", "Date", "Views", "Likes", "Comments", "Eng. Rate", "Duration", "Interactions", "Actions"],
       rows: [
-        { thumb: "K", col1: "Kling 3 Revolutionizes 2026", col2: "May 13, 2026 14:31", values: [17, 0, 0, "0.00%", "6s", 0], engRate: "0.00%" },
-        { thumb: "T", col1: "Top 7 Black Cat Breeds That Rule the Internet", col2: "May 8, 2026 20:41", values: [7, 1, 0, "14.29%", "29s", 1], engRate: "14.29%" },
-        { thumb: "M", col1: "Meet Luna, My Adorable Black Kitty!", col2: "May 7, 2026 19:57", values: [2, 0, 0, "0.00%", "5s", 0], engRate: "0.00%" },
-        { thumb: "M", col1: "Meet My Furry Little Buddy", col2: "May 6, 2026 18:59", values: [0, 0, 0, "0.00%", "5s", 0], engRate: "0.00%" },
-        { thumb: "T", col1: "Transform Your Mornings with These Life-Changing Habits!", col2: "Apr 13, 2026 21:12", values: [0, 0, 0, "0.00%", "9s", 0], engRate: "0.00%" },
-        { thumb: "v", col1: "video", col2: "Mar 25, 2026 11:17", values: [0, 0, 0, "0.00%", "57s", 0], engRate: "0.00%" },
-        { thumb: "v", col1: "video", col2: "Mar 25, 2026 10:47", values: [0, 0, 0, "0.00%", "57s", 0], engRate: "0.00%" },
+        { thumb: "🎬", col1: "hello guys", col2: "Jul 8, 2026\n14:55", values: ["0", "0", "0", "0.00%", "57s", "0"] },
       ],
     },
   },
-  bluesky: {
-    updatedAt: "Jun 27, 2026, 09:00 AM",
-    updatedRelative: "55 minutes ago",
+  pinterest: {
+    updatedAt: "Jul 8, 2026, 03:01 PM",
+    updatedRelative: "42 minutes ago",
     headerMetrics: [
-      { value: "16", label: "Followers", color: "#1185FE", icon: <Users className="size-4 text-white" /> },
-      { value: "33", label: "Following", color: "#a855f7", icon: <Users className="size-4 text-white" /> },
-      { value: "23", label: "Posts", color: "#3b82f6", icon: <MessageCircle className="size-4 text-white" /> },
+      { value: "0", label: "Followers", color: "#E60023", icon: <Users className="size-4 text-white" /> },
+      { value: "0", label: "Monthly Views", color: "#3b82f6", icon: <Eye className="size-4 text-white" /> },
+      { value: "14", label: "Pins", color: "#a855f7", icon: <Bookmark className="size-4 text-white" /> },
     ],
     metrics: [
-      { label: "LIKES", value: "28", sub: "Total likes", bg: "bg-rose-50", textColor: "text-rose-700" },
-      { label: "REPOSTS", value: "3", sub: "Total reposts", bg: "bg-emerald-50", textColor: "text-emerald-700" },
-      { label: "REPLIES", value: "0", sub: "Total replies", bg: "bg-blue-50", textColor: "text-blue-700" },
-      { label: "QUOTES", value: "0", sub: "Total quotes", bg: "bg-violet-50", textColor: "text-violet-700" },
-      { label: "BOOKMARKS", value: "0", sub: "Total bookmarks", bg: "bg-amber-50", textColor: "text-amber-700" },
+      { label: "IMPRESSIONS", value: "0", sub: "Total impressions", color: "indigo", icon: "eye" },
+      { label: "SAVES", value: "0", sub: "Total saves", color: "red", icon: "heart" },
+      { label: "PIN CLICKS", value: "0", sub: "Total pin clicks", color: "blue", icon: "click" },
+      { label: "LINK CLICKS", value: "0", sub: "Total link clicks", color: "teal", icon: "click" },
+      { label: "COMMENTS", value: "0", sub: "Total comments", color: "purple", icon: "message" },
+      { label: "REACTIONS", value: "0", sub: "Total reactions", color: "pink", icon: "heart" },
     ],
     trends: {
-      followers: [16, 16, 16, 16, 16],
-      views: [0, 0, 0, 0, 0],
-      engagement: [0.25, 0.5, 0.75, 1, 0],
-      interactions: [0, 0.25, 0.5, 0.75, 1],
-      bestTimes: [
-        [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0],
-        [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0],
-      ],
+      followers: { data: [0, 0, 0, 0, 0], color: "#3b82f6" },
+      views: { data: [0, 0, 0, 0, 1.2], color: "#8b5cf6" },
+      engagement: { data: [0, 0, 0, 0, 0], color: "#f97316", collecting: true },
+      interactions: { data: [0, 0, 0, 0, 0], color: "#10b981" },
     },
     table: {
-      title: "Post Performance",
-      count: "23 posts",
-      columns: ["Post", "Content", "Date", "Likes", "Reposts", "Replies", "Quotes", "Bookmarks", "Eng. Rate", "Actions"],
+      title: "Pin Performance",
+      count: "2 pins",
+      columns: ["Pin", "Content", "Date", "Impressions", "Saves", "Pin Clicks", "Link Clicks", "Comments", "Reactions", "Eng. Rate", "Actions"],
       rows: [
-        { thumb: "🐱", col1: "Tiny panther vs. tennis ball.", col2: "Jun 23, 2026 10:44", values: [0, 0, 0, 0, 0], engRate: "0.00%" },
-        { thumb: "❤️", col1: "❤️❤️❤️", col2: "May 23, 2026 23:08", values: [0, 0, 0, 0, 0], engRate: "0.00%" },
-        { thumb: "🐈", col1: "Cat Playing with Toy", col2: "May 21, 2026 21:56", values: [6, 2, 0, 0, 0], engRate: "50.00%" },
-        { thumb: "🐾", col1: "The Joy of Cat Playtime: Understanding Feline Behavior", col2: "May 20, 2026 21:47", values: [4, 0, 0, 0, 0], engRate: "25.00%" },
-        { thumb: "c", col1: "ctts", col2: "May 20, 2026 18:43", values: [0, 0, 0, 0, 0], engRate: "0.00%" },
-        { thumb: "🐾", col1: "The Joy of Cat Playtime: Understanding Feline Behavior", col2: "May 20, 2026 15:17", values: [1, 0, 0, 0, 0], engRate: "6.25%" },
-      ],
-    },
-  },
-  tiktok: {
-    updatedAt: "Jun 27, 2026, 07:03 AM",
-    updatedRelative: "2 hours ago",
-    headerMetrics: [
-      { value: "2", label: "Followers", color: "#000000", icon: <Users className="size-4 text-white" /> },
-      { value: "1", label: "Following", color: "#737373", icon: <Users className="size-4 text-white" /> },
-      { value: "20", label: "Videos", color: "#a855f7", icon: <Play className="size-4 text-white" /> },
-      { value: "140", label: "Total Likes", color: "#ec4899", icon: <Heart className="size-4 text-white" /> },
-    ],
-    metrics: [
-      { label: "VIEWS", value: "3.0K", sub: "Total views", bg: "bg-blue-50", textColor: "text-blue-700" },
-      { label: "LIKES", value: "140", sub: "Total likes", bg: "bg-rose-50", textColor: "text-rose-700" },
-      { label: "COMMENTS", value: "4", sub: "Total comments", bg: "bg-violet-50", textColor: "text-violet-700" },
-      { label: "SHARES", value: "2", sub: "Total shares", bg: "bg-emerald-50", textColor: "text-emerald-700" },
-      { label: "ENGAGEMENT", value: "4.87%", sub: "Avg rate", bg: "bg-orange-50", textColor: "text-orange-700" },
-      { label: "INTERACTIONS", value: "146", sub: "Total", bg: "bg-cyan-50", textColor: "text-cyan-700" },
-    ],
-    trends: {
-      followers: [2, 2, 2, 2, 2],
-      views: [384, 50, 5, 0, 0],
-      viewsChange: "-99.2%",
-      engagement: [0, 2, 4, 6, 7.69],
-      engagementChange: "-100%",
-      interactions: [28, 14, 7, 1, 0],
-      interactionsChange: "-100%",
-      bestTimes: [
-        [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 1, 0], [0, 0, 0, 0],
-        [0, 0, 0, 1], [0, 0, 0, 0], [0, 0, 0, 0],
-      ],
-    },
-    table: {
-      title: "Post Performance",
-      count: "20 posts",
-      columns: ["Post", "Video Description", "Date", "Views", "Likes", "Comments", "Shares", "Eng. Rate", "Duration", "Interactions", "Actions"],
-      rows: [
-        { thumb: "🐱", col1: "POV: you bought a tennis ball for fitness. Your cat filed a hostile takeover. 🐈‍⬛ Tiny panther. Big...", col2: "Jun 23, 2026 10:44", values: [459, 32, 0, 0, "6.97%", "-", 32], engRate: "6.97%" },
-        { thumb: "❤️", col1: "❤️❤️❤️", col2: "May 23, 2026 19:29", values: [86, 18, 0, 0, "20.93%", "-", 18], engRate: "20.93%" },
-        { thumb: "🐈", col1: "Cat Playing with Toy Observe the agility of this black cat as it jumps to catch a toy. The indoor se...", col2: "May 21, 2026 21:56", values: [93, 6, 1, 1, "8.60%", "-", 8], engRate: "8.60%" },
-        { thumb: "🐾", col1: "The Joy of Cat Playtime: Understanding Feline Behavior Cat playtime is crucial for their overall wel...", col2: "May 20, 2026 21:47", values: [1, 0, 0, 0, "0.00%", "-", 0], engRate: "0.00%" },
-        { thumb: "c", col1: "ctts", col2: "May 20, 2026 18:43", values: [1, 0, 0, 0, "0.00%", "-", 0], engRate: "0.00%" },
-        { thumb: "🐾", col1: "The Joy of Cat Playtime: Understanding Feline Behavior Cat playtime is crucial for their overall wel...", col2: "May 20, 2026 15:17", values: [658, 6, 0, 1, "1.06%", "-", 7], engRate: "1.06%" },
-        { thumb: "🐾", col1: "The Joy of Cat Playtime Cat playtime is essential for their physical and mental health. Cats need to...", col2: "May 20, 2026 09:06", values: [371, 7, 0, 0, "1.89%", "-", 7], engRate: "1.89%" },
+        { thumb: "📌", col1: "hello guys tt", col2: "Jul 8, 2026\n14:56", values: ["0", "0", "0", "0", "0", "0", "0.00%"] },
+        { thumb: "📌", col1: "hey", col2: "Jul 7, 2026\n19:52", values: ["0", "0", "0", "0", "0", "0", "0.00%"] },
       ],
     },
   },
   facebook: {
-    updatedAt: "Jun 27, 2026, 09:01 AM",
-    updatedRelative: "54 minutes ago",
+    updatedAt: "Jul 8, 2026, 01:07 AM",
+    updatedRelative: "14 hours ago",
     headerMetrics: [
       { value: "0", label: "Followers", color: "#1877F2", icon: <Users className="size-4 text-white" /> },
-      { value: "16", label: "Posts", color: "#3b82f6", icon: <MessageCircle className="size-4 text-white" /> },
-      { value: "221", label: "Total Views", color: "#0ea5e9", icon: <Eye className="size-4 text-white" /> },
+      { value: "1", label: "Posts", color: "#3b82f6", icon: <MessageCircle className="size-4 text-white" /> },
+      { value: "0", label: "Total Views", color: "#0ea5e9", icon: <Eye className="size-4 text-white" /> },
     ],
     metrics: [
-      { label: "VIEWS", value: "221", sub: "Total views", bg: "bg-blue-50", textColor: "text-blue-700" },
-      { label: "REACTIONS", value: "0", sub: "Total reactions", bg: "bg-rose-50", textColor: "text-rose-700" },
-      { label: "COMMENTS", value: "0", sub: "Total comments", bg: "bg-violet-50", textColor: "text-violet-700" },
-      { label: "SHARES", value: "0", sub: "Total shares", bg: "bg-emerald-50", textColor: "text-emerald-700" },
-      { label: "CLICKS", value: "0", sub: "Total clicks", bg: "bg-cyan-50", textColor: "text-cyan-700" },
-      { label: "ENGAGEMENT", value: "0.00%", sub: "Avg rate", bg: "bg-orange-50", textColor: "text-orange-700" },
+      { label: "VIEWS", value: "0", sub: "Total views", color: "indigo", icon: "eye" },
+      { label: "REACTIONS", value: "0", sub: "Total reactions", color: "blue", icon: "heart" },
+      { label: "COMMENTS", value: "0", sub: "Total comments", color: "purple", icon: "message" },
+      { label: "SHARES", value: "0", sub: "Total shares", color: "green", icon: "share" },
+      { label: "CLICKS", value: "0", sub: "Total clicks", color: "amber", icon: "click" },
+      { label: "ENGAGEMENT", value: "0.00%", sub: "Avg rate", color: "orange", icon: "trending" },
     ],
     trends: {
-      followers: [0, 0, 0, 0, 0],
-      views: [0, 6, 12, 18, 23],
-      engagement: [0, 0, 0, 0, 0],
-      interactions: [0, 1, 2, 3, 4],
-      bestTimes: [
-        [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0],
-        [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0],
-      ],
+      followers: { data: [0, 0, 0, 0, 0], color: "#3b82f6" },
+      views: { data: [0, 0, 0, 0, 0], color: "#8b5cf6", collecting: true },
+      engagement: { data: [0, 0, 0, 0, 0], color: "#f97316", collecting: true },
+      interactions: { data: [0, 0, 0, 0, 0], color: "#10b981", collecting: true },
     },
     table: {
       title: "Post Performance",
-      count: "16 posts",
+      count: "1 posts",
       columns: ["Post", "Content", "Date", "Views", "Reactions", "Comments", "Shares", "Clicks", "Eng. Rate", "Actions"],
       rows: [
-        { thumb: "🐱", col1: "Your daily reminder that cats do not need a gym membership.", col2: "Jun 23, 2026 10:44", values: [7, 0, 0, 0, 0], engRate: "0.00%" },
-        { thumb: "🐈", col1: "Cat Playing with Toy", col2: "May 21, 2026 21:56", values: [8, 0, 0, 0, 0], engRate: "0.00%" },
-        { thumb: "🐾", col1: "The Joy of Cat Playtime: Understanding Feline Behavior", col2: "May 20, 2026 21:47", values: [11, 0, 0, 0, 0], engRate: "0.00%" },
-        { thumb: "c", col1: "ctts", col2: "May 20, 2026 18:43", values: [9, 0, 0, 0, 0], engRate: "0.00%" },
-        { thumb: "🐾", col1: "The Joy of Cat Playtime", col2: "May 20, 2026 09:06", values: [14, 0, 0, 0, 0], engRate: "0.00%" },
-        { thumb: "🐱", col1: "caty (2)", col2: "May 19, 2026 23:17", values: [11, 0, 0, 0, 0], engRate: "0.00%" },
+        { thumb: "📄", col1: "Ever catch a cat mid-lick and realize they still look more photogenic than you do on a good day?", col2: "Jul 7, 2026\n19:52", values: ["0", "0", "0", "0", "0", "0.00%"] },
+      ],
+    },
+  },
+  threads: {
+    updatedAt: "Jul 8, 2026, 11:01 AM",
+    updatedRelative: "4 hours ago",
+    headerMetrics: [
+      { value: "2", label: "Followers", color: "#ec4899", icon: <Users className="size-4 text-white" /> },
+      { value: "11", label: "Following", color: "#a855f7", icon: <Users className="size-4 text-white" /> },
+      { value: "25", label: "Posts", color: "#3b82f6", icon: <MessageCircle className="size-4 text-white" /> },
+    ],
+    metrics: [
+      { label: "VIEWS", value: "1", sub: "Total views", color: "indigo", icon: "eye" },
+      { label: "REACH", value: "1", sub: "Total accounts", color: "blue", icon: "eye" },
+      { label: "LIKES", value: "0", sub: "Total likes", color: "red", icon: "heart" },
+      { label: "COMMENTS", value: "0", sub: "Total comments", color: "purple", icon: "message" },
+      { label: "SHARES", value: "0", sub: "Total shares", color: "green", icon: "share" },
+      { label: "ENGAGEMENT", value: "0.00%", sub: "Avg rate", color: "orange", icon: "trending" },
+      { label: "SAVED", value: "0", sub: "Total saved", color: "teal", icon: "bookmark" },
+    ],
+    trends: {
+      followers: { data: [0, 0, 0, 1, 2], color: "#3b82f6" },
+      views: { data: [0, 0, 0, 0, 1], color: "#8b5cf6" },
+      engagement: { data: [0, 0, 0, 0, 0], color: "#f97316", collecting: true },
+      interactions: { data: [0, 0, 0, 0, 0], color: "#10b981" },
+    },
+    table: {
+      title: "Post Performance",
+      count: "1 posts",
+      columns: ["Media", "Type", "Caption", "Date", "Views", "Reach", "Likes", "Comments", "Eng. Rate", "Saves", "Shares", "Replies", "Profile Visits", "Follows", "Watch Time", "Avg Watch", "Interactions", "Actions"],
+      rows: [
+        { thumb: "🖼️", col1: "Image", col2: "This is the exact face of \"I was not eating anything.\"", values: ["Jul 7, 2026\n19:53", "1", "1", "0", "0", "0.00%", "0", "0", "0", "0", "0", "-", "-", "0"], engRate: "0.00%" },
+      ],
+    },
+  },
+  bluesky: {
+    updatedAt: "Jul 8, 2026, 03:02 PM",
+    updatedRelative: "41 minutes ago",
+    headerMetrics: [
+      { value: "17", label: "Followers", color: "#1185FE", icon: <Users className="size-4 text-white" /> },
+      { value: "33", label: "Following", color: "#a855f7", icon: <Users className="size-4 text-white" /> },
+      { value: "26", label: "Posts", color: "#3b82f6", icon: <MessageCircle className="size-4 text-white" /> },
+    ],
+    metrics: [
+      { label: "LIKES", value: "1", sub: "Total likes", color: "red", icon: "heart" },
+      { label: "REPOSTS", value: "0", sub: "Total reposts", color: "green", icon: "repost" },
+      { label: "REPLIES", value: "0", sub: "Total replies", color: "blue", icon: "reply" },
+      { label: "QUOTES", value: "0", sub: "Total quotes", color: "purple", icon: "quote" },
+      { label: "BOOKMARKS", value: "0", sub: "Total bookmarks", color: "amber", icon: "bookmark" },
+    ],
+    trends: {
+      followers: { data: [17, 17, 17, 17, 17], color: "#3b82f6" },
+      views: { data: [0, 0, 0, 0, 0], color: "#8b5cf6", collecting: true },
+      engagement: { data: [0, 0, 0, 0, 0], color: "#f97316", collecting: true },
+      interactions: { data: [1, 0, 0, 0, 0], color: "#10b981", change: "-100%" },
+    },
+    table: {
+      title: "Post Performance",
+      count: "2 posts",
+      columns: ["Post", "Content", "Date", "Likes", "Reposts", "Replies", "Quotes", "Bookmarks", "Eng. Rate", "Actions"],
+      rows: [
+        { thumb: "📝", col1: "The moment a soft hospital scene turns into panic is brutal.", col2: "Jul 8, 2026\n14:54", values: ["0", "0", "0", "0", "0", "0.00%"] },
+        { thumb: "📝", col1: "POV: you smelled treats from three rooms away.", col2: "Jul 7, 2026\n19:52", values: ["1", "0", "0", "0", "0", "5.88%"] },
+      ],
+    },
+  },
+  tiktok: {
+    updatedAt: "Jul 8, 2026, 12:36 PM",
+    updatedRelative: "3 hours ago",
+    headerMetrics: [
+      { value: "3", label: "Followers", color: "#000000", icon: <Users className="size-4 text-white" /> },
+      { value: "1", label: "Following", color: "#737373", icon: <Users className="size-4 text-white" /> },
+      { value: "22", label: "Videos", color: "#a855f7", icon: <Play className="size-4 text-white" /> },
+      { value: "183", label: "Total Likes", color: "#ec4899", icon: <Heart className="size-4 text-white" /> },
+    ],
+    metrics: [
+      { label: "VIEWS", value: "101", sub: "Total views", color: "indigo", icon: "eye" },
+      { label: "LIKES", value: "32", sub: "Total likes", color: "red", icon: "heart" },
+      { label: "COMMENTS", value: "0", sub: "Total comments", color: "purple", icon: "message" },
+      { label: "SHARES", value: "0", sub: "Total shares", color: "green", icon: "share" },
+      { label: "ENGAGEMENT", value: "31.68%", sub: "Avg rate", color: "orange", icon: "trending" },
+      { label: "INTERACTIONS", value: "32", sub: "Total", color: "teal", icon: "chart" },
+    ],
+    trends: {
+      followers: { data: [3, 3, 3, 3, 3], color: "#3b82f6" },
+      views: { data: [2.7, 3.4, 17, 101, 0], color: "#8b5cf6", change: "-100%" },
+      engagement: { data: [0, 0.7, 1.5, 15.9, 31.68], color: "#f97316", change: "-99.7%" },
+      interactions: { data: [0, 0, 1, 32, 0], color: "#10b981", change: "-95.7%" },
+    },
+    table: {
+      title: "Post Performance",
+      count: "1 posts",
+      columns: ["Video", "Description", "Date", "Views", "Likes", "Comments", "Shares", "Eng. Rate", "Duration", "Interactions", "Actions"],
+      rows: [
+        { thumb: "🎬", col1: "This cat said: \"No crumbs left behind.\" The tongue. The stare. The suspiciously innocent energy. If ...", col2: "Jul 7, 2026\n19:52", values: ["101", "32", "0", "0", "31.68%", "-", "32"], engRate: "31.68%" },
+      ],
+    },
+  },
+  linkedin: {
+    updatedAt: "—",
+    updatedRelative: "—",
+    headerMetrics: [],
+    metrics: [],
+    trends: {
+      followers: { data: [], color: "#0A66C2" },
+      views: { data: [], color: "#0A66C2" },
+      engagement: { data: [], color: "#0A66C2" },
+      interactions: { data: [], color: "#0A66C2" },
+    },
+    table: { title: "", count: "", columns: [], rows: [] },
+  },
+  twitter: {
+    updatedAt: "Jul 8, 2026, 01:24 PM",
+    updatedRelative: "2 hours ago",
+    headerMetrics: [
+      { value: "0", label: "Followers", color: "#000000", icon: <Users className="size-4 text-white" /> },
+      { value: "12", label: "Following", color: "#737373", icon: <Users className="size-4 text-white" /> },
+      { value: "42", label: "Posts", color: "#3b82f6", icon: <MessageCircle className="size-4 text-white" /> },
+      { value: "0", label: "Likes", color: "#ef4444", icon: <Heart className="size-4 text-white" /> },
+      { value: "0", label: "Listed", color: "#a855f7", icon: <Bookmark className="size-4 text-white" /> },
+    ],
+    metrics: [
+      { label: "IMPRESSIONS", value: "1", sub: "Total views", color: "indigo", icon: "eye" },
+      { label: "LIKES", value: "0", sub: "Total favorites", color: "red", icon: "heart" },
+      { label: "REPOSTS", value: "0", sub: "Retweets", color: "green", icon: "repost" },
+      { label: "REPLIES", value: "0", sub: "Total replies", color: "purple", icon: "message" },
+      { label: "ENGAGEMENT", value: "0.00%", sub: "Avg rate", color: "orange", icon: "trending" },
+      { label: "BOOKMARKS", value: "0", sub: "Saved posts", color: "teal", icon: "bookmark" },
+    ],
+    banner: "Showing posts published via PostPlanify only",
+    trends: {
+      followers: { data: [0, 0, 0, 0, 0], color: "#3b82f6" },
+      views: { data: [0, 0, 0, 1, 0], color: "#8b5cf6" },
+      engagement: { data: [0, 0, 0, 0, 0], color: "#f97316", collecting: true },
+      interactions: { data: [0, 0, 0, 0, 0], color: "#10b981" },
+    },
+    table: {
+      title: "Post Performance",
+      count: "1 posts",
+      columns: ["", "Media", "Content", "Date", "Views", "Likes", "Replies", "Reposts", "Eng. Rate", "Actions"],
+      rows: [
+        { thumb: "🐦", col1: "✓", col2: "That face when the treat bag makes a noise in another zip code.", values: ["Jul 7, 2026\n19:52", "1", "0", "0", "0", "0.00%"] },
+      ],
+    },
+  },
+  instagram: {
+    updatedAt: "Jul 8, 2026, 03:02 PM",
+    updatedRelative: "41 minutes ago",
+    headerMetrics: [
+      { value: "17", label: "Followers", color: "#E1306C", icon: <Users className="size-4 text-white" /> },
+      { value: "33", label: "Following", color: "#a855f7", icon: <Users className="size-4 text-white" /> },
+      { value: "26", label: "Posts", color: "#3b82f6", icon: <MessageCircle className="size-4 text-white" /> },
+    ],
+    metrics: [
+      { label: "LIKES", value: "1", sub: "Total likes", color: "red", icon: "heart" },
+      { label: "REPOSTS", value: "0", sub: "Total reposts", color: "green", icon: "repost" },
+      { label: "REPLIES", value: "0", sub: "Total replies", color: "blue", icon: "reply" },
+      { label: "QUOTES", value: "0", sub: "Total quotes", color: "purple", icon: "quote" },
+      { label: "BOOKMARKS", value: "0", sub: "Total bookmarks", color: "amber", icon: "bookmark" },
+    ],
+    trends: {
+      followers: { data: [17, 17, 17, 17, 17], color: "#3b82f6" },
+      views: { data: [0, 0, 0, 0, 0], color: "#8b5cf6", collecting: true },
+      engagement: { data: [0, 0, 0, 0, 0], color: "#f97316", collecting: true },
+      interactions: { data: [1, 0, 0, 0, 0], color: "#10b981", change: "-100%" },
+    },
+    table: {
+      title: "Post Performance",
+      count: "2 posts",
+      columns: ["Post", "Content", "Date", "Likes", "Reposts", "Replies", "Quotes", "Bookmarks", "Eng. Rate", "Actions"],
+      rows: [
+        { thumb: "📝", col1: "The moment a soft hospital scene turns into panic is brutal.", col2: "Jul 8, 2026\n14:54", values: ["0", "0", "0", "0", "0", "0.00%"] },
+        { thumb: "📝", col1: "POV: you smelled treats from three rooms away.", col2: "Jul 7, 2026\n19:52", values: ["1", "0", "0", "0", "0", "5.88%"] },
       ],
     },
   },
 };
 
-// Fallback data for accounts without specific config (LinkedIn, Instagram, Pinterest, Threads, Twitter)
-const FALLBACK_DATA = (account: AccountSummary): NonNullable<typeof PER_ACCOUNT_DATA[keyof typeof PER_ACCOUNT_DATA]> => ({
-  updatedAt: "Jun 27, 2026, 09:49 AM",
-  updatedRelative: account.syncedAgo,
-  headerMetrics: [
-    { value: String(account.followers ?? 0), label: "Followers", color: "#3b82f6", icon: <Users className="size-4 text-white" /> },
-    { value: String(account.posts ?? account.videos ?? 0), label: account.platform === "tiktok" || account.platform === "youtube" ? "Videos" : "Posts", color: "#a855f7", icon: <Play className="size-4 text-white" /> },
-    { value: String(account.totalViews ?? 0), label: "Total Views", color: "#0ea5e9", icon: <Eye className="size-4 text-white" /> },
-  ],
-  metrics: [
-    { label: "VIEWS", value: "0", sub: "Total views", bg: "bg-blue-50", textColor: "text-blue-700" },
-    { label: "LIKES", value: "0", sub: "Total likes", bg: "bg-rose-50", textColor: "text-rose-700" },
-    { label: "ENGAGEMENT", value: "0.00%", sub: "Avg rate", bg: "bg-orange-50", textColor: "text-orange-700" },
-  ],
-  trends: {
-    followers: [0, 0, 0, 0, 0],
-    views: [0, 0, 0, 0, 0],
-    engagement: [0, 0, 0, 0, 0],
-    interactions: [0, 0, 0, 0, 0],
-    bestTimes: Array(7).fill([0, 0, 0, 0]),
-  },
-  table: {
-    title: "Post Performance",
-    count: "0 posts",
-    columns: ["Post", "Content", "Date", "Views", "Likes", "Eng. Rate", "Actions"],
-    rows: [],
-  },
-});
-
 // ============================================================
 // Per-account view
 // ============================================================
 function PerAccountView({ accountId }: { accountId: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [period, setPeriod] = useState<Period>("7d");
   const account = ACCOUNTS.find(a => a.id === accountId);
-  const dates = ["Jun 23", "Jun 24", "Jun 25", "Jun 26", "Jun 27"];
 
   if (!account) {
     return (
@@ -657,58 +801,67 @@ function PerAccountView({ accountId }: { accountId: string }) {
       </div>
     );
   }
-  const data = PER_ACCOUNT_DATA[account.platform] ?? FALLBACK_DATA(account);
+
+  const data = PLATFORM_ANALYTICS[account.platform];
+  const dates = ["Jul 7", "Jul 7", "Jul 7", "Jul 8", "Jul 8"];
+  const accent = PLATFORM_ACCENT[account.platform];
+
+  if (account.isError) {
+    return (
+      <div className="px-6 py-6 space-y-4">
+        <PageHeader
+          currentId={accountId}
+          onSelect={(id) => router.push(`${pathname}?accountId=${id}`)}
+        />
+        <AnalyticsErrorState message={account.errorMessage || "Analytics are not available for this account."} />
+      </div>
+    );
+  }
 
   return (
     <div className="px-6 py-6 space-y-4">
-      {/* ===== HEADER ===== */}
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <h1 className="text-[30px] font-bold leading-[36px] text-zinc-900">Analytics</h1>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 px-3 h-8 text-[12px] font-medium text-zinc-700 hover:bg-zinc-50"
-          >
-            <RefreshCw className="size-3.5" />
-            Sync Now
-          </button>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <OverviewDropdown />
-          <div className="flex items-center -space-x-2">
-            {ACCOUNTS.slice(0, 8).map((a, i) => (
-              <div
-                key={i}
-                className="size-9 sm:size-11 rounded-full ring-2 ring-white flex items-center justify-center text-sm font-semibold text-white overflow-hidden"
-                style={{ background: a.platform === "instagram" ? "linear-gradient(135deg, #feda75 0%, #fa7e1e 25%, #d62976 50%, #962fbf 75%, #4f5bd5 100%)" : "#a1a1aa" }}
-              >
-                {a.initials ?? a.name[0]?.toUpperCase()}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-      <p className="text-sm text-zinc-500 -mt-3">Track your social media performance and insights</p>
+      <PageHeader
+        currentId={accountId}
+        onSelect={(id) => router.push(`${pathname}?accountId=${id}`)}
+      />
 
       {/* ===== ACCOUNT HEADER CARD ===== */}
-      <div className="rounded-xl border border-rose-300 border-l-4 bg-white p-4 flex flex-wrap items-center gap-4">
-        <PlatformAvatar platform={account.platform} name={account.name} initials={account.initials} size={56} />
-        <div className="flex-1 min-w-[200px]">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold text-zinc-900 truncate">{account.name}</h2>
-          </div>
-          <p className="text-[13px] text-zinc-500 truncate">{account.handle}{account.bio ? ` · ${account.bio}` : ""}</p>
-        </div>
-        <div className="flex items-center gap-6 sm:gap-8 shrink-0 flex-wrap justify-end">
-          {data.headerMetrics.map((m, i) => (
-            <div key={i} className="text-center min-w-[72px]">
-              <div className="text-2xl font-bold text-zinc-900 whitespace-nowrap">{m.value}</div>
-              <div className="text-[12px] text-zinc-500 inline-flex items-center gap-1 whitespace-nowrap">
-                <span className="size-2 rounded-full shrink-0" style={{ backgroundColor: m.color }} />
-                {m.label}
+      <div className={`rounded-xl border border-zinc-200 bg-white border-l-4 ${accent.leftClass} shadow-sm p-4 md:p-5`}>
+        <div className="flex flex-col md:flex-row md:justify-between gap-6">
+          <div className="space-y-3 min-w-0">
+            <div className="flex items-start gap-3">
+              <PlatformAvatar
+                platform={account.platform}
+                name={account.name}
+                initials={account.initials}
+                avatar={account.avatar}
+                size={48}
+              />
+              <div className="min-w-0">
+                <h3 className="text-lg font-bold text-zinc-900 truncate">{account.name}</h3>
+                <p className="text-sm text-zinc-500 truncate">{account.handle}{account.bio ? ` · ${account.bio}` : ""}</p>
               </div>
             </div>
-          ))}
+          </div>
+          <div className="flex items-center justify-around gap-4 md:gap-6 flex-wrap md:flex-nowrap">
+            <div className="flex items-center gap-4 md:gap-6 flex-wrap justify-end">
+              {data.headerMetrics.map((m, i) => (
+                <div key={i} className="text-center min-w-[60px]">
+                  <div className="text-2xl font-bold text-zinc-900 whitespace-nowrap tabular-nums">{m.value}</div>
+                  <div className="text-xs text-zinc-500 inline-flex items-center gap-1 whitespace-nowrap">
+                    <span className="size-2 rounded-full shrink-0" style={{ backgroundColor: m.color }} />
+                    {m.label}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {(account.platform === "threads" || account.platform === "instagram") && account.contentTypes ? (
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-zinc-700">Content Types</p>
+                <ContentTypesDonut data={account.contentTypes} />
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -721,28 +874,18 @@ function PerAccountView({ accountId }: { accountId: string }) {
         <TimezoneDropdown />
       </div>
 
+      {/* ===== BANNER (X only) ===== */}
+      {data.banner ? (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+          <span className="size-1.5 mt-1.5 rounded-full bg-amber-500 shrink-0" />
+          <span>{data.banner}</span>
+        </div>
+      ) : null}
+
       {/* ===== METRIC CARDS ===== */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
         {data.metrics.map((m, i) => (
-          <div key={i} className={`${m.bg} rounded-xl p-4`}>
-            <div className={`text-[11px] font-bold tracking-wide ${m.textColor} flex items-center gap-1.5`}>
-              {m.label === "VIEWS" && <Eye className="size-3.5" />}
-              {m.label === "LIKES" && <Heart className="size-3.5" />}
-              {m.label === "REACTIONS" && <Heart className="size-3.5" />}
-              {m.label === "COMMENTS" && <MessageCircle className="size-3.5" />}
-              {m.label === "REPLIES" && <MessageCircle className="size-3.5" />}
-              {m.label === "REPOSTS" && <Repeat2 className="size-3.5" />}
-              {m.label === "QUOTES" && <MessageSquare className="size-3.5" />}
-              {m.label === "BOOKMARKS" && <Bookmark className="size-3.5" />}
-              {m.label === "SHARES" && <Share2 className="size-3.5" />}
-              {m.label === "CLICKS" && <MousePointerClick className="size-3.5" />}
-              {m.label === "ENGAGEMENT" && <TrendingUp className="size-3.5" />}
-              {m.label === "INTERACTIONS" && <BarChart3 className="size-3.5" />}
-              {m.label}
-            </div>
-            <div className="text-2xl font-bold text-zinc-900 mt-1">{m.value}</div>
-            <div className={`text-[11px] ${m.textColor}`}>{m.sub}</div>
-          </div>
+          <MetricCard key={i} spec={m} />
         ))}
       </div>
 
@@ -754,65 +897,50 @@ function PerAccountView({ accountId }: { accountId: string }) {
           </h3>
           <TimeFilter value={period} onChange={setPeriod} />
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-          {/* Followers */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <p className="text-[12px] text-zinc-500 mb-1">Followers</p>
-            <MiniTrend data={data.trends.followers} color="#3b82f6" />
+            <MiniTrend data={data.trends.followers.data} color={data.trends.followers.color} collecting={data.trends.followers.collecting} />
             <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
-              {dates.map(d => <span key={d}>{d}</span>)}
+              {dates.map((d, i) => <span key={i}>{d}</span>)}
             </div>
           </div>
-          {/* Views */}
           <div>
             <div className="flex items-center justify-between mb-1">
               <p className="text-[12px] text-zinc-500">Views</p>
-              {data.trends.viewsChange && (
-                <span className="text-[11px] text-rose-600 font-medium">{data.trends.viewsChange}</span>
-              )}
+              {data.trends.views.change && <span className="text-[11px] text-rose-600 font-medium">{data.trends.views.change}</span>}
             </div>
-            <MiniTrend data={data.trends.views} color="#a855f7" yMax={400} />
+            <MiniTrend data={data.trends.views.data} color={data.trends.views.color} collecting={data.trends.views.collecting} />
             <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
-              {dates.map(d => <span key={d}>{d}</span>)}
+              {dates.map((d, i) => <span key={i}>{d}</span>)}
             </div>
           </div>
-          {/* Engagement Rate */}
           <div>
             <div className="flex items-center justify-between mb-1">
               <p className="text-[12px] text-zinc-500">Engagement Rate</p>
-              {data.trends.engagementChange && (
-                <span className="text-[11px] text-rose-600 font-medium">{data.trends.engagementChange}</span>
-              )}
+              {data.trends.engagement.change && <span className="text-[11px] text-rose-600 font-medium">{data.trends.engagement.change}</span>}
             </div>
-            <MiniTrend data={data.trends.engagement} color="#f97316" yMax={8} />
+            <MiniTrend data={data.trends.engagement.data} color={data.trends.engagement.color} collecting={data.trends.engagement.collecting} />
             <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
-              {dates.map(d => <span key={d}>{d}</span>)}
+              {dates.map((d, i) => <span key={i}>{d}</span>)}
             </div>
           </div>
-          {/* Interactions */}
           <div>
             <div className="flex items-center justify-between mb-1">
               <p className="text-[12px] text-zinc-500">Interactions</p>
-              {data.trends.interactionsChange && (
-                <span className="text-[11px] text-rose-600 font-medium">{data.trends.interactionsChange}</span>
-              )}
+              {data.trends.interactions.change && <span className="text-[11px] text-rose-600 font-medium">{data.trends.interactions.change}</span>}
             </div>
-            <MiniTrend data={data.trends.interactions} color="#10b981" />
+            <MiniTrend data={data.trends.interactions.data} color={data.trends.interactions.color} collecting={data.trends.interactions.collecting} />
             <div className="flex items-center justify-center gap-3 mt-1 text-[10px]">
               <span className="text-orange-600">← Comments</span>
               <span className="text-rose-600">← Likes</span>
               <span className="text-emerald-600">← Shares</span>
             </div>
           </div>
-          {/* Best Times */}
-          <div>
-            <p className="text-[12px] text-zinc-500 mb-2">Best Times</p>
-            <BestTimesHeatmap data={data.trends.bestTimes} />
-          </div>
         </div>
       </div>
 
-      {/* ===== POST/VIDEO PERFORMANCE TABLE ===== */}
+      {/* ===== PERFORMANCE TABLE ===== */}
       <div className="rounded-xl border border-zinc-200/70 bg-white overflow-hidden">
         <div className="px-4 py-3 border-b border-zinc-100 flex items-center justify-between">
           <h3 className="text-base font-semibold text-zinc-900">{data.table.title}</h3>
@@ -846,21 +974,16 @@ function PerAccountView({ accountId }: { accountId: string }) {
                   <td className="px-3 py-2 text-[12px] text-zinc-500 whitespace-nowrap">{row.col2}</td>
                   {row.values.map((v, vi) => (
                     <td key={vi} className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
-                      {row.engRate && vi === row.values.length - (data.table.columns.length - 4) ? (
-                        <span className="text-orange-600 font-medium">{row.engRate}</span>
+                      {vi === row.values.length - 1 && data.table.columns.includes("Eng. Rate") ? (
+                        <span className="text-orange-600 font-medium">{v}</span>
                       ) : (
                         v
                       )}
                     </td>
                   ))}
-                  {row.engRate && data.table.columns.includes("Eng. Rate") && (
-                    <td className="px-3 py-2 text-right text-orange-600 font-medium tabular-nums whitespace-nowrap">
-                      {row.engRate}
-                    </td>
-                  )}
                   <td className="px-3 py-2 text-right">
-                    <button type="button" className="text-zinc-400 hover:text-zinc-700">
-                      <ChevronRight className="size-4" />
+                    <button type="button" className="text-zinc-400 hover:text-zinc-700" aria-label="Row actions">
+                      <MoreHorizontal className="size-4" />
                     </button>
                   </td>
                 </tr>
@@ -868,22 +991,17 @@ function PerAccountView({ accountId }: { accountId: string }) {
             </tbody>
           </table>
         </div>
-        <div className="h-1.5 bg-zinc-100">
-          <div className="h-full bg-zinc-300" style={{ width: "40%" }} />
-        </div>
       </div>
     </div>
   );
 }
 
 // ============================================================
-// Overview (All) view — keeps existing layout
+// Page header
 // ============================================================
-function OverviewView() {
-
+function PageHeader({ currentId, onSelect }: { currentId: string; onSelect: (id: string) => void }) {
   return (
-    <div className="px-6 py-6 space-y-4">
-      {/* ===== HEADER ===== */}
+    <>
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <h1 className="text-[30px] font-bold leading-[36px] text-zinc-900">Analytics</h1>
@@ -896,179 +1014,30 @@ function OverviewView() {
           </button>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <OverviewDropdown />
-          <div className="flex items-center -space-x-2">
-            {ACCOUNTS.slice(0, 8).map((a, i) => (
-              <div
-                key={i}
-                className="size-9 sm:size-11 rounded-full ring-2 ring-white flex items-center justify-center text-sm font-semibold text-white overflow-hidden"
-                style={{ background: a.platform === "instagram" ? "linear-gradient(135deg, #feda75 0%, #fa7e1e 25%, #d62976 50%, #962fbf 75%, #4f5bd5 100%)" : "#a1a1aa" }}
-              >
-                {a.initials ?? a.name[0]?.toUpperCase()}
-              </div>
-            ))}
-          </div>
+          <OverviewDropdown currentId={currentId} />
+          <AvatarRow currentId={currentId} onSelect={onSelect} />
         </div>
       </div>
       <p className="text-sm text-zinc-500 -mt-3">Track your social media performance and insights</p>
-
-      {/* ===== KPI CARDS ===== */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard label="Total Followers" value={20} icon={<Users className="size-4 text-blue-600" />} sparkData={[0, 0, 5, 12, 18, 20, 20]} color="#3b82f6" />
-        <KpiCard label="Views" value={134} icon={<Eye className="size-4 text-violet-600" />} sparkData={[134, 110, 95, 60, 30, 15, 5]} color="#8b5cf6" />
-        <KpiCard label="Engagement" value={7} icon={<ThumbsUp className="size-4 text-emerald-600" />} sparkData={[7, 5, 4, 3, 2, 1.5, 1]} color="#10b981" />
-        <KpiCard label="Avg Eng. Rate" value="5.22%" icon={<BarChart3 className="size-4 text-orange-500" />} sparkData={[5.22, 5.0, 4.7, 4.3, 4.1, 3.9, 4.5]} color="#f97316" />
-      </div>
-
-      {/* ===== 2-COL: ACCOUNT TABLE + CHARTS ===== */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_487px] gap-4">
-        <div className="rounded-xl border border-zinc-200/70 bg-white overflow-hidden">
-          <div className="grid grid-cols-[1fr_85px_63px_53px_84px_32px] text-[12px] font-medium text-zinc-500 border-b border-zinc-100">
-            <div className="px-4 py-2.5">Account</div>
-            <div className="px-3 py-2.5 text-right">Followers</div>
-            <div className="px-3 py-2.5 text-right">Views</div>
-            <div className="px-3 py-2.5 text-right">Eng.</div>
-            <div className="px-3 py-2.5 text-right">Eng. Rate</div>
-            <div className="px-1 py-2.5"></div>
-          </div>
-          <div className="divide-y divide-zinc-100">
-            {ACCOUNTS.map((a, i) => (
-              <div
-                key={i}
-                className="grid grid-cols-[1fr_85px_63px_53px_84px_32px] items-center text-sm hover:bg-zinc-50/50"
-              >
-                <div className="px-4 py-2 flex items-center gap-2.5 min-w-0">
-                  <AccountAvatar account={a} />
-                  <div className="min-w-0">
-                    <p className="font-semibold text-zinc-900 truncate text-[13px]">{a.name}</p>
-                    <p className="text-[11px] text-zinc-400">Synced {a.syncedAgo}</p>
-                  </div>
-                </div>
-                <div className="px-3 py-2 text-right text-zinc-700 tabular-nums">{a.followers ?? 0}</div>
-                <div className="px-3 py-2 text-right text-zinc-700 tabular-nums">{a.totalViews ?? a.posts ?? 0}</div>
-                <div className="px-3 py-2 text-right text-zinc-700 tabular-nums">{a.totalLikes ?? 0}</div>
-                <div className="px-3 py-2 text-right text-zinc-700 tabular-nums">–</div>
-                <div className="px-1 py-2 text-zinc-300">
-                  <ChevronRight className="size-4" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div className="rounded-xl border border-zinc-200/70 bg-white p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-zinc-900">Total Followers</h3>
-              <span className="text-[11px] text-zinc-400">0 (0%)</span>
-            </div>
-            <LineChart
-              series={[{ label: "Followers", color: "#3b82f6", data: [0, 0, 5, 12, 18, 20, 20] }]}
-              dates={["Jun 23", "Jun 24", "Jun 25", "Jun 26", "Jun 27"]}
-              yMax={25}
-            />
-          </div>
-          <div className="rounded-xl border border-zinc-200/70 bg-white p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-zinc-900">Daily Views &amp; Engagement</h3>
-              <span className="text-[11px] text-zinc-400">538 total</span>
-            </div>
-            <LineChart
-              series={[
-                { label: "Views", color: "#8b5cf6", data: [397, 60, 14, 50, 17] },
-                { label: "Engagement", color: "#10b981", data: [22, 6, 0, 1, 6] },
-              ]}
-              dates={["Jun 23", "Jun 24", "Jun 25", "Jun 26", "Jun 27"]}
-              yMax={420}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* ===== BOTTOM: PLATFORM BARS + TOP POSTS ===== */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_487px] gap-4">
-        <div className="rounded-xl border border-zinc-200/70 bg-white p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-zinc-900">Views by Platform</h3>
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium">
-              TikTok drove 85% of views
-            </span>
-          </div>
-          <div className="space-y-2">
-            {[
-              { name: "TikTok", value: 85, color: "#2dd4bf" },
-              { name: "Facebook", value: 8, color: "#3b82f6" },
-              { name: "Threads", value: 5, color: "#000000" },
-              { name: "X", value: 2, color: "#000000" },
-            ].map(b => (
-              <div key={b.name} className="flex items-center gap-2 text-[11px]" style={{ width: "100%" }}>
-                <span className="w-14 text-zinc-700 font-medium">{b.name}</span>
-                <div className="flex-1 h-3 bg-zinc-100 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${b.value}%`, backgroundColor: b.color }} />
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center justify-between mt-2 text-[10px] text-zinc-400 px-16">
-            <span>0</span><span>30</span><span>60</span><span>90</span><span>120</span>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-zinc-200/70 bg-white overflow-hidden">
-          <div className="grid grid-cols-[1fr_60px_60px_60px] text-[12px] font-medium text-zinc-500 border-b border-zinc-100 bg-zinc-50/40">
-            <div className="px-4 py-2.5">Top Posts</div>
-            <div className="px-3 py-2.5 text-right">Views</div>
-            <div className="px-3 py-2.5 text-right">Likes</div>
-            <div className="px-3 py-2.5 text-right">Eng. Rate</div>
-          </div>
-          <div className="divide-y divide-zinc-100 max-h-[420px] overflow-y-auto">
-            {[
-              { id: 1, title: "POV: you bought a tennis ball for fitness. Your cat filed a…", date: "Jun 23, 2026", views: 459, likes: 32, engRate: "6.97%" },
-              { id: 2, title: "The Joy of Cat Playtime: Understanding Feline Behavior Cat p…", date: "May 20, 2026", views: 658, likes: 6, engRate: "1.06%" },
-              { id: 3, title: "The Joy of Cat Playtime Cat playtime is essential for their…", date: "May 20, 2026", views: 371, likes: 7, engRate: "1.89%" },
-              { id: 4, title: "Cat Playing with Toy Observe the agility of this black cat…", date: "May 21, 2026", views: 8, likes: 0, engRate: "0%" },
-              { id: 5, title: "ctts", date: "May 20, 2026", views: 9, likes: 0, engRate: "0%" },
-              { id: 6, title: "The Joy of Cat Playtime: Understanding Feline Behavior Cat…", date: "May 20, 2026", views: 11, likes: 0, engRate: "0%" },
-              { id: 7, title: "The Joy of Cat Playtime Cat playtime is essential for their…", date: "May 20, 2026", views: 14, likes: 0, engRate: "0%" },
-              { id: 8, title: "A tennis ball entered the kitchen. The tiny panther chose vi…", date: "Jun 23, 2026", views: 4, likes: 0, engRate: "0%" },
-              { id: 9, title: "Black Cat Chasing Monarch Butterfly in Garden Observe the p…", date: "May 19, 2026", views: 11, likes: 1, engRate: "9.09%" },
-              { id: 10, title: "caty (2)", date: "May 19, 2026", views: 11, likes: 0, engRate: "0%" },
-            ].map(p => (
-              <div key={p.id} className="grid grid-cols-[1fr_60px_60px_60px] items-center text-sm hover:bg-zinc-50/50 cursor-pointer">
-                <div className="px-4 py-2 flex items-start gap-2.5 min-w-0">
-                  <span className="text-[11px] text-zinc-400 font-semibold tabular-nums mt-0.5 w-4 shrink-0">{p.id}</span>
-                  <div className="min-w-0">
-                    <p className="font-medium text-zinc-900 line-clamp-1 text-[13px]">{p.title}</p>
-                    <p className="text-[11px] text-zinc-400">{p.date}</p>
-                  </div>
-                </div>
-                <div className="px-3 py-2 text-right text-zinc-700 tabular-nums">{p.views}</div>
-                <div className="px-3 py-2 text-right text-zinc-700 tabular-nums">{p.likes}</div>
-                <div className="px-3 py-2 text-right text-zinc-700 tabular-nums">{p.engRate}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
+    </>
   );
 }
 
-function KpiCard({
-  label, value, icon, sparkData, color,
-}: {
-  label: string; value: string | number; icon: React.ReactNode; sparkData: number[]; color: string;
-}) {
+// ============================================================
+// Overview (All) view
+// ============================================================
+function OverviewView() {
+  const router = useRouter();
+  const pathname = usePathname();
   return (
-    <div className="rounded-xl border border-zinc-200/70 bg-white px-4 py-3 flex items-center gap-3">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 mb-0.5">
-          {icon}
-          <p className="text-[12px] font-medium text-zinc-500">{label}</p>
-        </div>
-        <p className="text-2xl font-bold text-zinc-900 leading-tight">{value}</p>
+    <div className="px-6 py-6 space-y-4">
+      <PageHeader
+        currentId=""
+        onSelect={(id) => router.push(`${pathname}?accountId=${id}`)}
+      />
+      <div className="rounded-xl border border-zinc-200/70 bg-white p-6 text-center text-zinc-500 text-sm">
+        Switch to a specific account using the avatar row above to view per-platform analytics.
       </div>
-      <Sparkline data={sparkData} color={color} width={80} height={36} />
     </div>
   );
 }
