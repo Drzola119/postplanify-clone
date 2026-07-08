@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   Users, Eye, BarChart3, ChevronDown, ChevronRight, Calendar, RefreshCw,
@@ -46,8 +46,9 @@ interface AccountSummary {
 
 // ============================================================
 // Accounts (9 connected — 8 unique platforms, 2 Bluesky)
+// Fallback mock data used when API fails or user is unauthenticated
 // ============================================================
-const ACCOUNTS: AccountSummary[] = [
+const MOCK_ACCOUNTS: AccountSummary[] = [
   { id: "yt-zakaria", name: "Zakaria 11", handle: "@zakaria_119", platform: "youtube", initials: "Z",
     subscribers: 1, videos: 6, totalViews: 9, syncedAgo: "47m ago" },
   { id: "pin-nick", name: "nicklorance7", handle: "pinterest.com/nicklorance7", platform: "pinterest", initials: "N",
@@ -71,6 +72,49 @@ const ACCOUNTS: AccountSummary[] = [
     avatar: "https://cdn.bsky.app/img/avatar/plain/did:plc:rxzikv2qahzbwx7kggut2fiq/bafkreibbjbshetcjzi6cionfd3f62wzbhtmad7raj43h3pd3753vothaxy",
     followers: 17, following: 33, posts: 26, syncedAgo: "41m ago" },
 ];
+
+// Map upload-post.com platform key → our Platform type
+function toPlatform(key: string): Platform {
+  switch (key) {
+    case "tiktok": return "tiktok";
+    case "facebook": return "facebook";
+    case "x": return "twitter";
+    case "bluesky": return "bluesky";
+    case "instagram": return "instagram";
+    case "youtube": return "youtube";
+    case "threads": return "threads";
+    case "pinterest": return "pinterest";
+    case "linkedin": return "linkedin";
+    default: return "bluesky";
+  }
+}
+
+// Convert upload-post.com ConnectedAccountDTO → AccountSummary
+function adaptAccount(a: {
+  id: string;
+  profileUsername: string;
+  platform: string;
+  handle: string;
+  displayName: string | null;
+  img: string | null;
+  reauthRequired: boolean;
+}): AccountSummary {
+  const platform = toPlatform(a.platform);
+  return {
+    id: a.id,
+    name: a.displayName || a.handle,
+    handle: a.handle.startsWith("@") ? a.handle : `@${a.handle}`,
+    platform,
+    initials: (a.displayName || a.handle)[0]?.toUpperCase() || "?",
+    avatar: a.img || undefined,
+    isError: platform === "linkedin" && a.reauthRequired,
+    errorMessage: platform === "linkedin" && a.reauthRequired
+      ? "LinkedIn analytics are not available for this account. Please reconnect with the required permissions."
+      : undefined,
+    syncedAgo: "just now",
+    contentTypes: platform === "threads" ? { images: 100, videos: 0, text: 0, imageViews: 1 } : undefined,
+  };
+}
 
 // Per-platform accent for header card border-l-4
 const PLATFORM_ACCENT: Record<Platform, { color: string; leftClass: string }> = {
@@ -354,7 +398,7 @@ function AccountAvatar({ account, size = 32 }: { account: AccountSummary; size?:
 // ============================================================
 // Overview dropdown
 // ============================================================
-function OverviewDropdown({ currentId }: { currentId?: string }) {
+function OverviewDropdown({ currentId, accounts }: { currentId?: string; accounts: AccountSummary[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -387,7 +431,7 @@ function OverviewDropdown({ currentId }: { currentId?: string }) {
               <p className="text-xs text-zinc-500 mb-0.5">All accounts</p>
               <p className="text-sm font-semibold text-zinc-900">Overview (All)</p>
             </button>
-            {ACCOUNTS.map((a) => (
+            {accounts.map((a) => (
               <button
                 key={a.id}
                 type="button"
@@ -444,10 +488,10 @@ function TimezoneDropdown() {
 // ============================================================
 // Avatar row (click switches account)
 // ============================================================
-function AvatarRow({ currentId, onSelect }: { currentId: string; onSelect: (id: string) => void }) {
+function AvatarRow({ currentId, onSelect, accounts }: { currentId: string; onSelect: (id: string) => void; accounts: AccountSummary[] }) {
   return (
     <div className="flex items-center -space-x-2">
-      {ACCOUNTS.map((a) => {
+      {accounts.map((a) => {
         const isActive = currentId === a.id;
         return (
           <button
@@ -788,11 +832,11 @@ const PLATFORM_ANALYTICS: Record<Platform, PlatformAnalyticsConfig> = {
 // ============================================================
 // Per-account view
 // ============================================================
-function PerAccountView({ accountId }: { accountId: string }) {
+function PerAccountView({ accountId, accounts }: { accountId: string; accounts: AccountSummary[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const [period, setPeriod] = useState<Period>("7d");
-  const account = ACCOUNTS.find(a => a.id === accountId);
+  const account = accounts.find(a => a.id === accountId);
 
   if (!account) {
     return (
@@ -812,6 +856,7 @@ function PerAccountView({ accountId }: { accountId: string }) {
         <PageHeader
           currentId={accountId}
           onSelect={(id) => router.push(`${pathname}?accountId=${id}`)}
+          accounts={accounts}
         />
         <AnalyticsErrorState message={account.errorMessage || "Analytics are not available for this account."} />
       </div>
@@ -823,6 +868,7 @@ function PerAccountView({ accountId }: { accountId: string }) {
       <PageHeader
         currentId={accountId}
         onSelect={(id) => router.push(`${pathname}?accountId=${id}`)}
+        accounts={accounts}
       />
 
       {/* ===== ACCOUNT HEADER CARD ===== */}
@@ -999,7 +1045,7 @@ function PerAccountView({ accountId }: { accountId: string }) {
 // ============================================================
 // Page header
 // ============================================================
-function PageHeader({ currentId, onSelect }: { currentId: string; onSelect: (id: string) => void }) {
+function PageHeader({ currentId, onSelect, accounts }: { currentId: string; onSelect: (id: string) => void; accounts: AccountSummary[] }) {
   return (
     <>
       <div className="flex flex-wrap items-start gap-3">
@@ -1014,8 +1060,8 @@ function PageHeader({ currentId, onSelect }: { currentId: string; onSelect: (id:
           </button>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <OverviewDropdown currentId={currentId} />
-          <AvatarRow currentId={currentId} onSelect={onSelect} />
+          <OverviewDropdown currentId={currentId} accounts={accounts} />
+          <AvatarRow currentId={currentId} onSelect={onSelect} accounts={accounts} />
         </div>
       </div>
       <p className="text-sm text-zinc-500 -mt-3">Track your social media performance and insights</p>
@@ -1026,7 +1072,7 @@ function PageHeader({ currentId, onSelect }: { currentId: string; onSelect: (id:
 // ============================================================
 // Overview (All) view
 // ============================================================
-function OverviewView() {
+function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
   const router = useRouter();
   const pathname = usePathname();
   return (
@@ -1034,6 +1080,7 @@ function OverviewView() {
       <PageHeader
         currentId=""
         onSelect={(id) => router.push(`${pathname}?accountId=${id}`)}
+        accounts={accounts}
       />
       <div className="rounded-xl border border-zinc-200/70 bg-white p-6 text-center text-zinc-500 text-sm">
         Switch to a specific account using the avatar row above to view per-platform analytics.
@@ -1048,7 +1095,26 @@ function OverviewView() {
 function AnalyticsPageInner() {
   const searchParams = useSearchParams();
   const accountId = searchParams.get("accountId") ?? undefined;
-  return accountId ? <PerAccountView accountId={accountId} /> : <OverviewView />;
+  const [accounts, setAccounts] = useState<AccountSummary[]>(MOCK_ACCOUNTS);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/social-accounts/list", { cache: "no-store" });
+        if (!res.ok) return;
+        const data: { ok: boolean; accounts?: Parameters<typeof adaptAccount>[0][] } = await res.json();
+        if (cancelled || !data?.ok || !data.accounts) return;
+        const adapted = data.accounts.map(adaptAccount);
+        if (adapted.length > 0) setAccounts(adapted);
+      } catch {
+        // API unavailable (e.g. unauthenticated or network error) — keep MOCK_ACCOUNTS
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  return accountId ? <PerAccountView accountId={accountId} accounts={accounts} /> : <OverviewView accounts={accounts} />;
 }
 
 export default function AnalyticsPage() {
