@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Eye,
   Check,
@@ -73,6 +73,27 @@ const MAX_FILES = 10;
 
 export default function CreatePostPage() {
   const { toast, dismiss } = useToast();
+
+  // Detect ?draft=<id> from /dashboard/posts/drafts → Continue button.
+  // In a future iteration this is where we'd fetch the draft payload from
+  // an API and pre-fill mediaItems / per-platform captions. For now we just
+  // acknowledge the navigation so the user knows their draft was opened.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const draftId = params.get("draft");
+    if (draftId) {
+      const t = setTimeout(() => {
+        toast({ title: `Draft loaded (${draftId})`, tone: "info" });
+      }, 250);
+      // Strip ?draft= from the URL so a refresh doesn't re-fire the toast.
+      params.delete("draft");
+      const next = params.toString();
+      const clean = window.location.pathname + (next ? `?${next}` : "");
+      window.history.replaceState({}, "", clean);
+      return () => clearTimeout(t);
+    }
+  }, [toast]);
 
   // Account selection (default: ALL platforms — matches production postplanify.com where every platform is selected on first visit).
   const [selected, setSelected] = useState<Set<PlatformId>>(

@@ -6,9 +6,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
-// Llama 3.2 vision for image analysis; 3.1 70b for text-only caption generation.
-const VISION_MODEL = "llama-3.2-90b-vision-preview";
-const TEXT_MODEL = "llama-3.1-70b-versatile";
+// Llama 4 Scout (vision) and Llama 3.3 70B (text) — current Groq models as of July 2026.
+// Earlier `llama-3.1-70b-versatile` was shut down on 2025-01-24; `llama-3.2-90b-vision-preview` is also being deprecated.
+const VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+const TEXT_MODEL = "llama-3.3-70b-versatile";
 
 const MAX_PROMPT_LEN = 1200;
 const MAX_EXTRA_LEN = 400;

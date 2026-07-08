@@ -1,12 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   Trash2,
   Loader2,
   CheckCircle2,
   Info,
+  X,
+  AlertTriangle,
+  Inbox,
 } from "lucide-react";
 
 type Platform =
@@ -31,6 +35,7 @@ interface Draft {
   mediaType: "image" | "video" | "none";
   mediaColor?: string;
   mediaInitial?: string;
+  mediaThumb?: string;
   caption: string;
   accounts: DraftAccount[];
   createdDate: string;
@@ -163,6 +168,9 @@ export default function DraftsPage() {
   const [drafts, setDrafts] = useState<Draft[]>([SAMPLE_DRAFT]);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [confirmDelete, setConfirmDelete] = useState<Draft | null>(null);
+
+  const router = useRouter();
 
   const showToast = (message: string, type: Toast["type"] = "success") => {
     const id = Date.now();
@@ -174,16 +182,20 @@ export default function DraftsPage() {
 
   const handleContinue = (draft: Draft) => {
     setLoadingId(draft.id);
-    showToast("Loading draft...", "info");
-    setTimeout(() => {
-      setLoadingId(null);
-      showToast("Draft editor would open here", "info");
-    }, 1500);
+    // Navigate to Create Post with the draft id so the editor can pre-fill
+    router.push(`/dashboard/posts/create?draft=${encodeURIComponent(draft.id)}`);
   };
 
-  const handleDelete = (draft: Draft) => {
-    setDrafts((prev) => prev.filter((d) => d.id !== draft.id));
+  const requestDelete = (draft: Draft) => {
+    setConfirmDelete(draft);
+  };
+
+  const confirmAndDelete = () => {
+    if (!confirmDelete) return;
+    const id = confirmDelete.id;
+    setDrafts((prev) => prev.filter((d) => d.id !== id));
     showToast("Draft deleted", "success");
+    setConfirmDelete(null);
   };
 
   return (
@@ -238,11 +250,20 @@ export default function DraftsPage() {
                   className="border-b border-zinc-100 last:border-b-0"
                 >
                   <td className="px-6 py-2 align-middle">
-                    <div
-                      className={`size-24 rounded-md ${draft.mediaColor ?? "bg-zinc-900"} flex items-center justify-center text-white text-xs font-medium`}
-                    >
-                      {draft.mediaInitial ?? ""}
-                    </div>
+                    {draft.mediaThumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={draft.mediaThumb}
+                        alt=""
+                        className="size-24 rounded-md object-cover border border-zinc-200"
+                      />
+                    ) : (
+                      <div
+                        className={`size-24 rounded-md ${draft.mediaColor ?? "bg-zinc-900"} flex items-center justify-center text-white text-xs font-medium`}
+                      >
+                        {draft.mediaInitial ?? ""}
+                      </div>
+                    )}
                   </td>
                   <td className="px-3 py-2 align-middle">
                     <p className="text-sm text-zinc-700 line-clamp-3 leading-relaxed">
@@ -291,7 +312,7 @@ export default function DraftsPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleDelete(draft)}
+                        onClick={() => requestDelete(draft)}
                         disabled={loadingId === draft.id}
                         className="inline-flex items-center justify-center gap-1.5 h-8 px-4 rounded-md bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium whitespace-nowrap transition-colors"
                       >
@@ -307,8 +328,74 @@ export default function DraftsPage() {
         </div>
       )}
 
+      {/* Delete confirmation modal */}
+      {confirmDelete ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in-0 duration-200"
+            onClick={() => setConfirmDelete(null)}
+            aria-hidden
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="relative w-full max-w-md rounded-xl bg-white shadow-2xl animate-in fade-in-0 zoom-in-95 duration-200"
+          >
+            <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-zinc-200">
+              <div className="flex items-center gap-2.5">
+                <span className="inline-flex items-center justify-center size-9 rounded-full bg-red-50">
+                  <AlertTriangle className="size-4.5 text-red-600" />
+                </span>
+                <div>
+                  <h2 className="text-base font-semibold text-zinc-900">Delete draft?</h2>
+                  <p className="text-xs text-zinc-500 mt-0.5">This cannot be undone.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(null)}
+                className="size-7 inline-flex items-center justify-center rounded-md hover:bg-zinc-100 text-zinc-500"
+                aria-label="Close"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="p-5">
+              <p className="text-sm text-zinc-700">
+                Are you sure you want to delete this draft?
+                {confirmDelete.caption ? (
+                  <>
+                    {" "}
+                    <span className="text-zinc-500">
+                      “{confirmDelete.caption.slice(0, 60)}{confirmDelete.caption.length > 60 ? "…" : ""}”
+                    </span>
+                  </>
+                ) : null}
+              </p>
+            </div>
+            <div className="px-5 py-3 border-t border-zinc-200 flex items-center justify-end gap-2 bg-zinc-50 rounded-b-xl">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(null)}
+                className="inline-flex items-center justify-center rounded-md border border-zinc-200 bg-white px-4 h-9 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmAndDelete}
+                className="inline-flex items-center justify-center gap-1.5 rounded-md bg-red-500 hover:bg-red-600 px-4 h-9 text-sm font-medium text-white"
+              >
+                <Trash2 className="size-3.5" />
+                Delete draft
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* Toast container */}
-      <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+      <div className="fixed top-4 right-4 z-[90] flex flex-col gap-2 pointer-events-none">
         {toasts.map((toast) => (
           <div
             key={toast.id}
@@ -331,7 +418,7 @@ function EmptyDrafts() {
   return (
     <div className="rounded-xl border border-zinc-200 bg-white py-20 flex flex-col items-center justify-center">
       <div className="size-12 rounded-full bg-zinc-100 flex items-center justify-center mb-4">
-        <ArrowRight className="size-5 text-zinc-400" />
+        <Inbox className="size-5 text-zinc-400" />
       </div>
       <h3 className="text-sm font-semibold text-zinc-900">No drafts yet</h3>
       <p className="mt-1 text-sm text-zinc-500">
