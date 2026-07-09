@@ -6,8 +6,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
-const VISION_MODEL = "llama-3.2-90b-vision-preview";
-const TEXT_MODEL = "llama-3.1-70b-versatile";
+const VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+const TEXT_MODEL = "llama-3.3-70b-versatile";
 
 const MAX_PROMPT_LEN = 1200;
 const MAX_EXTRA_LEN = 400;
