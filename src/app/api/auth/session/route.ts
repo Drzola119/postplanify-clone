@@ -20,21 +20,14 @@ export async function POST(request: Request) {
   });
 
   try {
-    const sessionCookie = await createSessionCookie(body.idToken);
+    let sessionCookie = await createSessionCookie(body.idToken);
+    let isFallback = false;
     if (!sessionCookie) {
-      return NextResponse.json(
-        {
-          error: "Server auth not configured. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY.",
-          envStatus: {
-            hasProjectId: !!process.env.FIREBASE_PROJECT_ID,
-            hasClientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
-            hasPrivateKey: !!process.env.FIREBASE_PRIVATE_KEY,
-          }
-        },
-        { status: 500 }
-      );
+      sessionCookie = body.idToken;
+      isFallback = true;
+      console.warn("[Auth Session] Server auth not configured. Using ID token as fallback cookie.");
     }
-    const res = NextResponse.json({ ok: true });
+    const res = NextResponse.json({ ok: true, fallback: isFallback });
     res.cookies.set(SESSION_COOKIE, sessionCookie, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

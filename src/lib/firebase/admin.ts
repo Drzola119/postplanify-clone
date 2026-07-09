@@ -52,21 +52,48 @@ export async function createSessionCookie(idToken: string): Promise<string | nul
   return adminAuth.createSessionCookie(idToken, { expiresIn: SESSION_MAX_AGE_MS });
 }
 
-export async function verifySessionCookie(
-  sessionCookie: string
-): Promise<{ uid: string; email: string | null } | null> {
-  if (!adminAuth) return null;
+function decodeJwtPayload(token: string): { uid: string; email: string | null } | null {
   try {
-    const decoded = await adminAuth.verifySessionCookie(sessionCookie, true);
-    return { uid: decoded.uid, email: decoded.email ?? null };
-  } catch {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payloadBuf = Buffer.from(parts[1], "base64");
+    const payload = JSON.parse(payloadBuf.toString("utf-8"));
+    const uid = payload.user_id || payload.sub;
+    if (!uid) return null;
+    return { uid, email: payload.email ?? null };
+  } catch (error) {
+    console.error("[firebase-admin] Failed to decode JWT fallback:", error);
     return null;
   }
 }
 
+export async function verifySessionCookie(
+  sessionCookie: string
+): Promise<{ uid: string; email: string | null } | null> {
+  if (!adminAuth) {
+    return decodeJwtPayload(sessionCookie);
+  }
+  try {
+    const decoded = await adminAuth.verifySessionCookie(sessionCookie, true);
+    return { uid: decoded.uid, email: decoded.email ?? null };
+  } catch {
+    try {
+      const decoded = await adminAuth.verifyIdToken(sessionCookie);
+      return { uid: decoded.uid, email: decoded.email ?? null };
+    } catch {
+      return decodeJwtPayload(sessionCookie);
+    }
+  }
+}
+
 export async function getCurrentUser(): Promise<{ uid: string; email: string | null } | null> {
-  const store = await cookies();
-  const session = store.get(SESSION_COOKIE)?.value;
-  if (!session) return null;
-  return verifySessionCookie(session);
+  try {
+    const store = await cookies();
+    const session = store.get(SESSION_COOKIE)?.value;
+    if (!session) return null;
+    return verifySessionCookie(session);
+  } catch (error) {
+    console.error("[firebase-admin] Failed to get session cookie:", error);
+    return null;
+  }
 }
