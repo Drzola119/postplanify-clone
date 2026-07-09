@@ -19,20 +19,19 @@ export default function SignupPage() {
   const [isPending, startTransition] = useTransition();
 
   async function exchangeSession() {
-    const idToken = await auth.getIdToken();
-    if (!idToken) throw new Error("No ID token");
-    const res = await fetch("/api/auth/session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idToken }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      if (res.status === 500 && data.error?.includes("Server auth not configured")) {
-        console.warn("Server auth not configured. Relying on client-side auth.");
-        return; // Ignore and proceed
+    try {
+      const idToken = await auth.getIdToken();
+      if (!idToken) return;
+      const res = await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      if (!res.ok) {
+        console.warn("Server session not available. Using client-side auth.");
       }
-      throw new Error(data.error || "Failed to create session");
+    } catch {
+      console.warn("Could not reach session API. Using client-side auth.");
     }
   }
 
