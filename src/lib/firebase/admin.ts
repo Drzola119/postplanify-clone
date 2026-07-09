@@ -5,11 +5,20 @@ import { getAuth, type Auth } from "firebase-admin/auth";
 
 const projectId = process.env.FIREBASE_PROJECT_ID;
 const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-const privateKey = process.env.FIREBASE_PRIVATE_KEY
+let privateKey = process.env.FIREBASE_PRIVATE_KEY
   ?.trim()
   ?.replace(/^["']/, "")
-  ?.replace(/["']$/, "")
-  ?.replace(/\\n/g, "\n");
+  ?.replace(/["']$/, "");
+
+if (privateKey) {
+  privateKey = privateKey.replace(/\\n/g, "\n");
+  if (!privateKey.includes("-----BEGIN PRIVATE KEY-----")) {
+    privateKey = `-----BEGIN PRIVATE KEY-----\n${privateKey}`;
+  }
+  if (!privateKey.includes("-----END PRIVATE KEY-----")) {
+    privateKey = `${privateKey}\n-----END PRIVATE KEY-----`;
+  }
+}
 
 function createAdminApp(): App | null {
   if (!projectId || !clientEmail || !privateKey) {
@@ -20,11 +29,16 @@ function createAdminApp(): App | null {
     }
     return null;
   }
-  return getApps().length
-    ? getApps()[0]
-    : initializeApp({
-        credential: cert({ projectId, clientEmail, privateKey }),
-      });
+  try {
+    return getApps().length
+      ? getApps()[0]
+      : initializeApp({
+          credential: cert({ projectId, clientEmail, privateKey }),
+        });
+  } catch (error) {
+    console.error("[firebase-admin] Failed to initialize Firebase Admin SDK:", error);
+    return null;
+  }
 }
 
 const adminApp = createAdminApp();
