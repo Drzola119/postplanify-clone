@@ -512,6 +512,23 @@ export default function CreatePostPage() {
     setCaptions((prev) => ({ ...prev, [sameForAll ? "__all" : id]: v }));
   }
 
+  function handleSameForAllChange(next: boolean) {
+    setCaptions((prev) => {
+      if (next) {
+        const seed = prev.__all ?? prev[selectedPlatforms[0]?.id] ?? "";
+        return { ...prev, __all: seed };
+      }
+      const shared = prev.__all ?? "";
+      const nextState: Record<string, string> = { ...prev };
+      delete nextState.__all;
+      if (shared.length > 0) {
+        for (const p of selectedPlatforms) nextState[p.id] = shared;
+      }
+      return nextState;
+    });
+    setSameForAll(next);
+  }
+
   const hasAnyContent =
     mediaItems.length > 0 ||
     Object.values(captions).some((v) => v.trim().length > 0);
@@ -621,7 +638,7 @@ export default function CreatePostPage() {
         <CaptionsCard
           platforms={selectedPlatforms}
           sameForAll={sameForAll}
-          onSameForAllChange={setSameForAll}
+          onSameForAllChange={handleSameForAllChange}
           getCaption={captionFor}
           setCaption={setCaptionFor}
           onGenerate={() => setAiDialogOpen(true)}
