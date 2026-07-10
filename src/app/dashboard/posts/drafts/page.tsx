@@ -298,7 +298,9 @@ export default function DraftsPage() {
                   Created
                 </th>
                 <th className="text-left px-6 py-2.5 text-sm font-medium text-zinc-500">
-                  Actions
+                  <span className="inline-flex items-center gap-1.5">
+                    Actions
+                  </span>
                 </th>
               </tr>
             </thead>
