@@ -405,7 +405,30 @@ export default function CreatePostPage() {
       toast({ title: "Pick at least one account", tone: "warning" });
       return;
     }
-    const imageUrl = active.kind === "image" ? active.cdnUrl || active.url : null;
+
+    let imageUrl: string | null = null;
+    if (active.kind === "image") {
+      const rawUrl = active.cdnUrl || active.url;
+      if (rawUrl.startsWith("blob:")) {
+        // Convert blob URL to base64 data URI so Groq can read it
+        try {
+          const response = await fetch(rawUrl);
+          const blob = await response.blob();
+          imageUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        } catch {
+          toast({ title: "Could not read image for AI analysis", tone: "error" });
+          return;
+        }
+      } else {
+        imageUrl = rawUrl;
+      }
+    }
+
     const videoTitle =
       active.kind === "video"
         ? active.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim()

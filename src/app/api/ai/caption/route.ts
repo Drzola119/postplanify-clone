@@ -112,7 +112,8 @@ export async function POST(request: Request) {
   const includeHashtags = !!body.includeHashtags;
   const useEmojis = !!body.useEmojis;
   const extra = clip(body.extra, MAX_EXTRA_LEN);
-  const imageUrl = clip(body.imageUrl, 1024);
+  // Base64 data URIs can be very large — don't clip them.
+  const imageUrl = body.imageUrl?.startsWith("data:") ? body.imageUrl : clip(body.imageUrl, 1024);
   const videoTitle = clip(body.videoTitle, 200);
   const platforms = Array.isArray(body.platforms)
     ? body.platforms
