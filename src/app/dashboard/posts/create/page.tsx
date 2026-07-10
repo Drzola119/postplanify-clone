@@ -27,6 +27,7 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { PLATFORMS, type PlatformId } from "@/lib/platforms";
+import { loadDraft, saveDraft, newDraftId, type DraftRecord } from "@/lib/drafts";
 import { StepCircle } from "@/components/dashboard/step-circle";
 import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
 import { AccountPreviewCard } from "@/components/dashboard/account-preview-card";
@@ -75,24 +76,64 @@ export default function CreatePostPage() {
   const { toast, dismiss } = useToast();
 
   // Detect ?draft=<id> from /dashboard/posts/drafts → Continue button.
-  // In a future iteration this is where we'd fetch the draft payload from
-  // an API and pre-fill mediaItems / per-platform captions. For now we just
-  // acknowledge the navigation so the user knows their draft was opened.
+  // Restore the full draft state (media metadata, per-platform captions, accounts,
+  // collaborators, hashtags, etc.) so the user picks up where they left off.
+  const [draftId, setDraftId] = useState<string | null>(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    const draftId = params.get("draft");
-    if (draftId) {
-      const t = setTimeout(() => {
-        toast({ title: `Draft loaded (${draftId})`, tone: "info" });
-      }, 250);
-      // Strip ?draft= from the URL so a refresh doesn't re-fire the toast.
-      params.delete("draft");
-      const next = params.toString();
-      const clean = window.location.pathname + (next ? `?${next}` : "");
-      window.history.replaceState({}, "", clean);
-      return () => clearTimeout(t);
+    const id = params.get("draft");
+    if (!id) return;
+    const record = loadDraft(id);
+    if (record) {
+      setDraftId(id);
+      setCaptions(record.captions ?? {});
+      setSameForAll(Boolean(record.sameForAll));
+      setCommunity(record.community ?? "profile");
+      setQuoteTweet(record.quoteTweet ?? "");
+      setTagUsers(record.tagUsers ?? "");
+      if (record.selected?.length) setSelected(new Set(record.selected));
+      setCollaborators(record.collaborators ?? []);
+      setCustomCoverUrl(record.customCoverUrl ?? null);
+      setFrameCoverUrl(record.frameCoverUrl ?? null);
+      // Restore media items that have remote URLs (cdn/remote). Local object URLs
+      // cannot survive a page reload, so items without one are dropped with a hint.
+      const restoredMedia: MediaItem[] = [];
+      let droppedLocal = 0;
+      (record.mediaItems ?? []).forEach((m, i) => {
+        const remote = m.cdnUrl ?? m.remoteUrl;
+        if (!remote) { droppedLocal++; return; }
+        restoredMedia.push({
+          id: m.localId ?? `restored-${i}-${Date.now()}`,
+          url: remote,
+          cdnUrl: m.cdnUrl,
+          name: m.name ?? "restored",
+          size: 0,
+          width: 0,
+          height: 0,
+          kind: m.kind,
+          uploadStatus: "ready",
+        });
+      });
+      if (restoredMedia.length > 0) {
+        setMediaItems(restoredMedia);
+        setActiveMedia(Math.min(record.activeMedia ?? 0, restoredMedia.length - 1));
+      }
+      toast({
+        title: "Draft restored",
+        description: droppedLocal > 0
+          ? `${droppedLocal} local-only file${droppedLocal === 1 ? "" : "s"} dropped (re-upload to include)`
+          : "All fields loaded",
+        tone: "info",
+      });
+    } else {
+      toast({ title: `Draft not found (${id})`, tone: "error" });
     }
+    // Strip ?draft= from the URL so a refresh doesn't re-fire the restore.
+    params.delete("draft");
+    const next = params.toString();
+    const clean = window.location.pathname + (next ? `?${next}` : "");
+    window.history.replaceState({}, "", clean);
   }, [toast]);
 
   // Account selection (default: ALL platforms — matches production postplanify.com where every platform is selected on first visit).
@@ -189,7 +230,46 @@ export default function CreatePostPage() {
     setTagUsers("");
     setQuoteTweet("");
     setCommunity("profile");
+    setDraftId(null);
     toast({ title: "Reset", description: "Composer cleared", tone: "info" });
+  }
+
+  function handleSaveDraft() {
+    const id = draftId ?? newDraftId();
+    const record: DraftRecord = {
+      id,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      captions,
+      sameForAll,
+      community,
+      quoteTweet,
+      tagUsers,
+      selected: Array.from(selected),
+      collaborators,
+      mediaItems: mediaItems.map((m) => ({
+        kind: m.kind,
+        cdnUrl: m.cdnUrl,
+        // cdnUrl present means uploaded and persistable; otherwise it's a local object URL.
+        // We do NOT persist blob/object URLs.
+        remoteUrl: m.cdnUrl ? undefined : undefined,
+        localId: m.id,
+        name: m.name,
+        mime: m.kind === "video" ? "video/*" : "image/*",
+      })),
+      activeMedia,
+      customCoverUrl,
+      frameCoverUrl,
+    };
+    saveDraft(record);
+    setDraftId(id);
+    toast({
+      title: "Draft saved",
+      description: mediaItems.length > 0
+        ? `${mediaItems.length} file${mediaItems.length === 1 ? "" : "s"} • ${selected.size} platform${selected.size === 1 ? "" : "s"}`
+        : `${selected.size} platform${selected.size === 1 ? "" : "s"} • captions preserved`,
+      tone: "success",
+    });
   }
 
   function captionForCurrent(): string {
@@ -660,7 +740,7 @@ export default function CreatePostPage() {
           <button
             type="button"
             disabled={!hasAnyContent}
-            onClick={() => toast({ title: "Saved as draft", tone: "success" })}
+            onClick={handleSaveDraft}
             className="inline-flex items-center justify-center gap-2 rounded-md border border-zinc-200 bg-white px-4 h-9 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Save as Draft

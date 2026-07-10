@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
@@ -12,6 +12,11 @@ import {
   AlertTriangle,
   Inbox,
 } from "lucide-react";
+import {
+  listDrafts,
+  deleteDraft,
+  type DraftRecord,
+} from "@/lib/drafts";
 
 type Platform =
   | "instagram"
@@ -130,8 +135,8 @@ const SAMPLE_ACCOUNTS: DraftAccount[] = [
   { id: "9", handle: "Nick Lorance", platform: "linkedin" },
 ];
 
-const SAMPLE_DRAFT: Draft = {
-  id: "draft-1",
+const DEMO_DRAFT: Draft = {
+  id: "demo-draft",
   mediaType: "image",
   mediaColor: "bg-zinc-900",
   caption:
@@ -140,6 +145,31 @@ const SAMPLE_DRAFT: Draft = {
   createdDate: "Jun 23, 2026",
   createdTime: "16:11",
 };
+
+// Derive a display row from a DraftRecord (the persisted shape) so the same
+// table renders both real saved drafts and the always-visible demo row.
+function recordToRow(r: DraftRecord): Draft {
+  const firstMedia = r.mediaItems?.[0];
+  const caption = Object.values(r.captions ?? {}).reduce<string>(
+    (acc, c) => (c.length > acc.length ? c : acc),
+    "",
+  ) || r.tagUsers || "";
+  const date = new Date(r.updatedAt);
+  return {
+    id: r.id,
+    mediaType: firstMedia?.kind ?? "none",
+    mediaColor: firstMedia ? undefined : "bg-zinc-900",
+    mediaThumb: firstMedia?.cdnUrl ?? firstMedia?.remoteUrl,
+    caption,
+    accounts: (r.selected ?? []).map((p, i) => ({
+      id: `${r.id}-${p}-${i}`,
+      handle: SAMPLE_ACCOUNTS.find((a) => a.platform === (p === "twitter" ? "x" : p))?.handle ?? p,
+      platform: (p === "twitter" ? "x" : p) as Platform,
+    })),
+    createdDate: date.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
+    createdTime: date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }),
+  };
+}
 
 function PlatformBadge({ account }: { account: DraftAccount }) {
   const meta = PLATFORM_META[account.platform];
@@ -165,12 +195,33 @@ interface Toast {
 }
 
 export default function DraftsPage() {
-  const [drafts, setDrafts] = useState<Draft[]>([SAMPLE_DRAFT]);
+  const [drafts, setDrafts] = useState<Draft[]>([]);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<Draft | null>(null);
 
   const router = useRouter();
+
+  // Hydrate from localStorage. Show the demo row only when no real drafts exist,
+  // so the page is never empty on first visit but real saves appear immediately.
+  useEffect(() => {
+    const records = listDrafts();
+    if (records.length > 0) {
+      setDrafts(records.map(recordToRow));
+    } else {
+      setDrafts([DEMO_DRAFT]);
+    }
+  }, []);
+
+  // Refresh when the tab regains focus (e.g. user came back from Create page).
+  useEffect(() => {
+    const handler = () => {
+      const records = listDrafts();
+      if (records.length > 0) setDrafts(records.map(recordToRow));
+    };
+    window.addEventListener("focus", handler);
+    return () => window.removeEventListener("focus", handler);
+  }, []);
 
   const showToast = (message: string, type: Toast["type"] = "success") => {
     const id = Date.now();
@@ -182,7 +233,12 @@ export default function DraftsPage() {
 
   const handleContinue = (draft: Draft) => {
     setLoadingId(draft.id);
-    // Navigate to Create Post with the draft id so the editor can pre-fill
+    if (draft.id === DEMO_DRAFT.id) {
+      // The demo row has no persisted record — show a hint instead of navigating.
+      showToast("Save a draft first to enable Continue", "info");
+      setLoadingId(null);
+      return;
+    }
     router.push(`/dashboard/posts/create?draft=${encodeURIComponent(draft.id)}`);
   };
 
@@ -193,6 +249,9 @@ export default function DraftsPage() {
   const confirmAndDelete = () => {
     if (!confirmDelete) return;
     const id = confirmDelete.id;
+    if (id !== DEMO_DRAFT.id) {
+      deleteDraft(id);
+    }
     setDrafts((prev) => prev.filter((d) => d.id !== id));
     showToast("Draft deleted", "success");
     setConfirmDelete(null);
