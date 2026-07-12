@@ -53,6 +53,9 @@ const nextConfig: NextConfig = {
       // Note: `/_next/image` is handled in middleware.ts because Next.js's
       // built-in handler intercepts rewrites before they can match.
       { source: "/_next/static/chunks/:path*", destination: "/api/chunks/:path*" },
+      // Link in Bio public page: /@username → /username (Next.js App Router
+      // reserves `@` for parallel route slots, so we use a rewrite).
+      { source: "/@:username", destination: "/:username" },
       { source: "/tools/instagram-engagement-calculator", destination: "/tools/instagram-engagement" },
       { source: "/tools/instagram-grid-maker", destination: "/tools/instagram-grid" },
       { source: "/tools/tiktok-engagement-calculator", destination: "/tools/tiktok-engagement" },
