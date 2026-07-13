@@ -1,7 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/firebase/admin";
-import { headers } from "next/headers";
+import { resolvers } from "@/lib/security/server-config";
 import { uploadToBunny } from "@/lib/bunny";
 
 const MAX_BYTES = 100 * 1024 * 1024; // 100 MB
@@ -54,9 +54,7 @@ export async function POST(request: Request) {
   const buf = Buffer.from(await file.arrayBuffer());
 
   try {
-    const headersList = await headers();
-    const zone = headersList.get("x-bunny-zone") || undefined;
-    const password = headersList.get("x-bunny-password") || undefined;
+    const bunny = resolvers.bunny(request.headers);
 
     const { cdnUrl, storedPath } = await uploadToBunny({
       userId: user.uid,
@@ -64,8 +62,8 @@ export async function POST(request: Request) {
       filename: file.name || "upload",
       contentType: file.type,
       body: buf,
-      zone,
-      password,
+      zone: bunny.zone,
+      password: bunny.password,
     });
     return NextResponse.json({
       ok: true,

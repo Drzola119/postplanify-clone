@@ -3,8 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 const SESSION_COOKIE = "pp_session";
 const PROTECTED_PREFIXES = ["/dashboard"];
 
-export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+export function middleware(request: NextRequest) {
+  const { pathname, search } = request.nextUrl;
 
   // The Next.js image optimizer is not bundled in `output: "standalone"`,
   // so `/_next/image?...` would 404 even though `images.unoptimized` is
@@ -17,12 +17,27 @@ export async function middleware(request: NextRequest) {
     return NextResponse.rewrite(url);
   }
 
-  // Dashboard auth is handled client-side by the DashboardLayout component
-  // (src/app/dashboard/layout.tsx) which checks AuthContext status and
-  // redirects to /login when unauthenticated. The middleware no longer
-  // enforces cookie-based auth because the Firebase Admin SDK may not
-  // initialize correctly on all hosting providers (e.g. Hostinger env var
-  // formatting issues), which creates an infinite redirect loop.
+  // Server-side auth gate for protected prefixes. We require the
+  // session cookie to be PRESENT here. The cookie is HTTPOnly + signed
+  // by Firebase; cryptographic verification is performed by the API
+  // routes via `verifySessionCookie` (`src/lib/firebase/admin.ts`).
+  // This blocks direct URL access / link sharing for unauthenticated
+  // visitors and prevents search engines from indexing the dashboard.
+  const isProtected = PROTECTED_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+
+  if (isProtected) {
+    const hasSession = request.cookies.get(SESSION_COOKIE)?.value;
+    if (!hasSession) {
+      const loginUrl = request.nextUrl.clone();
+      loginUrl.pathname = "/login";
+      loginUrl.search = "";
+      loginUrl.searchParams.set("redirect", pathname + search);
+      return NextResponse.redirect(loginUrl);
+    }
+  }
+
   return NextResponse.next();
 }
 

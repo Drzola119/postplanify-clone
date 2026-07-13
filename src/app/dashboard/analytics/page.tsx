@@ -7,6 +7,7 @@ import {
   Heart, MessageCircle, Repeat2, Bookmark, Share2, MousePointerClick, MessageSquare, Play,
   TrendingUp, Globe, MoreHorizontal, CheckCircle2,
 } from "lucide-react";
+import { getOverrideHeaders } from "@/lib/security/client-overrides";
 
 // ============================================================
 // Types
@@ -16,6 +17,8 @@ type Period = "7d" | "14d" | "30d" | "90d" | "custom";
 type Platform =
   | "youtube" | "instagram" | "twitter" | "tiktok"
   | "facebook" | "threads" | "linkedin" | "pinterest" | "bluesky";
+
+
 
 interface AccountSummary {
   id: string;
@@ -1101,19 +1104,9 @@ function AnalyticsPageInner() {
     let cancelled = false;
     (async () => {
       try {
-        const headers: Record<string, string> = {};
-        if (typeof window !== "undefined") {
-          try {
-            const stored = window.localStorage.getItem("postplanify.settings.overrides");
-            if (stored) {
-              const parsed = JSON.parse(stored);
-              if (parsed.uploadPostKey) headers["X-Upload-Post-Key"] = parsed.uploadPostKey;
-            }
-          } catch {}
-        }
-        const res = await fetch("/api/social-accounts/list", { 
+        const res = await fetch("/api/social-accounts/list", {
           cache: "no-store",
-          headers,
+          headers: getOverrideHeaders(),
         });
         if (!res.ok) return;
         const data: { ok: boolean; accounts?: Parameters<typeof adaptAccount>[0][] } = await res.json();

@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/firebase/admin";
+import { MissingServerSecretError, resolvers } from "@/lib/security/server-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -96,9 +97,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const apiKey = process.env.GROQ_API_KEY || "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";
-  if (!apiKey) {
-    return NextResponse.json({ error: "GROQ_API_KEY is not configured" }, { status: 500 });
+  let apiKey: string;
+  try {
+    apiKey = resolvers.groqApiKey(request.headers);
+  } catch (err) {
+    if (err instanceof MissingServerSecretError) {
+      return NextResponse.json(
+        { error: `${err.secret} is not configured on the server` },
+        { status: 500 }
+      );
+    }
+    throw err;
   }
 
   let body: CaptionRequest;

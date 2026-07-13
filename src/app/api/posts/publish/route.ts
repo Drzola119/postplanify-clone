@@ -1,7 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/firebase/admin";
-import { headers } from "next/headers";
+import { MissingServerSecretError, resolvers } from "@/lib/security/server-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,13 +31,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const headersList = await headers();
-  const n8nUrl = headersList.get("x-n8n-webhook-url") || process.env.N8N_WEBHOOK_URL;
-  if (!n8nUrl) {
-    return NextResponse.json(
-      { error: "N8N_WEBHOOK_URL not configured on server and no client override provided" },
-      { status: 500 }
-    );
+  let n8nUrl: string;
+  try {
+    n8nUrl = resolvers.n8nWebhookUrl(request.headers);
+  } catch (err) {
+    if (err instanceof MissingServerSecretError) {
+      return NextResponse.json(
+        { error: `${err.secret} not configured on server` },
+        { status: 500 }
+      );
+    }
+    throw err;
   }
 
   const body = (await request.json().catch(() => null)) as Partial<PublishPayload> | null;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getOverrideHeaders } from "@/lib/security/client-overrides";
 import {
   Eye,
   Check,
@@ -71,22 +72,9 @@ const MEDIA_TABS: { id: MediaTab; label: string }[] = [
 
 const MAX_FILES = 10;
 
-function getOverrideHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {};
-  if (typeof window !== "undefined") {
-    try {
-      const stored = window.localStorage.getItem("postplanify.settings.overrides");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed.uploadPostKey) headers["X-Upload-Post-Key"] = parsed.uploadPostKey;
-        if (parsed.n8nWebhookUrl) headers["X-N8N-Webhook-Url"] = parsed.n8nWebhookUrl;
-        if (parsed.bunnyZone) headers["X-Bunny-Zone"] = parsed.bunnyZone;
-        if (parsed.bunnyPassword) headers["X-Bunny-Password"] = parsed.bunnyPassword;
-      }
-    } catch {}
-  }
-  return headers;
-}
+// Headers are sourced from the centralized client-overrides helper. In
+// production they resolve to {} so dev-only secrets never leave the server
+// env (see src/lib/security/server-config.ts).
 
 export default function CreatePostPage() {
   const { toast, dismiss } = useToast();

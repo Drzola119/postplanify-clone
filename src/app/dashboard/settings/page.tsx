@@ -23,6 +23,11 @@ import {
 import { cn } from "@/lib/utils";
 import { PageHelp } from "@/components/dashboard/help/page-help";
 import { getHelpConfig } from "@/lib/help/content";
+import { clientOverridesAllowed } from "@/lib/security/dev-only";
+import {
+  readDevOverrides,
+  writeDevOverrides,
+} from "@/lib/security/client-overrides";
 
 /* ============================================================
    BRAND SVG COMPONENTS (extracted from live page)
@@ -661,27 +666,23 @@ export default function SettingsPage() {
     bunnyPassword: "",
   });
 
-  // Load overrides from localStorage on mount
+  // Load overrides from localStorage on mount. Only meaningful when
+  // `clientOverridesAllowed()` returns true (dev/preview); in production
+  // these inputs are display-only — they are never sent to the server.
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const stored = window.localStorage.getItem("postplanify.settings.overrides");
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          const loaded = {
-            uploadPostKey: parsed.uploadPostKey ?? "",
-            n8nWebhookUrl: parsed.n8nWebhookUrl ?? "",
-            bunnyZone: parsed.bunnyZone ?? "",
-            bunnyPassword: parsed.bunnyPassword ?? "",
-          };
-          setUploadPostKey(loaded.uploadPostKey);
-          setN8nWebhookUrl(loaded.n8nWebhookUrl);
-          setBunnyZone(loaded.bunnyZone);
-          setBunnyPassword(loaded.bunnyPassword);
-          setOriginalOverrides(loaded);
-        }
-      } catch (e) {}
-    }
+    if (typeof window === "undefined") return;
+    const stored = readDevOverrides();
+    const loaded = {
+      uploadPostKey: stored.uploadPostKey ?? "",
+      n8nWebhookUrl: stored.n8nWebhookUrl ?? "",
+      bunnyZone: stored.bunnyZone ?? "",
+      bunnyPassword: stored.bunnyPassword ?? "",
+    };
+    setUploadPostKey(loaded.uploadPostKey);
+    setN8nWebhookUrl(loaded.n8nWebhookUrl);
+    setBunnyZone(loaded.bunnyZone);
+    setBunnyPassword(loaded.bunnyPassword);
+    setOriginalOverrides(loaded);
   }, []);
 
   // Subscription state
@@ -700,14 +701,13 @@ export default function SettingsPage() {
     setSaving(true);
     await new Promise((r) => setTimeout(r, 800));
 
-    // Save overrides
-    if (typeof window !== "undefined") {
-      try {
-        const overrides = { uploadPostKey, n8nWebhookUrl, bunnyZone, bunnyPassword };
-        window.localStorage.setItem("postplanify.settings.overrides", JSON.stringify(overrides));
-        setOriginalOverrides(overrides);
-      } catch (e) {}
-    }
+    // Save overrides to the dev storage key. In production these never
+    // leave the browser (server-config silently ignores client override
+    // headers), so the form below stays editable for visibility but acts
+    // as no-op until client overrides are explicitly enabled.
+    const overrides = { uploadPostKey, n8nWebhookUrl, bunnyZone, bunnyPassword };
+    writeDevOverrides(overrides);
+    setOriginalOverrides(overrides);
 
     setSaving(false);
     push("success", "Account settings updated");
@@ -879,9 +879,22 @@ export default function SettingsPage() {
                   <div>
                     <h4 className="text-sm font-semibold text-zinc-900">API & VPS Integration Overrides</h4>
                     <p className="text-xs text-zinc-500 mt-1">
-                      Configure your integration credentials here to override server-side defaults for testing.
+                      Local-only dev overrides. In production, configure secrets via environment variables
+                      (GROQ_API_KEY, N8N_WEBHOOK_URL, UPLOAD_POST_API_KEY, BUNNY_STORAGE_ZONE, BUNNY_STORAGE_PASSWORD).
                     </p>
                   </div>
+                  {!clientOverridesAllowed() && (
+                    <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
+                      <ShieldCheck className="size-4 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium">Production build — overrides are not used.</p>
+                        <p className="mt-1 text-amber-800">
+                          Values you enter below are stored in this browser only and never sent to the server
+                          in this build. Update the server env vars instead, then redeploy.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Field
                       label="upload-post.com API Key"
@@ -889,6 +902,7 @@ export default function SettingsPage() {
                       onChange={setUploadPostKey}
                       placeholder="gsk_..."
                       hint="API key to fetch your connected social profiles"
+                      secret
                     />
                     <Field
                       label="n8n Webhook URL"
@@ -910,6 +924,7 @@ export default function SettingsPage() {
                       onChange={setBunnyPassword}
                       placeholder="Storage API key/password"
                       hint="Access key for your Bunny storage container"
+                      secret
                     />
                   </div>
                 </div>
@@ -1069,6 +1084,7 @@ function Field({
   placeholder,
   disabled,
   hint,
+  secret,
 }: {
   label: string;
   value: string;
@@ -1076,23 +1092,42 @@ function Field({
   placeholder?: string;
   disabled?: boolean;
   hint?: string;
+  /** When true, render as a masked password input with a show/hide toggle. */
+  secret?: boolean;
 }) {
+  const [revealed, setRevealed] = useState(false);
+  const inputType = secret ? (revealed ? "text" : "password") : "text";
   return (
     <div>
       <label className="block text-xs font-semibold text-zinc-700 mb-1.5">{label}</label>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        disabled={disabled}
-        className={cn(
-          "h-9 w-full rounded-md border border-zinc-200 px-3 py-1 text-sm shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-900/10",
-          disabled
-            ? "bg-zinc-50 text-zinc-500 cursor-not-allowed"
-            : "bg-white text-zinc-900"
+      <div className="relative">
+        <input
+          type={inputType}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          disabled={disabled}
+          className={cn(
+            "h-9 w-full rounded-md border border-zinc-200 px-3 py-1 text-sm shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-900/10",
+            secret && "pr-9",
+            disabled
+              ? "bg-zinc-50 text-zinc-500 cursor-not-allowed"
+              : "bg-white text-zinc-900"
+          )}
+          autoComplete={secret ? "off" : undefined}
+          spellCheck={secret ? false : undefined}
+        />
+        {secret && (
+          <button
+            type="button"
+            onClick={() => setRevealed((v) => !v)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700"
+            aria-label={revealed ? "Hide value" : "Show value"}
+          >
+            {revealed ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+          </button>
         )}
-      />
+      </div>
       {hint && <p className="text-xs text-zinc-500 mt-1.5">{hint}</p>}
     </div>
   );

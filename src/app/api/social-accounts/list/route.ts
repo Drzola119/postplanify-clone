@@ -1,7 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/firebase/admin";
-import { headers } from "next/headers";
+import { MissingServerSecretError, resolvers } from "@/lib/security/server-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -91,19 +91,23 @@ function flatten(profiles: UploadPostProfile[]): ConnectedAccountDTO[] {
   return out;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const headersList = await headers();
-  const apiKey = headersList.get("x-upload-post-key") || process.env.UPLOAD_POST_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "UPLOAD_POST_API_KEY not configured on server and no client override provided" },
-      { status: 500 }
-    );
+  let apiKey: string;
+  try {
+    apiKey = resolvers.uploadPostApiKey(request.headers);
+  } catch (err) {
+    if (err instanceof MissingServerSecretError) {
+      return NextResponse.json(
+        { error: `${err.secret} not configured on server` },
+        { status: 500 }
+      );
+    }
+    throw err;
   }
 
   try {

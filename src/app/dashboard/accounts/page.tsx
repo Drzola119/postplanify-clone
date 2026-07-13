@@ -20,6 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 import { PageHelp } from "@/components/dashboard/help/page-help";
 import { getHelpConfig } from "@/lib/help/content";
+import { getOverrideHeaders } from "@/lib/security/client-overrides";
 
 type Platform =
   | "bluesky"
@@ -387,19 +388,9 @@ export default function AccountsPage() {
   const fetchAccounts = async () => {
     setError(null);
     try {
-      const headers: Record<string, string> = {};
-      if (typeof window !== "undefined") {
-        try {
-          const stored = window.localStorage.getItem("postplanify.settings.overrides");
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            if (parsed.uploadPostKey) headers["X-Upload-Post-Key"] = parsed.uploadPostKey;
-          }
-        } catch {}
-      }
-      const res = await fetch("/api/social-accounts/list", { 
+      const res = await fetch("/api/social-accounts/list", {
         cache: "no-store",
-        headers,
+        headers: getOverrideHeaders(),
       });
       const data: ApiResponse = await res.json();
       if (!res.ok || !data.ok) {

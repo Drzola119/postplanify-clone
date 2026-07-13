@@ -12,22 +12,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing idToken" }, { status: 400 });
   }
 
-  // Log environment status for debugging
-  console.log("[Auth Session] API env status:", {
-    hasProjectId: !!process.env.FIREBASE_PROJECT_ID,
-    hasClientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
-    hasPrivateKey: !!process.env.FIREBASE_PRIVATE_KEY,
-  });
-
   try {
-    let sessionCookie = await createSessionCookie(body.idToken);
-    let isFallback = false;
+    // Server must be configured to mint a verified session cookie. Without
+    // Firebase Admin credentials, an unverified bearer would persist and the
+    // verify path would have nothing to trust — so we refuse, not fall back.
+    const sessionCookie = await createSessionCookie(body.idToken);
     if (!sessionCookie) {
-      sessionCookie = body.idToken;
-      isFallback = true;
-      console.warn("[Auth Session] Server auth not configured. Using ID token as fallback cookie.");
+      const isProd = process.env.NODE_ENV === "production";
+      return NextResponse.json(
+        {
+          error: isProd
+            ? "Authentication server is not configured. Contact the administrator."
+            : "Auth server not configured. Set FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY to enable login.",
+        },
+        { status: 503 }
+      );
     }
-    const res = NextResponse.json({ ok: true, fallback: isFallback });
+    const res = NextResponse.json({ ok: true, fallback: false });
     res.cookies.set(SESSION_COOKIE, sessionCookie, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

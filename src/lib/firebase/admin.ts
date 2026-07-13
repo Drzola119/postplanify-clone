@@ -52,7 +52,12 @@ export async function createSessionCookie(idToken: string): Promise<string | nul
   return adminAuth.createSessionCookie(idToken, { expiresIn: SESSION_MAX_AGE_MS });
 }
 
-function decodeJwtPayload(token: string): { uid: string; email: string | null } | null {
+function decodeUnverifiedJwt(token: string): { uid: string; email: string | null } | null {
+  // DEV-ONLY escape hatch: when Firebase Admin is not configured (missing
+  // FIREBASE_* env vars) we accept an unverified ID-token-style JWT so a
+  // developer can run the dashboard against a local Auth emulator. This is
+  // explicitly gated to NODE_ENV !== "production" and never used in prod.
+  if (process.env.NODE_ENV === "production") return null;
   try {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
@@ -62,7 +67,7 @@ function decodeJwtPayload(token: string): { uid: string; email: string | null } 
     if (!uid) return null;
     return { uid, email: payload.email ?? null };
   } catch (error) {
-    console.error("[firebase-admin] Failed to decode JWT fallback:", error);
+    console.error("[firebase-admin] Failed to decode JWT (dev-only):", error);
     return null;
   }
 }
@@ -71,7 +76,17 @@ export async function verifySessionCookie(
   sessionCookie: string
 ): Promise<{ uid: string; email: string | null } | null> {
   if (!adminAuth) {
-    return decodeJwtPayload(sessionCookie);
+    // Production must never accept an unverified token. In dev we accept one
+    // so the dashboard works without FIREBASE_* env vars, but it logs a
+    // warning to make the footgun obvious.
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(
+        "[firebase-admin] Admin SDK not configured — falling back to UNVERIFIED JWT decode. " +
+          "This is a dev-only path; set FIREBASE_PROJECT_ID/CLIENT_EMAIL/PRIVATE_KEY for production."
+      );
+      return decodeUnverifiedJwt(sessionCookie);
+    }
+    return null;
   }
   try {
     const decoded = await adminAuth.verifySessionCookie(sessionCookie, true);
@@ -81,7 +96,9 @@ export async function verifySessionCookie(
       const decoded = await adminAuth.verifyIdToken(sessionCookie);
       return { uid: decoded.uid, email: decoded.email ?? null };
     } catch {
-      return decodeJwtPayload(sessionCookie);
+      // Both signature checks failed. Refuse; do NOT fall back to unverified
+      // decode — that would let any forged JWT pass.
+      return null;
     }
   }
 }

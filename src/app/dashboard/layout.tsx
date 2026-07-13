@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { DashboardSidebar } from "@/components/dashboard/sidebar";
@@ -24,23 +23,19 @@ function DrawersHost() {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { status } = useAuth();
   const router = useRouter();
-  const [bypassAuth, setBypassAuth] = React.useState(false);
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (new URLSearchParams(window.location.search).get("devBypass") === "1") {
-      setBypassAuth(true);
-    }
-  }, []);
 
   useEffect(() => {
-    if (bypassAuth) return;
-    if (status === "unauthenticated" || status === "disabled") {
+    // Only force a redirect when the SDK is loaded and there is no session.
+    // "loading" means we don't yet know — keep showing the spinner.
+    // "disabled" means Firebase isn't configured (e.g. preview environments);
+    // render the shell so devs can still see the UI while API calls will
+    // return 401/503. Production with valid Firebase config never hits this.
+    if (status === "unauthenticated") {
       router.replace("/login");
     }
-  }, [status, router, bypassAuth]);
+  }, [status, router]);
 
-  if (!bypassAuth && status === "loading") {
+  if (status === "loading") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-50">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-zinc-900" />
@@ -48,7 +43,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  if (!bypassAuth && (status === "unauthenticated" || status === "disabled")) {
+  if (status === "unauthenticated") {
     return null;
   }
 
