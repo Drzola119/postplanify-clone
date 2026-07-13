@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -12,6 +12,7 @@ import {
   Check,
   Tag as TagIcon,
   Trophy,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageHelp } from "@/components/dashboard/help/page-help";
@@ -232,7 +233,32 @@ export default function PostsCalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date(2026, 5, 27)); // June 27 2026
   const [selectedPost, setSelectedPost] = useState<CalendarPost | null>(null);
   const [posts, setPosts] = useState<CalendarPost[]>(SAMPLE_POSTS);
+  const [postsVersion, setPostsVersion] = useState(0);
   const today = new Date(2026, 5, 27);
+
+  const refetchPosts = useCallback(async () => {
+    try {
+      const res = await fetch("/api/posts", { credentials: "include" });
+      if (!res.ok) return;
+      const data = (await res.json()) as { posts?: ApiPost[] };
+      const mapped = (data.posts ?? []).map<CalendarPost>((p) => {
+        const d = new Date(p.scheduledAt ?? p.publishedAt ?? p.createdAt ?? Date.now());
+        return {
+          id: p.id,
+          date: fmtISO(d),
+          time: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
+          caption: p.caption ?? "",
+          status: (p.status ?? "draft") as PostStatus,
+          thumbnail: p.mediaUrls?.[0],
+          platforms: (p.platforms ?? []) as Platform[],
+          accountName: undefined,
+        };
+      });
+      if (mapped.length > 0) setPosts(mapped);
+    } catch {
+      // offline — keep current
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -263,6 +289,16 @@ export default function PostsCalendarPage() {
     return () => {
       cancelled = true;
     };
+  }, [postsVersion]);
+
+  const handleBulkDelete = useCallback(async (ids: string[]) => {
+    if (ids.length === 0) return;
+    await Promise.all(
+      ids.map((id) =>
+        fetch(`/api/posts/${id}`, { method: "DELETE", credentials: "include" }).catch(() => null)
+      )
+    );
+    setPostsVersion((v) => v + 1);
   }, []);
 
   // Responsive: auto-switch to List view on narrow viewports (matches live PostPlanify behavior at <1280px)
@@ -404,7 +440,14 @@ export default function PostsCalendarPage() {
         {/* Calendar body */}
         {view === "monthly" && <MonthView currentDate={currentDate} today={today} posts={posts} onPostClick={setSelectedPost} />}
         {view === "weekly" && <WeekView currentDate={currentDate} today={today} posts={posts} onPostClick={setSelectedPost} />}
-        {view === "list" && <ListView currentDate={currentDate} posts={posts} onPostClick={setSelectedPost} />}
+        {view === "list" && (
+          <ListView
+            currentDate={currentDate}
+            posts={posts}
+            onPostClick={setSelectedPost}
+            onBulkDelete={handleBulkDelete}
+          />
+        )}
       </div>
 
       {selectedPost && <PostDetailsModal post={selectedPost} onClose={() => setSelectedPost(null)} />}
@@ -940,8 +983,11 @@ function WeekEventCard({ post, onClick }: { post: CalendarPost; onClick?: () => 
 }
 
 // ===== LIST VIEW =====
-function ListView({ currentDate, posts, onPostClick }: { currentDate: Date; posts: CalendarPost[]; onPostClick: (p: CalendarPost) => void }) {
+function ListView({ currentDate, posts, onPostClick, onBulkDelete }: { currentDate: Date; posts: CalendarPost[]; onPostClick: (p: CalendarPost) => void; onBulkDelete: (ids: string[]) => Promise<void> }) {
   const monthName = currentDate.toLocaleString("en-US", { month: "long", year: "numeric" });
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+
   const listRows = posts
     .filter((p) => {
       const d = new Date(p.date);
@@ -952,6 +998,36 @@ function ListView({ currentDate, posts, onPostClick }: { currentDate: Date; post
       ...p,
       dateLabel: `${p.date}T${p.time ?? "00:00"}`.replace(/-/g, " ").slice(0, 16),
     }));
+
+  const allSelected = listRows.length > 0 && listRows.every((r) => selected.has(r.id));
+  const someSelected = !allSelected && listRows.some((r) => selected.has(r.id));
+
+  const toggleAll = () => {
+    if (allSelected) setSelected(new Set());
+    else setSelected(new Set(listRows.map((r) => r.id)));
+  };
+
+  const toggleOne = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (selected.size === 0) return;
+    if (!confirm(`Delete ${selected.size} selected post${selected.size === 1 ? "" : "s"}? This cannot be undone.`)) return;
+    setBusy(true);
+    try {
+      await onBulkDelete(Array.from(selected));
+      setSelected(new Set());
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="flex-1 overflow-auto min-h-0">
       <div className="px-4 py-3 flex items-center justify-between border-b border-zinc-200 sticky top-0 bg-card z-30">
@@ -960,9 +1036,25 @@ function ListView({ currentDate, posts, onPostClick }: { currentDate: Date; post
             type="checkbox"
             className="size-4 rounded border-zinc-300"
             aria-label="Select all"
+            checked={allSelected}
+            ref={(el) => {
+              if (el) el.indeterminate = someSelected;
+            }}
+            onChange={toggleAll}
           />
           <h3 className="text-sm font-semibold">{monthName}</h3>
-          <span className="text-xs text-muted-foreground">8 posts</span>
+          <span className="text-xs text-muted-foreground">{listRows.length} posts</span>
+          {selected.size > 0 && (
+            <button
+              type="button"
+              onClick={handleBulkDelete}
+              disabled={busy}
+              className="ml-2 inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+            >
+              <Trash2 className="size-3.5" />
+              {busy ? "Deleting…" : `Delete ${selected.size}`}
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-1">
           <button className="size-8 rounded-md hover:bg-zinc-100 inline-flex items-center justify-center" aria-label="Previous">
@@ -986,10 +1078,21 @@ function ListView({ currentDate, posts, onPostClick }: { currentDate: Date; post
         <tbody>
           {listRows.map((row) => {
             const status = STATUS_META[row.status];
+            const isSelected = selected.has(row.id);
             return (
-              <tr key={row.id} className="border-b border-zinc-100 hover:bg-zinc-50 cursor-pointer" onClick={() => onPostClick(row)}>
+              <tr
+                key={row.id}
+                className={cn("border-b border-zinc-100 hover:bg-zinc-50 cursor-pointer", isSelected && "bg-blue-50/60")}
+                onClick={() => onPostClick(row)}
+              >
                 <td className="px-3 py-2">
-                  <input type="checkbox" className="size-4 rounded border-zinc-300" onClick={(e) => e.stopPropagation()} />
+                  <input
+                    type="checkbox"
+                    className="size-4 rounded border-zinc-300"
+                    checked={isSelected}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => toggleOne(row.id)}
+                  />
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex items-start gap-2">
