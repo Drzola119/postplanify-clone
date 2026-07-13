@@ -171,6 +171,32 @@ function recordToRow(r: DraftRecord): Draft {
   };
 }
 
+interface ApiDraft {
+  id: string;
+  caption?: string;
+  platforms?: Platform[];
+  mediaCount?: number;
+  updatedAt?: string;
+  createdAt?: string;
+}
+
+function apiDraftToRow(d: ApiDraft): Draft {
+  const date = new Date(d.updatedAt ?? d.createdAt ?? Date.now());
+  return {
+    id: d.id,
+    mediaType: (d.mediaCount ?? 0) > 0 ? "image" : "none",
+    mediaColor: (d.mediaCount ?? 0) > 0 ? undefined : "bg-zinc-900",
+    caption: d.caption ?? "",
+    accounts: (d.platforms ?? []).map((p, i) => ({
+      id: `${d.id}-${p}-${i}`,
+      handle: SAMPLE_ACCOUNTS.find((a) => a.platform === p)?.handle ?? p,
+      platform: p as Platform,
+    })),
+    createdDate: date.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
+    createdTime: date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }),
+  };
+}
+
 function PlatformBadge({ account }: { account: DraftAccount }) {
   const meta = PLATFORM_META[account.platform];
   return (
@@ -202,20 +228,55 @@ export default function DraftsPage() {
 
   const router = useRouter();
 
-  // Hydrate from localStorage. Show the demo row only when no real drafts exist,
-  // so the page is never empty on first visit but real saves appear immediately.
+  // Hydrate from API first, fall back to localStorage. Show the demo row only
+  // when no real drafts exist, so the page is never empty on first visit but
+  // real saves appear immediately.
   useEffect(() => {
-    const records = listDrafts();
-    if (records.length > 0) {
-      setDrafts(records.map(recordToRow));
-    } else {
-      setDrafts([DEMO_DRAFT]);
-    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/drafts", { credentials: "include" });
+        if (res.ok) {
+          const data = (await res.json()) as { drafts?: ApiDraft[] };
+          if (cancelled) return;
+          const apiDrafts = (data.drafts ?? []).map(apiDraftToRow);
+          if (apiDrafts.length > 0) {
+            setDrafts(apiDrafts);
+            return;
+          }
+        }
+      } catch {
+        // network — fall through to localStorage
+      }
+      if (cancelled) return;
+      const records = listDrafts();
+      if (records.length > 0) {
+        setDrafts(records.map(recordToRow));
+      } else {
+        setDrafts([DEMO_DRAFT]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Refresh when the tab regains focus (e.g. user came back from Create page).
   useEffect(() => {
-    const handler = () => {
+    const handler = async () => {
+      try {
+        const res = await fetch("/api/drafts", { credentials: "include" });
+        if (res.ok) {
+          const data = (await res.json()) as { drafts?: ApiDraft[] };
+          const apiDrafts = (data.drafts ?? []).map(apiDraftToRow);
+          if (apiDrafts.length > 0) {
+            setDrafts(apiDrafts);
+            return;
+          }
+        }
+      } catch {
+        // ignore
+      }
       const records = listDrafts();
       if (records.length > 0) setDrafts(records.map(recordToRow));
     };
