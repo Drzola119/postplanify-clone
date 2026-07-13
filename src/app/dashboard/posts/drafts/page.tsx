@@ -274,14 +274,14 @@ export default function DraftsPage() {
       {drafts.length === 0 ? (
         <EmptyDrafts />
       ) : (
-        <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden">
+        <div className="rounded-xl border border-zinc-200 bg-white">
           <table className="w-full table-fixed">
             <colgroup>
-              <col style={{ width: "153px" }} />
-              <col style={{ width: "245px" }} />
-              <col style={{ width: "384px" }} />
-              <col style={{ width: "184px" }} />
-              <col style={{ width: "184px" }} />
+              <col style={{ width: "144px" }} />
+              <col style={{ width: "230px" }} />
+              <col style={{ width: "359px" }} />
+              <col style={{ width: "172px" }} />
+              <col style={{ width: "172px" }} />
             </colgroup>
             <thead className="bg-zinc-50 border-b border-zinc-200">
               <tr>
