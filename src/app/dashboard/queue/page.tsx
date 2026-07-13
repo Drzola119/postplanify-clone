@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { ListChecks, Clock, Play, Pause, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { HealthPill } from "@/components/dashboard/health-pill";
+import { EmptyState } from "@/components/dashboard/empty-state";
 
 interface QueueRow {
   id: string;
@@ -91,10 +93,16 @@ export default function PostingQueuePage() {
 
   return (
     <div className="p-6 max-w-5xl">
-      <PageHeader
-        title="Posting Queue"
-        subtitle="Posts queued and waiting to publish, in the order they'll go live."
-      />
+      <div className="flex items-center justify-between mb-6">
+        <PageHeader
+          title="Posting Queue"
+          subtitle="Posts queued and waiting to publish, in the order they'll go live."
+        />
+        <HealthPill
+          status={loading ? "idle" : stats.publishing > 0 ? "ok" : stats.queued > 0 ? "warning" : "idle"}
+          label={loading ? "Checking…" : stats.publishing > 0 ? "Worker live" : stats.queued > 0 ? "Worker waiting" : "No posts queued"}
+        />
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         {summaryCards.map((s) => {
@@ -124,8 +132,11 @@ export default function PostingQueuePage() {
         {loading ? (
           <div className="px-5 py-8 text-center text-sm text-zinc-500">Loading queue…</div>
         ) : rows.length === 0 ? (
-          <div className="px-5 py-8 text-center text-sm text-zinc-500">
-            Nothing in the queue. Schedule a post and it will appear here.
+          <div className="p-6">
+            <EmptyState
+              title="No posts queued"
+              description="Schedule a post from the composer and it will appear here, ready to publish at its scheduled time."
+            />
           </div>
         ) : (
           <div className="divide-y divide-zinc-100">

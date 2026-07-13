@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, type ReactNode } from "react";
+import { FilterBar } from "@/components/dashboard/filter-bar";
 import {
   Search,
   Reply,
@@ -185,6 +186,7 @@ export default function InboxPage() {
   const [tab, setTab] = useState<Tab>("comments");
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
+  const [platformFilter, setPlatformFilter] = useState<string>("all");
   const [range, setRange] = useState<Range>("90d");
   const [activeComment, setActiveComment] = useState<string | null>("c1");
   const [activeConvo, setActiveConvo] = useState<string | null>(null);
@@ -243,9 +245,10 @@ export default function InboxPage() {
   const filtered = useMemo(() => {
     let list = comments;
     if (filter === "unread") list = list.filter((c) => c.unread);
+    if (platformFilter !== "all") list = list.filter((c) => c.platform === platformFilter);
     if (search) list = list.filter((c) => c.text.toLowerCase().includes(search.toLowerCase()) || c.author.toLowerCase().includes(search.toLowerCase()));
     return list;
-  }, [comments, filter, search]);
+  }, [comments, filter, platformFilter, search]);
 
   return (
     <div className="flex-1 min-h-0 flex flex-col gap-4 p-3 lg:p-6">
@@ -255,6 +258,31 @@ export default function InboxPage() {
           <h1 className="text-[30px] font-bold leading-[36px] tracking-tight">Inbox</h1>
           <p className="mt-1 text-sm text-zinc-500">Manage comments and DMs across all your accounts</p>
         </div>
+        <FilterBar
+          chips={[
+            {
+              key: "platform",
+              label: "Platform",
+              value: platformFilter,
+              options: [
+                { value: "all", label: "All platforms" },
+                ...SUPPORTED_PLATFORMS.map((p) => ({ value: p, label: PLATFORM_LABEL[p] })),
+              ],
+              onChange: setPlatformFilter,
+            },
+            {
+              key: "status",
+              label: "Status",
+              value: filter,
+              options: [
+                { value: "all", label: "All" },
+                { value: "unread", label: "Unread" },
+                { value: "open", label: "Open" },
+              ],
+              onChange: (v) => setFilter(v as Filter),
+            },
+          ]}
+        />
         <div className="flex items-center gap-1.5 text-xs text-zinc-500">
           <span>supported</span>
           <div className="flex items-center gap-1 text-zinc-700">
