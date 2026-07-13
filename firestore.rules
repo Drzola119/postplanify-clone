@@ -1,0 +1,152 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function memberRole(workspaceId) {
+      return get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(uid())).data.role;
+    }
+    function isMember(workspaceId) {
+      return isSignedIn() && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(uid()));
+    }
+    function isOwnerOrAdmin(workspaceId) {
+      return isMember(workspaceId) && memberRole(workspaceId) in ['owner', 'admin'];
+    }
+    function isEditor(workspaceId) {
+      return isMember(workspaceId) && memberRole(workspaceId) in ['owner', 'admin', 'editor'];
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (uid() == userId || isMember(resource.data.primaryWorkspaceId));
+      allow create: if isSignedIn() && uid() == userId;
+      allow update: if isSignedIn() && uid() == userId;
+      allow delete: if false;
+
+      match /linkInBios/{username} {
+        allow read: if true;
+        allow write: if isSignedIn() && uid() == userId;
+      }
+    }
+
+    match /workspaces/{workspaceId} {
+      allow read: if isMember(workspaceId);
+      allow create: if isSignedIn() && request.resource.data.ownerUid == uid();
+      allow update, delete: if isOwnerOrAdmin(workspaceId);
+
+      match /members/{memberUid} {
+        allow read: if isMember(workspaceId);
+        allow create: if isOwnerOrAdmin(workspaceId)
+                      && request.resource.data.role in ['owner', 'admin', 'editor', 'viewer'];
+        allow update, delete: if isOwnerOrAdmin(workspaceId);
+      }
+
+      match /socialAccounts/{accountId} {
+        allow read: if isMember(workspaceId);
+        allow write: if isEditor(workspaceId);
+      }
+
+      match /posts/{postId} {
+        allow read: if isMember(workspaceId);
+        allow create: if isEditor(workspaceId);
+        allow update, delete: if isEditor(workspaceId);
+      }
+
+      match /drafts/{draftId} {
+        allow read, write: if isMember(workspaceId)
+                            && resource.data.authorUid == uid();
+      }
+
+      match /mediaAssets/{assetId} {
+        allow read: if isMember(workspaceId);
+        allow write: if isEditor(workspaceId);
+      }
+
+      match /labels/{labelId} {
+        allow read: if isMember(workspaceId);
+        allow write: if isEditor(workspaceId);
+      }
+
+      match /hashtagSets/{setId} {
+        allow read: if isMember(workspaceId);
+        allow write: if isEditor(workspaceId);
+      }
+
+      match /hashtagsTrending/{trendId} {
+        allow read: if isMember(workspaceId);
+        allow write: if isEditor(workspaceId);
+      }
+
+      match /reports/{reportId} {
+        allow read: if isMember(workspaceId);
+        allow write: if isEditor(workspaceId);
+      }
+
+      match /reportSchedules/{scheduleId} {
+        allow read: if isMember(workspaceId);
+        allow write: if isOwnerOrAdmin(workspaceId);
+      }
+
+      match /apiKeys/{keyId} {
+        allow read: if isOwnerOrAdmin(workspaceId);
+        allow write: if isOwnerOrAdmin(workspaceId);
+      }
+
+      match /comments/{commentId} {
+        allow read: if isMember(workspaceId);
+        allow write: if isEditor(workspaceId);
+      }
+
+      match /conversations/{conversationId} {
+        allow read: if isMember(workspaceId);
+        allow write: if isEditor(workspaceId);
+
+        match /messages/{messageId} {
+          allow read: if isMember(workspaceId);
+          allow write: if isEditor(workspaceId);
+        }
+      }
+
+      match /destinations/{destinationId} {
+        allow read: if isMember(workspaceId);
+        allow write: if isOwnerOrAdmin(workspaceId);
+      }
+
+      match /webhooks/{webhookId} {
+        allow read: if isMember(workspaceId);
+        allow write: if isOwnerOrAdmin(workspaceId);
+      }
+
+      match /analyticsDaily/{date} {
+        allow read: if isMember(workspaceId);
+        allow write: if false;
+
+        match /platforms/{platformId} {
+          allow read: if isMember(workspaceId);
+          allow write: if false;
+        }
+      }
+    }
+
+    match /linkInBiosPublic/{username} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /linkInBiosAnalytics/{username} {
+      allow read: if true;
+      allow write: if false;
+
+      match /clicks/{date} {
+        allow read: if true;
+        allow write: if false;
+      }
+    }
+  }
+}
