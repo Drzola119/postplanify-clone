@@ -274,14 +274,14 @@ export default function DraftsPage() {
       {drafts.length === 0 ? (
         <EmptyDrafts />
       ) : (
-        <div className="rounded-xl border border-zinc-200 bg-white">
-          <table className="w-full table-fixed">
+        <div className="rounded-xl border border-zinc-200 bg-white overflow-x-auto">
+          <table className="w-full table-fixed min-w-[900px]">
             <colgroup>
-              <col style={{ width: "144px" }} />
-              <col style={{ width: "230px" }} />
-              <col style={{ width: "359px" }} />
-              <col style={{ width: "172px" }} />
-              <col style={{ width: "172px" }} />
+              <col style={{ width: "120px" }} />
+              <col style={{ width: "260px" }} />
+              <col style={{ width: "auto" }} />
+              <col style={{ width: "130px" }} />
+              <col style={{ width: "130px" }} />
             </colgroup>
             <thead className="bg-zinc-50 border-b border-zinc-200">
               <tr>
@@ -298,9 +298,7 @@ export default function DraftsPage() {
                   Created
                 </th>
                 <th className="text-left px-6 py-2.5 text-sm font-medium text-zinc-500">
-                  <span className="inline-flex items-center gap-1.5">
-                    Actions
-                  </span>
+                  Actions
                 </th>
               </tr>
             </thead>
@@ -316,11 +314,11 @@ export default function DraftsPage() {
                       <img
                         src={draft.mediaThumb}
                         alt=""
-                        className="size-24 rounded-md object-cover border border-zinc-200"
+                        className="size-20 rounded-md object-cover border border-zinc-200"
                       />
                     ) : (
                       <div
-                        className={`size-24 rounded-md ${draft.mediaColor ?? "bg-zinc-900"} flex items-center justify-center text-white text-xs font-medium`}
+                        className={`size-20 rounded-md ${draft.mediaColor ?? "bg-zinc-900"} flex items-center justify-center text-white text-xs font-medium`}
                       >
                         {draft.mediaInitial ?? ""}
                       </div>
@@ -341,8 +339,8 @@ export default function DraftsPage() {
                       ))}
                     </div>
                   </td>
-                  <td className="px-6 py-2 align-top">
-                    <div className="flex flex-col pt-1">
+                  <td className="px-6 py-2 align-middle">
+                    <div className="flex flex-col">
                       <span className="text-sm text-zinc-900">
                         {draft.createdDate}
                       </span>
@@ -352,22 +350,22 @@ export default function DraftsPage() {
                     </div>
                   </td>
                   <td className="px-6 py-2 align-middle">
-                    <div className="flex flex-col gap-2 items-start">
+                    <div className="flex flex-col gap-1.5 w-[100px]">
                       <button
                         type="button"
                         onClick={() => handleContinue(draft)}
                         disabled={loadingId === draft.id}
-                        className="inline-flex items-center justify-center gap-1.5 h-8 px-4 rounded-md bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-400 disabled:cursor-not-allowed text-white text-sm font-medium whitespace-nowrap transition-colors"
+                        className="inline-flex items-center justify-center gap-1 h-8 w-full rounded-md bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-400 disabled:cursor-not-allowed text-white text-xs font-semibold transition-colors"
                       >
                         {loadingId === draft.id ? (
                           <>
-                            <Loader2 className="size-3.5 animate-spin" />
+                            <Loader2 className="size-3 animate-spin" />
                             Loading...
                           </>
                         ) : (
                           <>
                             Continue
-                            <ArrowRight className="size-3.5" />
+                            <ArrowRight className="size-3" />
                           </>
                         )}
                       </button>
@@ -375,9 +373,9 @@ export default function DraftsPage() {
                         type="button"
                         onClick={() => requestDelete(draft)}
                         disabled={loadingId === draft.id}
-                        className="inline-flex items-center justify-center gap-1.5 h-8 px-4 rounded-md bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium whitespace-nowrap transition-colors"
+                        className="inline-flex items-center justify-center gap-1 h-8 w-full rounded-md bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold transition-colors"
                       >
-                        <Trash2 className="size-3.5" />
+                        <Trash2 className="size-3" />
                         Delete
                       </button>
                     </div>
