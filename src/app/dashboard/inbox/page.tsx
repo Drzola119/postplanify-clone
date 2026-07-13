@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, type ReactNode } from "react";
+import { useState, useMemo, useEffect, type ReactNode } from "react";
 import {
   Search,
   Reply,
@@ -49,6 +49,17 @@ interface Comment {
   platform: "instagram" | "twitter" | "tiktok" | "linkedin" | "facebook" | "threads" | "youtube" | "pinterest" | "bluesky";
 }
 
+interface ApiComment {
+  id: string;
+  platform?: string;
+  postId?: string;
+  authorHandle?: string;
+  body?: string;
+  sentAt?: string;
+  sentiment?: Sentiment;
+  replied?: boolean;
+}
+
 interface Conversation {
   id: string;
   name: string;
@@ -57,6 +68,15 @@ interface Conversation {
   time: string;
   unread: boolean;
   platform: "instagram" | "twitter" | "tiktok" | "linkedin" | "facebook" | "threads" | "youtube" | "pinterest" | "bluesky";
+}
+
+interface ApiConversation {
+  id: string;
+  platform?: string;
+  participants?: string[];
+  lastMessage?: string;
+  lastMessageAt?: string;
+  unreadCount?: number;
 }
 
 const PLATFORM_COLORS: Record<Comment["platform"], string> = {
@@ -168,13 +188,64 @@ export default function InboxPage() {
   const [range, setRange] = useState<Range>("90d");
   const [activeComment, setActiveComment] = useState<string | null>("c1");
   const [activeConvo, setActiveConvo] = useState<string | null>(null);
+  const [comments, setComments] = useState<Comment[]>(COMMENTS);
+  const [conversations, setConversations] = useState<Conversation[]>(CONVERSATIONS);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [cRes, mRes] = await Promise.all([
+          fetch("/api/inbox/comments", { credentials: "include" }),
+          fetch("/api/inbox/messages", { credentials: "include" }),
+        ]);
+        if (cancelled) return;
+        if (cRes.ok) {
+          const cData = (await cRes.json()) as { comments?: ApiComment[] };
+          const mapped = (cData.comments ?? []).map<Comment>((c) => ({
+            id: c.id,
+            avatar: c.authorHandle?.[0]?.toUpperCase() ?? "?",
+            thumbnail: "",
+            author: c.authorHandle ?? "unknown",
+            date: c.sentAt ?? new Date().toISOString(),
+            sentiment: c.sentiment ?? "neutral",
+            text: c.body ?? "",
+            unread: !c.replied,
+            platform: (c.platform ?? "instagram") as Comment["platform"],
+          }));
+          if (mapped.length > 0) setComments(mapped);
+        }
+        if (mRes.ok) {
+          const mData = (await mRes.json()) as { conversations?: ApiConversation[] };
+          const mapped = (mData.conversations ?? []).map<Conversation>((c) => ({
+            id: c.id,
+            name: c.participants?.[0] ?? "unknown",
+            avatar: c.participants?.[0]?.[0]?.toUpperCase() ?? "?",
+            lastMessage: c.lastMessage ?? "",
+            time: c.lastMessageAt ?? new Date().toISOString(),
+            unread: (c.unreadCount ?? 0) > 0,
+            platform: (c.platform ?? "instagram") as Conversation["platform"],
+          }));
+          if (mapped.length > 0) setConversations(mapped);
+        }
+      } catch {
+        // offline — keep seed
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filtered = useMemo(() => {
-    let list = COMMENTS;
+    let list = comments;
     if (filter === "unread") list = list.filter((c) => c.unread);
     if (search) list = list.filter((c) => c.text.toLowerCase().includes(search.toLowerCase()) || c.author.toLowerCase().includes(search.toLowerCase()));
     return list;
-  }, [filter, search]);
+  }, [comments, filter, search]);
 
   return (
     <div className="flex-1 min-h-0 flex flex-col gap-4 p-3 lg:p-6">
