@@ -49,6 +49,19 @@ interface MediaAsset {
   isVideo?: boolean;
 }
 
+interface ApiMediaAsset {
+  id: string;
+  url: string;
+  mime?: string;
+  size?: number;
+  name?: string;
+  width?: number;
+  height?: number;
+  duration?: number;
+  tags?: string[];
+  uploadedAt?: string;
+}
+
 interface PendingFile {
   id: string;
   name: string;
@@ -124,6 +137,49 @@ export default function AssetsPage() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
+  const [assets, setAssets] = useState<MediaAsset[]>(SAMPLE_ASSETS);
+  const [loadingAssets, setLoadingAssets] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/media-assets", { credentials: "include" });
+        if (!res.ok) {
+          if (!cancelled) setLoadingAssets(false);
+          return;
+        }
+        const data = (await res.json()) as { assets?: ApiMediaAsset[] };
+        if (cancelled) return;
+        const mapped = (data.assets ?? []).map<MediaAsset>((a) => ({
+          id: a.id,
+          name: a.name ?? a.url?.split("/").pop() ?? "asset",
+          size: a.size ?? 0,
+          type: a.mime?.startsWith("video/")
+            ? "video"
+            : a.mime?.startsWith("image/")
+            ? "image"
+            : "doc",
+          folder: "",
+          tags: a.tags ?? [],
+          uploadedAt: a.uploadedAt ?? new Date().toISOString(),
+          thumbnail: a.url,
+          width: a.width,
+          height: a.height,
+          duration: a.duration,
+          isVideo: a.mime?.startsWith("video/"),
+        }));
+        if (mapped.length > 0) setAssets(mapped);
+      } catch {
+        // offline — keep seed
+      } finally {
+        if (!cancelled) setLoadingAssets(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Modals
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -153,7 +209,7 @@ export default function AssetsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filtered = useMemo(() => {
-    let list = SAMPLE_ASSETS;
+    let list = assets;
     if (tab === "images") list = list.filter((a) => a.type === "image");
     if (tab === "videos") list = list.filter((a) => a.type === "video");
     if (search) list = list.filter((a) => a.name.toLowerCase().includes(search.toLowerCase()));
@@ -236,6 +292,34 @@ export default function AssetsPage() {
           setPendingFiles((prev) =>
             prev.map((f) => (f.id === pf.id ? { ...f, status: "done", progress: 100 } : f))
           );
+          // Refresh asset list from server
+          try {
+            const refresh = await fetch("/api/media-assets", { credentials: "include" });
+            if (refresh.ok) {
+              const refreshed = (await refresh.json()) as { assets?: ApiMediaAsset[] };
+              const mapped = (refreshed.assets ?? []).map<MediaAsset>((a) => ({
+                id: a.id,
+                name: a.name ?? a.url?.split("/").pop() ?? "asset",
+                size: a.size ?? 0,
+                type: a.mime?.startsWith("video/")
+                  ? "video"
+                  : a.mime?.startsWith("image/")
+                  ? "image"
+                  : "doc",
+                folder: "",
+                tags: a.tags ?? [],
+                uploadedAt: a.uploadedAt ?? new Date().toISOString(),
+                thumbnail: a.url,
+                width: a.width,
+                height: a.height,
+                duration: a.duration,
+                isVideo: a.mime?.startsWith("video/"),
+              }));
+              if (mapped.length > 0) setAssets(mapped);
+            }
+          } catch {
+            // ignore — list will refresh on next manual reload
+          }
         } catch {
           setPendingFiles((prev) =>
             prev.map((f) => (f.id === pf.id ? { ...f, status: "error", progress: 0 } : f))

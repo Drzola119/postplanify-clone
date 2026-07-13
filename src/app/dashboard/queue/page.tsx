@@ -1,17 +1,94 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { ListChecks, Clock, Play, Pause, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 
-const QUEUE = [
-  { id: 1, post: "Summer launch teaser", account: "📷 @brand.ig", scheduled: "Today 3:42 PM", status: "queued" },
-  { id: 2, post: "Customer spotlight: Maria", account: "🐦 @brand.tw", scheduled: "Today 5:00 PM", status: "queued" },
-  { id: 3, post: "Friday motivation quote", account: "🧵 @brand.th", scheduled: "Today 6:30 PM", status: "queued" },
-  { id: 4, post: "Product demo reel", account: "🎵 @brand.tt", scheduled: "Tomorrow 9:00 AM", status: "queued" },
-  { id: 5, post: "Weekly newsletter", account: "💼 @brand.li", scheduled: "Tomorrow 10:15 AM", status: "queued" },
-];
+interface QueueRow {
+  id: string;
+  caption: string;
+  platforms: string[];
+  scheduledAt: string;
+  status: string;
+}
+
+interface QueueResponse {
+  due?: QueueRow[];
+  upcoming?: QueueRow[];
+}
+
+function platformEmoji(platform: string): string {
+  const map: Record<string, string> = {
+    instagram: "📷",
+    twitter: "🐦",
+    x: "🐦",
+    threads: "🧵",
+    tiktok: "🎵",
+    linkedin: "💼",
+    facebook: "📘",
+    youtube: "▶️",
+    pinterest: "📌",
+    bluesky: "🦋",
+  };
+  return map[platform.toLowerCase()] ?? "📱";
+}
+
+function fmtScheduled(iso?: string): string {
+  if (!iso) return "Unscheduled";
+  const d = new Date(iso);
+  const today = new Date();
+  const isToday = d.toDateString() === today.toDateString();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const isTomorrow = d.toDateString() === tomorrow.toDateString();
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (isToday) return `Today ${time}`;
+  if (isTomorrow) return `Tomorrow ${time}`;
+  return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })} ${time}`;
+}
 
 export default function PostingQueuePage() {
+  const [rows, setRows] = useState<QueueRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({ queued: 0, publishing: 0, paused: 0 });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/posts/scheduled", { credentials: "include" });
+        if (!res.ok) {
+          if (!cancelled) setLoading(false);
+          return;
+        }
+        const data = (await res.json()) as QueueResponse;
+        if (cancelled) return;
+        const upcoming = data.upcoming ?? [];
+        const due = data.due ?? [];
+        const combined = [...due, ...upcoming];
+        setRows(combined);
+        setStats({
+          queued: upcoming.length,
+          publishing: due.length,
+          paused: combined.filter((r) => r.status === "paused").length,
+        });
+      } catch {
+        // offline — leave zeros
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const summaryCards = [
+    { label: "Queued", value: stats.queued, icon: ListChecks, color: "text-blue-600 bg-blue-50" },
+    { label: "Publishing now", value: stats.publishing, icon: Play, color: "text-emerald-600 bg-emerald-50" },
+    { label: "Paused", value: stats.paused, icon: Pause, color: "text-amber-600 bg-amber-50" },
+  ];
+
   return (
     <div className="p-6 max-w-5xl">
       <PageHeader
@@ -20,11 +97,7 @@ export default function PostingQueuePage() {
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        {[
-          { label: "Queued", value: "47", icon: ListChecks, color: "text-blue-600 bg-blue-50" },
-          { label: "Publishing now", value: "2", icon: Play, color: "text-emerald-600 bg-emerald-50" },
-          { label: "Paused", value: "3", icon: Pause, color: "text-amber-600 bg-amber-50" },
-        ].map((s) => {
+        {summaryCards.map((s) => {
           const Icon = s.icon;
           return (
             <div key={s.label} className="rounded-xl border border-zinc-200 bg-white p-5">
@@ -34,7 +107,7 @@ export default function PostingQueuePage() {
                 </span>
                 <p className="text-xs font-semibold text-zinc-500">{s.label}</p>
               </div>
-              <p className="text-2xl font-bold">{s.value}</p>
+              <p className="text-2xl font-bold">{loading ? "—" : s.value}</p>
             </div>
           );
         })}
@@ -48,22 +121,32 @@ export default function PostingQueuePage() {
             Clear queue
           </button>
         </div>
-        <div className="divide-y divide-zinc-100">
-          {QUEUE.map((q) => (
-            <div key={q.id} className="grid grid-cols-[1fr_180px_180px_120px] gap-3 px-5 py-3 items-center text-sm">
-              <p className="font-semibold truncate">{q.post}</p>
-              <p className="text-zinc-600">{q.account}</p>
-              <p className="text-zinc-600 inline-flex items-center gap-1.5">
-                <Clock className="size-3.5 text-zinc-400" />
-                {q.scheduled}
-              </p>
-              <span className="inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700">
-                <Clock className="size-3" />
-                queued
-              </span>
-            </div>
-          ))}
-        </div>
+        {loading ? (
+          <div className="px-5 py-8 text-center text-sm text-zinc-500">Loading queue…</div>
+        ) : rows.length === 0 ? (
+          <div className="px-5 py-8 text-center text-sm text-zinc-500">
+            Nothing in the queue. Schedule a post and it will appear here.
+          </div>
+        ) : (
+          <div className="divide-y divide-zinc-100">
+            {rows.map((q) => (
+              <div key={q.id} className="grid grid-cols-[1fr_180px_180px_120px] gap-3 px-5 py-3 items-center text-sm">
+                <p className="font-semibold truncate">{q.caption || "(no caption)"}</p>
+                <p className="text-zinc-600">
+                  {platformEmoji(q.platforms[0] ?? "")} @{q.platforms[0] ?? "—"}
+                </p>
+                <p className="text-zinc-600 inline-flex items-center gap-1.5">
+                  <Clock className="size-3.5 text-zinc-400" />
+                  {fmtScheduled(q.scheduledAt)}
+                </p>
+                <span className="inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700">
+                  <Clock className="size-3" />
+                  {q.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
