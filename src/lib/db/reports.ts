@@ -40,6 +40,12 @@ export async function listReports(workspaceId: string): Promise<ReportItem[]> {
   return snap.docs.map((d) => serializeReport(d.id, d.data() as ReportDoc));
 }
 
+export async function getReport(workspaceId: string, id: string): Promise<ReportItem | null> {
+  const snap = await reportsCollection(workspaceId).doc(id).get();
+  if (!snap.exists) return null;
+  return serializeReport(snap.id, snap.data() as ReportDoc);
+}
+
 export async function createReport(
   workspaceId: string,
   input: { name: string; template: string; dateRange: { from: Date | string; to: Date | string } }

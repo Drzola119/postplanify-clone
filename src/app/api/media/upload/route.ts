@@ -5,6 +5,9 @@ import { resolvers } from "@/lib/security/server-config";
 import { uploadToBunny } from "@/lib/bunny";
 import { createAsset } from "@/lib/db/media-assets";
 import { ensureDefaultWorkspace } from "@/lib/db/workspaces";
+import { createLogger } from "@/lib/log";
+
+const log = createLogger("media/upload");
 
 const MAX_BYTES = 100 * 1024 * 1024; // 100 MB
 const ALLOWED_MIME = new Set([
@@ -96,7 +99,7 @@ export async function POST(request: Request) {
       });
     } catch (err) {
       // Don't fail the upload just because the metadata row failed to persist.
-      console.error("[media/upload] failed to persist mediaAsset row:", err);
+      log.error(err, { step: "createAsset", url: cdnUrl });
     }
 
     return NextResponse.json({

@@ -38,11 +38,21 @@ interface Account {
 interface Report {
   id: string;
   title: string;
+  template: string;
   from: string;
   to: string;
   createdAt: string;
   accounts: number;
+  status: "pending" | "ready" | "failed";
 }
+
+const REPORT_TEMPLATES: { value: string; label: string }[] = [
+  { value: "performance", label: "Performance" },
+  { value: "engagement", label: "Engagement" },
+  { value: "audience", label: "Audience Growth" },
+  { value: "competitor", label: "Competitor" },
+  { value: "custom", label: "Custom" },
+];
 
 interface Schedule {
   id: string;
@@ -91,10 +101,12 @@ const SAMPLE_REPORTS: Report[] = [
   {
     id: "r1",
     title: "Performance Report",
+    template: "performance",
     from: "May 24, 2026",
     to: "Jun 23, 2026",
     createdAt: "Jun 23, 2026",
     accounts: 9,
+    status: "ready",
   },
 ];
 
@@ -156,6 +168,7 @@ const RANGE_PRESETS: { value: RangePreset; label: string }[] = [
 
 export default function ReportsPage() {
   const [title, setTitle] = useState("");
+  const [template, setTemplate] = useState<string>("performance");
   const [from, setFrom] = useState(defaultFrom());
   const [to, setTo] = useState(defaultTo());
   const [activePreset, setActivePreset] = useState<RangePreset | null>(null);
@@ -193,13 +206,15 @@ export default function ReportsPage() {
         if (reportsRes.ok) {
           const data = await reportsRes.json();
           const items: Report[] = (data.reports ?? []).map(
-            (r: { id: string; name: string; dateRange: { from: string; to: string }; createdAt: string }) => ({
+            (r: { id: string; name: string; template: string; dateRange: { from: string; to: string }; createdAt: string; status: "pending" | "ready" | "failed" }) => ({
               id: r.id,
               title: r.name,
+              template: r.template,
               from: r.dateRange.from.slice(0, 10),
               to: r.dateRange.to.slice(0, 10),
               createdAt: r.createdAt.slice(0, 10),
               accounts: 0,
+              status: r.status,
             })
           );
           if (items.length) setReports(items);
@@ -294,21 +309,76 @@ export default function ReportsPage() {
     downloadCsv(`report-schedules-${new Date().toISOString().slice(0, 10)}.csv`, csv);
   };
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
+    if (generating) return;
     setGenerating(true);
-    setTimeout(() => {
+    const reportTitle = title.trim() || "Performance Report";
+    try {
+      // Convert dd/mm/yyyy → yyyy-mm-dd for the API.
+      const [fd, fm, fy] = from.split("/").map(Number);
+      const [td, tm, ty] = to.split("/").map(Number);
+      const res = await fetch("/api/reports", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: reportTitle,
+          template,
+          dateRange: {
+            from: new Date(fy, fm - 1, fd).toISOString(),
+            to: new Date(ty, tm - 1, td).toISOString(),
+          },
+          format: "pdf",
+        }),
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        showToast(`Could not create report (${res.status}). ${errText}`, "error");
+        return;
+      }
+      const { id } = (await res.json()) as { id: string };
+
+      // Optimistically add to the list so the user sees feedback while the
+      // download window opens. status="pending" until /download finishes.
       const newReport: Report = {
-        id: Math.random().toString(36).slice(2),
-        title: title.trim() || "Performance Report",
+        id,
+        title: reportTitle,
+        template,
         from: longDate(parseDate(from)),
         to: longDate(parseDate(to)),
         createdAt: longDate(new Date()),
         accounts: selectedAccounts.size,
+        status: "pending",
       };
       setReports((prev) => [newReport, ...prev]);
+
+      // Open the download. Browser starts the request immediately; we don't
+      // need to poll because the route is synchronous on-demand generation.
+      const downloadUrl = `/api/reports/${id}/download`;
+      if (typeof window !== "undefined") {
+        window.open(downloadUrl, "_blank", "noopener,noreferrer");
+      }
+
+      // Mark ready after a short beat so the UI reflects the download started.
+      setTimeout(() => {
+        setReports((prev) => prev.map((r) => (r.id === id ? { ...r, status: "ready" } : r)));
+      }, 2000);
+
+      showToast("Report generated");
+    } catch (err) {
+      showToast(
+        `Network error: ${err instanceof Error ? err.message : "unknown"}`,
+        "error"
+      );
+    } finally {
       setGenerating(false);
-      showToast("Report generated successfully");
-    }, 1500);
+    }
+  };
+
+  const handleDownloadPdf = (id: string) => {
+    if (typeof window !== "undefined") {
+      window.open(`/api/reports/${id}/download`, "_blank", "noopener,noreferrer");
+    }
   };
 
   const deleteReport = (id: string) => {
@@ -363,7 +433,7 @@ export default function ReportsPage() {
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr_1fr_1.2fr_1.2fr_auto] gap-4 items-end">
+          <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1.2fr_1.2fr_auto] gap-4 items-end">
             {/* Title */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">
@@ -376,6 +446,23 @@ export default function ReportsPage() {
                 placeholder="e.g. Monthly Performance Report"
                 className="w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
               />
+            </div>
+
+            {/* Template */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Template</label>
+              <div className="relative">
+                <select
+                  value={template}
+                  onChange={(e) => setTemplate(e.target.value)}
+                  className="w-full h-9 px-3 pr-9 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10 appearance-none"
+                >
+                  {REPORT_TEMPLATES.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-zinc-400 pointer-events-none" />
+              </div>
             </div>
 
             {/* From */}
@@ -640,7 +727,7 @@ export default function ReportsPage() {
           ) : (
             <div className="space-y-3">
               {reports.map((r) => (
-                <ReportRow key={r.id} report={r} onCopyLink={() => copyLink(r.id)} onDelete={() => deleteReport(r.id)} />
+                <ReportRow key={r.id} report={r} onCopyLink={() => copyLink(r.id)} onDelete={() => deleteReport(r.id)} onDownloadPdf={() => handleDownloadPdf(r.id)} />
               ))}
             </div>
           )}
@@ -763,19 +850,29 @@ export default function ReportsPage() {
   );
 }
 
-function ReportRow({ report, onCopyLink, onDelete }: { report: Report; onCopyLink: () => void; onDelete: () => void }) {
+function ReportRow({ report, onCopyLink, onDelete, onDownloadPdf }: { report: Report; onCopyLink: () => void; onDelete: () => void; onDownloadPdf: () => void }) {
+  const statusBadge = report.status === "pending"
+    ? <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-700 px-2 py-0.5 text-[10px] font-medium border border-amber-200"><Loader2 className="size-2.5 animate-spin" />Generating</span>
+    : report.status === "failed"
+    ? <span className="inline-flex items-center rounded-full bg-rose-50 text-rose-700 px-2 py-0.5 text-[10px] font-medium border border-rose-200">Failed</span>
+    : null;
   return (
     <div className="flex items-center gap-4 rounded-lg border border-zinc-200 p-4 hover:bg-zinc-50/50 transition-colors">
       <div className="size-10 rounded-lg bg-blue-50 inline-flex items-center justify-center shrink-0">
         <FileText className="size-5 text-blue-600" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold truncate">{report.title}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-semibold truncate">{report.title}</p>
+          {statusBadge}
+        </div>
         <div className="flex items-center gap-2 mt-1 text-xs text-zinc-500">
           <CalendarIcon className="size-3" />
           <span>
             {report.from} — {report.to}
           </span>
+          <span className="text-zinc-300">•</span>
+          <span className="capitalize">{report.template}</span>
           <span className="text-zinc-300">•</span>
           <span>Created {report.createdAt}</span>
         </div>
@@ -789,7 +886,7 @@ function ReportRow({ report, onCopyLink, onDelete }: { report: Report; onCopyLin
           <CopyIcon className="size-3.5" />
           Copy Link
         </button>
-        <button type="button" className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-zinc-200 bg-white text-xs font-medium hover:bg-zinc-50">
+        <button type="button" onClick={onDownloadPdf} disabled={report.status === "pending"} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-zinc-200 bg-white text-xs font-medium hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed">
           <Download className="size-3.5" />
           PDF
         </button>

@@ -3,6 +3,9 @@ import { cookies } from "next/headers";
 import { initializeApp, getApps, cert, type App } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { createLogger } from "@/lib/log";
+
+const log = createLogger("firebase-admin");
 
 const projectId = process.env.FIREBASE_PROJECT_ID || "postplanify-best";
 const clientEmail = process.env.FIREBASE_CLIENT_EMAIL || "firebase-adminsdk-fbsvc@postplanify-best.iam.gserviceaccount.com";
@@ -22,9 +25,7 @@ if (privateKey) {
 function createAdminApp(): App | null {
   if (!projectId || !clientEmail || !privateKey) {
     if (process.env.NODE_ENV !== "production") {
-      console.warn(
-        "[firebase-admin] Missing FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY. Server-side auth will be disabled."
-      );
+      log.warn("Missing FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY. Server-side auth will be disabled.");
     }
     return null;
   }
@@ -35,7 +36,7 @@ function createAdminApp(): App | null {
           credential: cert({ projectId, clientEmail, privateKey }),
         });
   } catch (error) {
-    console.error("[firebase-admin] Failed to initialize Firebase Admin SDK:", error);
+    log.error(error, { step: "initializeApp" });
     return null;
   }
 }
@@ -67,7 +68,7 @@ function decodeUnverifiedJwt(token: string): { uid: string; email: string | null
     if (!uid) return null;
     return { uid, email: payload.email ?? null };
   } catch (error) {
-    console.error("[firebase-admin] Failed to decode JWT (dev-only):", error);
+    log.error(error, { step: "decodeUnverifiedJwt" });
     return null;
   }
 }
@@ -80,8 +81,8 @@ export async function verifySessionCookie(
     // so the dashboard works without FIREBASE_* env vars, but it logs a
     // warning to make the footgun obvious.
     if (process.env.NODE_ENV !== "production") {
-      console.warn(
-        "[firebase-admin] Admin SDK not configured — falling back to UNVERIFIED JWT decode. " +
+      log.warn(
+        "Admin SDK not configured — falling back to UNVERIFIED JWT decode. " +
           "This is a dev-only path; set FIREBASE_PROJECT_ID/CLIENT_EMAIL/PRIVATE_KEY for production."
       );
       return decodeUnverifiedJwt(sessionCookie);
@@ -110,7 +111,7 @@ export async function getCurrentUser(): Promise<{ uid: string; email: string | n
     if (!session) return null;
     return verifySessionCookie(session);
   } catch (error) {
-    console.error("[firebase-admin] Failed to get session cookie:", error);
+    log.error(error, { step: "getSessionCookie" });
     return null;
   }
 }

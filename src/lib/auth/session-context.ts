@@ -2,6 +2,9 @@ import "server-only";
 import { cookies } from "next/headers";
 import { getCurrentUser, SESSION_COOKIE, adminAuth } from "@/lib/firebase/admin";
 import { ensureDefaultWorkspace } from "@/lib/db/workspaces";
+import { createLogger } from "@/lib/log";
+
+const log = createLogger("session-context");
 
 export interface SessionContext {
   uid: string;
@@ -45,7 +48,7 @@ export async function getSessionContext(): Promise<SessionContext | null> {
 
     return { uid: user.uid, email: user.email, workspaceId };
   } catch (err) {
-    console.error("[session-context] Failed to resolve workspace:", err);
+    log.error(err, { step: "resolveWorkspace" });
     return null;
   }
 }

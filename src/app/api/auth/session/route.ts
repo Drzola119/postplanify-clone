@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { SESSION_COOKIE, SESSION_MAX_AGE_MS, createSessionCookie, getCurrentUser } from "@/lib/firebase/admin";
+import { createLogger } from "@/lib/log";
+
+const log = createLogger("auth/session");
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -38,7 +41,7 @@ export async function POST(request: Request) {
     });
     return res;
   } catch (error) {
-    console.error("[Auth Session] Error creating session cookie:", error);
+    log.error(error, { step: "createSessionCookie" });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }

@@ -1,6 +1,9 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
+import { createLogger } from "@/lib/log";
+
+const log = createLogger("firebase-client");
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyDUuJypP-JqfOZ7s6swLDemSZS9eTCRcOQ",
@@ -14,9 +17,7 @@ const firebaseConfig = {
 function createFirebaseApp(): FirebaseApp | null {
   if (!firebaseConfig.apiKey) {
     if (process.env.NODE_ENV !== "production") {
-      console.warn(
-        "[firebase] Missing NEXT_PUBLIC_FIREBASE_* env vars. Auth features will be disabled."
-      );
+      log.warn("Missing NEXT_PUBLIC_FIREBASE_* env vars. Auth features will be disabled.");
     }
     return null;
   }

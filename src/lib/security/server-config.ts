@@ -117,4 +117,7 @@ export const resolvers = {
   apiKeyEncryptionKey(h: Headers): string {
     return resolve("API_KEY_ENCRYPTION_KEY", "API_KEY_ENCRYPTION_KEY", "x-api-key-encryption-key", h);
   },
+  sentryDsn(h: Headers): string | undefined {
+    return resolveOptional("SENTRY_DSN", "x-sentry-dsn", h);
+  },
 };

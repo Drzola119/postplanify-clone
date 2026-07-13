@@ -3,6 +3,9 @@ import { adminDb } from "@/lib/firebase/admin";
 import { listScheduledDue, claimPost, markPublished, markFailed, resetStuckClaims } from "@/lib/db/posts";
 import { resolvers } from "@/lib/security/server-config";
 import { deliverWebhook } from "@/lib/webhooks/delivery";
+import { createLogger } from "@/lib/log";
+
+const log = createLogger("queue-worker");
 
 const DEFAULT_INTERVAL_MS = Number(process.env.WORKER_INTERVAL_MS ?? 30_000);
 const STUCK_CLAIM_MS = Number(process.env.WORKER_STUCK_CLAIM_MS ?? 5 * 60_000);
@@ -27,7 +30,7 @@ async function tickOnce(): Promise<TickResult> {
   try {
     result.reaped = await resetStuckClaimsForAllWorkspaces(STUCK_CLAIM_MS);
   } catch (err) {
-    console.error("[queue-worker] reap failed:", err);
+    log.error(err, { step: "reap" });
   }
 
   const due = await collectDuePosts();
@@ -119,14 +122,14 @@ export function startQueueWorker(intervalMs = DEFAULT_INTERVAL_MS): void {
       lastTickAt = new Date();
       lastResult = await tickOnce();
     } catch (err) {
-      console.error("[queue-worker] tick error:", err);
+      log.error(err, { step: "tick" });
       lastResult = { scanned: 0, published: 0, failed: 0, reaped: 0, error: err instanceof Error ? err.message : "unknown" };
     } finally {
       running = false;
     }
   }, intervalMs);
   interval.unref?.();
-  console.log(`[queue-worker] started (interval=${intervalMs}ms)`);
+  log.info(`started (interval=${intervalMs}ms)`);
 }
 
 export function stopQueueWorker(): void {

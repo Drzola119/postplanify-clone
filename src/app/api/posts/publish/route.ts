@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/session-context";
 import { MissingServerSecretError, resolvers } from "@/lib/security/server-config";
 import { createPost, updatePost } from "@/lib/db/posts";
+import { createLogger } from "@/lib/log";
+
+const log = createLogger("posts/publish");
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,7 +80,7 @@ export async function POST(request: Request) {
   } catch (err) {
     // Firestore unavailable — fall back to stateless publish so the existing
     // composer UX still works during Hostinger env-var setup.
-    console.warn("[publish] Firestore write failed; publishing stateless:", err);
+    log.warn("Firestore write failed; publishing stateless", { err });
     postId = "";
   }
 

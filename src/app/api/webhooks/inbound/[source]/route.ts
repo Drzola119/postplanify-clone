@@ -5,6 +5,9 @@ import { inboxInboundSchema } from "@/lib/validation/inbox";
 import { parseBody, jsonError, jsonOk } from "@/lib/validation/helpers";
 import { MissingServerSecretError, resolvers } from "@/lib/security/server-config";
 import { callGroq, extractJson, GROQ_TEXT_MODEL, GroqError } from "@/lib/ai/groq";
+import { createLogger } from "@/lib/log";
+
+const log = createLogger("inbound-webhook");
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -98,11 +101,11 @@ export async function POST(
       await updateCommentSentiment(workspaceId, id, sentiment);
     } catch (err) {
       if (err instanceof MissingServerSecretError) {
-        console.warn("[inbound-webhook] GROQ_API_KEY not configured; skipping sentiment");
+        log.warn("GROQ_API_KEY not configured; skipping sentiment");
       } else if (err instanceof GroqError) {
-        console.warn(`[inbound-webhook] Groq sentiment failed: ${err.message}`);
+        log.warn(`Groq sentiment failed: ${err.message}`);
       } else {
-        console.warn("[inbound-webhook] sentiment auto-classify error:", err);
+        log.error(err, { step: "sentiment-classify" });
       }
     }
   })();

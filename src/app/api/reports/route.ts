@@ -3,6 +3,9 @@ import { requireSession } from "@/lib/auth/session-context";
 import { listReports, createReport, updateReport } from "@/lib/db/reports";
 import { createReportSchema } from "@/lib/validation/reports";
 import { parseBody, jsonError, jsonOk } from "@/lib/validation/helpers";
+import { createLogger } from "@/lib/log";
+
+const log = createLogger("reports");
 
 export async function GET() {
   const session = await requireSession();
@@ -18,9 +21,22 @@ export async function POST(request: NextRequest) {
   if (!parsed.ok || !parsed.data) {
     return jsonError(parsed.error?.status ?? 400, parsed.error?.message ?? "Invalid payload", parsed.error?.issues);
   }
+
+  const format = parsed.data.format ?? "csv";
   const id = await createReport(session.workspaceId, parsed.data);
-  // MVP: mark as ready immediately with no downloadUrl. PDF generation is
-  // out of scope for v1 — see plan.
+
+  // PDF reports are generated on-demand by the /download route; the client polls
+  // this list endpoint until status flips to "ready" (we mark it ready now since
+  // there's no async worker for v1). CSV/JSON reports have no downloadUrl —
+  // the client exports them via /lib/csv locally from the listed data.
   await updateReport(session.workspaceId, id, { status: "ready" });
-  return jsonOk({ id }, 201);
+
+  log.info("Report created", {
+    reportId: id,
+    template: parsed.data.template,
+    format,
+    workspaceId: session.workspaceId,
+  });
+
+  return jsonOk({ id, status: "ready", format }, 201);
 }
