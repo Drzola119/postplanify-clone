@@ -18,21 +18,26 @@ export async function uploadToBunny(args: {
   filename: string;
   contentType: string;
   body: Buffer;
+  zone?: string;
+  password?: string;
 }): Promise<{ cdnUrl: string; storedPath: string }> {
-  if (!ZONE || !PASSWORD) {
-    throw new Error("Bunny storage not configured (set BUNNY_STORAGE_ZONE and BUNNY_STORAGE_PASSWORD)");
+  const activeZone = args.zone || ZONE;
+  const activePassword = args.password || PASSWORD;
+
+  if (!activeZone || !activePassword) {
+    throw new Error("Bunny storage not configured (set BUNNY_STORAGE_ZONE and BUNNY_STORAGE_PASSWORD, or provide overrides)");
   }
   if (args.body.length === 0) throw new Error("Empty file");
   if (args.body.length > MAX_BYTES) throw new Error("File exceeds 100 MB limit");
 
   const safe = sanitizeFilename(args.filename);
   const storedPath = `${args.userId}/${args.folder}/${Date.now()}_${safe}`;
-  const uploadUrl = `https://${HOSTNAME}/${ZONE}/${storedPath}`;
+  const uploadUrl = `https://${HOSTNAME}/${activeZone}/${storedPath}`;
 
   const res = await fetch(uploadUrl, {
     method: "PUT",
     headers: {
-      AccessKey: PASSWORD,
+      AccessKey: activePassword,
       "Content-Type": args.contentType,
     },
     body: new Uint8Array(args.body),

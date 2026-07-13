@@ -1101,7 +1101,20 @@ function AnalyticsPageInner() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/social-accounts/list", { cache: "no-store" });
+        const headers: Record<string, string> = {};
+        if (typeof window !== "undefined") {
+          try {
+            const stored = window.localStorage.getItem("postplanify.settings.overrides");
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              if (parsed.uploadPostKey) headers["X-Upload-Post-Key"] = parsed.uploadPostKey;
+            }
+          } catch {}
+        }
+        const res = await fetch("/api/social-accounts/list", { 
+          cache: "no-store",
+          headers,
+        });
         if (!res.ok) return;
         const data: { ok: boolean; accounts?: Parameters<typeof adaptAccount>[0][] } = await res.json();
         if (cancelled || !data?.ok || !data.accounts) return;

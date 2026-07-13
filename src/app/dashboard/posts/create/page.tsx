@@ -44,7 +44,6 @@ import { HashtagsDropdown } from "@/components/dashboard/hashtags-dropdown";
 import { PlatformTileBar } from "@/components/dashboard/platform-tile-bar";
 import { CropModal } from "@/components/dashboard/crop-modal";
 import { AltTextModal } from "@/components/dashboard/alt-text-modal";
-import { LearnPanel, type LearnSectionId } from "@/components/dashboard/learn-panel";
 
 type MediaTab = "media" | "paste";
 type MediaItem = {
@@ -71,6 +70,23 @@ const MEDIA_TABS: { id: MediaTab; label: string }[] = [
 ];
 
 const MAX_FILES = 10;
+
+function getOverrideHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (typeof window !== "undefined") {
+    try {
+      const stored = window.localStorage.getItem("postplanify.settings.overrides");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.uploadPostKey) headers["X-Upload-Post-Key"] = parsed.uploadPostKey;
+        if (parsed.n8nWebhookUrl) headers["X-N8N-Webhook-Url"] = parsed.n8nWebhookUrl;
+        if (parsed.bunnyZone) headers["X-Bunny-Zone"] = parsed.bunnyZone;
+        if (parsed.bunnyPassword) headers["X-Bunny-Password"] = parsed.bunnyPassword;
+      }
+    } catch {}
+  }
+  return headers;
+}
 
 export default function CreatePostPage() {
   const { toast, dismiss } = useToast();
@@ -167,8 +183,6 @@ export default function CreatePostPage() {
   const [cropModalOpen, setCropModalOpen] = useState(false);
   const [altTextModalOpen, setAltTextModalOpen] = useState(false);
   const [tagUsersModalOpen, setTagUsersModalOpen] = useState(false);
-  const [learnOpen, setLearnOpen] = useState(false);
-  const [learnSection, setLearnSection] = useState<LearnSectionId | undefined>(undefined);
 
   // Video cover features
   const [customCoverUrl, setCustomCoverUrl] = useState<string | null>(null);
@@ -299,7 +313,10 @@ export default function CreatePostPage() {
     try {
       const res = await fetch("/api/posts/publish", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...getOverrideHeaders()
+        },
         body: JSON.stringify({
           platforms,
           caption,
@@ -418,7 +435,11 @@ export default function CreatePostPage() {
           const fd = new FormData();
           fd.append("file", file);
           fd.append("folder", "posts");
-          const res = await fetch("/api/media/upload", { method: "POST", body: fd });
+          const res = await fetch("/api/media/upload", { 
+            method: "POST", 
+            body: fd,
+            headers: getOverrideHeaders(),
+          });
           const data = (await res.json().catch(() => ({}))) as {
             ok?: boolean;
             url?: string;
@@ -635,10 +656,6 @@ export default function CreatePostPage() {
                 mediaUrl,
                 mediaKind: active?.kind ?? null,
               };
-            }}
-            onOpenLearn={(section) => {
-              setLearnSection(section);
-              setLearnOpen(true);
             }}
           />
           <button
@@ -858,15 +875,6 @@ export default function CreatePostPage() {
           setScheduleModalOpen(false);
           void publishPost(d);
         }}
-      />
-
-      <LearnPanel
-        open={learnOpen}
-        onClose={() => {
-          setLearnOpen(false);
-          setLearnSection(undefined);
-        }}
-        initialSection={learnSection}
       />
 
       {/* Hidden custom cover file input */}

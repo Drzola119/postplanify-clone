@@ -17,6 +17,10 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
+import { cn } from "@/lib/utils";
+import { PageHelp } from "@/components/dashboard/help/page-help";
+import { getHelpConfig } from "@/lib/help/content";
+
 type Platform =
   | "bluesky"
   | "instagram"
@@ -327,7 +331,6 @@ export default function AccountsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [learnOpen, setLearnOpen] = useState(false);
 
   // Integration connections (Unsplash / Drive / Canva / Dropbox).
   // Tracked locally so the UI can show "Connected" once credentials are added in Settings.
@@ -384,7 +387,20 @@ export default function AccountsPage() {
   const fetchAccounts = async () => {
     setError(null);
     try {
-      const res = await fetch("/api/social-accounts/list", { cache: "no-store" });
+      const headers: Record<string, string> = {};
+      if (typeof window !== "undefined") {
+        try {
+          const stored = window.localStorage.getItem("postplanify.settings.overrides");
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed.uploadPostKey) headers["X-Upload-Post-Key"] = parsed.uploadPostKey;
+          }
+        } catch {}
+      }
+      const res = await fetch("/api/social-accounts/list", { 
+        cache: "no-store",
+        headers,
+      });
       const data: ApiResponse = await res.json();
       if (!res.ok || !data.ok) {
         throw new Error((data as unknown as { error?: string }).error || "Failed to load accounts");
@@ -441,7 +457,14 @@ export default function AccountsPage() {
         {/* Header */}
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
           <div className="flex flex-col gap-2">
-            <h2 className="text-3xl font-bold tracking-tight">Social Accounts</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-3xl font-bold tracking-tight">Social Accounts</h2>
+              {(() => {
+                const cfg = getHelpConfig("accounts");
+                if (!cfg) return null;
+                return <PageHelp config={cfg} align="left" buttonClassName="rounded-full" />;
+              })()}
+            </div>
             <p className="text-muted-foreground">
               Connect and manage your social media accounts
             </p>

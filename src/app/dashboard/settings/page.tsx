@@ -21,6 +21,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PageHelp } from "@/components/dashboard/help/page-help";
+import { getHelpConfig } from "@/lib/help/content";
 
 /* ============================================================
    BRAND SVG COMPONENTS (extracted from live page)
@@ -108,111 +110,6 @@ function GoogleDriveLogo({ className }: { className?: string }) {
     </svg>
   );
 }
-
-/* ============================================================
-   TUTORIAL CONTENT for integration "Learn" menus
-   ============================================================ */
-
-type TutorialItem = { title: string; description: string };
-type TutorialGroup = { label: string; items: TutorialItem[] };
-
-const TUTORIAL_CONTENT: Record<string, TutorialGroup[]> = {
-  canva: [
-    {
-      label: "Getting started",
-      items: [
-        {
-          title: "Connect your Canva account",
-          description:
-            "Link PostPlanify with Canva to import designs directly into your posts without leaving the editor.",
-        },
-        {
-          title: "Authenticate via OAuth",
-          description:
-            "Click Connect and grant PostPlanify permission to read your Canva folders and assets.",
-        },
-      ],
-    },
-    {
-      label: "Importing designs",
-      items: [
-        {
-          title: "Import a Canva design",
-          description:
-            "Open the post composer, click the Canva button in the media panel, and pick a design from your library.",
-        },
-        {
-          title: "Resize to any platform",
-          description:
-            "Use Canva's Magic Resize to adapt your design to Instagram, Facebook, LinkedIn, X and more with one click.",
-        },
-      ],
-    },
-    {
-      label: "Best practices",
-      items: [
-        {
-          title: "Brand kits",
-          description:
-            "Set up a Canva Brand Kit so colors, fonts, and logos stay consistent across every exported design.",
-        },
-        {
-          title: "Export quality",
-          description:
-            "Choose PNG for transparency, JPG for smaller files, or PDF for print-ready output.",
-        },
-      ],
-    },
-  ],
-  gdrive: [
-    {
-      label: "Getting started",
-      items: [
-        {
-          title: "Connect Google Drive",
-          description:
-            "Link your Google account to import files straight from Drive into PostPlanify posts.",
-        },
-        {
-          title: "Permission scopes",
-          description:
-            "We request drive.file and drive.readonly scopes — we never modify your Drive data.",
-        },
-      ],
-    },
-    {
-      label: "Importing files",
-      items: [
-        {
-          title: "Import a Drive file",
-          description:
-            "From the post composer, click the Drive icon and pick any image, video, or document.",
-        },
-        {
-          title: "Supported formats",
-          description:
-            "JPG, PNG, GIF, WEBP, MP4, MOV, PDF, DOCX, XLSX and most modern media formats.",
-        },
-      ],
-    },
-    {
-      label: "Troubleshooting",
-      items: [
-        {
-          title: "Token expired",
-          description:
-            "If uploads fail, disconnect and reconnect Google Drive to refresh your access token.",
-        },
-        {
-          title: "Quota errors",
-          description:
-            "Ensure your Google account has enough storage; large files may exceed Drive quotas.",
-        },
-      ],
-    },
-  ],
-};
-
 /* ============================================================
    TOAST SYSTEM
    ============================================================ */
@@ -588,70 +485,6 @@ function ChangePasswordModalBody({
 }
 
 /* ============================================================
-   LEARN DROPDOWN
-   ============================================================ */
-
-function LearnDropdown({
-  integrationId,
-  onClose,
-}: {
-  integrationId: "canva" | "gdrive";
-  onClose: () => void;
-}) {
-  const groups = TUTORIAL_CONTENT[integrationId];
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
-
-  return (
-    <div
-      ref={ref}
-      className="absolute z-20 top-full right-0 mt-1 w-[340px] rounded-lg border border-zinc-200 bg-white shadow-xl p-3 animate-in fade-in-0 slide-in-from-top-2"
-      role="menu"
-    >
-      <div className="px-2 pb-2 mb-2 border-b border-zinc-100">
-        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Tutorials</p>
-      </div>
-      <div className="max-h-[420px] overflow-y-auto space-y-3">
-        {groups.map((g) => (
-          <div key={g.label}>
-            <p className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wide px-2 mb-1">
-              {g.label}
-            </p>
-            <div className="space-y-0.5">
-              {g.items.map((it, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  role="menuitem"
-                  className="w-full text-left px-2 py-1.5 rounded-md hover:bg-zinc-50 transition-colors"
-                >
-                  <p className="text-sm font-medium text-zinc-900">{it.title}</p>
-                  <p className="text-xs text-zinc-500 mt-0.5 line-clamp-2">{it.description}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
    INTEGRATION ROW
    ============================================================ */
 
@@ -670,8 +503,7 @@ function IntegrationRow({
   connected: boolean;
   onToggleConnect: () => void;
 }) {
-  const [learnOpen, setLearnOpen] = useState(false);
-
+  const helpKey = integrationId === "canva" ? "settings/canva" : "settings/google-drive";
   return (
     <div className="w-full md:w-1/2">
       <div className="flex items-start gap-3">
@@ -679,23 +511,11 @@ function IntegrationRow({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
             <h4 className="text-sm font-semibold text-zinc-900">{brand}</h4>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setLearnOpen((v) => !v)}
-                className="inline-flex items-center gap-1 h-7 px-2.5 rounded-md border border-zinc-200 bg-white text-xs font-medium text-zinc-700 hover:bg-zinc-50 transition-colors"
-                aria-expanded={learnOpen}
-              >
-                Learn
-                <ChevronDown className={cn("size-3 transition-transform", learnOpen && "rotate-180")} />
-              </button>
-              {learnOpen && (
-                <LearnDropdown
-                  integrationId={integrationId}
-                  onClose={() => setLearnOpen(false)}
-                />
-              )}
-            </div>
+            {(() => {
+              const cfg = getHelpConfig(helpKey);
+              if (!cfg) return null;
+              return <PageHelp config={cfg} align="left" buttonClassName="rounded-md" />;
+            })()}
           </div>
           <p className="text-xs text-zinc-500 mt-1 max-w-[440px]">{description}</p>
         </div>
@@ -829,15 +649,66 @@ export default function SettingsPage() {
   const [canvaConnected, setCanvaConnected] = useState(false);
   const [gdriveConnected, setGdriveConnected] = useState(false);
 
+  // Integration overrides
+  const [uploadPostKey, setUploadPostKey] = useState("");
+  const [n8nWebhookUrl, setN8nWebhookUrl] = useState("");
+  const [bunnyZone, setBunnyZone] = useState("");
+  const [bunnyPassword, setBunnyPassword] = useState("");
+  const [originalOverrides, setOriginalOverrides] = useState({
+    uploadPostKey: "",
+    n8nWebhookUrl: "",
+    bunnyZone: "",
+    bunnyPassword: "",
+  });
+
+  // Load overrides from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = window.localStorage.getItem("postplanify.settings.overrides");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const loaded = {
+            uploadPostKey: parsed.uploadPostKey ?? "",
+            n8nWebhookUrl: parsed.n8nWebhookUrl ?? "",
+            bunnyZone: parsed.bunnyZone ?? "",
+            bunnyPassword: parsed.bunnyPassword ?? "",
+          };
+          setUploadPostKey(loaded.uploadPostKey);
+          setN8nWebhookUrl(loaded.n8nWebhookUrl);
+          setBunnyZone(loaded.bunnyZone);
+          setBunnyPassword(loaded.bunnyPassword);
+          setOriginalOverrides(loaded);
+        }
+      } catch (e) {}
+    }
+  }, []);
+
   // Subscription state
   const [autoRenew, setAutoRenew] = useState(true);
   const [showCancel, setShowCancel] = useState(false);
 
-  const isDirty = name !== originalName || profileFile !== null;
+  const isDirty =
+    name !== originalName ||
+    profileFile !== null ||
+    uploadPostKey !== originalOverrides.uploadPostKey ||
+    n8nWebhookUrl !== originalOverrides.n8nWebhookUrl ||
+    bunnyZone !== originalOverrides.bunnyZone ||
+    bunnyPassword !== originalOverrides.bunnyPassword;
 
   const handleSave = async () => {
     setSaving(true);
     await new Promise((r) => setTimeout(r, 800));
+
+    // Save overrides
+    if (typeof window !== "undefined") {
+      try {
+        const overrides = { uploadPostKey, n8nWebhookUrl, bunnyZone, bunnyPassword };
+        window.localStorage.setItem("postplanify.settings.overrides", JSON.stringify(overrides));
+        setOriginalOverrides(overrides);
+      } catch (e) {}
+    }
+
     setSaving(false);
     push("success", "Account settings updated");
   };
@@ -998,6 +869,49 @@ export default function SettingsPage() {
                       );
                     }}
                   />
+                </div>
+
+                {/* Divider */}
+                <div className="shrink-0 bg-zinc-200 h-[1px] w-full" />
+
+                {/* API & VPS Integration Overrides */}
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-semibold text-zinc-900">API & VPS Integration Overrides</h4>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Configure your integration credentials here to override server-side defaults for testing.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Field
+                      label="upload-post.com API Key"
+                      value={uploadPostKey}
+                      onChange={setUploadPostKey}
+                      placeholder="gsk_..."
+                      hint="API key to fetch your connected social profiles"
+                    />
+                    <Field
+                      label="n8n Webhook URL"
+                      value={n8nWebhookUrl}
+                      onChange={setN8nWebhookUrl}
+                      placeholder="https://n8n.yourvps.com/webhook/..."
+                      hint="Webhook endpoint triggered when you publish posts"
+                    />
+                    <Field
+                      label="Bunny.net Storage Zone"
+                      value={bunnyZone}
+                      onChange={setBunnyZone}
+                      placeholder="bunny-storage-zone-name"
+                      hint="Zone name for media uploads"
+                    />
+                    <Field
+                      label="Bunny.net Storage Password"
+                      value={bunnyPassword}
+                      onChange={setBunnyPassword}
+                      placeholder="Storage API key/password"
+                      hint="Access key for your Bunny storage container"
+                    />
+                  </div>
                 </div>
 
                 {/* Save Changes (left-aligned, with floppy icon) */}

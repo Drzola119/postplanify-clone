@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/firebase/admin";
+import { headers } from "next/headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -96,10 +97,11 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const apiKey = process.env.UPLOAD_POST_API_KEY;
+  const headersList = await headers();
+  const apiKey = headersList.get("x-upload-post-key") || process.env.UPLOAD_POST_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
-      { error: "UPLOAD_POST_API_KEY not configured on server" },
+      { error: "UPLOAD_POST_API_KEY not configured on server and no client override provided" },
       { status: 500 }
     );
   }

@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/firebase/admin";
+import { headers } from "next/headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,10 +31,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const n8nUrl = process.env.N8N_WEBHOOK_URL;
+  const headersList = await headers();
+  const n8nUrl = headersList.get("x-n8n-webhook-url") || process.env.N8N_WEBHOOK_URL;
   if (!n8nUrl) {
     return NextResponse.json(
-      { error: "N8N_WEBHOOK_URL not configured on server" },
+      { error: "N8N_WEBHOOK_URL not configured on server and no client override provided" },
       { status: 500 }
     );
   }
