@@ -30,6 +30,7 @@ import {
   ChevronRight,
   MoreVertical,
 } from "lucide-react";
+import { ACTIVE_WORKSPACE_STORAGE_KEY } from "@/lib/security/storage-keys";
 import { cn } from "@/lib/utils";
 import { useDrawer } from "@/components/dashboard/drawer-provider";
 import { UserMenu } from "@/components/dashboard/user-menu";
@@ -150,7 +151,15 @@ export function DashboardSidebar() {
         const data = (await res.json()) as { workspaces?: SidebarWorkspace[] };
         if (cancelled || !data.workspaces) return;
         setWorkspaces(data.workspaces);
-        setActiveWorkspace((current) => current || data.workspaces![0]?.id || "");
+        const persistedId =
+          typeof window !== "undefined"
+            ? window.sessionStorage.getItem(ACTIVE_WORKSPACE_STORAGE_KEY)
+            : null;
+        const validPersisted =
+          persistedId && data.workspaces.some((w) => w.id === persistedId)
+            ? persistedId
+            : null;
+        setActiveWorkspace((current) => current || validPersisted || data.workspaces![0]?.id || "");
       } catch {
         /* leave empty */
       }
@@ -185,6 +194,9 @@ export function DashboardSidebar() {
         if (listData.workspaces) {
           setWorkspaces(listData.workspaces);
           setActiveWorkspace(data.id);
+          if (typeof window !== "undefined") {
+            window.sessionStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, data.id);
+          }
         }
       }
     } catch {
@@ -198,6 +210,9 @@ export function DashboardSidebar() {
       return;
     }
     setActiveWorkspace(v);
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, v);
+    }
   };
 
   return (

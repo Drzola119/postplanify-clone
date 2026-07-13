@@ -295,13 +295,28 @@ export default function PostsCalendarPage() {
 
   const handleBulkDelete = useCallback(async (ids: string[]) => {
     if (ids.length === 0) return;
-    await Promise.all(
-      ids.map((id) =>
-        fetch(`/api/posts/${id}`, { method: "DELETE", credentials: "include" }).catch(() => null)
-      )
-    );
-    setPostsVersion((v) => v + 1);
-  }, []);
+    const idSet = new Set(ids);
+    const snapshot = posts;
+    setPosts((prev) => prev.filter((p) => !idSet.has(p.id)));
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          fetch(`/api/posts/${id}`, { method: "DELETE", credentials: "include" })
+        )
+      );
+      const failed = results.filter((r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value.ok));
+      if (failed.length > 0) {
+        setPosts(snapshot);
+        window.alert(
+          `Could not delete ${failed.length} post${failed.length === 1 ? "" : "s"}. Please try again.`
+        );
+        return;
+      }
+    } catch {
+      setPosts(snapshot);
+      window.alert("Bulk delete failed. Please try again.");
+    }
+  }, [posts]);
 
   // Responsive: auto-switch to List view on narrow viewports (matches live PostPlanify behavior at <1280px)
   useEffect(() => {

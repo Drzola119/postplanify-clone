@@ -1,11 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/db";
-import { createComment } from "@/lib/db/inbox";
+import { createComment, updateCommentSentiment } from "@/lib/db/inbox";
 import { inboxInboundSchema } from "@/lib/validation/inbox";
 import { parseBody, jsonError, jsonOk } from "@/lib/validation/helpers";
+import { MissingServerSecretError, resolvers } from "@/lib/security/server-config";
+import { callGroq, extractJson, GROQ_TEXT_MODEL, GroqError } from "@/lib/ai/groq";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const SENTIMENT_SYSTEM_PROMPT =
+  "You classify the sentiment of a social-media comment. " +
+  "Return ONLY JSON of the form {\"sentiment\": \"positive\"|\"neutral\"|\"negative\"}. " +
+  "Score is your confidence-weighted sentiment on a -1..1 axis.";
+
+function classifySentiment(body: string, apiKey: string): Promise<"positive" | "neutral" | "negative"> {
+  return callGroq({
+    apiKey,
+    model: GROQ_TEXT_MODEL,
+    jsonMode: true,
+    messages: [
+      { role: "system", content: SENTIMENT_SYSTEM_PROMPT },
+      { role: "user", content: `Classify the sentiment of this comment:\n\n${body.slice(0, 3000)}` },
+    ],
+    maxTokens: 60,
+    temperature: 0.3,
+  })
+    .then((r) => {
+      const obj = extractJson<{ sentiment?: string }>(r.content);
+      if (obj?.sentiment === "positive" || obj?.sentiment === "negative") return obj.sentiment;
+      return "neutral" as const;
+    })
+    .catch(() => "neutral" as const);
+}
 
 /**
  * Inbound webhook from external systems (n8n, upload-post.com polling, etc.).
@@ -60,6 +87,25 @@ export async function POST(
     body: parsed.data.body,
     sentAt: parsed.data.sentAt ? new Date(parsed.data.sentAt) : undefined,
   });
+
+  // Auto-classify sentiment in the background. We return 201 immediately so
+  // the inbound caller doesn't have to wait on Groq. Failures fall back to
+  // "neutral" and are silently logged — never block ingest.
+  void (async () => {
+    try {
+      const apiKey = resolvers.groqApiKey(request.headers);
+      const sentiment = await classifySentiment(parsed.data.body, apiKey);
+      await updateCommentSentiment(workspaceId, id, sentiment);
+    } catch (err) {
+      if (err instanceof MissingServerSecretError) {
+        console.warn("[inbound-webhook] GROQ_API_KEY not configured; skipping sentiment");
+      } else if (err instanceof GroqError) {
+        console.warn(`[inbound-webhook] Groq sentiment failed: ${err.message}`);
+      } else {
+        console.warn("[inbound-webhook] sentiment auto-classify error:", err);
+      }
+    }
+  })();
 
   return jsonOk({ id, source }, 201);
 }

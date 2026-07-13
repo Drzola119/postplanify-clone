@@ -95,6 +95,89 @@ function splitDateTime(dt: string): { date: string; time: string } {
   return { date: date || todayISO(), time: (time || "08:00").slice(0, 5) };
 }
 
+/**
+ * Minimal RFC4180-ish CSV parser. Supports quoted fields with embedded
+ * commas/newlines and `""` escapes. Returns { headers, rows }.
+ */
+function parseCsv(text: string): { headers: string[]; rows: string[][] } {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cur += c;
+      }
+    } else {
+      if (c === '"') {
+        inQuotes = true;
+      } else if (c === ",") {
+        row.push(cur);
+        cur = "";
+      } else if (c === "\n" || c === "\r") {
+        if (cur !== "" || row.length > 0) {
+          row.push(cur);
+          rows.push(row);
+          row = [];
+          cur = "";
+        }
+        if (c === "\r" && text[i + 1] === "\n") i++;
+      } else {
+        cur += c;
+      }
+    }
+  }
+  if (cur !== "" || row.length > 0) {
+    row.push(cur);
+    rows.push(row);
+  }
+  const headers = (rows.shift() ?? []).map((h) => h.trim().toLowerCase());
+  return { headers, rows: rows.filter((r) => r.some((c) => c.trim() !== "")) };
+}
+
+const PLATFORM_ALIASES: Record<string, PlatformId> = {
+  twitter: "twitter",
+  x: "twitter",
+  instagram: "instagram",
+  ig: "instagram",
+  facebook: "facebook",
+  fb: "facebook",
+  tiktok: "tiktok",
+  youtube: "youtube",
+  yt: "youtube",
+  linkedin: "linkedin",
+  threads: "threads",
+  pinterest: "pinterest",
+  bluesky: "bluesky",
+  bsky: "bluesky",
+};
+
+function normalizePlatforms(raw: string): PlatformId[] {
+  const out = new Set<PlatformId>();
+  for (const tok of raw.split(/[,|/;]/).map((s) => s.trim().toLowerCase()).filter(Boolean)) {
+    const mapped = PLATFORM_ALIASES[tok];
+    if (mapped) out.add(mapped);
+  }
+  return Array.from(out);
+}
+
+function normalizeHashtags(raw: string): string[] {
+  return raw
+    .split(/[,|;\s]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .map((s) => (s.startsWith("#") ? s : `#${s}`));
+}
+
 export default function BulkSchedulePage() {
   const [items, setItems] = useState<BulkItem[]>([]);
   const [startDate, setStartDate] = useState<string>(todayISO());
@@ -105,8 +188,11 @@ export default function BulkSchedulePage() {
   const [tzOpen, setTzOpen] = useState(false);
   const [accounts, setAccounts] = useState<Set<PlatformId>>(new Set());
   const [dragging, setDragging] = useState(false);
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [scheduleBusy, setScheduleBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addMoreInputRef = useRef<HTMLInputElement>(null);
+  const csvInputRef = useRef<HTMLInputElement>(null);
 
   // Close dropdowns on Escape
   useEffect(() => {
@@ -134,6 +220,127 @@ export default function BulkSchedulePage() {
 
   function pickMoreFiles() {
     addMoreInputRef.current?.click();
+  }
+
+  function pickCsvFile() {
+    csvInputRef.current?.click();
+  }
+
+  async function handleCsvFile(file: File) {
+    setCsvBusy(true);
+    try {
+      const text = await file.text();
+      const { headers, rows } = parseCsv(text);
+      const errors: string[] = [];
+      if (headers.length === 0 || rows.length === 0) {
+        window.alert("CSV is empty.");
+        return;
+      }
+      const capIdx = headers.indexOf("caption");
+      const platformsIdx = headers.indexOf("platforms");
+      const scheduledIdx = headers.indexOf("scheduledat");
+      const hashtagsIdx = headers.indexOf("hashtags");
+      const mediaIdx = headers.indexOf("mediaurl");
+      if (capIdx < 0) {
+        window.alert('CSV is missing the required "caption" column.');
+        return;
+      }
+      const newItems: BulkItem[] = [];
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        const caption = (r[capIdx] ?? "").trim();
+        if (!caption) {
+          errors.push(`Row ${i + 2}: missing caption`);
+          continue;
+        }
+        let platforms = platformsIdx >= 0 ? normalizePlatforms(r[platformsIdx] ?? "") : [];
+        if (platforms.length === 0) platforms = Array.from(accounts);
+        if (platforms.length === 0) {
+          errors.push(`Row ${i + 2}: no platforms (add a "platforms" column or select accounts above)`);
+          continue;
+        }
+        const scheduledAt = (scheduledIdx >= 0 ? r[scheduledIdx] : "").trim() || nowLocalDateTime(i);
+        const { date, time } = splitDateTime(scheduledAt);
+        const hashtags = hashtagsIdx >= 0 ? normalizeHashtags(r[hashtagsIdx] ?? "") : [];
+        const mediaUrl = mediaIdx >= 0 ? (r[mediaIdx] ?? "").trim() : "";
+        newItems.push({
+          id: `csv-${Date.now()}-${i}`,
+          file: undefined as unknown as File,
+          url: mediaUrl,
+          kind: "image",
+          name: `CSV row ${i + 2}`,
+          size: 0,
+          caption,
+          scheduledAt,
+          scheduledDate: date,
+          scheduledTime: time,
+          accountIds: platforms,
+          postIn: "feed",
+          youtubeTitle: "",
+          youtubeTags: "",
+          pinterestBoard: "",
+          autoAddMusic: false,
+          community: false,
+          profile: "Default",
+          hashtags,
+        } as BulkItem & { hashtags?: string[] });
+      }
+      setItems((prev) => {
+        const remaining = Math.max(0, MAX_FILES - prev.length);
+        return [...prev, ...newItems.slice(0, remaining)];
+      });
+      const inserted = Math.min(newItems.length, MAX_FILES);
+      if (errors.length > 0) {
+        window.alert(`Imported ${inserted} post${inserted === 1 ? "" : "s"}. ${errors.length} skipped:\n\n${errors.slice(0, 5).join("\n")}${errors.length > 5 ? "\n…" : ""}`);
+      } else if (inserted > 0) {
+        window.alert(`Imported ${inserted} post${inserted === 1 ? "" : "s"} from CSV.`);
+      }
+    } catch (e) {
+      window.alert(`Could not read CSV: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setCsvBusy(false);
+    }
+  }
+
+  async function handleScheduleAll() {
+    if (items.length === 0 || scheduleBusy) return;
+    setScheduleBusy(true);
+    try {
+      const itemsToSend = items
+        .filter((it) => Array.isArray(it.accountIds) && it.accountIds.length > 0 && it.caption.trim())
+        .slice(0, 100);
+      if (itemsToSend.length === 0) {
+        window.alert("None of the items are ready. Add captions and select at least one platform per item.");
+        return;
+      }
+      const payload = {
+        items: itemsToSend.map((it) => ({
+          caption: it.caption,
+          platforms: it.accountIds,
+          mediaUrls: it.url ? [it.url] : [],
+          scheduledAt: it.scheduledAt ? new Date(it.scheduledAt).toISOString() : undefined,
+          hashtags: (it as BulkItem & { hashtags?: string[] }).hashtags ?? [],
+          status: "scheduled" as const,
+        })),
+      };
+      const res = await fetch("/api/posts/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `Bulk schedule failed (${res.status})`);
+      }
+      const data = (await res.json()) as { count?: number; ids?: string[] };
+      window.alert(`Scheduled ${data.count ?? itemsToSend.length} post${(data.count ?? itemsToSend.length) === 1 ? "" : "s"}.`);
+      setItems([]);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Bulk schedule failed.");
+    } finally {
+      setScheduleBusy(false);
+    }
   }
 
   function onDrop(e: React.DragEvent) {
@@ -480,6 +687,31 @@ export default function BulkSchedulePage() {
                       Supports MP4, MOV, JPG, PNG • Max {Math.round(MAX_FILE_BYTES / 1024 / 1024)}MB per file
                     </p>
                   </div>
+                  <div className="mt-3 flex items-center justify-between rounded-md border border-zinc-200 bg-zinc-50/50 px-3 py-2">
+                    <p className="text-xs text-zinc-600">
+                      <span className="font-medium">Have a CSV?</span> Upload captions + schedules in bulk (no media).
+                    </p>
+                    <button
+                      type="button"
+                      onClick={pickCsvFile}
+                      disabled={csvBusy}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 h-7 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                    >
+                      <Upload className="size-3.5" />
+                      {csvBusy ? "Reading…" : "Upload CSV"}
+                    </button>
+                    <input
+                      ref={csvInputRef}
+                      type="file"
+                      accept=".csv,text/csv"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleCsvFile(file);
+                        e.target.value = "";
+                      }}
+                    />
+                  </div>
                 </>
               ) : (
                 <>
@@ -605,11 +837,12 @@ export default function BulkSchedulePage() {
             </span>
             <button
               type="button"
-              onClick={() => alert("This would schedule all posts. Not implemented in this clone.")}
-              className="inline-flex items-center gap-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-4 h-10 text-sm font-medium"
+              onClick={handleScheduleAll}
+              disabled={scheduleBusy}
+              className="inline-flex items-center gap-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-4 h-10 text-sm font-medium disabled:opacity-50"
             >
               <Calendar className="size-4" />
-              Schedule All Posts
+              {scheduleBusy ? "Scheduling…" : "Schedule All Posts"}
             </button>
           </div>
         </div>

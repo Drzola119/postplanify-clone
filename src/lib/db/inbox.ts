@@ -87,6 +87,15 @@ export async function markReplied(
   await ref.update({ replied: true, replyId });
 }
 
+export async function updateCommentSentiment(
+  workspaceId: string,
+  commentId: string,
+  sentiment: "positive" | "neutral" | "negative"
+): Promise<void> {
+  const ref = commentsCollection(workspaceId).doc(commentId);
+  await ref.update({ sentiment });
+}
+
 export async function replyToComment(
   workspaceId: string,
   commentId: string,
