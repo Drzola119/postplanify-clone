@@ -15,6 +15,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PageHelp } from "@/components/dashboard/help/page-help";
+import { getHelpConfig } from "@/lib/help/content";
 
 /* ============================================================
    BRAND / SOCIAL ICONS (exact paths from live page)
@@ -202,22 +204,8 @@ function MenuBookIcon({ className }: { className?: string }) {
 }
 
 /* ============================================================
-   LEARN DROPDOWN CONTENT
+   LEARN DROPDOWN (legacy helpers removed; replaced by PageHelp)
    ============================================================ */
-
-type LearnItem = { title: string; icon: React.ReactNode };
-
-const LEARN_ITEMS: LearnItem[] = [
-  { title: '"Workspaces" explained', icon: <BookOpen className="size-4" /> },
-  { title: 'Creating a Workspace', icon: <BookOpen className="size-4" /> },
-  { title: 'Adding Social Accounts', icon: <BookOpen className="size-4" /> },
-  { title: 'Switching Between Workspaces', icon: <BookOpen className="size-4" /> },
-];
-
-const LEARN_ITEMS_MODAL: LearnItem[] = [
-  { title: 'Workspace limits', icon: <BookOpen className="size-4" /> },
-  { title: 'Member roles', icon: <BookOpen className="size-4" /> },
-];
 
 /* ============================================================
    TOAST SYSTEM
@@ -296,92 +284,9 @@ function useToasts() {
 }
 
 /* ============================================================
-   LEARN DROPDOWN (used in both header and modals)
+   LEARN HELP (replaced by PageHelp component)
    ============================================================ */
 
-function LearnDropdown({
-  items,
-  onClose,
-  align = "left",
-}: {
-  items: LearnItem[];
-  onClose: () => void;
-  align?: "left" | "right";
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
-
-  return (
-    <div
-      ref={ref}
-      className={cn(
-        "absolute z-30 top-full mt-1 w-[280px] rounded-md border border-zinc-200 bg-popover p-1 shadow-md animate-in fade-in-0 slide-in-from-top-2",
-        align === "right" ? "right-0" : "left-0"
-      )}
-      role="menu"
-    >
-      {items.map((it, i) => (
-        <button
-          key={i}
-          type="button"
-          role="menuitem"
-          className="relative flex w-full select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer"
-        >
-          {it.icon}
-          {it.title}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function LearnButton({
-  items,
-  size = "header",
-}: {
-  items: LearnItem[];
-  size?: "header" | "modal";
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="relative inline-flex">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
-          "inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 hover:bg-accent hover:text-accent-foreground border border-border rounded-full",
-          size === "header" ? "text-xs h-8 px-3 mx-1" : "text-xs h-8 px-3"
-        )}
-        aria-haspopup="menu"
-        aria-expanded={open}
-      >
-        {size === "header" ? <MenuBookIcon className="w-4 h-4" /> : <MenuBookIcon className="w-4 h-4" />}
-        <span className="text-sm ml-1.5">Learn</span>
-        <ChevronDown className={cn("size-3.5 ml-0.5 transition-transform", open && "rotate-180")} />
-        <span className="sr-only">Open guidance</span>
-      </button>
-      {open && <LearnDropdown items={items} onClose={() => setOpen(false)} />}
-    </div>
-  );
-}
-
-/* ============================================================
-   DIALOG / MODAL SHELL
-   ============================================================ */
 
 function DialogShell({
   open,
@@ -494,7 +399,6 @@ function WorkspaceFormModalBody({
             className="text-lg font-semibold leading-none tracking-tight flex items-center gap-2"
           >
             {isEdit ? "Edit Workspace" : "Create New Workspace"}
-            <LearnButton items={LEARN_ITEMS_MODAL} size="modal" />
           </h2>
           <p className="text-sm text-muted-foreground">
             {isEdit ? "Update your workspace's information" : "Connect your social accounts under this workspace later."}
@@ -970,7 +874,11 @@ export default function WorkspacesPage() {
         <div className="flex flex-col gap-2 w-full sm:w-auto">
           <div className="flex items-center gap-2">
             <h2 className="text-[30px] font-bold leading-[36px] tracking-tight">Workspaces</h2>
-            <LearnButton items={LEARN_ITEMS} size="header" />
+            {(() => {
+              const cfg = getHelpConfig("brands");
+              if (!cfg) return null;
+              return <PageHelp config={cfg} align="left" buttonClassName="rounded-full" />;
+            })()}
           </div>
           <p className="text-sm text-muted-foreground">
             Create workspaces to group your social media accounts &amp; posts.

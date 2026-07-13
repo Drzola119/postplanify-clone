@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PLATFORMS, type PlatformId } from "@/lib/platforms";
+import { PageHelp } from "@/components/dashboard/help/page-help";
+import { getHelpConfig } from "@/lib/help/content";
 
 type BulkItem = {
   id: string;
@@ -101,7 +103,6 @@ export default function BulkSchedulePage() {
   const [interval, setInterval] = useState<string>("1d");
   const [timezone, setTimezone] = useState<string>("Africa/Lagos");
   const [tzOpen, setTzOpen] = useState(false);
-  const [learnOpen, setLearnOpen] = useState(false);
   const [accounts, setAccounts] = useState<Set<PlatformId>>(new Set());
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -112,7 +113,6 @@ export default function BulkSchedulePage() {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         setTzOpen(false);
-        setLearnOpen(false);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -266,43 +266,11 @@ export default function BulkSchedulePage() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-[30px] font-bold leading-[36px] tracking-tight">Bulk Schedule Posts</h1>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setLearnOpen((v) => !v)}
-                aria-haspopup="menu"
-                aria-expanded={learnOpen}
-                aria-label="Learn"
-                className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50"
-              >
-                <span aria-hidden>📚</span>
-                Learn
-                <ChevronDown className="size-3.5 text-zinc-500" />
-              </button>
-              {learnOpen ? (
-                <div
-                  role="menu"
-                  className="absolute left-0 top-9 z-30 w-[260px] rounded-md border border-zinc-200 bg-white shadow-lg p-1"
-                >
-                  <a
-                    href="#"
-                    role="menuitem"
-                    className="block px-3 py-2 rounded-md hover:bg-zinc-100"
-                  >
-                    <p className="text-sm font-medium">Bulk Scheduling</p>
-                    <p className="text-xs text-zinc-500">Schedule dozens of posts at once.</p>
-                  </a>
-                  <a
-                    href="#"
-                    role="menuitem"
-                    className="block px-3 py-2 rounded-md hover:bg-zinc-100"
-                  >
-                    <p className="text-sm font-medium">Troubleshooting Failed Posts</p>
-                    <p className="text-xs text-zinc-500">Diagnose common publishing issues.</p>
-                  </a>
-                </div>
-              ) : null}
-            </div>
+            {(() => {
+              const cfg = getHelpConfig("posts/bulk-schedule");
+              if (!cfg) return null;
+              return <PageHelp config={cfg} align="left" buttonClassName="rounded-full" />;
+            })()}
           </div>
           <p className="text-sm text-zinc-500 mt-1">
             Upload multiple images and videos to schedule them all at once with individual settings.

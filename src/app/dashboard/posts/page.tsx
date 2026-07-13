@@ -14,6 +14,8 @@ import {
   Trophy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PageHelp } from "@/components/dashboard/help/page-help";
+import { getHelpConfig } from "@/lib/help/content";
 
 // ===== TYPES =====
 type PostStatus = "scheduled" | "published" | "draft" | "failed" | "pending";
@@ -311,11 +313,11 @@ export default function PostsCalendarPage() {
             <h2 className="text-[18px] font-semibold text-zinc-900">
               {view === "weekly" ? weekRangeLabel(currentDate) : monthLabel(currentDate)}
             </h2>
-            <button className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground text-xs h-8 px-3 font-medium">
-              <span aria-hidden>📚</span>
-              Learn
-              <ChevronDown className="size-3.5" />
-            </button>
+            {(() => {
+              const cfg = getHelpConfig("posts");
+              if (!cfg) return null;
+              return <PageHelp config={cfg} align="left" buttonClassName="rounded-md" />;
+            })()}
             <button className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground text-xs h-8 px-3 font-medium">
               <span aria-hidden>📊</span>
               Reporting
