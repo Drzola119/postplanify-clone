@@ -20,10 +20,61 @@ import {
   getAnalytics,
   deleteBio,
   clearCurrentUsername,
+  newLinkId,
 } from "@/lib/link-in-bio/store";
 import { Modal } from "@/components/ui/modal";
 
 type Range = "7d" | "14d" | "30d" | "90d";
+
+interface ApiLinkInBio {
+  username?: string;
+  bio?: string;
+  blocks?: { type: string; data?: Record<string, unknown> }[];
+  theme?: string;
+  socials?: Record<string, string>;
+  avatarUrl?: string;
+  updatedAt?: string;
+}
+
+function apiBioToLocal(username: string, api: ApiLinkInBio): Bio {
+  const linkBlocks = (api.blocks ?? []).filter((b) => b.type === "link");
+  const links = linkBlocks.map((b) => {
+    const data = (b.data ?? {}) as { title?: string; url?: string; enabled?: boolean };
+    return {
+      id: newLinkId(),
+      title: data.title ?? "Untitled",
+      url: data.url ?? "",
+      enabled: data.enabled ?? true,
+      clicks: 0,
+    };
+  });
+  const socialLinks = Object.entries(api.socials ?? {}).map(([platform, url]) => ({
+    id: `soc_${Date.now().toString(36)}_${platform}`,
+    platform: (platform as
+      | "instagram"
+      | "twitter"
+      | "tiktok"
+      | "youtube"
+      | "linkedin"
+      | "facebook"
+      | "github"
+      | "email"),
+    url,
+  }));
+  const now = Date.now();
+  return {
+    username,
+    displayName: username,
+    bio: api.bio ?? "",
+    links,
+    socialLinks,
+    themeId: (api.theme as Bio["themeId"]) ?? "minimal-light",
+    style: "rounded" as const,
+    customColors: null,
+    createdAt: now,
+    updatedAt: api.updatedAt ? new Date(api.updatedAt).getTime() : now,
+  };
+}
 
 export default function LinkInBioPage() {
   const [hydrated, setHydrated] = useState(false);
@@ -34,19 +85,44 @@ export default function LinkInBioPage() {
   const [range, setRange] = useState<Range>("7d");
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  // Hydrate from localStorage
+  // Hydrate: prefer API, fall back to localStorage.
   useEffect(() => {
-    const u = getCurrentUsername();
-    if (u) {
-      const b = getBio(u);
-      if (b) {
-        setUsername(u);
-        setBio(b);
-        setSavedBio(b);
-        setAnalytics(getAnalytics(u));
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/link-in-bio", { credentials: "include" });
+        if (res.ok) {
+          const data = (await res.json()) as { bio?: ApiLinkInBio };
+          if (cancelled) return;
+          if (data.bio?.username) {
+            const mapped = apiBioToLocal(data.bio.username, data.bio);
+            setUsername(mapped.username);
+            setBio(mapped);
+            setSavedBio(mapped);
+            setAnalytics(getAnalytics(mapped.username));
+            setHydrated(true);
+            return;
+          }
+        }
+      } catch {
+        // fall through to localStorage
       }
-    }
-    setHydrated(true);
+      if (cancelled) return;
+      const u = getCurrentUsername();
+      if (u) {
+        const b = getBio(u);
+        if (b) {
+          setUsername(u);
+          setBio(b);
+          setSavedBio(b);
+          setAnalytics(getAnalytics(u));
+        }
+      }
+      setHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleCreated = (u: string) => {
@@ -62,14 +138,34 @@ export default function LinkInBioPage() {
     setBio((prev) => (prev ? { ...prev, ...patch } : prev));
   }, []);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!bio) return;
+    // Always save locally as cache; try API first.
     saveBio(bio);
     setSavedBio(bio);
     setAnalytics(getAnalytics(bio.username));
+    try {
+      await fetch("/api/link-in-bio", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          username: bio.username,
+          bio: bio.bio,
+          blocks: bio.links.map((l) => ({
+            type: "link",
+            data: { title: l.title, url: l.url, enabled: l.enabled },
+          })),
+          theme: bio.themeId,
+          socials: Object.fromEntries(bio.socialLinks.map((s) => [s.platform, s.url])),
+        }),
+      });
+    } catch {
+      // localStorage already saved; offline OK
+    }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!bio) return;
     deleteBio(bio.username);
     setBio(null);
@@ -77,6 +173,14 @@ export default function LinkInBioPage() {
     setUsername(null);
     clearCurrentUsername();
     setDeleteOpen(false);
+    try {
+      await fetch(`/api/link-in-bio/by-username/${encodeURIComponent(bio.username)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+    } catch {
+      // localStorage already cleared; offline OK
+    }
   };
 
   if (!hydrated) {
