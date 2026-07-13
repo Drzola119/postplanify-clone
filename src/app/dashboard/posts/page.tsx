@@ -41,6 +41,17 @@ interface CalendarPost {
   accountName?: string;
 }
 
+interface ApiPost {
+  id: string;
+  caption?: string;
+  status?: string;
+  platforms?: string[];
+  mediaUrls?: string[];
+  scheduledAt?: string;
+  publishedAt?: string;
+  createdAt?: string;
+}
+
 // ===== PLATFORM ICONS (color + glyph) =====
 const PLATFORM_META: Record<Platform, { color: string; bg: string; label: string; svg: React.ReactNode }> = {
   instagram: {
@@ -220,7 +231,39 @@ export default function PostsCalendarPage() {
   const [view, setView] = useState<ViewMode>("monthly");
   const [currentDate, setCurrentDate] = useState(new Date(2026, 5, 27)); // June 27 2026
   const [selectedPost, setSelectedPost] = useState<CalendarPost | null>(null);
+  const [posts, setPosts] = useState<CalendarPost[]>(SAMPLE_POSTS);
   const today = new Date(2026, 5, 27);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/posts", { credentials: "include" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { posts?: ApiPost[] };
+        if (cancelled) return;
+        const mapped = (data.posts ?? []).map<CalendarPost>((p) => {
+          const d = new Date(p.scheduledAt ?? p.publishedAt ?? p.createdAt ?? Date.now());
+          return {
+            id: p.id,
+            date: fmtISO(d),
+            time: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
+            caption: p.caption ?? "",
+            status: (p.status ?? "draft") as PostStatus,
+            thumbnail: p.mediaUrls?.[0],
+            platforms: (p.platforms ?? []) as Platform[],
+            accountName: undefined,
+          };
+        });
+        if (mapped.length > 0) setPosts(mapped);
+      } catch {
+        // offline — keep seed
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Responsive: auto-switch to List view on narrow viewports (matches live PostPlanify behavior at <1280px)
   useEffect(() => {
@@ -359,9 +402,9 @@ export default function PostsCalendarPage() {
         </div>
 
         {/* Calendar body */}
-        {view === "monthly" && <MonthView currentDate={currentDate} today={today} onPostClick={setSelectedPost} />}
-        {view === "weekly" && <WeekView currentDate={currentDate} today={today} onPostClick={setSelectedPost} />}
-        {view === "list" && <ListView currentDate={currentDate} onPostClick={setSelectedPost} />}
+        {view === "monthly" && <MonthView currentDate={currentDate} today={today} posts={posts} onPostClick={setSelectedPost} />}
+        {view === "weekly" && <WeekView currentDate={currentDate} today={today} posts={posts} onPostClick={setSelectedPost} />}
+        {view === "list" && <ListView currentDate={currentDate} posts={posts} onPostClick={setSelectedPost} />}
       </div>
 
       {selectedPost && <PostDetailsModal post={selectedPost} onClose={() => setSelectedPost(null)} />}
@@ -616,7 +659,7 @@ function ViewModeSwitch({ view, onChange }: { view: ViewMode; onChange: (v: View
 }
 
 // ===== MONTH VIEW =====
-function MonthView({ currentDate, today, onPostClick }: { currentDate: Date; today: Date; onPostClick: (p: CalendarPost) => void }) {
+function MonthView({ currentDate, today, posts, onPostClick }: { currentDate: Date; today: Date; posts: CalendarPost[]; onPostClick: (p: CalendarPost) => void }) {
   const start = monthGridStart(currentDate);
   const days = useMemo(() => Array.from({ length: 35 }, (_, i) => addDays(start, i)), [start]);
   const month = currentDate.getMonth();
@@ -644,6 +687,7 @@ function MonthView({ currentDate, today, onPostClick }: { currentDate: Date; tod
                 day={day}
                 isCurrentMonth={day.getMonth() === month}
                 isToday={isSameDay(day, today)}
+                posts={posts}
                 onPostClick={onPostClick}
               />
             ))}
@@ -654,9 +698,9 @@ function MonthView({ currentDate, today, onPostClick }: { currentDate: Date; tod
   );
 }
 
-function DayCell({ day, isCurrentMonth, isToday, onPostClick }: { day: Date; isCurrentMonth: boolean; isToday: boolean; onPostClick?: (p: CalendarPost) => void }) {
+function DayCell({ day, isCurrentMonth, isToday, posts, onPostClick }: { day: Date; isCurrentMonth: boolean; isToday: boolean; posts: CalendarPost[]; onPostClick?: (p: CalendarPost) => void }) {
   const iso = fmtISO(day);
-  const posts = SAMPLE_POSTS.filter((p) => p.date === iso);
+  const dayPosts = posts.filter((p) => p.date === iso);
   return (
     <div
       className={cn(
@@ -681,10 +725,10 @@ function DayCell({ day, isCurrentMonth, isToday, onPostClick }: { day: Date; isC
           </div>
         )}
         {/* Status badge */}
-        {posts.length > 0 && (
+        {dayPosts.length > 0 && (
           <div className="flex items-center space-x-0.5 flex-shrink-0">
             <div className="w-4 h-4 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center">
-              <span className="text-[9px] font-medium text-green-600">{posts.length}</span>
+              <span className="text-[9px] font-medium text-green-600">{dayPosts.length}</span>
             </div>
           </div>
         )}
@@ -692,7 +736,7 @@ function DayCell({ day, isCurrentMonth, isToday, onPostClick }: { day: Date; isC
 
       {/* Post cards */}
       <div className="flex-1 overflow-y-auto space-y-1 min-h-0">
-        {posts.map((p) => (
+        {dayPosts.map((p) => (
           <EventCard key={p.id} post={p} onClick={() => onPostClick?.(p)} />
         ))}
       </div>
@@ -759,7 +803,7 @@ function EventCard({ post, onClick }: { post: CalendarPost; onClick?: () => void
 }
 
 // ===== WEEK VIEW =====
-function WeekView({ currentDate, today, onPostClick }: { currentDate: Date; today: Date; onPostClick: (p: CalendarPost) => void }) {
+function WeekView({ currentDate, today, posts, onPostClick }: { currentDate: Date; today: Date; posts: CalendarPost[]; onPostClick: (p: CalendarPost) => void }) {
   // Monday of week containing currentDate
   const dow = currentDate.getDay();
   const offset = dow === 0 ? -6 : 1 - dow;
@@ -769,7 +813,7 @@ function WeekView({ currentDate, today, onPostClick }: { currentDate: Date; toda
 
   // Posts by day
   const postsByDay: Record<string, CalendarPost[]> = {};
-  SAMPLE_POSTS.forEach((p) => {
+  posts.forEach((p) => {
     if (!postsByDay[p.date]) postsByDay[p.date] = [];
     postsByDay[p.date].push(p);
   });
@@ -896,8 +940,18 @@ function WeekEventCard({ post, onClick }: { post: CalendarPost; onClick?: () => 
 }
 
 // ===== LIST VIEW =====
-function ListView({ currentDate, onPostClick }: { currentDate: Date; onPostClick: (p: CalendarPost) => void }) {
+function ListView({ currentDate, posts, onPostClick }: { currentDate: Date; posts: CalendarPost[]; onPostClick: (p: CalendarPost) => void }) {
   const monthName = currentDate.toLocaleString("en-US", { month: "long", year: "numeric" });
+  const listRows = posts
+    .filter((p) => {
+      const d = new Date(p.date);
+      return d.getMonth() === currentDate.getMonth() && d.getFullYear() === currentDate.getFullYear();
+    })
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((p) => ({
+      ...p,
+      dateLabel: `${p.date}T${p.time ?? "00:00"}`.replace(/-/g, " ").slice(0, 16),
+    }));
   return (
     <div className="flex-1 overflow-auto min-h-0">
       <div className="px-4 py-3 flex items-center justify-between border-b border-zinc-200 sticky top-0 bg-card z-30">
@@ -930,7 +984,7 @@ function ListView({ currentDate, onPostClick }: { currentDate: Date; onPostClick
           </tr>
         </thead>
         <tbody>
-          {LIST_SAMPLE.map((row) => {
+          {listRows.map((row) => {
             const status = STATUS_META[row.status];
             return (
               <tr key={row.id} className="border-b border-zinc-100 hover:bg-zinc-50 cursor-pointer" onClick={() => onPostClick(row)}>
