@@ -14,11 +14,10 @@
 type DocData = Record<string, unknown> & { __path__?: string };
 
 class FakeDocumentRef {
-  constructor(public readonly path: string) {}
-
-  id(): string {
-    const parts = this.path.split("/");
-    return parts[parts.length - 1];
+  readonly id: string;
+  constructor(public readonly path: string) {
+    const parts = path.split("/");
+    this.id = parts[parts.length - 1];
   }
 
   collection(sub: string): FakeCollectionRef {
@@ -84,8 +83,8 @@ class FakeQuery {
     if (this.orders.length) {
       docs.sort((a, b) => {
         for (const { field, dir } of this.orders) {
-          const av = a.data?.[field];
-          const bv = b.data?.[field];
+          const av = a.data()?.[field];
+          const bv = b.data()?.[field];
           if (av === bv) continue;
           const cmp = (av as number | string) > (bv as number | string) ? 1 : -1;
           return dir === "asc" ? cmp : -cmp;
@@ -115,13 +114,17 @@ class FakeCollectionRef extends FakeQuery {
 }
 
 class FakeSnapshot {
-  constructor(public readonly ref: string, public readonly data: DocData | null) {}
-  exists(): boolean {
-    return this.data !== null;
+  readonly exists: boolean;
+  private readonly _data: DocData | null;
+  readonly id: string;
+  constructor(public readonly ref: string, data: DocData | null) {
+    this._data = data;
+    this.exists = data !== null;
+    const parts = ref.split("/");
+    this.id = parts[parts.length - 1];
   }
-  id(): string {
-    const parts = this.ref.split("/");
-    return parts[parts.length - 1];
+  data(): DocData | null {
+    return this._data;
   }
 }
 
@@ -224,7 +227,10 @@ export function createMockFirestore(): MockFirestore {
     doc: (p) => new FakeDocumentRef(p),
     batch: () => new FakeBatch(),
     runTransaction: async (fn) => fn(new FakeTransaction()),
-    reset: () => store.clear(),
+    reset: () => {
+      store.clear();
+      counter = 0;
+    },
     dump: () => Array.from(store.entries()).map(([path, data]) => ({ path, data })),
   };
 }

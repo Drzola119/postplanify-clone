@@ -26,12 +26,12 @@ describe("db/index", () => {
     await mock.doc("workspaces/w1/posts/p1").set({ title: "hello", status: "draft" });
 
     const snap = await mock.doc("workspaces/w1/posts/p1").get();
-    expect(snap.exists()).toBe(true);
-    expect(snap.data?.title).toBe("hello");
+    expect(snap.exists).toBe(true);
+    expect(snap.data()?.title).toBe("hello");
 
     await mock.doc("workspaces/w1/posts/p1").update({ status: "published" });
     const updated = await mock.doc("workspaces/w1/posts/p1").get();
-    expect(updated.data?.status).toBe("published");
+    expect(updated.data()?.status).toBe("published");
 
     const q = mock.collection("workspaces/w1/posts").where("status", "==", "published");
     const qs = await q.get();
@@ -39,7 +39,7 @@ describe("db/index", () => {
 
     await mock.doc("workspaces/w1/posts/p1").delete();
     const after = await mock.doc("workspaces/w1/posts/p1").get();
-    expect(after.exists()).toBe(false);
+    expect(after.exists).toBe(false);
   });
 
   it("mock supports batch writes + transactions", async () => {
@@ -53,16 +53,16 @@ describe("db/index", () => {
 
     const a1 = await mock.doc("a/1").get();
     const a2 = await mock.doc("a/2").get();
-    expect(a1.data?.v).toBe(1);
-    expect(a2.data?.v).toBe(2);
+    expect(a1.data()?.v).toBe(1);
+    expect(a2.data()?.v).toBe(2);
 
     const txResult = await mock.runTransaction(async (tx) => {
       const snap = await tx.get(mock.doc("a/1"));
-      tx.update(mock.doc("a/1"), { v: (snap.data?.v as number) + 1 });
-      return snap.data?.v;
+      tx.update(mock.doc("a/1"), { v: (snap.data()?.v as number) + 1 });
+      return snap.data()?.v;
     });
     expect(txResult).toBe(1);
     const after = await mock.doc("a/1").get();
-    expect(after.data?.v).toBe(2);
+    expect(after.data()?.v).toBe(2);
   });
 });

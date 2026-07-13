@@ -55,16 +55,23 @@ export async function uploadToBunny(args: {
 
 /** DELETE a file by its storedPath. The storedPath MUST start with `${userId}/` — otherwise
  * throws to prevent IDOR (a user can only delete their own files). */
-export async function deleteFromBunny(args: { userId: string; storedPath: string }): Promise<void> {
-  if (!ZONE || !PASSWORD) throw new Error("Bunny storage not configured");
+export async function deleteFromBunny(args: {
+  userId: string;
+  storedPath: string;
+  zone?: string;
+  password?: string;
+}): Promise<void> {
+  const activeZone = args.zone || ZONE;
+  const activePassword = args.password || PASSWORD;
+  if (!activeZone || !activePassword) throw new Error("Bunny storage not configured");
   const prefix = `${args.userId}/`;
   if (!args.storedPath.startsWith(prefix)) {
     throw new Error("Forbidden: storedPath does not belong to this user");
   }
-  const url = `https://${HOSTNAME}/${ZONE}/${args.storedPath}`;
+  const url = `https://${HOSTNAME}/${activeZone}/${args.storedPath}`;
   const res = await fetch(url, {
     method: "DELETE",
-    headers: { AccessKey: PASSWORD },
+    headers: { AccessKey: activePassword },
   });
   if (!res.ok && res.status !== 404) {
     const text = await res.text().catch(() => "");
