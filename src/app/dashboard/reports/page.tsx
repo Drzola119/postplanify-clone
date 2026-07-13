@@ -142,13 +142,60 @@ export default function ReportsPage() {
   const [generating, setGenerating] = useState(false);
   const [scheduledOpen, setScheduledOpen] = useState(false);
   const [newScheduleOpen, setNewScheduleOpen] = useState(false);
-  const [schedules] = useState<Schedule[]>(SAMPLE_SCHEDULES);
+  const [schedules, setSchedules] = useState<Schedule[]>(SAMPLE_SCHEDULES);
 
   const [reports, setReports] = useState<Report[]>(SAMPLE_REPORTS);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
   const fromInputRef = useRef<HTMLInputElement>(null);
   const toInputRef = useRef<HTMLInputElement>(null);
+
+  // Hydrate reports + schedules from the live API on mount.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [reportsRes, schedulesRes] = await Promise.all([
+          fetch("/api/reports", { credentials: "include" }),
+          fetch("/api/reports/schedules", { credentials: "include" }),
+        ]);
+        if (cancelled) return;
+        if (reportsRes.ok) {
+          const data = await reportsRes.json();
+          const items: Report[] = (data.reports ?? []).map(
+            (r: { id: string; name: string; dateRange: { from: string; to: string }; createdAt: string }) => ({
+              id: r.id,
+              title: r.name,
+              from: r.dateRange.from.slice(0, 10),
+              to: r.dateRange.to.slice(0, 10),
+              createdAt: r.createdAt.slice(0, 10),
+              accounts: 0,
+            })
+          );
+          if (items.length) setReports(items);
+        }
+        if (schedulesRes.ok) {
+          const data = await schedulesRes.json();
+          const items: Schedule[] = (data.schedules ?? []).map(
+            (s: { id: string; name: string; cron: string; recipients: string[]; paused: boolean }) => ({
+              id: s.id,
+              name: s.name,
+              frequency: "weekly",
+              time: "00:00",
+              recipients: s.recipients,
+              active: !s.paused,
+            })
+          );
+          setSchedules(items);
+        }
+      } catch {
+        /* keep SAMPLE_* as offline fallback */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const showToast = (msg: string, type: "success" | "error" = "success") => {
     setToast({ msg, type });
