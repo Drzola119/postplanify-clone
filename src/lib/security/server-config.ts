@@ -114,4 +114,7 @@ export const resolvers = {
       password: resolveOptional("BUNNY_STORAGE_PASSWORD", "x-bunny-password", h),
     };
   },
+  apiKeyEncryptionKey(h: Headers): string {
+    return resolve("API_KEY_ENCRYPTION_KEY", "API_KEY_ENCRYPTION_KEY", "x-api-key-encryption-key", h);
+  },
 };

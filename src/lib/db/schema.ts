@@ -187,6 +187,7 @@ export interface LinkInBioDoc {
   blocks: Array<{ type: string; data: Record<string, unknown> }>;
   theme: string;
   socials: Record<string, string>;
+  avatarUrl?: string;
   updatedAt: Date;
   createdAt: Date;
 }

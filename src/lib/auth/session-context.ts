@@ -1,5 +1,6 @@
 import "server-only";
-import { getCurrentUser } from "@/lib/firebase/admin";
+import { cookies } from "next/headers";
+import { getCurrentUser, SESSION_COOKIE, adminAuth } from "@/lib/firebase/admin";
 import { ensureDefaultWorkspace } from "@/lib/db/workspaces";
 
 export interface SessionContext {
@@ -8,11 +9,40 @@ export interface SessionContext {
   workspaceId: string;
 }
 
+async function readWorkspaceClaim(uid: string): Promise<string | null> {
+  if (!adminAuth) return null;
+  try {
+    const user = await adminAuth.getUser(uid);
+    const claim = (user.customClaims as { workspaceId?: string } | undefined)?.workspaceId;
+    return claim ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getSessionContext(): Promise<SessionContext | null> {
   const user = await getCurrentUser();
   if (!user) return null;
   try {
-    const workspaceId = await ensureDefaultWorkspace(user.uid, user.email);
+    // 1. Check the session cookie's custom claim (set by /api/auth/session/workspace).
+    let workspaceId = await readWorkspaceClaim(user.uid);
+
+    // 2. Also peek at the cookie itself for a hint (set by the switcher route).
+    if (!workspaceId) {
+      try {
+        const c = await cookies();
+        const cookie = c.get("pp_active_workspace")?.value;
+        if (cookie) workspaceId = cookie;
+      } catch {
+        /* not in a request scope */
+      }
+    }
+
+    // 3. Fall back to the user's primary workspace (auto-created if missing).
+    if (!workspaceId) {
+      workspaceId = await ensureDefaultWorkspace(user.uid, user.email);
+    }
+
     return { uid: user.uid, email: user.email, workspaceId };
   } catch (err) {
     console.error("[session-context] Failed to resolve workspace:", err);
