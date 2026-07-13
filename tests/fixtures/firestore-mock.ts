@@ -31,12 +31,12 @@ class FakeDocumentRef {
 
   async set(data: DocData, options?: { merge?: boolean }): Promise<void> {
     const existing = options?.merge ? store.get(this.path) ?? {} : {};
-    store.set(this.path, { ...existing, ...data, __path__: this.path });
+    store.set(this.path, { ...existing, ...applyFieldSentinels(existing, data), __path__: this.path });
   }
 
   async update(data: DocData): Promise<void> {
     const existing = store.get(this.path) ?? {};
-    store.set(this.path, { ...existing, ...data, __path__: this.path });
+    store.set(this.path, { ...existing, ...applyFieldSentinels(existing, data), __path__: this.path });
   }
 
   async delete(): Promise<void> {
@@ -183,6 +183,26 @@ class FakeTransaction {
 
 const store = new Map<string, DocData>();
 let counter = 0;
+
+function applyFieldSentinels(existing: DocData, incoming: DocData): DocData {
+  const out: DocData = {};
+  for (const [k, v] of Object.entries(incoming)) {
+    if (v && typeof v === "object" && "_methodName" in v) {
+      const sentinel = v as { _methodName: string; _operand?: number };
+      if (sentinel._methodName === "increment") {
+        const cur = typeof existing[k] === "number" ? (existing[k] as number) : 0;
+        out[k] = cur + (sentinel._operand ?? 1);
+        continue;
+      }
+      if (sentinel._methodName === "serverTimestamp") {
+        out[k] = { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 };
+        continue;
+      }
+    }
+    out[k] = v;
+  }
+  return out;
+}
 
 function applyOp(actual: unknown, op: string, expected: unknown): boolean {
   switch (op) {

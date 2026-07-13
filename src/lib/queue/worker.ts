@@ -2,6 +2,7 @@ import "server-only";
 import { adminDb } from "@/lib/firebase/admin";
 import { listScheduledDue, claimPost, markPublished, markFailed, resetStuckClaims } from "@/lib/db/posts";
 import { resolvers } from "@/lib/security/server-config";
+import { deliverWebhook } from "@/lib/webhooks/delivery";
 
 const DEFAULT_INTERVAL_MS = Number(process.env.WORKER_INTERVAL_MS ?? 30_000);
 const STUCK_CLAIM_MS = Number(process.env.WORKER_STUCK_CLAIM_MS ?? 5 * 60_000);
@@ -63,9 +64,19 @@ async function tickOnce(): Promise<TickResult> {
       if (res.ok) {
         await markPublished(workspaceId, postId);
         result.published++;
+        void deliverWebhook(workspaceId, {
+          event: "post.published",
+          workspaceId,
+          data: { postId, authorUid: data.authorUid, platforms: data.platforms ?? [] },
+        });
       } else {
         await markFailed(workspaceId, postId, `n8n ${res.status}`);
         result.failed++;
+        void deliverWebhook(workspaceId, {
+          event: "post.failed",
+          workspaceId,
+          data: { postId, reason: `n8n ${res.status}` },
+        });
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "unknown";

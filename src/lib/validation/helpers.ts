@@ -61,5 +61,15 @@ export const stringArray = z.array(z.string().min(1)).max(50);
 export const nonEmptyString = z.string().min(1).max(100_000);
 export const optionalString = z.string().max(100_000).optional();
 export const isoDate = z.string().datetime({ offset: true }).or(z.string());
-export const url = z.string().url().max(2048);
-export const urlArray = z.array(z.string().url()).max(10);
+export const url = z
+  .string()
+  .url()
+  .max(2048)
+  .refine((u) => u.startsWith("http://") || u.startsWith("https://"), {
+    message: "URL must use http or https",
+  });
+export const urlArray = z
+  .array(z.string().url().max(2048).refine((u) => u.startsWith("http://") || u.startsWith("https://"), {
+    message: "URL must use http or https",
+  }))
+  .max(10);
