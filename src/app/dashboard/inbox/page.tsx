@@ -30,8 +30,10 @@ import {
   AtSign,
   Clock,
   Sparkles,
+  Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toCsv, downloadCsv } from "@/lib/csv";
 
 type Tab = "comments" | "messages" | "insights";
 type Filter = "all" | "unread" | "open";
@@ -193,6 +195,7 @@ export default function InboxPage() {
   const [comments, setComments] = useState<Comment[]>(COMMENTS);
   const [conversations, setConversations] = useState<Conversation[]>(CONVERSATIONS);
   const [loading, setLoading] = useState(true);
+  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -250,6 +253,66 @@ export default function InboxPage() {
     return list;
   }, [comments, filter, platformFilter, search]);
 
+  const analyzeSentiment = async (commentId: string) => {
+    const target = comments.find((c) => c.id === commentId);
+    if (!target || analyzingId) return;
+    setAnalyzingId(commentId);
+    try {
+      const res = await fetch("/api/ai/sentiment", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: target.text }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { sentiment?: Sentiment };
+        const next: Sentiment = data.sentiment === "positive" || data.sentiment === "negative" ? data.sentiment : "neutral";
+        setComments((prev) => prev.map((c) => (c.id === commentId ? { ...c, sentiment: next } : c)));
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setAnalyzingId(null);
+    }
+  };
+
+  const handleExport = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    if (tab === "comments") {
+      const csv = toCsv(filtered.map((c) => ({
+        id: c.id,
+        author: c.author,
+        platform: c.platform,
+        sentiment: c.sentiment,
+        text: c.text,
+        date: c.date,
+        unread: c.unread,
+        replied: !c.unread,
+      })));
+      downloadCsv(`inbox-comments-${today}.csv`, csv);
+    } else if (tab === "messages") {
+      const csv = toCsv(conversations.map((c) => ({
+        id: c.id,
+        name: c.name,
+        platform: c.platform,
+        lastMessage: c.lastMessage,
+        time: c.time,
+        unread: c.unread,
+      })));
+      downloadCsv(`inbox-messages-${today}.csv`, csv);
+    } else {
+      const csv = toCsv(filtered.map((c) => ({
+        id: c.id,
+        author: c.author,
+        platform: c.platform,
+        sentiment: c.sentiment,
+        text: c.text,
+        date: c.date,
+      })));
+      downloadCsv(`inbox-insights-${today}.csv`, csv);
+    }
+  };
+
   return (
     <div className="flex-1 min-h-0 flex flex-col gap-4 p-3 lg:p-6">
       {/* Header */}
@@ -283,6 +346,14 @@ export default function InboxPage() {
             },
           ]}
         />
+        <button
+          type="button"
+          onClick={handleExport}
+          className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 h-8 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+        >
+          <Download className="size-3.5" />
+          Export CSV
+        </button>
         <div className="flex items-center gap-1.5 text-xs text-zinc-500">
           <span>supported</span>
           <div className="flex items-center gap-1 text-zinc-700">
@@ -331,6 +402,8 @@ export default function InboxPage() {
           comments={filtered}
           activeId={activeComment}
           setActiveId={setActiveComment}
+          analyzingId={analyzingId}
+          onAnalyze={analyzeSentiment}
         />
       )}
       {tab === "messages" && (
@@ -357,6 +430,8 @@ function CommentsTab({
   comments,
   activeId,
   setActiveId,
+  analyzingId,
+  onAnalyze,
 }: {
   filter: Filter;
   setFilter: (f: Filter) => void;
@@ -365,6 +440,8 @@ function CommentsTab({
   comments: Comment[];
   activeId: string | null;
   setActiveId: (id: string) => void;
+  analyzingId: string | null;
+  onAnalyze: (id: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-3 flex-1 min-h-0">
@@ -403,6 +480,8 @@ function CommentsTab({
                 comment={c}
                 active={activeId === c.id}
                 onClick={() => setActiveId(c.id)}
+                analyzing={analyzingId === c.id}
+                onAnalyze={() => onAnalyze(c.id)}
               />
             ))
           )}
@@ -412,7 +491,19 @@ function CommentsTab({
   );
 }
 
-function CommentRow({ comment, active, onClick }: { comment: Comment; active: boolean; onClick: () => void }) {
+function CommentRow({
+  comment,
+  active,
+  onClick,
+  analyzing,
+  onAnalyze,
+}: {
+  comment: Comment;
+  active: boolean;
+  onClick: () => void;
+  analyzing: boolean;
+  onAnalyze: () => void;
+}) {
   return (
     <div
       onClick={onClick}
@@ -448,6 +539,19 @@ function CommentRow({ comment, active, onClick }: { comment: Comment; active: bo
         <p className="text-sm text-zinc-700 truncate mt-0.5">{comment.text}</p>
       </div>
       <div className="flex items-center gap-1 shrink-0">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onAnalyze();
+          }}
+          disabled={analyzing}
+          className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 h-7 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+          title="Re-run sentiment analysis"
+        >
+          <Sparkles className="size-3" />
+          {analyzing ? "Analyzing…" : "Analyze"}
+        </button>
         <button
           type="button"
           className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 text-white px-3 h-7 text-xs font-medium hover:bg-zinc-800"

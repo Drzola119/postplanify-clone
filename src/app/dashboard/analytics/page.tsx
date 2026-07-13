@@ -5,9 +5,10 @@ import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   Users, Eye, BarChart3, ChevronDown, ChevronRight, Calendar, RefreshCw,
   Heart, MessageCircle, Repeat2, Bookmark, Share2, MousePointerClick, MessageSquare, Play,
-  TrendingUp, Globe, MoreHorizontal, CheckCircle2,
+  TrendingUp, Globe, MoreHorizontal, CheckCircle2, Download,
 } from "lucide-react";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
+import { toCsv, downloadCsv } from "@/lib/csv";
 
 // ============================================================
 // Types
@@ -839,6 +840,23 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
   const router = useRouter();
   const pathname = usePathname();
   const [period, setPeriod] = useState<Period>("7d");
+
+  const handleExport = () => {
+    const csv = toCsv(
+      accounts.map((a) => ({
+        id: a.id,
+        name: a.name,
+        handle: a.handle,
+        platform: a.platform,
+        followers: a.followers ?? 0,
+        views: a.views ?? 0,
+        engagement: a.engagement ?? 0,
+        engRate: a.engRate ?? "",
+        syncedAgo: a.syncedAgo,
+      }))
+    );
+    downloadCsv(`analytics-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+  };
   const account = accounts.find(a => a.id === accountId);
 
   if (!account) {
@@ -872,6 +890,16 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
         currentId={accountId}
         onSelect={(id) => router.push(`${pathname}?accountId=${id}`)}
         accounts={accounts}
+        rightExtra={
+          <button
+            type="button"
+            onClick={handleExport}
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 px-3 h-8 text-[12px] font-medium text-zinc-700 hover:bg-zinc-50"
+          >
+            <Download className="size-3.5" />
+            Export CSV
+          </button>
+        }
       />
 
       {/* ===== ACCOUNT HEADER CARD ===== */}
@@ -1048,7 +1076,17 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
 // ============================================================
 // Page header
 // ============================================================
-function PageHeader({ currentId, onSelect, accounts }: { currentId: string; onSelect: (id: string) => void; accounts: AccountSummary[] }) {
+function PageHeader({
+  currentId,
+  onSelect,
+  accounts,
+  rightExtra,
+}: {
+  currentId: string;
+  onSelect: (id: string) => void;
+  accounts: AccountSummary[];
+  rightExtra?: React.ReactNode;
+}) {
   return (
     <>
       <div className="flex flex-wrap items-start gap-3">
@@ -1063,6 +1101,7 @@ function PageHeader({ currentId, onSelect, accounts }: { currentId: string; onSe
           </button>
         </div>
         <div className="ml-auto flex items-center gap-2">
+          {rightExtra}
           <OverviewDropdown currentId={currentId} accounts={accounts} />
           <AvatarRow currentId={currentId} onSelect={onSelect} accounts={accounts} />
         </div>

@@ -643,8 +643,36 @@ function InviteMemberModalBody({
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"Admin" | "Editor" | "Viewer">("Editor");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  const handleSendInvite = async () => {
+    if (!validEmail || sending) return;
+    setSending(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/workspaces/${workspace.id}/members`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, role: role.toLowerCase() }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(data.error ?? "Failed to send invite");
+        return;
+      }
+      setEmail("");
+      setShowInviteForm(false);
+      setRole("Editor");
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
     <DialogShell open={true} onClose={onClose} maxWidth="max-w-2xl">
@@ -727,10 +755,11 @@ function InviteMemberModalBody({
                 </select>
                 <button
                   type="button"
-                  disabled={!validEmail}
+                  onClick={handleSendInvite}
+                  disabled={!validEmail || sending}
                   className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 h-9 px-3"
                 >
-                  Send
+                  {sending ? "Sending…" : "Send"}
                 </button>
                 <button
                   type="button"
@@ -741,6 +770,9 @@ function InviteMemberModalBody({
                   <X className="size-4" />
                 </button>
               </div>
+              {error ? (
+                <p className="text-xs text-red-600 mt-1">{error}</p>
+              ) : null}
             </div>
           )}
 

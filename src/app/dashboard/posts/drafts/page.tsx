@@ -11,12 +11,15 @@ import {
   X,
   AlertTriangle,
   Inbox,
+  Search,
+  ChevronDown,
 } from "lucide-react";
 import {
   listDrafts,
   deleteDraft,
   type DraftRecord,
 } from "@/lib/drafts";
+import { cn } from "@/lib/utils";
 
 type Platform =
   | "instagram"
@@ -220,11 +223,22 @@ interface Toast {
   type: "success" | "error" | "info";
 }
 
+type SortKey = "recent" | "oldest" | "az";
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: "recent", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+  { value: "az", label: "Caption A→Z" },
+];
+
 export default function DraftsPage() {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<Draft | null>(null);
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<SortKey>("recent");
+  const [sortOpen, setSortOpen] = useState(false);
 
   const router = useRouter();
 
@@ -318,6 +332,31 @@ export default function DraftsPage() {
     setConfirmDelete(null);
   };
 
+  const filteredDrafts = (() => {
+    let list = drafts;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((d) =>
+        d.caption.toLowerCase().includes(q) ||
+        d.accounts.some((a) =>
+          a.handle.toLowerCase().includes(q) ||
+          PLATFORM_META[a.platform].label.toLowerCase().includes(q)
+        )
+      );
+    }
+    const sorted = [...list];
+    if (sort === "az") {
+      sorted.sort((a, b) => a.caption.localeCompare(b.caption));
+    } else {
+      sorted.sort((a, b) => {
+        const ad = new Date(`${a.createdDate} ${a.createdTime}`).getTime();
+        const bd = new Date(`${b.createdDate} ${b.createdTime}`).getTime();
+        return sort === "recent" ? bd - ad : ad - bd;
+      });
+    }
+    return sorted;
+  })();
+
   return (
     <div className="px-3 lg:px-6 pt-5 lg:pt-8 pb-3 lg:pb-6">
       <div className="mb-6 flex items-start justify-between gap-4">
@@ -335,7 +374,59 @@ export default function DraftsPage() {
       {drafts.length === 0 ? (
         <EmptyDrafts />
       ) : (
-        <div className="rounded-xl border border-zinc-200 bg-white overflow-x-auto">
+        <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-zinc-200 bg-zinc-50">
+            <div className="relative flex-1 min-w-[240px] max-w-sm">
+              <Search className="size-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search captions or accounts…"
+                className="w-full h-9 pl-9 pr-3 rounded-md border border-zinc-200 bg-white text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                aria-label="Search drafts"
+              />
+            </div>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setSortOpen((o) => !o)}
+                aria-haspopup="listbox"
+                aria-expanded={sortOpen}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm font-medium hover:bg-zinc-50"
+              >
+                Sort: {SORT_OPTIONS.find((o) => o.value === sort)?.label}
+                <ChevronDown className={cn("size-3.5 transition-transform", sortOpen && "rotate-180")} />
+              </button>
+              {sortOpen ? (
+                <ul
+                  role="listbox"
+                  className="absolute right-0 mt-1 z-10 w-48 rounded-md border border-zinc-200 bg-white shadow-lg py-1 text-sm"
+                >
+                  {SORT_OPTIONS.map((opt) => (
+                    <li key={opt.value}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSort(opt.value);
+                          setSortOpen(false);
+                        }}
+                        className={cn(
+                          "w-full text-left px-3 py-1.5 hover:bg-zinc-50",
+                          sort === opt.value && "bg-zinc-50 font-medium"
+                        )}
+                        role="option"
+                        aria-selected={sort === opt.value}
+                      >
+                        {opt.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          </div>
+          <div className="overflow-x-auto">
           <table className="w-full table-fixed min-w-[900px]">
             <colgroup>
               <col style={{ width: "120px" }} />
@@ -364,7 +455,14 @@ export default function DraftsPage() {
               </tr>
             </thead>
             <tbody>
-              {drafts.map((draft) => (
+              {filteredDrafts.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-10 text-center text-sm text-zinc-500">
+                    No drafts match “{search}”.
+                  </td>
+                </tr>
+              ) : null}
+              {filteredDrafts.map((draft) => (
                 <tr
                   key={draft.id}
                   className="border-b border-zinc-100 last:border-b-0"
@@ -445,6 +543,7 @@ export default function DraftsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

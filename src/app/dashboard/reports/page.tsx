@@ -24,6 +24,7 @@ import {
   Play,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toCsv, downloadCsv } from "@/lib/csv";
 
 type CompareMode = "none" | "previous_period" | "previous_year" | "week_over_week" | "custom_range";
 
@@ -125,10 +126,39 @@ function defaultTo(): string {
   return fmtDate(new Date());
 }
 
+type RangePreset = "7d" | "30d" | "90d" | "this_month" | "last_month";
+
+function presetRange(preset: RangePreset): { from: string; to: string } {
+  const today = new Date();
+  const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  if (preset === "this_month") {
+    const from = new Date(today.getFullYear(), today.getMonth(), 1);
+    return { from: fmtDate(from), to: fmtDate(today) };
+  }
+  if (preset === "last_month") {
+    const from = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const to = new Date(today.getFullYear(), today.getMonth(), 0);
+    return { from: fmtDate(from), to: fmtDate(to) };
+  }
+  const days = preset === "7d" ? 7 : preset === "30d" ? 30 : 90;
+  const from = new Date(endOfDay);
+  from.setDate(from.getDate() - days + 1);
+  return { from: fmtDate(from), to: fmtDate(today) };
+}
+
+const RANGE_PRESETS: { value: RangePreset; label: string }[] = [
+  { value: "7d", label: "Last 7 days" },
+  { value: "30d", label: "Last 30 days" },
+  { value: "90d", label: "Last 90 days" },
+  { value: "this_month", label: "This month" },
+  { value: "last_month", label: "Last month" },
+];
+
 export default function ReportsPage() {
   const [title, setTitle] = useState("");
   const [from, setFrom] = useState(defaultFrom());
   const [to, setTo] = useState(defaultTo());
+  const [activePreset, setActivePreset] = useState<RangePreset | null>(null);
   const [compare, setCompare] = useState<CompareMode>("previous_period");
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set(SAMPLE_ACCOUNTS.map((a) => a.id)));
 
@@ -231,6 +261,39 @@ export default function ReportsPage() {
     else setSelectedAccounts(new Set(SAMPLE_ACCOUNTS.map((a) => a.id)));
   };
 
+  const handleExportReports = () => {
+    const csv = toCsv(reports.map((r) => ({
+      id: r.id,
+      title: r.title,
+      from: r.from,
+      to: r.to,
+      createdAt: r.createdAt,
+      accounts: r.accounts,
+    })));
+    downloadCsv(`reports-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+  };
+
+  const applyPreset = (preset: RangePreset) => {
+    const range = presetRange(preset);
+    setFrom(range.from);
+    setTo(range.to);
+    setActivePreset(preset);
+  };
+
+  const handleExportSchedules = () => {
+    const csv = toCsv(schedules.map((s) => ({
+      id: s.id,
+      name: s.name,
+      frequency: s.frequency,
+      dayOfWeek: s.dayOfWeek ?? "",
+      dayOfMonth: s.dayOfMonth ?? "",
+      time: s.time,
+      recipients: s.recipients.join("|"),
+      active: s.active,
+    })));
+    downloadCsv(`report-schedules-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+  };
+
   const handleGenerate = () => {
     setGenerating(true);
     setTimeout(() => {
@@ -282,6 +345,24 @@ export default function ReportsPage() {
       <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow">
         <div className="p-6">
           <h2 className="text-base font-semibold mb-4">Generate New Report</h2>
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <span className="text-xs text-zinc-500 mr-1">Quick range:</span>
+            {RANGE_PRESETS.map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => applyPreset(p.value)}
+                className={cn(
+                  "inline-flex items-center h-7 px-3 rounded-full border text-xs font-medium transition-colors",
+                  activePreset === p.value
+                    ? "bg-zinc-900 text-white border-zinc-900"
+                    : "bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50"
+                )}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
           <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr_1fr_1.2fr_1.2fr_auto] gap-4 items-end">
             {/* Title */}
             <div className="space-y-1.5">
@@ -310,6 +391,7 @@ export default function ReportsPage() {
                     if (v) {
                       const [y, m, d] = v.split("-").map(Number);
                       setFrom(`${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`);
+                      setActivePreset(null);
                     }
                   }}
                   className="w-full h-9 px-3 pr-9 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
@@ -331,6 +413,7 @@ export default function ReportsPage() {
                     if (v) {
                       const [y, m, d] = v.split("-").map(Number);
                       setTo(`${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`);
+                      setActivePreset(null);
                     }
                   }}
                   className="w-full h-9 px-3 pr-9 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
@@ -539,7 +622,19 @@ export default function ReportsPage() {
       {/* Your Reports */}
       <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow">
         <div className="p-6">
-          <h2 className="text-base font-semibold mb-4">Your Reports</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold">Your Reports</h2>
+            {reports.length > 0 ? (
+              <button
+                type="button"
+                onClick={handleExportReports}
+                className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white h-8 px-2.5 text-xs font-medium hover:bg-zinc-50"
+              >
+                <Download className="size-3.5" />
+                Export CSV
+              </button>
+            ) : null}
+          </div>
           {reports.length === 0 ? (
             <EmptyReports />
           ) : (
@@ -572,7 +667,17 @@ export default function ReportsPage() {
                 <X className="size-5" />
               </button>
             </div>
-            <div className="px-5 py-3 border-b border-zinc-100 flex justify-end">
+            <div className="px-5 py-3 border-b border-zinc-100 flex justify-end gap-2">
+              {schedules.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={handleExportSchedules}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white h-9 px-3 text-sm font-medium hover:bg-zinc-50"
+                >
+                  <Download className="size-4" />
+                  Export CSV
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => setNewScheduleOpen(true)}

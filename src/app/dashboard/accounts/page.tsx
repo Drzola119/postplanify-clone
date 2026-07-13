@@ -709,6 +709,7 @@ function ConnectedAccountCard({
   isDeleting: boolean;
   onDelete: () => void;
 }) {
+  const reconnectUrl = AVAILABLE_PLATFORMS.find((p) => p.platform === account.platform)?.connectUrl;
   return (
     <div className={`group flex items-center justify-between p-4 rounded-lg border border-zinc-200 hover:border-zinc-300 transition-colors bg-white ${isDeleting ? "opacity-50 pointer-events-none" : ""}`}>
       <div className="flex items-center gap-4 min-w-0">
@@ -753,6 +754,30 @@ function ConnectedAccountCard({
       </div>
 
       <div className="flex items-center gap-2 shrink-0">
+        {account.reauthRequired && reconnectUrl ? (
+          <a
+            href={reconnectUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Reconnect this account in a new tab"
+            className="inline-flex items-center gap-1.5 rounded-md bg-amber-500 hover:bg-amber-600 px-3 h-8 text-xs font-medium text-white"
+          >
+            <RefreshCw className="size-3.5" />
+            Reconnect
+          </a>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              if (reconnectUrl) window.open(reconnectUrl, "_blank", "noopener,noreferrer");
+            }}
+            title="Open connect page in a new tab"
+            className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 h-8 text-xs font-medium hover:bg-zinc-50"
+          >
+            <RefreshCw className="size-3.5" />
+            Refresh
+          </button>
+        )}
         <button
           type="button"
           onClick={onDelete}

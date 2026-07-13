@@ -19,6 +19,7 @@ import {
   Cloud,
   Save,
   ShieldCheck,
+  Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageHelp } from "@/components/dashboard/help/page-help";
@@ -634,7 +635,7 @@ function ProfilePicture({
    MAIN PAGE
    ============================================================ */
 
-type TabId = "account" | "subscription";
+type TabId = "account" | "notifications" | "subscription";
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<TabId>("account");
@@ -689,6 +690,19 @@ export default function SettingsPage() {
   const [autoRenew, setAutoRenew] = useState(true);
   const [showCancel, setShowCancel] = useState(false);
 
+  // Notifications state
+  const [notif, setNotif] = useState({
+    emailDigest: true,
+    emailDigestFrequency: "weekly" as "daily" | "weekly" | "monthly",
+    pushEnabled: false,
+    postPublished: true,
+    postFailed: true,
+    inboxComment: true,
+    inboxMessage: false,
+    weeklyReport: true,
+  });
+  const [savingNotif, setSavingNotif] = useState(false);
+
   const isDirty =
     name !== originalName ||
     profileFile !== null ||
@@ -731,6 +745,27 @@ export default function SettingsPage() {
     push("success", "Subscription cancelled. Access ends on Jul 27, 2026.");
   };
 
+  const handleSaveNotifications = async () => {
+    setSavingNotif(true);
+    try {
+      const res = await fetch("/api/settings/notifications", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(notif),
+      });
+      if (!res.ok) {
+        push("error", "Could not save notification preferences.");
+      } else {
+        push("success", "Notification preferences saved.");
+      }
+    } catch {
+      push("error", "Network error saving notification preferences.");
+    } finally {
+      setSavingNotif(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <ToastViewport toasts={toasts} onDismiss={dismiss} />
@@ -764,6 +799,21 @@ export default function SettingsPage() {
           >
             <User className="size-4" />
             Account
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "notifications"}
+            onClick={() => setTab("notifications")}
+            className={cn(
+              "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-white transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/10",
+              tab === "notifications"
+                ? "bg-white text-zinc-900 shadow-sm"
+                : "text-zinc-500 hover:text-zinc-900"
+            )}
+          >
+            <Bell className="size-4" />
+            Notifications
           </button>
           <button
             type="button"
@@ -949,6 +999,105 @@ export default function SettingsPage() {
             </div>
           )}
 
+          {tab === "notifications" && (
+            <div className="rounded-xl border border-zinc-200 bg-white shadow-sm">
+              <div className="flex flex-col space-y-1.5 p-6">
+                <h3 className="font-semibold leading-none tracking-tight text-zinc-900">
+                  Notification Preferences
+                </h3>
+                <p className="text-sm text-zinc-500">
+                  Choose which alerts you want to receive and how often
+                </p>
+              </div>
+              <div className="p-6 pt-0 space-y-5">
+                <ToggleRow
+                  label="Email digest"
+                  description="Get a summary of activity at the cadence below."
+                  checked={notif.emailDigest}
+                  onChange={(v) => setNotif((n) => ({ ...n, emailDigest: v }))}
+                />
+                <div className="ml-7 pl-3 border-l border-zinc-200 space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-700">Digest frequency</label>
+                  <select
+                    value={notif.emailDigestFrequency}
+                    onChange={(e) =>
+                      setNotif((n) => ({
+                        ...n,
+                        emailDigestFrequency: e.target.value as "daily" | "weekly" | "monthly",
+                      }))
+                    }
+                    className="h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                  >
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </div>
+                <ToggleRow
+                  label="Browser push"
+                  description="Receive browser push notifications for important alerts."
+                  checked={notif.pushEnabled}
+                  onChange={(v) => setNotif((n) => ({ ...n, pushEnabled: v }))}
+                />
+                <div className="border-t border-zinc-200 pt-4 space-y-4">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                    Activity alerts
+                  </p>
+                  <ToggleRow
+                    label="Post published"
+                    description="Notify when a scheduled post goes live."
+                    checked={notif.postPublished}
+                    onChange={(v) => setNotif((n) => ({ ...n, postPublished: v }))}
+                  />
+                  <ToggleRow
+                    label="Post failed"
+                    description="Notify when a post fails to publish so you can retry."
+                    checked={notif.postFailed}
+                    onChange={(v) => setNotif((n) => ({ ...n, postFailed: v }))}
+                  />
+                  <ToggleRow
+                    label="New comment"
+                    description="Notify when a new comment arrives in your social inbox."
+                    checked={notif.inboxComment}
+                    onChange={(v) => setNotif((n) => ({ ...n, inboxComment: v }))}
+                  />
+                  <ToggleRow
+                    label="New direct message"
+                    description="Notify when a new DM arrives in your social inbox."
+                    checked={notif.inboxMessage}
+                    onChange={(v) => setNotif((n) => ({ ...n, inboxMessage: v }))}
+                  />
+                  <ToggleRow
+                    label="Weekly report"
+                    description="Send a recap of performance every Monday morning."
+                    checked={notif.weeklyReport}
+                    onChange={(v) => setNotif((n) => ({ ...n, weeklyReport: v }))}
+                  />
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t border-zinc-200 flex items-center justify-end bg-zinc-50 rounded-b-xl">
+                <button
+                  type="button"
+                  onClick={handleSaveNotifications}
+                  disabled={savingNotif}
+                  className="inline-flex items-center justify-center gap-2 h-9 px-3 rounded-md bg-zinc-900 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {savingNotif ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      Saving…
+                    </>
+                  ) : (
+                    <>
+                      <Save className="size-3.5" />
+                      Save preferences
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
           {tab === "subscription" && (
             <div className="rounded-xl border border-zinc-200 bg-white shadow-sm">
               <div className="flex flex-col space-y-1.5 p-6">
@@ -1129,6 +1278,47 @@ function Field({
         )}
       </div>
       {hint && <p className="text-xs text-zinc-500 mt-1.5">{hint}</p>}
+    </div>
+  );
+}
+
+function ToggleRow({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string;
+  description?: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-zinc-900">{label}</p>
+        {description ? (
+          <p className="text-xs text-zinc-500 mt-0.5">{description}</p>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        className={cn(
+          "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-900/10",
+          checked ? "bg-zinc-900 border-zinc-900" : "bg-zinc-200 border-zinc-200"
+        )}
+      >
+        <span
+          aria-hidden
+          className={cn(
+            "inline-block size-4 rounded-full bg-white shadow transition-transform",
+            checked ? "translate-x-6" : "translate-x-1"
+          )}
+        />
+      </button>
     </div>
   );
 }

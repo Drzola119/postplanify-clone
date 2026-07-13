@@ -139,6 +139,7 @@ export default function AssetsPage() {
   const [search, setSearch] = useState("");
   const [assets, setAssets] = useState<MediaAsset[]>(SAMPLE_ASSETS);
   const [loadingAssets, setLoadingAssets] = useState(true);
+  const [usageMap, setUsageMap] = useState<Record<string, number>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -174,6 +175,32 @@ export default function AssetsPage() {
         // offline — keep seed
       } finally {
         if (!cancelled) setLoadingAssets(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Build usage map: mediaUrl -> post count, derived from /api/posts so we
+  // don't need a dedicated usage endpoint. Source of truth: post.mediaUrls[].
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/posts?pageSize=200", { credentials: "include" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { posts?: { mediaUrls?: string[] }[] };
+        const map: Record<string, number> = {};
+        for (const p of data.posts ?? []) {
+          for (const url of p.mediaUrls ?? []) {
+            if (!url) continue;
+            map[url] = (map[url] ?? 0) + 1;
+          }
+        }
+        if (!cancelled) setUsageMap(map);
+      } catch {
+        /* offline — leave empty */
       }
     })();
     return () => {
@@ -525,6 +552,7 @@ export default function AssetsPage() {
             onSelectAll={selectAll}
             onPreview={setPreview}
             onContextMenu={(asset, x, y) => setContextMenu({ asset, x, y })}
+            usageMap={usageMap}
           />
         ) : (
           <GridView
@@ -534,6 +562,7 @@ export default function AssetsPage() {
             onToggle={toggleSelect}
             onPreview={setPreview}
             onContextMenu={(asset, x, y) => setContextMenu({ asset, x, y })}
+            usageMap={usageMap}
           />
         )}
       </div>
@@ -574,7 +603,7 @@ function sortLabel(s: Sort): string {
 /* ============================== LIST VIEW ============================== */
 
 function ListView({
-  assets, selectMode, selected, onToggle, onSelectAll, onPreview, onContextMenu,
+  assets, selectMode, selected, onToggle, onSelectAll, onPreview, onContextMenu, usageMap,
 }: {
   assets: MediaAsset[];
   selectMode: boolean;
@@ -583,10 +612,11 @@ function ListView({
   onSelectAll: () => void;
   onPreview: (a: MediaAsset) => void;
   onContextMenu: (a: MediaAsset, x: number, y: number) => void;
+  usageMap: Record<string, number>;
 }) {
   return (
     <div>
-      <div className="grid grid-cols-[auto_1fr_120px_120px_80px_80px_80px_40px] gap-3 px-3 py-2 border-b border-zinc-200 text-xs font-medium text-zinc-500 tracking-wide">
+      <div className="grid grid-cols-[auto_1fr_120px_120px_80px_80px_80px_100px_40px] gap-3 px-3 py-2 border-b border-zinc-200 text-xs font-medium text-zinc-500 tracking-wide">
         <div>
           {selectMode && (
             <input
@@ -604,6 +634,7 @@ function ListView({
         <div>Type</div>
         <div>Size</div>
         <div>Date</div>
+        <div>Used in</div>
         <div></div>
       </div>
       {assets.map((a) => (
@@ -618,6 +649,7 @@ function ListView({
             e.preventDefault();
             onContextMenu(a, e.clientX, e.clientY);
           }}
+          usageCount={usageMap[a.thumbnail] ?? 0}
         />
       ))}
     </div>
@@ -625,7 +657,7 @@ function ListView({
 }
 
 function ListRow({
-  asset, selectMode, selected, onToggle, onPreview, onContextMenu,
+  asset, selectMode, selected, onToggle, onPreview, onContextMenu, usageCount,
 }: {
   asset: MediaAsset;
   selectMode: boolean;
@@ -633,9 +665,10 @@ function ListRow({
   onToggle: () => void;
   onPreview: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
+  usageCount: number;
 }) {
   return (
-    <div className="grid grid-cols-[auto_1fr_120px_120px_80px_80px_80px_40px] gap-3 items-center px-3 py-2 hover:bg-zinc-50 cursor-pointer border-b border-zinc-100 last:border-b-0 transition-colors" onClick={onPreview} onContextMenu={onContextMenu}>
+    <div className="grid grid-cols-[auto_1fr_120px_120px_80px_80px_80px_100px_40px] gap-3 items-center px-3 py-2 hover:bg-zinc-50 cursor-pointer border-b border-zinc-100 last:border-b-0 transition-colors" onClick={onPreview} onContextMenu={onContextMenu}>
       <div onClick={(e) => e.stopPropagation()}>
         {selectMode ? (
           <input
@@ -670,6 +703,9 @@ function ListRow({
       </span>
       <p className="text-sm text-zinc-500">{formatSize(asset.size)}</p>
       <p className="text-sm text-zinc-500">{formatDate(asset.uploadedAt)}</p>
+      <p className={cn("text-sm", usageCount > 0 ? "text-zinc-700 font-medium" : "text-zinc-400")}>
+        {usageCount === 0 ? "—" : `${usageCount} post${usageCount === 1 ? "" : "s"}`}
+      </p>
       <button type="button" onClick={(e) => { e.stopPropagation(); onPreview(); }} className="text-zinc-400 hover:text-zinc-700" aria-label="Open external">
         <ExternalLink className="size-3.5" />
       </button>
@@ -680,7 +716,7 @@ function ListRow({
 /* ============================== GRID VIEW ============================== */
 
 function GridView({
-  assets, selectMode, selected, onToggle, onPreview, onContextMenu,
+  assets, selectMode, selected, onToggle, onPreview, onContextMenu, usageMap,
 }: {
   assets: MediaAsset[];
   selectMode: boolean;
@@ -688,6 +724,7 @@ function GridView({
   onToggle: (id: string) => void;
   onPreview: (a: MediaAsset) => void;
   onContextMenu: (a: MediaAsset, x: number, y: number) => void;
+  usageMap: Record<string, number>;
 }) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-3">
@@ -703,6 +740,7 @@ function GridView({
             e.preventDefault();
             onContextMenu(a, e.clientX, e.clientY);
           }}
+          usageCount={usageMap[a.thumbnail] ?? 0}
         />
       ))}
     </div>
@@ -710,7 +748,7 @@ function GridView({
 }
 
 function GridCard({
-  asset, selectMode, selected, onToggle, onPreview, onContextMenu,
+  asset, selectMode, selected, onToggle, onPreview, onContextMenu, usageCount,
 }: {
   asset: MediaAsset;
   selectMode: boolean;
@@ -718,6 +756,7 @@ function GridCard({
   onToggle: () => void;
   onPreview: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
+  usageCount: number;
 }) {
   return (
     <div
@@ -761,7 +800,14 @@ function GridCard({
           </span>
           <span className="text-[11px] text-zinc-500">{formatSize(asset.size)}</span>
         </div>
-        <p className="text-[11px] text-zinc-500 mt-1">{formatDate(asset.uploadedAt)}</p>
+        <div className="flex items-center justify-between mt-1">
+          <p className="text-[11px] text-zinc-500">{formatDate(asset.uploadedAt)}</p>
+          {usageCount > 0 ? (
+            <span className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[10px] font-medium">
+              Used in {usageCount}
+            </span>
+          ) : null}
+        </div>
       </div>
     </div>
   );

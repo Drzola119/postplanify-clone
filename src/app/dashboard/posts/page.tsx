@@ -13,10 +13,12 @@ import {
   Tag as TagIcon,
   Trophy,
   Trash2,
+  Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageHelp } from "@/components/dashboard/help/page-help";
 import { getHelpConfig } from "@/lib/help/content";
+import { toCsv, downloadCsv } from "@/lib/csv";
 
 // ===== TYPES =====
 type PostStatus = "scheduled" | "published" | "draft" | "failed" | "pending";
@@ -338,6 +340,21 @@ export default function PostsCalendarPage() {
   };
   const goToday = () => setCurrentDate(today);
 
+  const handleExport = () => {
+    const csv = toCsv(
+      posts.map((p) => ({
+        id: p.id,
+        date: p.date,
+        time: p.time ?? "",
+        caption: p.caption,
+        status: p.status,
+        platforms: (p.platforms ?? []).join("|"),
+        thumbnail: p.thumbnail ?? "",
+      }))
+    );
+    downloadCsv(`posts-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+  };
+
   return (
     <div className="w-full p-3 lg:p-6 flex-1 min-h-0 flex flex-col h-full gap-4">
       {/* ===== TOOLBAR ===== */}
@@ -357,6 +374,14 @@ export default function PostsCalendarPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExport}
+            className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-8 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+          >
+            <Download className="size-3.5" />
+            Export CSV
+          </button>
           <TimezonePill />
           <ViewModeSwitch view={view} onChange={setView} />
         </div>

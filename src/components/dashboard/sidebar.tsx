@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import {
   Calendar,
@@ -23,6 +23,7 @@ import {
   Key,
   ChevronDown,
   Bell,
+  BookOpen,
   Plus,
   CalendarPlus,
   ChevronLeft,
@@ -32,6 +33,13 @@ import {
 import { cn } from "@/lib/utils";
 import { useDrawer } from "@/components/dashboard/drawer-provider";
 import { UserMenu } from "@/components/dashboard/user-menu";
+import { useHelpSystem } from "@/components/dashboard/help/help-system";
+import { getOverrideHeaders } from "@/lib/security/client-overrides";
+
+interface SidebarWorkspace {
+  id: string;
+  name: string;
+}
 
 type NavItem = { label: string; href: string; icon: React.ComponentType<{ className?: string }>; badge?: number };
 
@@ -123,8 +131,74 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export function DashboardSidebar() {
   const pathname = usePathname() ?? "";
   const [collapsed, setCollapsed] = useState(false);
-  const [workspace, setWorkspace] = useState("zack");
+  const [workspaces, setWorkspaces] = useState<SidebarWorkspace[]>([]);
+  const [activeWorkspace, setActiveWorkspace] = useState<string>("");
   const { openDrawer } = useDrawer();
+  const { openLearn } = useHelpSystem();
+
+  // Hydrate workspace list from /api/workspaces. Fall back to a single
+  // "Default" option if the call fails (offline or unauthenticated).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/workspaces", {
+          credentials: "include",
+          headers: getOverrideHeaders(),
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { workspaces?: SidebarWorkspace[] };
+        if (cancelled || !data.workspaces) return;
+        setWorkspaces(data.workspaces);
+        setActiveWorkspace((current) => current || data.workspaces![0]?.id || "");
+      } catch {
+        /* leave empty */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleCreateWorkspace = async () => {
+    const name = window.prompt("Workspace name?");
+    if (!name) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    try {
+      const res = await fetch("/api/workspaces", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getOverrideHeaders() },
+        credentials: "include",
+        body: JSON.stringify({ name: trimmed }),
+      });
+      if (!res.ok) {
+        window.alert("Could not create workspace. Please try again.");
+        return;
+      }
+      const data = (await res.json()) as { id?: string };
+      if (!data.id) return;
+      // Refresh list and select the new one.
+      const listRes = await fetch("/api/workspaces", { credentials: "include", headers: getOverrideHeaders() });
+      if (listRes.ok) {
+        const listData = (await listRes.json()) as { workspaces?: SidebarWorkspace[] };
+        if (listData.workspaces) {
+          setWorkspaces(listData.workspaces);
+          setActiveWorkspace(data.id);
+        }
+      }
+    } catch {
+      window.alert("Could not create workspace. Please try again.");
+    }
+  };
+
+  const onWorkspaceChange = (v: string) => {
+    if (v === "__create__") {
+      handleCreateWorkspace();
+      return;
+    }
+    setActiveWorkspace(v);
+  };
 
   return (
     <aside
@@ -146,14 +220,25 @@ export function DashboardSidebar() {
           {!collapsed && <span className="text-[15px] font-semibold tracking-tight">PostPlanify</span>}
         </Link>
         {!collapsed && (
-          <button
-            type="button"
-            className="relative inline-flex items-center justify-center size-7 rounded-md hover:bg-zinc-100"
-            aria-label="Notifications"
-          >
-            <Bell className="size-4 text-zinc-500" />
-            <span className="absolute top-1 right-1 size-1.5 rounded-full bg-red-500" />
-          </button>
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => openLearn()}
+              className="inline-flex items-center justify-center size-7 rounded-md hover:bg-zinc-100"
+              aria-label="Open Learn panel"
+              title="Learn"
+            >
+              <BookOpen className="size-4 text-zinc-500" />
+            </button>
+            <button
+              type="button"
+              className="relative inline-flex items-center justify-center size-7 rounded-md hover:bg-zinc-100"
+              aria-label="Notifications"
+            >
+              <Bell className="size-4 text-zinc-500" />
+              <span className="absolute top-1 right-1 size-1.5 rounded-full bg-red-500" />
+            </button>
+          </div>
         )}
       </div>
 
@@ -162,12 +247,19 @@ export function DashboardSidebar() {
         <div className="px-3 pt-3 pb-1">
           <div className="relative">
             <select
-              value={workspace}
-              onChange={(e) => setWorkspace(e.target.value)}
+              value={activeWorkspace}
+              onChange={(e) => onWorkspaceChange(e.target.value)}
               className="w-full appearance-none rounded-md border border-zinc-200 bg-white pl-8 pr-7 h-9 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+              aria-label="Switch workspace"
             >
-              <option value="zack">zack</option>
-              <option value="create">+ Create Workspace</option>
+              {workspaces.length === 0 ? (
+                <option value="">Loading…</option>
+              ) : (
+                workspaces.map((w) => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))
+              )}
+              <option value="__create__">+ Create Workspace</option>
             </select>
             <Building2 className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-zinc-400 pointer-events-none" />
             <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 size-4 text-zinc-400 pointer-events-none" />

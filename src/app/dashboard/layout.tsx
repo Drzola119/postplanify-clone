@@ -8,6 +8,7 @@ import { DrawerProvider, useDrawer } from "@/components/dashboard/drawer-provide
 import { LabelsDrawer } from "@/components/dashboard/labels-drawer";
 import { HashtagsDrawer } from "@/components/dashboard/hashtags-drawer";
 import { PostingScheduleModal } from "@/components/dashboard/posting-schedule-modal";
+import { HelpSystemProvider } from "@/components/dashboard/help/help-system";
 
 function DrawersHost() {
   const { active, closeDrawer } = useDrawer();
@@ -49,11 +50,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <DrawerProvider>
-      <div className="min-h-screen bg-zinc-50">
-        <DashboardSidebar />
-        <div className="lg:pl-[240px]">{children}</div>
-        <DrawersHost />
-      </div>
+      <HelpSystemProvider>
+        <div className="min-h-screen bg-zinc-50">
+          <DashboardSidebar />
+          <div className="lg:pl-[240px]">{children}</div>
+          <DrawersHost />
+        </div>
+      </HelpSystemProvider>
     </DrawerProvider>
   );
 }
