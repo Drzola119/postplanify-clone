@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { isDbAvailable, requireDb, MissingServerSecretError } from "@/lib/db";
+import { isDbAvailable, requireDb } from "@/lib/db";
+import { MissingServerSecretError } from "@/lib/security/server-config";
 import { createMockFirestore, type MockFirestore } from "../fixtures/firestore-mock";
 
 describe("db/index", () => {

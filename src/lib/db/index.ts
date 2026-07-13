@@ -2,6 +2,7 @@ import "server-only";
 import { adminDb } from "@/lib/firebase/admin";
 import { MissingServerSecretError } from "@/lib/security/server-config";
 
+export { adminDb };
 export type { Firestore } from "firebase-admin/firestore";
 export {
   FieldValue,
