@@ -783,18 +783,25 @@ function Save({ className }: { className?: string }) {
    TYPES + DATA
    ============================================================ */
 
+type WorkspaceAccount = {
+  platform: string;
+  handle: string;
+  icon: React.ReactNode;
+  color: string;
+};
+
 type Workspace = {
-  id: number;
+  id: string;
   name: string;
   domain: string;
   logo: string | null;
-  accounts: { platform: string; handle: string; icon: React.ReactNode; color: string }[];
+  accounts: WorkspaceAccount[];
   created: string;
 };
 
 const SEED_WORKSPACES: Workspace[] = [
   {
-    id: 1,
+    id: "seed-1",
     name: "zack",
     domain: "Not set",
     logo: null,
@@ -813,12 +820,21 @@ const SEED_WORKSPACES: Workspace[] = [
   },
 ];
 
+interface ApiWorkspace {
+  id: string;
+  name: string;
+  ownerUid: string;
+  plan?: string;
+}
+
 /* ============================================================
    PAGE
    ============================================================ */
 
 export default function WorkspacesPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>(SEED_WORKSPACES);
+  const [loading, setLoading] = useState(true);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const { toasts, push, dismiss } = useToasts();
 
   const [editing, setEditing] = useState<Workspace | null>(null);
@@ -826,43 +842,115 @@ export default function WorkspacesPage() {
   const [invitingFor, setInvitingFor] = useState<Workspace | null>(null);
   const [creating, setCreating] = useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/workspaces", { credentials: "include" });
+        if (!res.ok) {
+          if (!cancelled) setLoading(false);
+          return;
+        }
+        const data = (await res.json()) as { workspaces?: ApiWorkspace[] };
+        if (cancelled) return;
+        const fetched = (data.workspaces ?? []).map<Workspace>((w) => ({
+          id: w.id,
+          name: w.name,
+          domain: "Not set",
+          logo: null,
+          accounts: [],
+          created: "Recently",
+        }));
+        if (fetched.length > 0) setWorkspaces(fetched);
+        if (fetched[0]) setActiveWorkspaceId(fetched[0].id);
+      } catch {
+        // offline / unauthenticated — keep seed
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handleCreate = () => setCreating(true);
   const handleEdit = (w: Workspace) => setEditing(w);
   const handleDelete = (w: Workspace) => setDeleting(w);
   const handleInvite = (w: Workspace) => setInvitingFor(w);
 
   const handleSaveCreate = async (data: { name: string; domain: string }) => {
-    const newWs: Workspace = {
-      id: Date.now(),
-      name: data.name,
-      domain: data.domain || "Not set",
-      logo: null,
-      accounts: [],
-      created: "Just now",
-    };
-    setWorkspaces((prev) => [...prev, newWs]);
-    setCreating(false);
-    push("success", `Workspace "${data.name}" created`);
+    try {
+      const res = await fetch("/api/workspaces", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: data.name, plan: "free" }),
+      });
+      if (!res.ok) {
+        push("error", "Failed to create workspace");
+        return;
+      }
+      const payload = (await res.json()) as { id?: string };
+      const id = payload.id ?? `local-${Date.now()}`;
+      const newWs: Workspace = {
+        id,
+        name: data.name,
+        domain: data.domain || "Not set",
+        logo: null,
+        accounts: [],
+        created: "Just now",
+      };
+      setWorkspaces((prev) => [...prev, newWs]);
+      setCreating(false);
+      push("success", `Workspace "${data.name}" created`);
+    } catch {
+      push("error", "Network error creating workspace");
+    }
   };
 
   const handleSaveEdit = async (data: { name: string; domain: string }) => {
-    setWorkspaces((prev) =>
-      prev.map((w) =>
-        editing && w.id === editing.id
-          ? { ...w, name: data.name, domain: data.domain || "Not set" }
-          : w
-      )
-    );
-    setEditing(null);
-    push("success", `Workspace "${data.name}" updated`);
+    if (!editing) return;
+    if (editing.id !== activeWorkspaceId) {
+      push("info", "Only the active workspace can be edited");
+      return;
+    }
+    try {
+      const res = await fetch(`/api/workspaces/${editing.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: data.name }),
+      });
+      if (!res.ok) {
+        push("error", "Failed to update workspace");
+        return;
+      }
+      setWorkspaces((prev) =>
+        prev.map((w) =>
+          w.id === editing.id
+            ? { ...w, name: data.name, domain: data.domain || "Not set" }
+            : w
+        )
+      );
+      setEditing(null);
+      push("success", `Workspace "${data.name}" updated`);
+    } catch {
+      push("error", "Network error updating workspace");
+    }
   };
 
   const handleConfirmDelete = () => {
     if (!deleting) return;
+    if (deleting.id !== activeWorkspaceId) {
+      push("info", "Only the active workspace can be deleted");
+      setDeleting(null);
+      return;
+    }
     const name = deleting.name;
     setWorkspaces((prev) => prev.filter((w) => w.id !== deleting.id));
     setDeleting(null);
-    push("success", `Workspace "${name}" deleted`);
+    push("info", `Workspace "${name}" deletion is not supported yet`);
   };
 
   return (
@@ -908,7 +996,20 @@ export default function WorkspacesPage() {
               </tr>
             </thead>
             <tbody className="[&_tr:last-child]:border-0">
-              {workspaces.map((w) => (
+              {loading ? (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-sm text-muted-foreground">
+                    Loading workspaces…
+                  </td>
+                </tr>
+              ) : workspaces.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-sm text-muted-foreground">
+                    No workspaces yet. Create your first one to get started.
+                  </td>
+                </tr>
+              ) : (
+                workspaces.map((w) => (
                 <tr
                   key={w.id}
                   className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
@@ -981,7 +1082,8 @@ export default function WorkspacesPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         </div>
