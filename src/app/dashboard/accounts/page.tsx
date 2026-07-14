@@ -487,7 +487,23 @@ export default function AccountsPage() {
     if (connecting) return;
     setConnecting(true);
     try {
-      const res = await fetch("/api/social-accounts/connect-url", {
+      const url = new URL("/api/social-accounts/connect-url", window.location.origin);
+      if (platformKey) {
+        let key = platformKey.toLowerCase();
+        if (key.includes("google")) key = "google_business";
+        else if (key === "youtube") key = "youtube";
+        else if (key === "linkedin") key = "linkedin";
+        else if (key === "facebook") key = "facebook";
+        else if (key === "instagram") key = "instagram";
+        else if (key === "tiktok") key = "tiktok";
+        else if (key === "pinterest") key = "pinterest";
+        else if (key === "threads") key = "threads";
+        else if (key === "bluesky") key = "bluesky";
+        else if (key === "x" || key.includes("twitter")) key = "x";
+        url.searchParams.set("platform", key);
+      }
+
+      const res = await fetch(url.toString(), {
         method: "GET",
         cache: "no-store",
         headers: getOverrideHeaders(),

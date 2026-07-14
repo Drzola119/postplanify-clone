@@ -189,6 +189,8 @@ export async function generateConnectUrl(
     connectTitle?: string;
     connectDescription?: string;
     redirectButtonText?: string;
+    hidePlatformSelector?: boolean;
+    customColor?: string;
   }
 ): Promise<JwtUrlResponse> {
   const profile = await ensureProfile(workspaceId, apiKey);
@@ -204,6 +206,10 @@ export async function generateConnectUrl(
   if (options.connectTitle) body.connect_title = options.connectTitle;
   if (options.connectDescription) body.connect_description = options.connectDescription;
   if (options.redirectButtonText) body.redirect_button_text = options.redirectButtonText;
+  if (options.hidePlatformSelector !== undefined) {
+    body.hide_platform_selector = options.hidePlatformSelector;
+  }
+  if (options.customColor) body.custom_color = options.customColor;
 
   const res = await fetch(`${UPLOAD_POST_API_BASE}/generate-jwt`, {
     method: "POST",

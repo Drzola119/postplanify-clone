@@ -17,6 +17,7 @@ const ALL_PLATFORMS = [
   "pinterest",
   "discord",
   "telegram",
+  "google_business",
 ] as const;
 
 export async function GET(request: NextRequest) {
@@ -51,13 +52,23 @@ export async function GET(request: NextRequest) {
   const origin = reqUrl.origin;
   const redirectUrl = `${origin}/dashboard/accounts?connected=1`;
 
+  const platform = reqUrl.searchParams.get("platform");
+  const specificPlatform = platform && (ALL_PLATFORMS as readonly string[]).includes(platform) ? platform : null;
+  const platforms = specificPlatform ? [specificPlatform] : [...ALL_PLATFORMS];
+  const hidePlatformSelector = !!specificPlatform;
+
   try {
     const result = await generateConnectUrl(session.workspaceId, apiKey, {
       redirectUrl,
-      platforms: [...ALL_PLATFORMS],
-      connectTitle: "Connect your social accounts",
-      connectDescription:
-        "Link the social media accounts you want to schedule and publish to from Trustiify.",
+      platforms,
+      hidePlatformSelector,
+      customColor: "#7C3AED", // Match Adsify's purple / professional vibe
+      connectTitle: specificPlatform
+        ? `Connect your ${specificPlatform === "x" ? "X" : specificPlatform === "google_business" ? "Google Business" : specificPlatform.charAt(0).toUpperCase() + specificPlatform.slice(1)} account`
+        : "Connect your social accounts",
+      connectDescription: specificPlatform
+        ? `Link your ${specificPlatform === "x" ? "X" : specificPlatform === "google_business" ? "Google Business" : specificPlatform.charAt(0).toUpperCase() + specificPlatform.slice(1)} account to start scheduling and publishing.`
+        : "Link the social media accounts you want to schedule and publish to from Trustiify.",
       redirectButtonText: "Back to Trustiify",
     });
     return NextResponse.json({ ok: true, ...result, redirectUrl });
