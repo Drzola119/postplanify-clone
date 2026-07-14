@@ -57,6 +57,39 @@ interface ApiResponse {
   limit: number | null;
 }
 
+/** Extract a human-readable error string from any error response shape. */
+function extractErrorMessage(payload: unknown, fallback: string): string {
+  if (!payload || typeof payload !== "object") return fallback;
+  const obj = payload as Record<string, unknown>;
+  // Common shapes we may receive:
+  // 1. { error: "string" }                     — direct error message
+  // 2. { error: { message: "string" } }        — wrapped (requireSession)
+  // 3. { error: { status, message } }          — same wrapped shape
+  if (typeof obj.error === "string" && obj.error.trim()) return obj.error;
+  if (obj.error && typeof obj.error === "object") {
+    const nested = obj.error as Record<string, unknown>;
+    if (typeof nested.message === "string" && nested.message.trim()) {
+      return nested.message;
+    }
+  }
+  if (typeof obj.message === "string" && obj.message.trim()) return obj.message;
+  return fallback;
+}
+
+/** Map known HTTP statuses to actionable hints for the user. */
+function hintForStatus(status: number, msg: string): string {
+  if (status === 401) {
+    return "Sign-in expired or server can't verify your session. Re-login from /login, and if the problem persists check that FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY are set on the server.";
+  }
+  if (status === 500 && /not configured/i.test(msg)) {
+    return "Server is missing a required secret. Set it on the host (see docs/hpanel-env-paste.md) and redeploy.";
+  }
+  if (status === 502) {
+    return "Upstream service (upload-post.com) is unreachable. Try Refresh in a minute.";
+  }
+  return msg;
+}
+
 const PLATFORM_META: Record<
   Platform,
   { label: string; badgeColor: string }
@@ -328,6 +361,7 @@ export default function AccountsPage() {
   const [profiles, setProfiles] = useState<ProfileMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -387,17 +421,22 @@ export default function AccountsPage() {
 
   const fetchAccounts = async () => {
     setError(null);
+    setErrorStatus(null);
     try {
       const res = await fetch("/api/social-accounts/list", {
         cache: "no-store",
         headers: getOverrideHeaders(),
       });
-      const data: ApiResponse = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error((data as unknown as { error?: string }).error || "Failed to load accounts");
+      const data = (await res.json()) as unknown;
+      const dataObj = data as ApiResponse;
+      if (!res.ok || !dataObj.ok) {
+        const raw = extractErrorMessage(data, "Failed to load accounts");
+        const friendly = hintForStatus(res.status, raw);
+        setErrorStatus(res.status);
+        throw new Error(friendly);
       }
-      setAccounts(data.accounts);
-      setProfiles(data.profiles);
+      setAccounts(dataObj.accounts);
+      setProfiles(dataObj.profiles);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to load accounts";
       setError(msg);
@@ -445,13 +484,13 @@ export default function AccountsPage() {
         cache: "no-store",
         headers: getOverrideHeaders(),
       });
-      const data = (await res.json()) as { ok?: boolean; url?: string; error?: string };
+      const payload = (await res.json()) as unknown;
+      const data = payload as { ok?: boolean; url?: string };
       if (!res.ok || !data.ok || !data.url) {
-        throw new Error(data.error || "Failed to open connect page");
+        const raw = extractErrorMessage(payload, "Failed to open connect page");
+        const friendly = hintForStatus(res.status, raw);
+        throw new Error(friendly);
       }
-      // Optional: append a platform filter via the JWT page query if upload-post
-      // supports it. For now, the hosted page lists all platforms — the user
-      // picks which one to link.
       showToast(
         platformKey
           ? `Opening ${platformKey} connect page in new tab...`
@@ -544,8 +583,16 @@ export default function AccountsPage() {
           <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 flex items-start gap-3">
             <AlertTriangle className="size-5 text-rose-600 shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="text-sm font-medium text-rose-900">Could not load accounts</p>
+              <p className="text-sm font-medium text-rose-900">
+                Could not load accounts
+                {errorStatus ? <span className="text-rose-500"> ({errorStatus})</span> : null}
+              </p>
               <p className="text-xs text-rose-700 mt-0.5">{error}</p>
+              {errorStatus === 401 && (
+                <p className="text-[11px] text-rose-600 mt-2">
+                  See <code className="px-1 py-0.5 rounded bg-rose-100">docs/hpanel-env-paste.md</code> for the required env vars, or re-login if your session expired.
+                </p>
+              )}
             </div>
             <button
               type="button"
