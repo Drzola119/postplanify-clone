@@ -19,6 +19,7 @@ const ALL_PLATFORMS = [
   "telegram",
   "reddit",
   "google_business",
+  "bluesky",
 ] as const;
 
 export async function GET(request: NextRequest) {
