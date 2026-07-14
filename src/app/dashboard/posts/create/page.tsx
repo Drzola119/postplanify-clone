@@ -54,6 +54,11 @@ import { HashtagsDropdown } from "@/components/dashboard/hashtags-dropdown";
 import { PlatformTileBar } from "@/components/dashboard/platform-tile-bar";
 import { CropModal } from "@/components/dashboard/crop-modal";
 import { AltTextModal } from "@/components/dashboard/alt-text-modal";
+import { ComposerModeSelector, type ComposerMode } from "@/components/dashboard/composer-mode-selector";
+import { CarouselMediaCard, type CarouselItem } from "@/components/dashboard/carousel-media-card";
+import { TrialReelCard, type TrialReelMode, type TrialReelFile } from "@/components/dashboard/trial-reel-card";
+import { DocumentUploadCard, type DocumentFile } from "@/components/dashboard/document-upload-card";
+import { MetadataRulesPanel, type MetadataRules } from "@/components/dashboard/metadata-rules-panel";
 
 type MediaTab = "media" | "paste";
 type MediaItem = {
@@ -201,6 +206,31 @@ export default function CreatePostPage() {
   const [zoom, setZoom] = useState(300);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Composer mode (Standard / Carousel / Trial Reel / Document)
+  const [composerMode, setComposerMode] = useState<ComposerMode>("standard");
+
+  // Carousel state
+  const [carouselItems, setCarouselItems] = useState<CarouselItem[]>([]);
+
+  // Trial Reel state
+  const [trialReelFile, setTrialReelFile] = useState<TrialReelFile | null>(null);
+  const [trialMode, setTrialMode] = useState<TrialReelMode>("TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED");
+
+  // Document state
+  const [documentFile, setDocumentFile] = useState<DocumentFile | null>(null);
+  const [documentTitle, setDocumentTitle] = useState("");
+
+  // Metadata rules (Campaign Rules panel)
+  const [metadataRules, setMetadataRules] = useState<MetadataRules>({
+    enabled: false,
+    hashtags: [],
+    ctaLine: "",
+    mode: "append",
+    startDate: "",
+    endDate: "",
+  });
+  const [rulesOpen, setRulesOpen] = useState(false);
+
   // Set true while the publish API call is in flight.
   const [submitting, setSubmitting] = useState(false);
 
@@ -282,6 +312,13 @@ export default function CreatePostPage() {
     setQuoteTweet("");
     setCommunity("profile");
     setDraftId(null);
+    // Reset mode-specific state
+    setComposerMode("standard");
+    setCarouselItems([]);
+    setTrialReelFile(null);
+    setTrialMode("TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED");
+    setDocumentFile(null);
+    setDocumentTitle("");
     toast({ title: "Reset", description: "Composer cleared", tone: "info" });
   }
 
@@ -720,53 +757,146 @@ export default function CreatePostPage() {
 
       {/* 2-column layout: left (Media + Accounts + Cover) | right (Captions) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-        {/* Left column: Media (top) + Accounts (bottom) + CoverSections (when video) */}
+        {/* Left column: Mode selector + Media + Accounts + CoverSections */}
         <div className="space-y-4">
-          <MediaCard
-            tab={mediaTab}
-            onTabChange={setMediaTab}
-            items={mediaItems}
-            activeIndex={activeMedia}
-            onActiveChange={setActiveMedia}
-            onFiles={handleFiles}
-            onRemove={removeMedia}
-            onPickFiles={() => fileInputRef.current?.click()}
-            fileInputRef={fileInputRef}
-            onOpenUnsplash={() => setUnsplashOpen(true)}
-            onOpenGenerateAI={() => setAiDialogOpen(true)}
-            onOpenCanva={() => setCanvaOpen(true)}
-            onOpenDrive={() => setDriveOpen(true)}
-            onOpenDropbox={() => setDropboxOpen(true)}
-            zoom={zoom}
-            onZoomChange={setZoom}
-            collaboratorsCount={collaborators.length}
-            onOpenCollaborators={() => setCollaboratorsModalOpen(true)}
-            onOpenCrop={() => setCropModalOpen(true)}
-            onOpenAltText={() => setAltTextModalOpen(true)}
-            onOpenTagUsers={() => setTagUsersModalOpen(true)}
-            customCoverUrl={customCoverUrl}
-            frameCoverUrl={frameCoverUrl}
-            onOpenCoverModal={() => setCoverModalOpen(true)}
-            onPickCustomCover={() => customCoverInputRef.current?.click()}
-            onRemoveCustomCover={() => {
-              setCustomCoverUrl(null);
-              toast({ title: "Custom cover removed", tone: "info" });
+
+          {/* ── Content Mode Selector ── */}
+          <ComposerModeSelector
+            mode={composerMode}
+            onChange={(m) => {
+              setComposerMode(m);
+              // Auto-lock platform selection based on mode
+              if (m === "trial_reel") {
+                setSelected(new Set(["instagram"]));
+              } else if (m === "document") {
+                setSelected(new Set(["linkedin"]));
+              } else if (m === "carousel") {
+                // keep current selection but remove incompatible ones
+                setSelected((prev) => {
+                  const compatible = new Set(["instagram","facebook","tiktok","threads","linkedin"]);
+                  return new Set([...prev].filter((id) => compatible.has(id)));
+                });
+              } else {
+                // standard — restore all platforms
+                setSelected(new Set(PLATFORMS.map((p) => p.id)));
+              }
             }}
           />
 
+          {/* ── Media Card (switches by mode) ── */}
+          {composerMode === "standard" ? (
+            <MediaCard
+              tab={mediaTab}
+              onTabChange={setMediaTab}
+              items={mediaItems}
+              activeIndex={activeMedia}
+              onActiveChange={setActiveMedia}
+              onFiles={handleFiles}
+              onRemove={removeMedia}
+              onPickFiles={() => fileInputRef.current?.click()}
+              fileInputRef={fileInputRef}
+              onOpenUnsplash={() => setUnsplashOpen(true)}
+              onOpenGenerateAI={() => setAiDialogOpen(true)}
+              onOpenCanva={() => setCanvaOpen(true)}
+              onOpenDrive={() => setDriveOpen(true)}
+              onOpenDropbox={() => setDropboxOpen(true)}
+              zoom={zoom}
+              onZoomChange={setZoom}
+              collaboratorsCount={collaborators.length}
+              onOpenCollaborators={() => setCollaboratorsModalOpen(true)}
+              onOpenCrop={() => setCropModalOpen(true)}
+              onOpenAltText={() => setAltTextModalOpen(true)}
+              onOpenTagUsers={() => setTagUsersModalOpen(true)}
+              customCoverUrl={customCoverUrl}
+              frameCoverUrl={frameCoverUrl}
+              onOpenCoverModal={() => setCoverModalOpen(true)}
+              onPickCustomCover={() => customCoverInputRef.current?.click()}
+              onRemoveCustomCover={() => {
+                setCustomCoverUrl(null);
+                toast({ title: "Custom cover removed", tone: "info" });
+              }}
+            />
+          ) : composerMode === "carousel" ? (
+            <CarouselMediaCard
+              items={carouselItems}
+              onAddFiles={async (files) => {
+                const newItems: CarouselItem[] = [];
+                for (const file of files) {
+                  if (carouselItems.length + newItems.length >= 10) break;
+                  const kind: "image" | "video" = file.type.startsWith("video/") ? "video" : "image";
+                  newItems.push({
+                    id: `carousel-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+                    file,
+                    previewUrl: URL.createObjectURL(file),
+                    kind,
+                    uploadStatus: "pending",
+                  });
+                }
+                setCarouselItems((prev) => [...prev, ...newItems]);
+              }}
+              onRemove={(id) => {
+                setCarouselItems((prev) => {
+                  const item = prev.find((i) => i.id === id);
+                  if (item) URL.revokeObjectURL(item.previewUrl);
+                  return prev.filter((i) => i.id !== id);
+                });
+              }}
+              onReorder={(from, to) => {
+                setCarouselItems((prev) => {
+                  const next = [...prev];
+                  const [moved] = next.splice(from, 1);
+                  next.splice(to, 0, moved);
+                  return next;
+                });
+              }}
+            />
+          ) : composerMode === "trial_reel" ? (
+            <TrialReelCard
+              videoFile={trialReelFile}
+              trialMode={trialMode}
+              onVideoFile={(file) => {
+                setTrialReelFile({
+                  file,
+                  previewUrl: URL.createObjectURL(file),
+                  uploadStatus: "pending",
+                });
+              }}
+              onRemoveVideo={() => {
+                if (trialReelFile) URL.revokeObjectURL(trialReelFile.previewUrl);
+                setTrialReelFile(null);
+              }}
+              onTrialModeChange={setTrialMode}
+            />
+          ) : (
+            <DocumentUploadCard
+              docFile={documentFile}
+              docTitle={documentTitle}
+              onDocFile={(file) => {
+                setDocumentFile({
+                  file,
+                  uploadStatus: "pending",
+                });
+              }}
+              onRemoveDoc={() => setDocumentFile(null)}
+              onTitleChange={setDocumentTitle}
+            />
+          )}
+
+          {/* ── Accounts Card ── */}
           <AccountsCard
             selected={selected}
             onToggle={toggleAccount}
-            onSelectAll={selectAll}
+            onSelectAll={composerMode === "standard" ? selectAll : undefined}
             onDeselectAll={deselectAll}
             remember={remember}
             onRememberChange={setRemember}
             feedType={feedType}
             onFeedTypeChange={setFeedType}
             onlyImage={onlyImage}
+            composerMode={composerMode}
           />
 
-          {isVideoActive ? (
+          {isVideoActive && composerMode === "standard" ? (
             <CoverSections
               frameCoverUrl={frameCoverUrl}
               customCoverUrl={customCoverUrl}
@@ -780,7 +910,7 @@ export default function CreatePostPage() {
           ) : null}
         </div>
 
-        {/* Right column: Captions */}
+        {/* Right column: Captions + Metadata Rules */}
         <CaptionsCard
           platforms={selectedPlatforms}
           sameForAll={sameForAll}
@@ -794,12 +924,17 @@ export default function CreatePostPage() {
           onQuoteTweetChange={setQuoteTweet}
           tagUsers={tagUsers}
           onTagUsersChange={setTagUsers}
-          showTagUsers={mediaItems.length > 0}
+          showTagUsers={mediaItems.length > 0 || composerMode !== "standard"}
           hasVideo={hasVideo}
           toast={toast}
           getAdvancedOptions={getAdvancedOptions}
           setAdvancedOptions={setAdvancedOptions}
           mediaKind={composerMediaKind}
+          metadataRules={metadataRules}
+          onMetadataRulesChange={setMetadataRules}
+          rulesOpen={rulesOpen}
+          onRulesOpenChange={setRulesOpen}
+          sampleCaption={captionForCurrent()}
         />
       </div>
 
@@ -1413,13 +1548,14 @@ function readImageSize(url: string): Promise<{ w: number; h: number }> {
 interface AccountsCardProps {
   selected: Set<PlatformId>;
   onToggle: (id: PlatformId) => void;
-  onSelectAll: () => void;
+  onSelectAll?: () => void;
   onDeselectAll: () => void;
   remember: boolean;
   onRememberChange: (b: boolean) => void;
   feedType: "feed" | "story";
   onFeedTypeChange: (t: "feed" | "story") => void;
   onlyImage: boolean;
+  composerMode?: ComposerMode;
 }
 
 function CoverSections({
@@ -1531,11 +1667,27 @@ function AccountsCard({
   feedType,
   onFeedTypeChange,
   onlyImage,
+  composerMode = "standard",
 }: AccountsCardProps) {
   const hasSelection = selected.size > 0;
   const storyAvailable = useMemo(() => {
     return PLATFORMS.some((p) => selected.has(p.id) && (p.id === "instagram" || p.id === "facebook"));
   }, [selected]);
+
+  // Platform compatibility per mode
+  const CAROUSEL_COMPATIBLE = new Set(["instagram","facebook","tiktok","threads","linkedin"]);
+  function isPlatformLocked(id: PlatformId): { locked: boolean; reason: string | null } {
+    if (composerMode === "trial_reel" && id !== "instagram") {
+      return { locked: true, reason: "Trial Reels: Instagram only" };
+    }
+    if (composerMode === "document" && id !== "linkedin") {
+      return { locked: true, reason: "Documents: LinkedIn only" };
+    }
+    if (composerMode === "carousel" && !CAROUSEL_COMPATIBLE.has(id)) {
+      return { locked: true, reason: "Carousel not supported" };
+    }
+    return { locked: false, reason: null };
+  }
 
   return (
     <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm">
@@ -1587,24 +1739,26 @@ function AccountsCard({
             {PLATFORMS.map((p) => {
               const isSel = selected.has(p.id);
               const disabledByMedia = onlyImage && p.videoOnly;
-              const disabledReason = disabledByMedia ? "Only video files are supported" : null;
-              const disabled = disabledByMedia;
+              const { locked: lockedByMode, reason: modeReason } = isPlatformLocked(p.id);
+              const disabledReason = lockedByMode ? modeReason : (disabledByMedia ? "Only video files are supported" : null);
+              const disabled = disabledByMedia || lockedByMode;
               return (
                 <button
                   key={p.id}
                   type="button"
                   onClick={() => !disabled && onToggle(p.id)}
                   disabled={disabled}
+                  title={disabledReason ?? undefined}
                   className={cn(
                     "flex items-center gap-2 p-2 rounded-lg text-left transition-colors",
                     disabled
-                      ? "opacity-50 cursor-not-allowed"
+                      ? "opacity-40 cursor-not-allowed"
                       : "hover:bg-accent cursor-pointer"
                   )}
                 >
                   <input
                     type="checkbox"
-                    checked={isSel}
+                    checked={isSel && !disabled}
                     disabled={disabled}
                     onChange={() => {}}
                     onClick={(e) => e.stopPropagation()}
@@ -1614,7 +1768,7 @@ function AccountsCard({
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">{p.handle}</p>
                     {disabledReason ? (
-                      <p className="text-[10px] italic text-zinc-500">{disabledReason}</p>
+                      <p className="text-[10px] italic text-zinc-400">{disabledReason}</p>
                     ) : null}
                   </div>
                 </button>
@@ -1685,6 +1839,11 @@ interface CaptionsCardProps {
   getAdvancedOptions: (id: PlatformId) => PlatformAdvancedOptions;
   setAdvancedOptions: (id: PlatformId, next: PlatformAdvancedOptions) => void;
   mediaKind: MediaKind;
+  metadataRules: MetadataRules;
+  onMetadataRulesChange: (rules: MetadataRules) => void;
+  rulesOpen: boolean;
+  onRulesOpenChange: (open: boolean) => void;
+  sampleCaption?: string;
 }
 
 function CaptionsCard({
@@ -1706,7 +1865,14 @@ function CaptionsCard({
   getAdvancedOptions,
   setAdvancedOptions,
   mediaKind,
+  metadataRules,
+  onMetadataRulesChange,
+  rulesOpen,
+  onRulesOpenChange,
+  sampleCaption = "",
 }: CaptionsCardProps) {
+  const hasActiveRules = metadataRules.enabled && (metadataRules.hashtags.length > 0 || metadataRules.ctaLine);
+
   return (
     <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm flex flex-col">
       <div className="p-4 flex flex-col gap-3">
@@ -1715,15 +1881,44 @@ function CaptionsCard({
             <StepCircle n={3} />
             <h3 className="text-lg font-semibold leading-none">Captions</h3>
           </div>
-          <button
-            type="button"
-            onClick={onGenerate}
-            className="inline-flex items-center gap-1.5 rounded bg-zinc-950 hover:bg-zinc-800 text-white px-4 h-9 text-sm font-medium shadow-sm"
-          >
-            <Sparkles className="size-3.5" />
-            Generate AI Captions
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Campaign Rules toggle */}
+            <button
+              type="button"
+              onClick={() => onRulesOpenChange(!rulesOpen)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded border px-3 h-9 text-xs font-medium transition-all duration-200",
+                rulesOpen || hasActiveRules
+                  ? "bg-zinc-950 text-white border-zinc-950"
+                  : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50"
+              )}
+            >
+              <Hash className="size-3.5" />
+              {rulesOpen ? "Hide Rules" : "Campaign Rules"}
+              {hasActiveRules && !rulesOpen && (
+                <span className="size-1.5 rounded-full bg-emerald-400 inline-block" />
+              )}
+            </button>
+            {/* AI Captions */}
+            <button
+              type="button"
+              onClick={onGenerate}
+              className="inline-flex items-center gap-1.5 rounded bg-zinc-950 hover:bg-zinc-800 text-white px-4 h-9 text-sm font-medium shadow-sm"
+            >
+              <Sparkles className="size-3.5" />
+              Generate AI Captions
+            </button>
+          </div>
         </div>
+
+        {/* Metadata Rules Panel — collapsible */}
+        {rulesOpen && (
+          <MetadataRulesPanel
+            rules={metadataRules}
+            onChange={onMetadataRulesChange}
+            sampleCaption={sampleCaption}
+          />
+        )}
 
         <div className="flex items-center justify-between flex-shrink-0">
           <label className="inline-flex items-center gap-2 cursor-pointer text-sm">
