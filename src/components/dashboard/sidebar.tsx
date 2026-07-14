@@ -55,6 +55,14 @@ interface AccountHealthSummary {
   disconnected: number;
 }
 
+/**
+ * Three states for the workspace selector:
+ *  - "loading": initial fetch in flight, show "Loading…"
+ *  - "unauthorized": 401 — session cookie stale, or server auth misconfigured
+ *  - "ready": workspaces list is loaded
+ */
+type WorkspaceLoadState = "loading" | "unauthorized" | "ready";
+
 type NavItem = { label: string; href: string; icon: React.ComponentType<{ className?: string }>; badge?: number };
 
 const MAIN: NavItem[] = [
@@ -152,13 +160,16 @@ export function DashboardSidebar() {
   const pathname = usePathname() ?? "";
   const [collapsed, setCollapsed] = useState(false);
   const [workspaces, setWorkspaces] = useState<SidebarWorkspace[]>([]);
+  const [workspaceState, setWorkspaceState] = useState<WorkspaceLoadState>("loading");
   const [activeWorkspace, setActiveWorkspace] = useState<string>("");
   const [health, setHealth] = useState<AccountHealthSummary | null>(null);
+  const [healthError, setHealthError] = useState<"unauthorized" | "other" | null>(null);
   const { openDrawer } = useDrawer();
   const { openLearn } = useHelpSystem();
 
-  // Hydrate workspace list from /api/workspaces. Fall back to a single
-  // "Default" option if the call fails (offline or unauthenticated).
+  // Hydrate workspace list from /api/workspaces. Track three terminal
+  // states: "loading" (initial fetch), "unauthorized" (401 → user must
+  // re-login OR server is misconfigured), "ready" (loaded).
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -167,9 +178,23 @@ export function DashboardSidebar() {
           credentials: "include",
           headers: getOverrideHeaders(),
         });
-        if (!res.ok) return;
+        if (cancelled) return;
+        if (res.status === 401) {
+          setWorkspaceState("unauthorized");
+          return;
+        }
+        if (!res.ok) {
+          // Treat non-401 failures as "empty list" so the user can still
+          // try to create a workspace.
+          setWorkspaceState("ready");
+          return;
+        }
         const data = (await res.json()) as { workspaces?: SidebarWorkspace[] };
-        if (cancelled || !data.workspaces) return;
+        if (cancelled) return;
+        if (!data.workspaces) {
+          setWorkspaceState("ready");
+          return;
+        }
         setWorkspaces(data.workspaces);
         const persistedId =
           typeof window !== "undefined"
@@ -179,9 +204,12 @@ export function DashboardSidebar() {
           persistedId && data.workspaces.some((w) => w.id === persistedId)
             ? persistedId
             : null;
-        setActiveWorkspace((current) => current || validPersisted || data.workspaces![0]?.id || "");
+        setActiveWorkspace(
+          (current) => current || validPersisted || data.workspaces![0]?.id || ""
+        );
+        setWorkspaceState("ready");
       } catch {
-        /* leave empty */
+        if (!cancelled) setWorkspaceState("ready");
       }
     })();
     return () => {
@@ -189,8 +217,9 @@ export function DashboardSidebar() {
     };
   }, []);
 
-  // Hydrate connections health from /api/accounts/health. Silent failure
-  // (offline / 401) — we keep the placeholder "—" in that case.
+  // Hydrate connections health from /api/accounts/health. Track 401
+  // separately so the widget can show an actionable hint instead of a
+  // permanent "Loading…".
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -199,11 +228,19 @@ export function DashboardSidebar() {
           credentials: "include",
           headers: getOverrideHeaders(),
         });
-        if (!res.ok || cancelled) return;
+        if (cancelled) return;
+        if (res.status === 401) {
+          setHealthError("unauthorized");
+          return;
+        }
+        if (!res.ok) {
+          setHealthError("other");
+          return;
+        }
         const data = (await res.json()) as { health?: AccountHealthSummary };
         if (data.health && !cancelled) setHealth(data.health);
       } catch {
-        /* leave null */
+        if (!cancelled) setHealthError("other");
       }
     })();
     return () => {
@@ -309,13 +346,17 @@ export function DashboardSidebar() {
               className="w-full appearance-none rounded-md border border-zinc-200 bg-white pl-8 pr-7 h-9 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
               aria-label="Switch workspace"
             >
-              {workspaces.length === 0 ? (
-                <option value="">Loading…</option>
-              ) : (
-                workspaces.map((w) => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
-                ))
-              )}
+              {workspaceState === "loading" ? (
+              <option value="">Loading…</option>
+            ) : workspaceState === "unauthorized" ? (
+              <option value="">Re-login required</option>
+            ) : workspaces.length === 0 ? (
+              <option value="">No workspaces yet</option>
+            ) : (
+              workspaces.map((w) => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))
+            )}
               <option value="__create__">+ Create Workspace</option>
             </select>
             <Building2 className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-zinc-400 pointer-events-none" />
@@ -403,7 +444,11 @@ export function DashboardSidebar() {
                       .filter(Boolean)
                       .join(" · ")}`
                   : `${health.total} connected · all healthy`
-                : "Loading…"}
+                : healthError === "unauthorized"
+                  ? "Sign in again to view connections"
+                  : healthError === "other"
+                    ? "Could not load — retry"
+                    : "Loading…"}
             </p>
           </Link>
         </div>

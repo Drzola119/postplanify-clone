@@ -79,13 +79,21 @@ function extractErrorMessage(payload: unknown, fallback: string): string {
 /** Map known HTTP statuses to actionable hints for the user. */
 function hintForStatus(status: number, msg: string): string {
   if (status === 401) {
-    return "Session can't be verified. Most often this means the session cookie was signed with a different Firebase key than the one currently on the server. Log out and log back in to get a fresh cookie. If it persists, run `python scripts/diagnose-hpanel.py` to confirm the env vars.";
+    // Two distinct failure modes:
+    //   1. Stale session cookie — fixed by logging out and back in.
+    //   2. Server-side FIREBASE_PRIVATE_KEY is the placeholder / missing —
+    //      every cookie verification fails. Re-login can't help; the host
+    //      env must be fixed (see docs/hpanel-env-paste.md).
+    return "Session can't be verified. Try logging out and back in first. If the error persists after a fresh login, the server's FIREBASE_PRIVATE_KEY is missing or invalid — run `python scripts/diagnose-hpanel.py` for a diagnosis.";
   }
   if (status === 500 && /not configured/i.test(msg)) {
     return "Server is missing a required secret. Set it on the host (see docs/hpanel-env-paste.md) and redeploy.";
   }
   if (status === 502) {
     return "Upstream service (upload-post.com) is unreachable. Try Refresh in a minute.";
+  }
+  if (status === 503) {
+    return "Server-side auth is not configured. The operator needs to paste a real Firebase Admin SDK private key into the host environment (see docs/hpanel-env-paste.md).";
   }
   return msg;
 }
@@ -590,7 +598,12 @@ export default function AccountsPage() {
               <p className="text-xs text-rose-700 mt-0.5">{error}</p>
               {errorStatus === 401 && (
                 <p className="text-[11px] text-rose-600 mt-2">
-                  Try <strong>logging out and logging back in</strong> first — this usually fixes a stale session cookie. If it persists, run <code className="px-1 py-0.5 rounded bg-rose-100">python scripts/diagnose-hpanel.py</code> to check the server env vars.
+                  Try <strong>logging out and logging back in</strong> first — this usually fixes a stale session cookie. If a fresh login still fails, the server&apos;s <code className="px-1 py-0.5 rounded bg-rose-100">FIREBASE_PRIVATE_KEY</code> env var is the placeholder text instead of a real PEM. Run <code className="px-1 py-0.5 rounded bg-rose-100">python scripts/diagnose-hpanel.py</code> — it will report <code className="px-1 py-0.5 rounded bg-rose-100">privateKeyLooksLikePlaceholder: true</code> if so, and the operator must paste the real key into the host&apos;s environment variables (see <code className="px-1 py-0.5 rounded bg-rose-100">docs/hpanel-env-paste.md</code>).
+                </p>
+              )}
+              {errorStatus === 503 && (
+                <p className="text-[11px] text-rose-600 mt-2">
+                  The server-side Firebase Admin SDK is not configured. Paste the real <code className="px-1 py-0.5 rounded bg-rose-100">FIREBASE_PRIVATE_KEY</code> into the host environment, then redeploy. See <code className="px-1 py-0.5 rounded bg-rose-100">docs/hpanel-env-paste.md</code>.
                 </p>
               )}
             </div>

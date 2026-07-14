@@ -7,25 +7,47 @@ import { createLogger } from "@/lib/log";
 
 const log = createLogger("firebase-admin");
 
-const projectId = process.env.FIREBASE_PROJECT_ID || "postplanify-best";
-const clientEmail = process.env.FIREBASE_CLIENT_EMAIL || "firebase-adminsdk-fbsvc@postplanify-best.iam.gserviceaccount.com";
-let privateKey = process.env.FIREBASE_PRIVATE_KEY || "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDSDQ+/O7AGO6BX\nLfexjkmTDj9VEk2nNYxNn7eWqmK+0Wmj/Xwkc8x02zsSwcNmG8Te2tzTnKqaN0po\n/VjOILwM33WY5StW0RiM+NxWOuf40ml7tkOQz1S00G4TtKiG7yrdwTTRqn09G4pr\nW7Y40L7Bs1iQuziOylDKdy/Cb1hMeGHx3Wo01JEzore3dE74WHiTt8pRDR6iqmvI\nFTh9TvoSRAx4lW7uF9izjVwvomjxmMzlc1sgYLjP6FggiQkKAyKQEucQ+i1aPOus\nO8DuUXIzkhF+2pElcnWitj6qVnShzr44GL7zg5g0V54KvFRggWeszD7j1zA+YqK3\nPvPlQQpxAgMBAAECggEAUAmCEpAfxoA53H47f4CEMHChWT0cMbaJu5o8TkCmV6db\n5YzVHN6y7WQL4l3KosG6BmDG/CsaJqEizVab3A9FGHKdUKEiHnaWMEEzU/gmI/2p\nC+arYCZgVHWHPCL+hEvlvZG9GpcoGXzBBZ9wk72WsiAwgxWTu3UDy+IWZLQgpSIY\nbAYV6uzKyjWWAUwaTGL7WEcIvrqKYeSFxQ1YWbK9EuH7QQf1JDQepFU2xoT+g22p\nfz3eSRVHzW7ztzE41FGHsvpV9gcFrEUsZ6YN8nMeu3gLj6dUMndswhNcm2MU0Q5b\nyM4ddVb9IJ66PNBiFu7rnf3BcRzRVPkYckMIlazVcQKBgQD8/x1+IFrQCrEzHWIM\npkmUWxdZMst4BAhcLaZzE+5XyHIkOLoouTuxJ5Wu+ufuM0wddpXqcPWbiyO5y5Uk\nY3ay7bbXJq4l9g/N2Qwj0oQpI5CIJrrlnkcc5mm8mgrSN7D0Pc1nweIpIXhsmY6a\nf55F/h8qlfXOgCcHQ3HMB3z84wKBgQDUi24YcCMXZ9e5GdL9tm10M1qEKvnBjl1r\npTnw7cECrTpeUMzRYQKrvsZ6hn8iIA5OR9/3hgHC0p7MmwWwhClTFsEsVB+KXxpz\nrtRb8eyFEZOmiyV+kS27oF9iYP+Q/E+aQWEM8A66+s2IAqQKF9MndG8AjQwgPP+P\nXLhrJlTvmwKBgQDIMcuRqWKS61MKwn56yf7BUU9peuM8pdxDrK/gse3RMsD3XpgY\nb3MHnO46Fzr950OcsOCyMg53taNgevMaZ0ZfEfGz0FzPlyUsW0ra8dM4hnbw9czA\ns/1LphwXbMGRVRZGPr1SFD61E1IqhVwtbzy73/mjhiSK8idv/POIYoiJxwKBgEgb\njZxo3t7f8gXwRu6gZ33WtkzEr7sE65jLk16zqpmX34eD7hjSyq8tp/SFkLgpG/Fe\n3RMCubI49nr/1OxPyh1QSPUbDSBKp5S7qXwQFWgH0IneBzhrVJKlE/cyZUHw96ij\nqaNUBgtVb0lHbBOohZCLJeWP9J8zUph2onJnrMUlAoGBANUHV1Iis7+RkcWgNVqj\n9cYmwD3JnQOz+W/z6mblWek7JycD4wV/UKV3cOkTQ9xn2t6Rja6+7y37cBAvAG/F\nSWqOpIcuDFReuCWyjsjhoXETvju3xVvn/D2+A4umyG/QaZFW/6rmi+yG0rNYrHIe\nAhTuwahqPoc0dM8r7Qv0G3UA\n-----END PRIVATE KEY-----";
+/**
+ * Sentinel string used as the default fallback when FIREBASE_PRIVATE_KEY is
+ * missing from the environment. We treat it as "no key configured" so we
+ * never accidentally initialize firebase-admin with a placeholder PEM.
+ */
+const PLACEHOLDER_KEY = "[REDACTED PRIVATE KEY]";
 
+const projectId = process.env.FIREBASE_PROJECT_ID || "postplanify-best";
+const clientEmail =
+  process.env.FIREBASE_CLIENT_EMAIL ||
+  "firebase-adminsdk-fbsvc@postplanify-best.iam.gserviceaccount.com";
+let privateKey = process.env.FIREBASE_PRIVATE_KEY || "";
+
+/**
+ * Detect whether the configured private key is unusable. We refuse to
+ * initialize firebase-admin in any of these cases so that requests don't
+ * silently 401 forever:
+ *   - env var is empty
+ *   - env var contains the placeholder sentinel text
+ *   - env var doesn't have both PEM markers
+ */
+const privateKeyIsUnusable =
+  privateKey.trim() === "" ||
+  privateKey.includes(PLACEHOLDER_KEY) ||
+  !privateKey.includes("-----BEGIN PRIVATE KEY-----") ||
+  !privateKey.includes("-----END PRIVATE KEY-----");
+
+// Normalize the value: strip surrounding quotes (in case the operator
+// pasted a quoted value), and unescape the literal "\n" sequences used by
+// .env-style files.
 if (privateKey) {
   privateKey = privateKey.trim().replace(/^["']/, "").replace(/["']$/, "");
   privateKey = privateKey.replace(/\\n/g, "\n");
-  if (!privateKey.includes("-----BEGIN PRIVATE KEY-----")) {
-    privateKey = `-----BEGIN PRIVATE KEY-----\n${privateKey}`;
-  }
-  if (!privateKey.includes("-----END PRIVATE KEY-----")) {
-    privateKey = `${privateKey}\n-----END PRIVATE KEY-----`;
-  }
 }
 
 function createAdminApp(): App | null {
-  if (!projectId || !clientEmail || !privateKey) {
+  if (!projectId || !clientEmail || !privateKey || privateKeyIsUnusable) {
     if (process.env.NODE_ENV !== "production") {
-      log.warn("Missing FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY. Server-side auth will be disabled.");
+      log.warn(
+        "Missing or invalid FIREBASE_PRIVATE_KEY (placeholder or not a PEM). Server-side auth will be disabled."
+      );
     }
     return null;
   }
@@ -53,6 +75,15 @@ export async function createSessionCookie(idToken: string): Promise<string | nul
   return adminAuth.createSessionCookie(idToken, { expiresIn: SESSION_MAX_AGE_MS });
 }
 
+/**
+ * Unverified JWT payload decode — ONLY used as a last-resort fallback when
+ * the admin SDK is configured (so the signature was already verified) but
+ * the cookie happens to be a raw ID token rather than a session cookie.
+ *
+ * NEVER used when adminAuth is null: in that case the cookie was never
+ * verified, so trusting its claims would be a security hole. Callers must
+ * check `adminAuth` themselves to distinguish "unconfigured" from "verified".
+ */
 function decodeUnverifiedJwt(token: string): { uid: string; email: string | null } | null {
   try {
     const parts = token.split(".");
@@ -71,9 +102,15 @@ function decodeUnverifiedJwt(token: string): { uid: string; email: string | null
 export async function verifySessionCookie(
   sessionCookie: string
 ): Promise<{ uid: string; email: string | null } | null> {
+  // Hard fail when the admin SDK is not configured. Earlier versions of
+  // this function fell through to `decodeUnverifiedJwt` here, which let
+  // forged cookies pass through silently — the original reason for every
+  // "401 that re-logging-in can't fix" report.
   if (!adminAuth) {
-    console.warn("[firebase-admin] Admin SDK not configured — falling back to JWT decode.");
-    return decodeUnverifiedJwt(sessionCookie);
+    console.warn(
+      "[firebase-admin] Admin SDK not configured — refusing to verify cookies. Check FIREBASE_PRIVATE_KEY on the server."
+    );
+    return null;
   }
   try {
     // Disable strict revocation check (second parameter true) to prevent network-bound verification delays/failures.
@@ -82,11 +119,14 @@ export async function verifySessionCookie(
   } catch (err) {
     console.warn("[firebase-admin] verifySessionCookie failed, trying verifyIdToken:", err);
     try {
+      // Sometimes the cookie is a raw ID token instead of a session cookie.
+      // Only fall back to this when the admin SDK itself is configured — the
+      // signature is still verified here.
       const decoded = await adminAuth.verifyIdToken(sessionCookie);
       return { uid: decoded.uid, email: decoded.email ?? null };
     } catch (idErr) {
-      console.warn("[firebase-admin] verifyIdToken failed, falling back to unverified decode:", idErr);
-      return decodeUnverifiedJwt(sessionCookie);
+      console.warn("[firebase-admin] verifyIdToken failed:", idErr);
+      return null;
     }
   }
 }
@@ -102,3 +142,11 @@ export async function getCurrentUser(): Promise<{ uid: string; email: string | n
     return null;
   }
 }
+
+/**
+ * Public flag for routes that need to differentiate between "user not
+ * logged in" (401) and "server is misconfigured and CAN'T verify anyone"
+ * (503). Lets us return the right status code instead of masking every
+ * problem as 401.
+ */
+export const isAuthConfigured = (): boolean => adminAuth !== null;

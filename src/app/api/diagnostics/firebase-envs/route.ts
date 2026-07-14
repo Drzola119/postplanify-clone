@@ -27,17 +27,26 @@ export async function GET(request: Request) {
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim() ?? "";
   const rawKey = process.env.FIREBASE_PRIVATE_KEY?.trim() ?? "";
 
-  // Try to extract just the public part of the key for fingerprinting.
+  // Validate the PEM by structural inspection only — no crypto here.
   let keyFingerprint: string | null = null;
   let keyLooksValid = false;
+  let keyLooksLikePlaceholder = false;
   if (rawKey) {
-    // A valid PEM has BEGIN/END markers. The escaped form uses literal "\n".
+    // Unescape the literal "\n" that .env-style files use to encode
+    // newlines inside a quoted value.
     const unescaped = rawKey.replace(/\\n/g, "\n");
-    keyLooksValid =
-      unescaped.includes("-----BEGIN PRIVATE KEY-----") &&
-      unescaped.includes("-----END PRIVATE KEY-----");
-    // Look for a base64 line that's long enough to be a key id (first 8 chars
-    // after the header is a stable fingerprint).
+    const hasBegin = unescaped.includes("-----BEGIN PRIVATE KEY-----");
+    const hasEnd = unescaped.includes("-----END PRIVATE KEY-----");
+    // `src/lib/firebase/admin.ts` ships with a literal placeholder string
+    // `[REDACTED PRIVATE KEY]` as the fallback when FIREBASE_PRIVATE_KEY is
+    // missing. If we see that exact text in the env, the operator forgot to
+    // paste the real PEM into hPanel — flag it explicitly so they don't
+    // get a misleading "OK" from this endpoint.
+    keyLooksLikePlaceholder = unescaped.includes("[REDACTED PRIVATE KEY]");
+    keyLooksValid = hasBegin && hasEnd && !keyLooksLikePlaceholder;
+    // First ~8 base64 chars after the BEGIN marker form a stable fingerprint
+    // of the key itself (not the secret) so we can tell when the operator
+    // actually rotated keys.
     const match = unescaped.match(/-----BEGIN PRIVATE KEY-----\n([A-Za-z0-9+/=]{8,})/);
     if (match) keyFingerprint = match[1].slice(0, 12);
   }
@@ -46,6 +55,9 @@ export async function GET(request: Request) {
   if (!projectId) missing.push("FIREBASE_PROJECT_ID");
   if (!clientEmail) missing.push("FIREBASE_CLIENT_EMAIL");
   if (!rawKey) missing.push("FIREBASE_PRIVATE_KEY");
+  if (rawKey && keyLooksLikePlaceholder) {
+    missing.push("FIREBASE_PRIVATE_KEY (placeholder text, paste the real PEM)");
+  }
 
   const ok = missing.length === 0 && keyLooksValid;
 
@@ -59,6 +71,7 @@ export async function GET(request: Request) {
       privateKeySet: !!rawKey,
       privateKeyLength: rawKey.length,
       privateKeyLooksValid: keyLooksValid,
+      privateKeyLooksLikePlaceholder: keyLooksLikePlaceholder,
       privateKeyFingerprint: keyFingerprint,
       nodeEnv: process.env.NODE_ENV,
       // Helper boolean the front-end can use to render a "fix your envs" message.
@@ -67,6 +80,6 @@ export async function GET(request: Request) {
     },
     {
       status: ok ? 200 : 503,
-    },
+    }
   );
 }
