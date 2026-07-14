@@ -34,7 +34,8 @@ type Platform =
   | "x"
   | "discord"
   | "telegram"
-  | "reddit";
+  | "reddit"
+  | "google_business";
 
 interface ConnectedAccount {
   id: string;
@@ -117,6 +118,7 @@ const PLATFORM_META: Record<
   discord: { label: "Discord", badgeColor: "text-indigo-500" },
   telegram: { label: "Telegram", badgeColor: "text-sky-500" },
   reddit: { label: "Reddit", badgeColor: "text-orange-500" },
+  google_business: { label: "Google Business", badgeColor: "text-blue-600" },
 };
 
 function PlatformBadge({ platform }: { platform: Platform }) {
@@ -194,6 +196,12 @@ function PlatformBadge({ platform }: { platform: Platform }) {
       return (
         <svg viewBox="0 0 24 24" className={`w-3.5 h-3.5 ${meta.badgeColor}`} fill="currentColor">
           <path d="M24 11.5c0-1.65-1.35-3-3-3-.96 0-1.86.48-2.42 1.24-1.64-1-3.85-1.64-6.29-1.72l1.37-4.31 4.5 1c.02.97.82 1.75 1.81 1.75 1 0 1.81-.81 1.81-1.81s-.81-1.81-1.81-1.81c-.84 0-1.55.58-1.74 1.36l-5-.99c-.19-.04-.38.07-.44.25L10.37 7.02c-2.51.04-4.79.68-6.46 1.71-.56-.75-1.46-1.23-2.41-1.23-1.65 0-3 1.35-3 3 0 1.13.63 2.11 1.56 2.62-.06.29-.1.59-.1.88 0 3.86 4.7 7 10.5 7s10.5-3.14 10.5-7c0-.29-.04-.59-.1-.88.93-.51 1.56-1.49 1.56-2.62zm-18.75 2.1c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25 1.25 0 1.25 1.25-.56 1.25-1.25 1.25zm10.92 4.81c-1.31 1.31-3.79 1.4-4.17 1.4s-2.86-.09-4.17-1.4c-.19-.19-.19-.51 0-.7.19-.19.51-.19.7 0 1.03 1.03 2.92 1.1 3.47 1.1s2.44-.07 3.47-1.1c.19-.19.51-.19.7 0 .2.2.2.51 0 .7zm-.92-3.56c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25 1.25.56 1.25 1.25-.56 1.25-1.25 1.25z" />
+        </svg>
+      );
+    case "google_business":
+      return (
+        <svg viewBox="0 0 24 24" className={`w-3.5 h-3.5 ${meta.badgeColor}`} fill="currentColor">
+          <path d="M21.9 8.89l-1.05-4.37c-.22-.9-1-1.52-1.91-1.52H5.05c-.9 0-1.69.63-1.9 1.52L2.1 8.89c-.24.97-.02 2 .62 2.78.1.12.21.22.33.31v7.02c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7.02c.12-.09.23-.19.33-.31.64-.78.86-1.81.62-2.78zM12 19H6v-4h6v4zm7 0h-5v-6H5v6H4v-7.68c.24.11.51.18.8.18.9 0 1.63-.58 1.95-1.4.32.82 1.05 1.4 1.95 1.4.9 0 1.63-.58 1.95-1.4.32.82 1.05 1.4 1.95 1.4.9 0 1.63-.58 1.95-1.4.32.82 1.05 1.4 1.95 1.4.29 0 .56-.07.8-.18V19z"/>
         </svg>
       );
   }
@@ -276,6 +284,12 @@ function PlatformIconLarge({ platform, className }: { platform: Platform; classN
           <path d="M24 11.5c0-1.65-1.35-3-3-3-.96 0-1.86.48-2.42 1.24-1.64-1-3.85-1.64-6.29-1.72l1.37-4.31 4.5 1c.02.97.82 1.75 1.81 1.75 1 0 1.81-.81 1.81-1.81s-.81-1.81-1.81-1.81c-.84 0-1.55.58-1.74 1.36l-5-.99c-.19-.04-.38.07-.44.25L10.37 7.02c-2.51.04-4.79.68-6.46 1.71-.56-.75-1.46-1.23-2.41-1.23-1.65 0-3 1.35-3 3 0 1.13.63 2.11 1.56 2.62-.06.29-.1.59-.1.88 0 3.86 4.7 7 10.5 7s10.5-3.14 10.5-7c0-.29-.04-.59-.1-.88.93-.51 1.56-1.49 1.56-2.62zm-18.75 2.1c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25 1.25 0 1.25 1.25-.56 1.25-1.25 1.25zm10.92 4.81c-1.31 1.31-3.79 1.4-4.17 1.4s-2.86-.09-4.17-1.4c-.19-.19-.19-.51 0-.7.19-.19.51-.19.7 0 1.03 1.03 2.92 1.1 3.47 1.1s2.44-.07 3.47-1.1c.19-.19.51-.19.7 0 .2.2.2.51 0 .7zm-.92-3.56c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25 1.25.56 1.25 1.25-.56 1.25-1.25 1.25z" />
         </svg>
       );
+    case "google_business":
+      return (
+        <svg viewBox="0 0 24 24" className={`${baseClass} text-blue-600`} fill="currentColor">
+          <path d="M21.9 8.89l-1.05-4.37c-.22-.9-1-1.52-1.91-1.52H5.05c-.9 0-1.69.63-1.9 1.52L2.1 8.89c-.24.97-.02 2 .62 2.78.1.12.21.22.33.31v7.02c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7.02c.12-.09.23-.19.33-.31.64-.78.86-1.81.62-2.78zM12 19H6v-4h6v4zm7 0h-5v-6H5v6H4v-7.68c.24.11.51.18.8.18.9 0 1.63-.58 1.95-1.4.32.82 1.05 1.4 1.95 1.4.9 0 1.63-.58 1.95-1.4.32.82 1.05 1.4 1.95 1.4.9 0 1.63-.58 1.95-1.4.32.82 1.05 1.4 1.95 1.4.29 0 .56-.07.8-.18V19z"/>
+        </svg>
+      );
   }
 }
 
@@ -292,7 +306,7 @@ const AVAILABLE_PLATFORMS: { name: string; platform: Platform; key: string }[] =
   { name: "Discord", platform: "discord", key: "discord" },
   { name: "Telegram", platform: "telegram", key: "telegram" },
   { name: "Reddit", platform: "reddit", key: "reddit" },
-  { name: "Google Business", platform: "facebook", key: "google_business" },
+  { name: "Google Business", platform: "google_business", key: "google_business" },
 ];
 
 type IntegrationKey = "unsplash" | "google-drive" | "canva" | "dropbox";
@@ -800,6 +814,7 @@ export default function AccountsPage() {
                     name={p.name}
                     platform={p.platform}
                     onConnect={() => openConnectPage(p.name)}
+                    isComingSoon={p.key === "reddit"}
                   />
                 ))}
               </div>
@@ -1031,25 +1046,42 @@ function PlatformCard({
   name,
   platform,
   onConnect,
+  isComingSoon,
 }: {
   name: string;
   platform: Platform;
   onConnect: () => void;
+  isComingSoon?: boolean;
 }) {
   return (
     <div className="p-4 rounded-lg border border-zinc-200 bg-white flex items-center justify-between hover:border-zinc-300 transition-colors">
       <div className="flex items-center gap-2">
         <PlatformIconLarge platform={platform} />
         <span className="text-sm font-medium text-zinc-900">{name}</span>
+        {isComingSoon && (
+          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+            Coming Soon
+          </span>
+        )}
       </div>
-      <button
-        type="button"
-        onClick={onConnect}
-        className="inline-flex items-center justify-center h-8 px-6 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium whitespace-nowrap min-w-[100px]"
-      >
-        Connect
-        <ExternalLink className="size-3 ml-1.5" />
-      </button>
+      {isComingSoon ? (
+        <button
+          type="button"
+          disabled
+          className="inline-flex items-center justify-center h-8 px-6 rounded-md bg-zinc-100 border border-zinc-200 text-zinc-400 text-xs font-medium whitespace-nowrap min-w-[100px] cursor-not-allowed"
+        >
+          Unavailable
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={onConnect}
+          className="inline-flex items-center justify-center h-8 px-6 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium whitespace-nowrap min-w-[100px]"
+        >
+          Connect
+          <ExternalLink className="size-3 ml-1.5" />
+        </button>
+      )}
     </div>
   );
 }
