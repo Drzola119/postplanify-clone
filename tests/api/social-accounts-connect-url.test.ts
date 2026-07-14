@@ -117,7 +117,7 @@ describe("GET /api/social-accounts/connect-url", () => {
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.url).toMatch(/^https:\/\/app\.upload-post\.com\/u\//);
-    expect(body.redirectUrl).toContain("/dashboard/accounts?connected=1");
+    expect(body.redirectUrl).toContain("/social-connected");
 
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     expect(fetchSpy.mock.calls[0][0]).toBe(
@@ -132,7 +132,7 @@ describe("GET /api/social-accounts/connect-url", () => {
 
     const jwtBody = JSON.parse(fetchSpy.mock.calls[1][1].body);
     expect(jwtBody.username).toBe(mockWorkspaceId);
-    expect(jwtBody.redirect_url).toContain("/dashboard/accounts?connected=1");
+    expect(jwtBody.redirect_url).toContain("/social-connected");
     expect(jwtBody.platforms).toContain("facebook");
     expect(jwtBody.platforms).toContain("tiktok");
     expect(jwtBody.show_calendar).toBe(false);

@@ -374,6 +374,36 @@ export default function AccountsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [activePopup, setActivePopup] = useState<Window | null>(null);
+
+  useEffect(() => {
+    const handleAuthMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === "TRUSTIIFY_AUTH_COMPLETE") {
+        showToast("Social account connected successfully!", "success");
+        fetchAccounts();
+        if (activePopup && !activePopup.closed) {
+          try { activePopup.close(); } catch {}
+        }
+        setActivePopup(null);
+      }
+    };
+
+    window.addEventListener("message", handleAuthMessage);
+    return () => window.removeEventListener("message", handleAuthMessage);
+  }, [activePopup]);
+
+  useEffect(() => {
+    if (!activePopup) return;
+    const interval = setInterval(() => {
+      if (activePopup.closed) {
+        clearInterval(interval);
+        setActivePopup(null);
+        fetchAccounts();
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [activePopup]);
 
   // Integration connections (Unsplash / Drive / Canva / Dropbox).
   // Tracked locally so the UI can show "Connected" once credentials are added in Settings.
@@ -515,13 +545,30 @@ export default function AccountsPage() {
         const friendly = hintForStatus(res.status, raw);
         throw new Error(friendly);
       }
+      const width = 600;
+      const height = 700;
+      const left = Math.round((window.screen.width / 2) - (width / 2));
+      const top = Math.round((window.screen.height / 2) - (height / 2));
+
+      const popup = window.open(
+        data.url,
+        `trustiify_connect_${platformKey ? platformKey.toLowerCase().replace(/\s+/g, "_") : "all"}`,
+        `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes,toolbar=no,menubar=no,location=no,directories=no,status=no`
+      );
+
+      if (!popup || popup.closed || typeof popup.closed === "undefined") {
+        showToast("Popup was blocked. Please allow popups for this site.", "error");
+        return;
+      }
+
+      setActivePopup(popup);
+
       showToast(
         platformKey
-          ? `Opening ${platformKey} connect page in new tab...`
-          : "Opening connect page in new tab...",
+          ? `Opening secure connection for ${platformKey}...`
+          : "Opening secure connection...",
         "info"
       );
-      window.open(data.url, "_blank", "noopener,noreferrer");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to open connect page";
       showToast(msg, "error");

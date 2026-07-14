@@ -46,11 +46,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 502 });
   }
 
-  // Build a redirect URL that points back to the accounts page. We pass
-  // ?connected=1 so the UI can show a success toast.
+  // Build a redirect URL that points to our custom success page.
   const reqUrl = new URL(request.url);
   const origin = reqUrl.origin;
-  const redirectUrl = `${origin}/dashboard/accounts?connected=1`;
+  const redirectUrl = `${origin}/social-connected`;
 
   const platform = reqUrl.searchParams.get("platform");
   const specificPlatform = platform && (ALL_PLATFORMS as readonly string[]).includes(platform) ? platform : null;
