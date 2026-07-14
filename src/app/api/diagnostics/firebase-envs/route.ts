@@ -32,9 +32,11 @@ export async function GET(request: Request) {
   let keyLooksValid = false;
   let keyLooksLikePlaceholder = false;
   if (rawKey) {
-    // Unescape the literal "\n" that .env-style files use to encode
-    // newlines inside a quoted value.
-    const unescaped = rawKey.replace(/\\n/g, "\n");
+    // Unescape quote wrapping and literal/double-escaped newlines.
+    const unescaped = rawKey.trim()
+      .replace(/^\\?["']/, "")
+      .replace(/\\?["']$/, "")
+      .replace(/\\\\n|\\n/g, "\n");
     const hasBegin = unescaped.includes("-----BEGIN PRIVATE KEY-----");
     const hasEnd = unescaped.includes("-----END PRIVATE KEY-----");
     // `src/lib/firebase/admin.ts` ships with a literal placeholder string

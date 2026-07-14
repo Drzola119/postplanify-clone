@@ -20,6 +20,13 @@ const clientEmail =
   "firebase-adminsdk-fbsvc@postplanify-best.iam.gserviceaccount.com";
 let privateKey = process.env.FIREBASE_PRIVATE_KEY || "";
 
+// Normalize the value: strip surrounding quotes (in case the operator
+// pasted a quoted value), and unescape literal or double-escaped "\n" sequences.
+if (privateKey) {
+  privateKey = privateKey.trim().replace(/^\\?["']/, "").replace(/\\?["']$/, "");
+  privateKey = privateKey.replace(/\\\\n|\\n/g, "\n");
+}
+
 /**
  * Detect whether the configured private key is unusable. We refuse to
  * initialize firebase-admin in any of these cases so that requests don't
@@ -33,14 +40,6 @@ const privateKeyIsUnusable =
   privateKey.includes(PLACEHOLDER_KEY) ||
   !privateKey.includes("-----BEGIN PRIVATE KEY-----") ||
   !privateKey.includes("-----END PRIVATE KEY-----");
-
-// Normalize the value: strip surrounding quotes (in case the operator
-// pasted a quoted value), and unescape the literal "\n" sequences used by
-// .env-style files.
-if (privateKey) {
-  privateKey = privateKey.trim().replace(/^["']/, "").replace(/["']$/, "");
-  privateKey = privateKey.replace(/\\n/g, "\n");
-}
 
 function createAdminApp(): App | null {
   if (!projectId || !clientEmail || !privateKey || privateKeyIsUnusable) {
