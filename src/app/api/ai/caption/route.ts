@@ -2,6 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/firebase/admin";
 import { MissingServerSecretError, resolvers } from "@/lib/security/server-config";
+import { buildCaptionPrompt } from "@/lib/ai/caption-templates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,10 @@ const MAX_EXTRA_LEN = 400;
 
 interface CaptionRequest {
   tone: string;
+  /** Optional voice override — narrows the tone to a brand voice (lifestyle, b2b, founder, …). */
+  voice?: string | null;
+  /** Optional caption template structure (hook-insight-cta, pas, listicle, story, standard). */
+  template?: string | null;
   includeHashtags: boolean;
   useEmojis: boolean;
   extra?: string;
@@ -25,15 +30,6 @@ interface CaptionRequest {
   /** Optional video title (e.g., filename minus extension) for text-only generation. */
   videoTitle?: string | null;
 }
-
-const TONE_HINT: Record<string, string> = {
-  default: "engaging, balanced",
-  friendly: "warm, conversational, first-person",
-  funny: "witty, playful, light humor",
-  bold: "punchy, confident, energetic",
-  professional: "polished, authoritative",
-  motivational: "uplifting, inspiring, action-oriented",
-};
 
 function buildSystemPrompt(): string {
   return [
@@ -46,44 +42,31 @@ function buildSystemPrompt(): string {
 }
 
 function buildUserPrompt(body: CaptionRequest): string {
-  const tone = TONE_HINT[body.tone] ?? TONE_HINT.default;
-  const tags = body.includeHashtags ? "End with 3–6 relevant hashtags on their own line." : "Do NOT include hashtags.";
-  const emo = body.useEmojis ? "Sprinkle 2–5 fitting emojis throughout the caption." : "Do NOT use emojis.";
-
-  const platformHint = body.platforms && body.platforms.length > 0
-    ? `Target platforms: ${body.platforms.map((p) => `${p.name} (≤${p.charLimit} chars)`).join(", ")}.`
-    : "Target multiple social platforms; keep the caption under 2200 chars.";
-
-  const extra = body.extra?.trim() ? `\nAdditional context from the user: ${body.extra.trim().slice(0, MAX_EXTRA_LEN)}` : "";
+  const { userPrompt } = buildCaptionPrompt({
+    tone: body.tone,
+    voice: body.voice ?? null,
+    template: body.template ?? null,
+    includeHashtags: body.includeHashtags,
+    useEmojis: body.useEmojis,
+    extra: body.extra ?? null,
+    platforms: body.platforms,
+    hasMedia: !!body.imageUrl || !!body.videoTitle,
+  });
 
   if (body.imageUrl) {
     return [
-      `Look at the attached image and write a social caption in a ${tone} tone.`,
-      platformHint,
-      tags,
-      emo,
-      extra,
-      "Describe what you see first, then frame it for the target audience.",
-    ].filter(Boolean).join("\n");
+      `Look at the attached image.`,
+      userPrompt,
+    ].join("\n\n");
   }
   if (body.videoTitle) {
     return [
       `The user uploaded a video titled: "${body.videoTitle.trim().slice(0, 200)}".`,
-      `Write a social caption in a ${tone} tone that teases what the video is about.`,
-      platformHint,
-      tags,
-      emo,
-      extra,
-    ].filter(Boolean).join("\n");
+      userPrompt,
+    ].join("\n\n");
   }
   // Text-only fallback (no media yet).
-  return [
-    `Write a social caption in a ${tone} tone.`,
-    platformHint,
-    tags,
-    emo,
-    extra,
-  ].filter(Boolean).join("\n");
+  return userPrompt;
 }
 
 function clip(s: string | null | undefined, n: number): string | null {

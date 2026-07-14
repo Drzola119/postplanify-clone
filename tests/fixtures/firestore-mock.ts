@@ -140,9 +140,9 @@ class FakeQuerySnapshot {
 }
 
 class FakeBatch {
-  private ops: Array<{ op: "set" | "update" | "delete"; path: string; data?: DocData }> = [];
-  set(ref: FakeDocumentRef, data: DocData): this {
-    this.ops.push({ op: "set", path: ref.path, data });
+  private ops: Array<{ op: "set" | "update" | "delete"; path: string; data?: DocData; merge?: boolean }> = [];
+  set(ref: FakeDocumentRef, data: DocData, options?: { merge?: boolean }): this {
+    this.ops.push({ op: "set", path: ref.path, data, merge: options?.merge });
     return this;
   }
   update(ref: FakeDocumentRef, data: DocData): this {
@@ -156,7 +156,7 @@ class FakeBatch {
   async commit(): Promise<void> {
     for (const o of this.ops) {
       const ref = new FakeDocumentRef(o.path);
-      if (o.op === "set") await ref.set(o.data!);
+      if (o.op === "set") await ref.set(o.data!, { merge: o.merge });
       else if (o.op === "update") await ref.update(o.data!);
       else await ref.delete();
     }
@@ -188,7 +188,7 @@ function applyFieldSentinels(existing: DocData, incoming: DocData): DocData {
   const out: DocData = {};
   for (const [k, v] of Object.entries(incoming)) {
     if (v && typeof v === "object" && "_methodName" in v) {
-      const sentinel = v as { _methodName: string; _operand?: number };
+      const sentinel = v as { _methodName: string; _operand?: number; _elements?: unknown[] };
       if (sentinel._methodName === "increment") {
         const cur = typeof existing[k] === "number" ? (existing[k] as number) : 0;
         out[k] = cur + (sentinel._operand ?? 1);
@@ -196,6 +196,16 @@ function applyFieldSentinels(existing: DocData, incoming: DocData): DocData {
       }
       if (sentinel._methodName === "serverTimestamp") {
         out[k] = { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 };
+        continue;
+      }
+      if (sentinel._methodName === "arrayUnion") {
+        const cur = Array.isArray(existing[k]) ? (existing[k] as unknown[]) : [];
+        const incoming = sentinel._elements ?? [];
+        const merged = [...cur];
+        for (const el of incoming) {
+          if (!merged.includes(el)) merged.push(el);
+        }
+        out[k] = merged;
         continue;
       }
     }

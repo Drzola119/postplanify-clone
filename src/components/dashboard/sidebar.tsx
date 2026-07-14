@@ -29,6 +29,11 @@ import {
   ChevronLeft,
   ChevronRight,
   MoreVertical,
+  History,
+  Zap,
+  Wand2,
+  Palette,
+  Send,
 } from "lucide-react";
 import { ACTIVE_WORKSPACE_STORAGE_KEY } from "@/lib/security/storage-keys";
 import { cn } from "@/lib/utils";
@@ -42,11 +47,22 @@ interface SidebarWorkspace {
   name: string;
 }
 
+interface AccountHealthSummary {
+  total: number;
+  healthy: number;
+  needsReauth: number;
+  stale: number;
+  disconnected: number;
+}
+
 type NavItem = { label: string; href: string; icon: React.ComponentType<{ className?: string }>; badge?: number };
 
 const MAIN: NavItem[] = [
   { label: "Calendar", href: "/dashboard/posts", icon: Calendar, badge: 0 },
   { label: "Drafts", href: "/dashboard/posts/drafts", icon: FileText },
+  { label: "Queue", href: "/dashboard/queue", icon: ListChecks },
+  { label: "History", href: "/dashboard/posts/history", icon: History },
+  { label: "Command Center", href: "/dashboard/command-center", icon: Zap },
   { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { label: "Reports", href: "/dashboard/reports", icon: FileBarChart },
   { label: "Social Inbox", href: "/dashboard/inbox", icon: Inbox },
@@ -56,6 +72,9 @@ const MAIN: NavItem[] = [
 const CONFIG: NavItem[] = [
   { label: "Workspaces", href: "/dashboard/brands", icon: Building2 },
   { label: "Accounts", href: "/dashboard/accounts", icon: Users },
+  { label: "Automations", href: "/dashboard/automations/dm", icon: Wand2 },
+  { label: "Destinations", href: "/dashboard/destinations", icon: Send },
+  { label: "Branding", href: "/dashboard/settings/branding", icon: Palette },
   { label: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 
@@ -134,6 +153,7 @@ export function DashboardSidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [workspaces, setWorkspaces] = useState<SidebarWorkspace[]>([]);
   const [activeWorkspace, setActiveWorkspace] = useState<string>("");
+  const [health, setHealth] = useState<AccountHealthSummary | null>(null);
   const { openDrawer } = useDrawer();
   const { openLearn } = useHelpSystem();
 
@@ -162,6 +182,28 @@ export function DashboardSidebar() {
         setActiveWorkspace((current) => current || validPersisted || data.workspaces![0]?.id || "");
       } catch {
         /* leave empty */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Hydrate connections health from /api/accounts/health. Silent failure
+  // (offline / 401) — we keep the placeholder "—" in that case.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/accounts/health", {
+          credentials: "include",
+          headers: getOverrideHeaders(),
+        });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { health?: AccountHealthSummary };
+        if (data.health && !cancelled) setHealth(data.health);
+      } catch {
+        /* leave null */
       }
     })();
     return () => {
@@ -346,9 +388,23 @@ export function DashboardSidebar() {
                 <Users className="size-3.5 text-emerald-700" />
               </div>
               <p className="text-xs font-semibold text-emerald-900 flex-1">Connections</p>
-              <p className="text-xs font-semibold text-emerald-700">6 left</p>
+              <p className="text-xs font-semibold text-emerald-700">
+                {health ? `${health.healthy} healthy` : "—"}
+              </p>
             </div>
-            <p className="mt-1.5 text-[11px] text-emerald-800/80">9 of 15 used</p>
+            <p className="mt-1.5 text-[11px] text-emerald-800/80">
+              {health
+                ? health.needsReauth > 0 || health.stale > 0 || health.disconnected > 0
+                  ? `${health.total} total · ${[
+                      health.needsReauth > 0 ? `${health.needsReauth} need reauth` : null,
+                      health.stale > 0 ? `${health.stale} stale` : null,
+                      health.disconnected > 0 ? `${health.disconnected} disconnected` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}`
+                  : `${health.total} connected · all healthy`
+                : "Loading…"}
+            </p>
           </Link>
         </div>
       )}

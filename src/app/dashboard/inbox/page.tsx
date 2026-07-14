@@ -196,6 +196,8 @@ export default function InboxPage() {
   const [conversations, setConversations] = useState<Conversation[]>(CONVERSATIONS);
   const [loading, setLoading] = useState(true);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [replyTarget, setReplyTarget] = useState<Comment | null>(null);
+  const [replySending, setReplySending] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -244,6 +246,46 @@ export default function InboxPage() {
       cancelled = true;
     };
   }, []);
+
+  const handleSendReply = async (body: string) => {
+    if (!replyTarget || replySending) return;
+    setReplySending(true);
+    try {
+      const res = await fetch("/api/inbox/reply", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          commentId: replyTarget.id,
+          platform: replyTarget.platform,
+          body,
+        }),
+      });
+      if (res.ok) {
+        setComments((prev) => prev.map((c) => (c.id === replyTarget.id ? { ...c, unread: false } : c)));
+        setReplyTarget(null);
+      } else {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        window.alert(data.error ?? "Failed to send reply");
+      }
+    } finally {
+      setReplySending(false);
+    }
+  };
+
+  const handleArchiveComment = async (commentId: string) => {
+    const res = await fetch(`/api/inbox/comments/${commentId}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    if (res.ok) {
+      setComments((prev) => prev.filter((c) => c.id !== commentId));
+      if (replyTarget?.id === commentId) setReplyTarget(null);
+    } else {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      window.alert(data.error ?? "Failed to archive");
+    }
+  };
 
   const filtered = useMemo(() => {
     let list = comments;
@@ -404,18 +446,102 @@ export default function InboxPage() {
           setActiveId={setActiveComment}
           analyzingId={analyzingId}
           onAnalyze={analyzeSentiment}
+          onOpenReply={(c) => setReplyTarget(c)}
+          onArchive={(c) => handleArchiveComment(c.id)}
         />
       )}
       {tab === "messages" && (
         <MessagesTab
           filter={filter}
           setFilter={setFilter}
-          conversations={CONVERSATIONS}
+          conversations={conversations}
           activeId={activeConvo}
           setActiveId={setActiveConvo}
         />
       )}
-      {tab === "insights" && <InsightsTab range={range} setRange={setRange} />}
+      {tab === "insights" && <InsightsTab range={range} setRange={setRange} comments={comments} />}
+
+      {/* Reply modal */}
+      {replyTarget ? (
+        <ReplyModal
+          comment={replyTarget}
+          onClose={() => setReplyTarget(null)}
+          onSubmit={handleSendReply}
+          sending={replySending}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ReplyModal({
+  comment,
+  onClose,
+  onSubmit,
+  sending,
+}: {
+  comment: Comment;
+  onClose: () => void;
+  onSubmit: (body: string) => Promise<void> | void;
+  sending: boolean;
+}) {
+  const [body, setBody] = useState("");
+  const max = 2200;
+  const remaining = max - body.length;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} aria-hidden />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative w-full max-w-lg rounded-xl bg-white shadow-2xl"
+      >
+        <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-200">
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-900">Reply to {comment.author}</h2>
+            <p className="text-xs text-zinc-500 mt-0.5 truncate max-w-[420px]">
+              “{comment.text}”
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center justify-center size-7 rounded-md hover:bg-zinc-100 text-zinc-500"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="p-4">
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value.slice(0, max))}
+            placeholder="Write a reply…"
+            className="w-full h-32 rounded-md border border-zinc-200 bg-white p-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10 resize-none"
+            autoFocus
+          />
+          <div className="mt-1 text-right text-xs text-zinc-500">{remaining} left</div>
+        </div>
+        <div className="px-5 py-3 border-t border-zinc-200 flex items-center justify-end gap-2 bg-zinc-50 rounded-b-xl">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center justify-center rounded-md border border-zinc-200 bg-white px-3 h-9 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => onSubmit(body)}
+            disabled={!body.trim() || sending}
+            className="inline-flex items-center justify-center gap-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-3 h-9 text-sm font-medium"
+          >
+            <Reply className="size-3.5" />
+            {sending ? "Sending…" : "Send reply"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -432,6 +558,8 @@ function CommentsTab({
   setActiveId,
   analyzingId,
   onAnalyze,
+  onOpenReply,
+  onArchive,
 }: {
   filter: Filter;
   setFilter: (f: Filter) => void;
@@ -442,6 +570,8 @@ function CommentsTab({
   setActiveId: (id: string) => void;
   analyzingId: string | null;
   onAnalyze: (id: string) => void;
+  onOpenReply: (c: Comment) => void;
+  onArchive: (c: Comment) => void;
 }) {
   return (
     <div className="flex flex-col gap-3 flex-1 min-h-0">
@@ -482,6 +612,8 @@ function CommentsTab({
                 onClick={() => setActiveId(c.id)}
                 analyzing={analyzingId === c.id}
                 onAnalyze={() => onAnalyze(c.id)}
+                onOpenReply={onOpenReply}
+                onArchive={onArchive}
               />
             ))
           )}
@@ -497,12 +629,16 @@ function CommentRow({
   onClick,
   analyzing,
   onAnalyze,
+  onOpenReply,
+  onArchive,
 }: {
   comment: Comment;
   active: boolean;
   onClick: () => void;
   analyzing: boolean;
   onAnalyze: () => void;
+  onOpenReply?: (c: Comment) => void;
+  onArchive?: (c: Comment) => void;
 }) {
   return (
     <div
@@ -554,16 +690,19 @@ function CommentRow({
         </button>
         <button
           type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenReply?.(comment);
+          }}
           className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 text-white px-3 h-7 text-xs font-medium hover:bg-zinc-800"
         >
           <Reply className="size-3" />
           Reply
         </button>
-        <IconBtn aria-label="Assign label"><Tag className="size-3.5" /></IconBtn>
-        <IconBtn aria-label="Copy comment"><Copy className="size-3.5" /></IconBtn>
-        <IconBtn aria-label="Add hashtag"><Hash className="size-3.5" /></IconBtn>
-        <IconBtn aria-label="Mention"><AtSign className="size-3.5" /></IconBtn>
-        <IconBtn aria-label="More"><MoreVertical className="size-3.5" /></IconBtn>
+        <IconBtn aria-label="Assign label" onClick={(e) => e.stopPropagation()}><Tag className="size-3.5" /></IconBtn>
+        <IconBtn aria-label="Copy comment" onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(comment.text); }}><Copy className="size-3.5" /></IconBtn>
+        <IconBtn aria-label="Archive" onClick={(e) => { e.stopPropagation(); onArchive?.(comment); }}><InboxIcon className="size-3.5" /></IconBtn>
+        <IconBtn aria-label="More" onClick={(e) => e.stopPropagation()}><MoreVertical className="size-3.5" /></IconBtn>
       </div>
     </div>
   );
@@ -584,6 +723,86 @@ function MessagesTab({
   activeId: string | null;
   setActiveId: (id: string | null) => void;
 }) {
+  const [thread, setThread] = useState<Array<{ id: string; fromHandle: string; body: string; sentAt: string; direction: "in" | "out" }>>([]);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [loadingThread, setLoadingThread] = useState(false);
+
+  useEffect(() => {
+    if (!activeId) {
+      setThread([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingThread(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/inbox/messages?conversationId=${encodeURIComponent(activeId)}`, {
+          credentials: "include",
+        });
+        if (!res.ok) {
+          if (!cancelled) setThread([]);
+          return;
+        }
+        const data = (await res.json()) as { messages?: Array<{ fromHandle?: string; body?: string; sentAt?: string; direction?: "in" | "out" }> };
+        if (cancelled) return;
+        setThread(
+          (data.messages ?? []).map((m, i) => ({
+            id: `${activeId}-${i}`,
+            fromHandle: m.fromHandle ?? "unknown",
+            body: m.body ?? "",
+            sentAt: m.sentAt ?? new Date().toISOString(),
+            direction: (m.direction ?? "in") as "in" | "out",
+          })),
+        );
+      } finally {
+        if (!cancelled) setLoadingThread(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId]);
+
+  async function sendDraft() {
+    if (!activeId || !draft.trim() || sending) return;
+    setSending(true);
+    try {
+      const res = await fetch("/api/inbox/messages/send", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: activeId, body: draft.trim(), direction: "out" }),
+      });
+      if (res.ok) {
+        setDraft("");
+        // Re-load thread.
+        const r = await fetch(`/api/inbox/messages?conversationId=${encodeURIComponent(activeId)}`, {
+          credentials: "include",
+        });
+        if (r.ok) {
+          const data = (await r.json()) as { messages?: Array<{ fromHandle?: string; body?: string; sentAt?: string; direction?: "in" | "out" }> };
+          setThread(
+            (data.messages ?? []).map((m, i) => ({
+              id: `${activeId}-${i}`,
+              fromHandle: m.fromHandle ?? "unknown",
+              body: m.body ?? "",
+              sentAt: m.sentAt ?? new Date().toISOString(),
+              direction: (m.direction ?? "in") as "in" | "out",
+            })),
+          );
+        }
+      } else {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        window.alert(data.error ?? "Failed to send");
+      }
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const active = conversations.find((c) => c.id === activeId);
+
   return (
     <div className="flex flex-col gap-3 flex-1 min-h-0">
       <FilterRow filter={filter} setFilter={setFilter} showSentiment={false} />
@@ -597,7 +816,7 @@ function MessagesTab({
               full
             />
           ) : (
-            <div className="divide-y divide-zinc-100">
+            <div className="divide-y divide-zinc-100 overflow-y-auto">
               {conversations.map((c) => (
                 <button
                   key={c.id}
@@ -608,13 +827,15 @@ function MessagesTab({
                     activeId === c.id && "bg-blue-50/40 border-l-2 border-l-blue-600"
                   )}
                 >
-                  <img src={c.avatar} alt={c.name} className="size-10 rounded-full object-cover" />
+                  <span className="size-10 rounded-full bg-zinc-200 inline-flex items-center justify-center font-semibold text-zinc-700">
+                    {c.avatar}
+                  </span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <p className={cn("text-sm truncate", c.unread ? "font-bold" : "font-semibold")}>{c.name}</p>
                       <span className="text-[11px] text-zinc-500 shrink-0">{c.time}</span>
                     </div>
-                    <p className="text-xs text-zinc-500 truncate mt-0.5">{c.lastMessage}</p>
+                    <p className="text-xs text-zinc-500 truncate mt-0.5">{c.lastMessage || "(no message yet)"}</p>
                   </div>
                 </button>
               ))}
@@ -629,7 +850,63 @@ function MessagesTab({
               subtitle="Choose a message from the list to view and reply."
               full
             />
-          ) : null}
+          ) : (
+            <div className="flex-1 flex flex-col">
+              {active ? (
+                <div className="px-4 py-3 border-b border-zinc-200">
+                  <p className="text-sm font-semibold">{active.name}</p>
+                  <p className="text-xs text-zinc-500">{active.platform}</p>
+                </div>
+              ) : null}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {loadingThread ? (
+                  <p className="text-sm text-zinc-500 text-center py-8">Loading…</p>
+                ) : thread.length === 0 ? (
+                  <p className="text-sm text-zinc-500 text-center py-8">No messages yet. Say hello.</p>
+                ) : (
+                  thread.map((m) => (
+                    <div
+                      key={m.id}
+                      className={cn(
+                        "max-w-[80%] rounded-lg px-3 py-2 text-sm",
+                        m.direction === "out"
+                          ? "ml-auto bg-zinc-900 text-white"
+                          : "mr-auto bg-zinc-100 text-zinc-900",
+                      )}
+                    >
+                      <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                      <p className={cn("mt-1 text-[10px]", m.direction === "out" ? "text-zinc-300" : "text-zinc-500")}>
+                        {new Date(m.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="border-t border-zinc-200 p-3 flex items-end gap-2">
+                <textarea
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder="Type a message…"
+                  rows={2}
+                  className="flex-1 resize-none rounded-md border border-zinc-200 bg-white p-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      void sendDraft();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => void sendDraft()}
+                  disabled={!draft.trim() || sending}
+                  className="inline-flex items-center justify-center rounded-md bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-white px-3 h-9 text-sm font-medium"
+                >
+                  {sending ? "Sending…" : "Send"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -638,16 +915,23 @@ function MessagesTab({
 
 /* ============================== INSIGHTS TAB ============================== */
 
-function InsightsTab({ range, setRange }: { range: Range; setRange: (r: Range) => void }) {
+function InsightsTab({ range, setRange, comments }: { range: Range; setRange: (r: Range) => void; comments: Comment[] }) {
   const ranges: Range[] = ["7d", "30d", "90d", "6m", "1y"];
+  const totalReplied = comments.filter((c) => !c.unread).length;
+  const responseRate = comments.length === 0 ? 0 : Math.round((totalReplied / comments.length) * 100);
+  const awaiting = comments.filter((c) => c.unread).length;
+  const positive = comments.filter((c) => c.sentiment === "positive").length;
+  const neutral = comments.filter((c) => c.sentiment === "neutral").length;
+  const negative = comments.filter((c) => c.sentiment === "negative").length;
+  const pct = (n: number) => (comments.length === 0 ? "0%" : `${Math.round((n / comments.length) * 100)}%`);
   const metrics = [
-    { label: "Comments received", value: 1, sublabel: "total volume", Icon: MessageCircle, tone: "blue" },
+    { label: "Comments received", value: comments.length, sublabel: "total volume", Icon: MessageCircle, tone: "blue" },
     { label: "DMs received", value: 0, sublabel: "private messages", Icon: MessagesSquare, tone: "purple" },
-    { label: "Response rate", value: "0%", sublabel: "of comments replied", Icon: Reply, tone: "green" },
-    { label: "Awaiting reply", value: 1, sublabel: "unanswered", Icon: Clock, tone: "amber" },
-    { label: "Positive", value: "100%", sublabel: "overall mood", Icon: Smile, tone: "emerald" },
-    { label: "Neutral", value: "0%", sublabel: "neither way", Icon: Meh, tone: "zinc" },
-    { label: "Negative", value: "0%", sublabel: "complaint pressure", Icon: Frown, tone: "rose" },
+    { label: "Response rate", value: `${responseRate}%`, sublabel: "of comments replied", Icon: Reply, tone: "green" },
+    { label: "Awaiting reply", value: awaiting, sublabel: "unanswered", Icon: Clock, tone: "amber" },
+    { label: "Positive", value: pct(positive), sublabel: "overall mood", Icon: Smile, tone: "emerald" },
+    { label: "Neutral", value: pct(neutral), sublabel: "neither way", Icon: Meh, tone: "zinc" },
+    { label: "Negative", value: pct(negative), sublabel: "complaint pressure", Icon: Frown, tone: "rose" },
   ];
 
   const toneColors: Record<string, string> = {

@@ -10,10 +10,14 @@ function collection(workspaceId: string) {
 }
 
 export interface ListPostsFilters {
-  status?: PostStatus;
+  status?: PostStatus | PostStatus[];
   platform?: PlatformId;
   pageSize?: number;
   cursor?: string;
+  /** Earliest publishedAt / scheduledAt / createdAt to include. */
+  sinceDate?: Date;
+  /** Latest publishedAt / scheduledAt / createdAt to include. */
+  untilDate?: Date;
 }
 
 export interface PostListItem {
@@ -36,13 +40,57 @@ export async function listPosts(workspaceId: string, filters: ListPostsFilters =
   const pageSize = Math.min(Math.max(filters.pageSize ?? 25, 1), 100);
 
   let q = coll.orderBy("createdAt", "desc").limit(pageSize);
-  if (filters.status) q = q.where("status", "==", filters.status);
+  if (filters.status) {
+    if (Array.isArray(filters.status)) {
+      q = q.where("status", "in", filters.status);
+    } else {
+      q = q.where("status", "==", filters.status);
+    }
+  }
   if (filters.platform) q = q.where("platforms", "array-contains", filters.platform);
 
   const snap = await q.get();
   const items = snap.docs.map((d: { id: string; data: () => unknown }) => serialize(workspaceId, d.id, d.data() as PostDoc));
   const nextCursor = items.length === pageSize ? items[items.length - 1].id : null;
   return { items, nextCursor };
+}
+
+export interface ListPostsHistoryFilters {
+  platform?: PlatformId;
+  status?: "published" | "failed";
+  from?: Date;
+  to?: Date;
+  pageSize?: number;
+}
+
+export async function listPostsHistory(
+  workspaceId: string,
+  filters: ListPostsHistoryFilters = {}
+): Promise<{ items: PostListItem[] }> {
+  const coll = collection(workspaceId);
+  const pageSize = Math.min(Math.max(filters.pageSize ?? 50, 1), 100);
+
+  // Order by publishedAt (when present) descending. For failed posts that
+  // never published, fall back to createdAt in the client filter below.
+  let q = coll.orderBy("publishedAt", "desc").limit(pageSize);
+  if (filters.status) {
+    q = q.where("status", "==", filters.status);
+  } else {
+    q = q.where("status", "in", ["published", "failed"]);
+  }
+  if (filters.platform) q = q.where("platforms", "array-contains", filters.platform);
+  if (filters.from) q = q.where("publishedAt", ">=", filters.from);
+
+  const snap = await q.get();
+  let items = snap.docs.map((d) => serialize(workspaceId, d.id, d.data() as PostDoc));
+  if (filters.to) {
+    const cutoff = filters.to.getTime();
+    items = items.filter((it) => {
+      const t = it.publishedAt ? Date.parse(it.publishedAt) : 0;
+      return t > 0 && t <= cutoff;
+    });
+  }
+  return { items };
 }
 
 export async function getPost(workspaceId: string, postId: string): Promise<PostListItem | null> {

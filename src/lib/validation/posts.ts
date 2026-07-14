@@ -86,6 +86,17 @@ export const postFiltersSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).optional().default(25),
 });
 
+export const historyFiltersSchema = z.object({
+  platform: platformIdSchema.optional(),
+  status: z.enum(["published", "failed"]).optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  cursor: z.string().optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional().default(50),
+});
+
+export type HistoryFilters = z.infer<typeof historyFiltersSchema>;
+
 export type CreatePostInput = z.infer<typeof createPostSchema>;
 export type UpdatePostInput = z.infer<typeof updatePostSchema>;
 export type BulkScheduleInput = z.infer<typeof bulkScheduleSchema>;

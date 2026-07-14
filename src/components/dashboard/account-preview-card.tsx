@@ -17,6 +17,9 @@ import { cn } from "@/lib/utils";
 import type { PlatformMeta } from "@/lib/platforms";
 import { CommunitySelector } from "@/components/dashboard/community-selector";
 import { QuoteTweetInput } from "@/components/dashboard/quote-tweet-input";
+import { AdvancedOptionsPanel } from "@/components/dashboard/advanced-options-panel";
+import type { PlatformAdvancedOptions } from "@/lib/publishing/advanced-options";
+import type { MediaKind } from "@/lib/publishing/capability-matrix";
 
 interface AccountPreviewCardProps {
   platform: PlatformMeta;
@@ -27,12 +30,16 @@ interface AccountPreviewCardProps {
   onCommunityChange?: (v: string) => void;
   quoteTweet?: string;
   onQuoteTweetChange?: (v: string) => void;
+  advancedOptions?: PlatformAdvancedOptions;
+  onAdvancedOptionsChange?: (next: PlatformAdvancedOptions) => void;
+  mediaKind?: MediaKind;
 }
 
 // Per-account caption card shown inside the Captions card.
 // Matches original: 7 common action buttons (Bold/Italic/Underline/Emoji/Saved/AI/Hashtag)
 // plus platform-specific extras (Comment, Mention, Location, Trial Reels for IG when video).
-// Also renders platform-specific auxiliary inputs (community for IG, quote tweet for X).
+// Also renders platform-specific auxiliary inputs (community for IG, quote tweet for X)
+// and the per-platform advanced options panel (Feature 1).
 export function AccountPreviewCard({
   platform,
   value,
@@ -42,6 +49,9 @@ export function AccountPreviewCard({
   onCommunityChange,
   quoteTweet,
   onQuoteTweetChange,
+  advancedOptions,
+  onAdvancedOptionsChange,
+  mediaKind,
 }: AccountPreviewCardProps) {
   const [focused, setFocused] = useState(false);
   const counter = `${value.length}/${platform.charLimit}`;
@@ -147,6 +157,17 @@ export function AccountPreviewCard({
       {platform.id === "twitter" && onQuoteTweetChange ? (
         <div className="px-3 py-3 border-t bg-zinc-50/30 flex-shrink-0">
           <QuoteTweetInput value={quoteTweet ?? ""} onChange={onQuoteTweetChange} />
+        </div>
+      ) : null}
+      {onAdvancedOptionsChange && advancedOptions && mediaKind ? (
+        <div className="px-3 py-3 border-t bg-zinc-50/30 flex-shrink-0">
+          <AdvancedOptionsPanel
+            platform={platform.id}
+            platformName={platform.name}
+            mediaKind={mediaKind}
+            value={advancedOptions}
+            onChange={onAdvancedOptionsChange}
+          />
         </div>
       ) : null}
     </div>

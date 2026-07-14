@@ -1,0 +1,432 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  XCircle,
+  Download,
+  Filter,
+  RefreshCcw,
+  Search,
+  Loader2,
+  History as HistoryIcon,
+  Calendar,
+} from "lucide-react";
+import Link from "next/link";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { StatCard } from "@/components/ui/stat-card";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { getOverrideHeaders } from "@/lib/security/client-overrides";
+import { cn } from "@/lib/utils";
+
+type Platform =
+  | "bluesky"
+  | "instagram"
+  | "tiktok"
+  | "youtube"
+  | "pinterest"
+  | "twitter"
+  | "linkedin"
+  | "threads"
+  | "facebook";
+
+const PLATFORM_LABELS: Record<Platform, string> = {
+  bluesky: "Bluesky",
+  instagram: "Instagram",
+  tiktok: "TikTok",
+  youtube: "YouTube",
+  pinterest: "Pinterest",
+  twitter: "X / Twitter",
+  linkedin: "LinkedIn",
+  threads: "Threads",
+  facebook: "Facebook",
+};
+
+const PLATFORM_COLORS: Record<Platform, string> = {
+  bluesky: "bg-sky-100 text-sky-700",
+  instagram: "bg-pink-100 text-pink-700",
+  tiktok: "bg-zinc-900 text-white",
+  youtube: "bg-red-100 text-red-700",
+  pinterest: "bg-rose-100 text-rose-700",
+  twitter: "bg-zinc-900 text-white",
+  linkedin: "bg-blue-100 text-blue-700",
+  threads: "bg-zinc-200 text-zinc-900",
+  facebook: "bg-blue-100 text-blue-700",
+};
+
+interface PostRow {
+  id: string;
+  status: "published" | "failed";
+  caption: string;
+  platforms: Platform[];
+  publishedAt?: string;
+  createdAt: string;
+  failureReason?: string;
+}
+
+interface HistoryStats {
+  published: number;
+  failed: number;
+  total: number;
+  successRate: number | null;
+  byPlatform: Record<string, { published: number; failed: number }>;
+}
+
+interface HistoryResponse {
+  ok: boolean;
+  posts: PostRow[];
+  stats: HistoryStats;
+}
+
+type DateRangePreset = "7d" | "30d" | "90d" | "all";
+
+const PRESETS: { value: DateRangePreset; label: string }[] = [
+  { value: "7d", label: "Last 7 days" },
+  { value: "30d", label: "Last 30 days" },
+  { value: "90d", label: "Last 90 days" },
+  { value: "all", label: "All time" },
+];
+
+const STATUS_FILTERS: { value: "all" | "published" | "failed"; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "published", label: "Published" },
+  { value: "failed", label: "Failed" },
+];
+
+function sinceIso(preset: DateRangePreset): string | undefined {
+  if (preset === "all") return undefined;
+  const days = preset === "7d" ? 7 : preset === "30d" ? 30 : 90;
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function formatDateTime(iso?: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function truncate(s: string, n: number): string {
+  if (s.length <= n) return s;
+  return s.slice(0, n).trimEnd() + "…";
+}
+
+export default function PublishHistoryPage() {
+  const [rangePreset, setRangePreset] = useState<DateRangePreset>("30d");
+  const [statusFilter, setStatusFilter] = useState<"all" | "published" | "failed">("all");
+  const [platformFilter, setPlatformFilter] = useState<Platform | "all">("all");
+  const [search, setSearch] = useState("");
+  const [posts, setPosts] = useState<PostRow[]>([]);
+  const [stats, setStats] = useState<HistoryStats>({
+    published: 0,
+    failed: 0,
+    total: 0,
+    successRate: null,
+    byPlatform: {},
+  });
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setErrorMsg(null);
+      try {
+        const params = new URLSearchParams();
+        const from = sinceIso(rangePreset);
+        if (from) params.set("from", from);
+        if (statusFilter !== "all") params.set("status", statusFilter);
+        if (platformFilter !== "all") params.set("platform", platformFilter);
+        params.set("pageSize", "100");
+        const res = await fetch(`/api/posts/history?${params.toString()}`, {
+          credentials: "include",
+          headers: getOverrideHeaders(),
+        });
+        if (!res.ok) {
+          if (!cancelled) setErrorMsg(`Failed to load history (${res.status})`);
+          return;
+        }
+        const data = (await res.json()) as HistoryResponse;
+        if (cancelled) return;
+        setPosts(data.posts ?? []);
+        setStats(data.stats ?? { published: 0, failed: 0, total: 0, successRate: null, byPlatform: {} });
+      } catch (err) {
+        if (!cancelled) setErrorMsg("Network error. Please try again.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rangePreset, statusFilter, platformFilter]);
+
+  const filteredPosts = useMemo(() => {
+    let list = posts;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((p) => p.caption.toLowerCase().includes(q));
+    }
+    return list;
+  }, [posts, search]);
+
+  const csvHref = useMemo(() => {
+    const headers = ["id", "status", "caption", "platforms", "publishedAt"];
+    const rows = (filteredPosts.length ? filteredPosts : []).map((p) =>
+      [p.id, p.status, JSON.stringify(p.caption), p.platforms.join("|"), p.publishedAt ?? ""].join(","),
+    );
+    const csv = [headers.join(","), ...rows].join("\n");
+    return URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  }, [filteredPosts]);
+
+  function handleRetry(_post: PostRow) {
+    // Placeholder: retry would re-queue via /api/posts/[id]/reschedule. The
+    // current PATCH route requires scheduledAt — a deeper retry flow is
+    // deferred to the Command Center feature.
+    window.alert("Retry from history is wiring up next. Use the Posting Queue for now.");
+  }
+
+  function handleDownloadCsv() {
+    const a = document.createElement("a");
+    a.href = csvHref;
+    a.download = `publish-history-${rangePreset}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  return (
+    <div className="px-3 lg:px-6 pt-5 lg:pt-8 pb-3 lg:pb-6">
+      <PageHeader
+        title="Publish history"
+        subtitle="See what got published and what failed. Audit outcomes, retry failures, and export the log."
+      />
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <StatCard
+          label="Published"
+          value={stats.published}
+          icon={<CheckCircle2 className="size-4" />}
+          iconClassName="bg-emerald-50 text-emerald-700"
+        />
+        <StatCard
+          label="Failed"
+          value={stats.failed}
+          icon={<XCircle className="size-4" />}
+          iconClassName="bg-red-50 text-red-600"
+        />
+        <StatCard
+          label="Success rate"
+          value={stats.successRate === null ? "—" : `${stats.successRate}%`}
+          icon={<RefreshCcw className="size-4" />}
+          iconClassName="bg-blue-50 text-blue-700"
+          footer={stats.total > 0 ? `${stats.total} total attempts` : "No attempts yet"}
+        />
+        <StatCard
+          label="Date range"
+          value={PRESETS.find((p) => p.value === rangePreset)?.label ?? "Custom"}
+          icon={<Calendar className="size-4" />}
+          iconClassName="bg-violet-50 text-violet-700"
+          footer={stats.total > 0 ? `${filteredPosts.length} showing` : null}
+        />
+      </div>
+
+      {/* Filter bar */}
+      <div className="rounded-xl border border-zinc-200 bg-white mb-4">
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-zinc-200 bg-zinc-50">
+          <div className="relative flex-1 min-w-[220px] max-w-sm">
+            <Search className="size-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search captions…"
+              className="w-full h-9 pl-9 pr-3 rounded-md border border-zinc-200 bg-white text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+              aria-label="Search captions"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Filter className="size-3.5 text-zinc-500" />
+            <select
+              value={rangePreset}
+              onChange={(e) => setRangePreset(e.target.value as DateRangePreset)}
+              className="h-9 rounded-md border border-zinc-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+              aria-label="Date range"
+            >
+              {PRESETS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as "all" | "published" | "failed")}
+              className="h-9 rounded-md border border-zinc-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+              aria-label="Status filter"
+            >
+              {STATUS_FILTERS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={platformFilter}
+              onChange={(e) => setPlatformFilter(e.target.value as Platform | "all")}
+              className="h-9 rounded-md border border-zinc-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+              aria-label="Platform filter"
+            >
+              <option value="all">All platforms</option>
+              {(Object.keys(PLATFORM_LABELS) as Platform[]).map((p) => (
+                <option key={p} value={p}>
+                  {PLATFORM_LABELS[p]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="ml-auto">
+            <button
+              type="button"
+              onClick={handleDownloadCsv}
+              disabled={filteredPosts.length === 0}
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm font-medium hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Download className="size-3.5" />
+              Export CSV
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {errorMsg ? (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {errorMsg}
+        </div>
+      ) : null}
+
+      {/* Table */}
+      {loading ? (
+        <LoadingState />
+      ) : filteredPosts.length === 0 ? (
+        <EmptyState />
+      ) : (
+        <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px]">
+              <thead className="bg-zinc-50 border-b border-zinc-200">
+                <tr>
+                  <th className="text-left px-5 py-2.5 text-xs font-semibold text-zinc-500 uppercase tracking-wide w-[100px]">Status</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Caption</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-zinc-500 uppercase tracking-wide w-[200px]">Platforms</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-zinc-500 uppercase tracking-wide w-[180px]">Published</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-zinc-500 uppercase tracking-wide w-[130px]">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredPosts.map((p) => (
+                  <tr key={p.id} className="border-b border-zinc-100 last:border-b-0">
+                    <td className="px-5 py-3 align-middle">
+                      {p.status === "published" ? (
+                        <StatusBadge tone="green" icon={<CheckCircle2 className="size-3" />}>
+                          Published
+                        </StatusBadge>
+                      ) : (
+                        <StatusBadge tone="red" icon={<XCircle className="size-3" />}>
+                          Failed
+                        </StatusBadge>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 align-middle">
+                      <p className="text-sm text-zinc-900 line-clamp-2 max-w-[480px]" title={p.caption}>
+                        {truncate(p.caption || "(no caption)", 140)}
+                      </p>
+                      {p.failureReason ? (
+                        <p className="mt-1 text-xs text-red-600 line-clamp-1" title={p.failureReason}>
+                          {p.failureReason}
+                        </p>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-3 align-middle">
+                      <div className="flex flex-wrap gap-1">
+                        {p.platforms.map((plat) => (
+                          <span
+                            key={plat}
+                            className={cn(
+                              "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
+                              PLATFORM_COLORS[plat],
+                            )}
+                          >
+                            {PLATFORM_LABELS[plat]}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 align-middle text-sm text-zinc-700">
+                      {formatDateTime(p.publishedAt)}
+                    </td>
+                    <td className="px-3 py-3 align-middle">
+                      <div className="flex items-center gap-1.5">
+                        <Link
+                          href={`/dashboard/posts/drafts`}
+                          className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-zinc-200 bg-white text-xs font-medium hover:bg-zinc-50"
+                          title="View related posts"
+                        >
+                          View
+                          <ArrowRight className="size-3" />
+                        </Link>
+                        {p.status === "failed" ? (
+                          <button
+                            type="button"
+                            onClick={() => handleRetry(p)}
+                            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md bg-red-500 hover:bg-red-600 text-white text-xs font-medium"
+                            title="Retry publishing"
+                          >
+                            Retry
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white py-16 flex flex-col items-center justify-center">
+      <Loader2 className="size-5 animate-spin text-zinc-400" />
+      <p className="mt-3 text-sm text-zinc-500">Loading publish history…</p>
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white py-16 flex flex-col items-center justify-center">
+      <div className="size-12 rounded-full bg-zinc-100 flex items-center justify-center mb-3">
+        <HistoryIcon className="size-5 text-zinc-400" />
+      </div>
+      <h3 className="text-sm font-semibold text-zinc-900">No publish history yet</h3>
+      <p className="mt-1 text-sm text-zinc-500 max-w-sm text-center">
+        Publish or schedule a post to start the log. Past attempts show here with status, platform, and timestamp.
+      </p>
+    </div>
+  );
+}

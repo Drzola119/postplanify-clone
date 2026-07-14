@@ -372,6 +372,13 @@ function TimeFilter({ value, onChange }: { value: Period; onChange: (p: Period) 
   );
 }
 
+function periodToRange(p: Period): { from: Date; to: Date } {
+  const to = new Date();
+  const days = p === "7d" ? 7 : p === "14d" ? 14 : p === "30d" ? 30 : 90;
+  const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
+  return { from, to };
+}
+
 // ============================================================
 // Account avatar (avatar + small platform badge)
 // ============================================================
@@ -840,6 +847,33 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
   const router = useRouter();
   const pathname = usePathname();
   const [period, setPeriod] = useState<Period>("7d");
+  const [exporting, setExporting] = useState(false);
+
+  const handleAnalyticsExport = async () => {
+    setExporting(true);
+    try {
+      const range = periodToRange(period);
+      const url = `/api/analytics/export?from=${encodeURIComponent(range.from.toISOString())}&to=${encodeURIComponent(range.to.toISOString())}`;
+      const res = await fetch(url, { credentials: "include", headers: getOverrideHeaders() });
+      if (!res.ok) {
+        window.alert(`Export failed (${res.status})`);
+        return;
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `analytics_${range.from.toISOString().slice(0, 10)}_${range.to.toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      window.alert("Export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const handleExport = () => {
     const csv = toCsv(
@@ -968,11 +1002,22 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
 
       {/* ===== TRENDS ===== */}
       <div className="rounded-xl border border-zinc-200/70 bg-white p-4">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
           <h3 className="text-sm font-semibold text-zinc-900 inline-flex items-center gap-1.5">
             <TrendingUp className="size-4" /> Trends
           </h3>
-          <TimeFilter value={period} onChange={setPeriod} />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleAnalyticsExport}
+              disabled={exporting}
+              className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 h-7 text-[12px] font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              <Download className="size-3" />
+              {exporting ? "Exporting…" : "Export CSV"}
+            </button>
+            <TimeFilter value={period} onChange={setPeriod} />
+          </div>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div>

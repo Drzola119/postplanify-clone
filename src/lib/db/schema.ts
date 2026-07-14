@@ -9,8 +9,19 @@ import "server-only";
  * per-collection modules.
  */
 
-export type PostStatus = "draft" | "queued" | "scheduled" | "publishing" | "published" | "failed" | "archived";
+export type PostStatus = "draft" | "queued" | "scheduled" | "publishing" | "published" | "failed" | "archived" | "paused";
 export type PlatformId = "bluesky" | "instagram" | "tiktok" | "youtube" | "pinterest" | "twitter" | "linkedin" | "threads" | "facebook";
+
+export type BoostStatus = "draft" | "active" | "completed" | "paused";
+
+export interface BoostConfig {
+  status: BoostStatus;
+  budgetCents?: number;
+  durationDays?: number;
+  startedAt?: Date;
+  endsAt?: Date;
+  audienceHint?: string;
+}
 
 export interface WorkspaceMember {
   role: "owner" | "admin" | "editor" | "viewer";
@@ -36,6 +47,7 @@ export interface PostDoc {
   workerId?: string;
   claimedAt?: Date;
   failureReason?: string;
+  boostConfig?: BoostConfig;
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date;

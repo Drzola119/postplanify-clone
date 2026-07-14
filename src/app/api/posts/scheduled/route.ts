@@ -12,6 +12,18 @@ export async function GET(request: NextRequest) {
     : new Date();
 
   const due = await listScheduledDue(session.workspaceId, now);
-  const upcoming = await listPosts(session.workspaceId, { status: "scheduled", pageSize: 100 });
-  return jsonOk({ due, upcoming: upcoming.items });
+
+  // Upcoming = scheduled (future) + paused (any time). Both are user-actionable.
+  const upcomingResult = await listPosts(session.workspaceId, {
+    status: ["scheduled", "paused"],
+    pageSize: 100,
+  });
+  const upcoming = upcomingResult.items.sort((a, b) => {
+    const ta = a.scheduledAt ? Date.parse(a.scheduledAt) : Number.MAX_SAFE_INTEGER;
+    const tb = b.scheduledAt ? Date.parse(b.scheduledAt) : Number.MAX_SAFE_INTEGER;
+    return ta - tb;
+  });
+  const pausedCount = upcoming.filter((p) => p.status === "paused").length;
+
+  return jsonOk({ due, upcoming, pausedCount });
 }

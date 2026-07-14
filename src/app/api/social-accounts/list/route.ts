@@ -1,7 +1,8 @@
 import "server-only";
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/firebase/admin";
+import { adminDb, getCurrentUser } from "@/lib/firebase/admin";
 import { MissingServerSecretError, resolvers } from "@/lib/security/server-config";
+import { writeCache } from "@/lib/db/account-health";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -146,6 +147,36 @@ export async function GET(request: Request) {
       blocked: !!p.blocked,
       createdAt: p.created_at ?? null,
     }));
+
+    try {
+      if (adminDb) {
+        const userSnap = await adminDb.doc(`users/${user.uid}`).get().catch(() => null);
+        const workspaceId = (userSnap?.data() as { primaryWorkspaceId?: string } | undefined)?.primaryWorkspaceId;
+        if (workspaceId) {
+          await writeCache(workspaceId, {
+            accounts: accounts.map((a) => ({
+              id: a.id,
+              profileUsername: a.profileUsername,
+              platform: a.platform,
+              handle: a.handle,
+              displayName: a.displayName,
+              img: a.img,
+              reauthRequired: a.reauthRequired,
+            })),
+            profiles: profiles.map((p) => ({
+              username: p.username,
+              redirectUrl: p.redirectUrl,
+              blocked: p.blocked,
+              createdAt: p.createdAt,
+            })),
+            plan: data.plan ?? null,
+            limit: data.limit ?? null,
+          });
+        }
+      }
+    } catch {
+      // Cache write failure shouldn't block the list response.
+    }
 
     return NextResponse.json({
       ok: true,

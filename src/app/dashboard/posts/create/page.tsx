@@ -29,6 +29,15 @@ import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { PLATFORMS, type PlatformId } from "@/lib/platforms";
 import { loadDraft, saveDraft, newDraftId, type DraftRecord } from "@/lib/drafts";
+import {
+  type PlatformAdvancedOptions,
+  type FieldSpec,
+  getDefaultOptions,
+  FIELD_SPECS,
+} from "@/lib/publishing/advanced-options";
+import { type MediaKind } from "@/lib/publishing/capability-matrix";
+import { checkRequirements } from "@/lib/publishing/requirements";
+import { RequirementsPanel } from "@/components/dashboard/requirements-panel";
 import { StepCircle } from "@/components/dashboard/step-circle";
 import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
 import { AccountPreviewCard } from "@/components/dashboard/account-preview-card";
@@ -158,6 +167,11 @@ export default function CreatePostPage() {
   // Tag Users (shown when media uploaded)
   const [tagUsers, setTagUsers] = useState("");
 
+  // Per-platform advanced publishing options (Feature 1).
+  // Keyed by PlatformId; defaults are seeded lazily so the user only
+  // sees advanced fields for platforms that have any.
+  const [advancedByPlatform, setAdvancedByPlatform] = useState<Partial<Record<PlatformId, PlatformAdvancedOptions>>>({});
+
   // Dialogs
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [aiGenerating, setAiGenerating] = useState(false);
@@ -199,6 +213,41 @@ export default function CreatePostPage() {
   const hasVideo = mediaItems.some((m) => m.kind === "video");
   const activeMediaItem = mediaItems[activeMedia];
   const isVideoActive = activeMediaItem?.kind === "video";
+
+  // Media kind for the advanced options panel (Feature 1).
+  // Empty state → "text"; mixed media → prefers video for the rules.
+  const composerMediaKind: MediaKind = mediaItems.length === 0
+    ? "text"
+    : mediaItems.every((m) => m.kind === "image")
+      ? "image"
+      : "video";
+
+  // Per-platform advanced options getter (seeds defaults lazily).
+  function getAdvancedOptions(id: PlatformId): PlatformAdvancedOptions {
+    return advancedByPlatform[id] ?? getDefaultOptions(id);
+  }
+  function setAdvancedOptions(id: PlatformId, next: PlatformAdvancedOptions) {
+    setAdvancedByPlatform((prev) => ({ ...prev, [id]: next }));
+  }
+
+  // Live readiness report for the publishability gate (Feature 2).
+  const readinessReport = useMemo(
+    () =>
+      checkRequirements(Array.from(selected), {
+        captionByPlatform: Object.fromEntries(
+          Array.from(selected).map((p) => [p, captionFor(p)])
+        ) as Record<PlatformId, string>,
+        media: mediaItems.map((m) => ({
+          kind: m.kind,
+          mimeType: m.kind === "image" ? "image/jpeg" : "video/mp4",
+          sizeBytes: m.size,
+        })),
+        advancedByPlatform,
+        composerMediaKind,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [captions, mediaItems, advancedByPlatform, selected, composerMediaKind]
+  );
 
   function toggleAccount(id: PlatformId) {
     setSelected((prev) => {
@@ -299,9 +348,20 @@ export default function CreatePostPage() {
     }
     setSubmitting(true);
     try {
+      // Build per-platform advanced options payload. When sameForAll is
+      // on we replicate the first platform's options across the rest so
+      // the publisher receives the same flags for every target.
+      const platformOptions = sameForAll
+        ? Object.fromEntries(
+            platforms.map((p) => [p, getAdvancedOptions(platforms[0])])
+          )
+        : Object.fromEntries(
+            platforms.map((p) => [p, getAdvancedOptions(p)])
+          );
+
       const res = await fetch("/api/posts/publish", {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           ...getOverrideHeaders()
         },
@@ -310,6 +370,7 @@ export default function CreatePostPage() {
           caption,
           mediaUrls: readyMedia.map((m) => m.cdnUrl),
           scheduledAt: scheduledAt ? scheduledAt.toISOString() : null,
+          advancedByPlatform: platformOptions,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -736,6 +797,17 @@ export default function CreatePostPage() {
           showTagUsers={mediaItems.length > 0}
           hasVideo={hasVideo}
           toast={toast}
+          getAdvancedOptions={getAdvancedOptions}
+          setAdvancedOptions={setAdvancedOptions}
+          mediaKind={composerMediaKind}
+        />
+      </div>
+
+      {/* Publish readiness panel — full view (Feature 2) */}
+      <div className="mt-4">
+        <RequirementsPanel
+          report={readinessReport}
+          platformNames={Object.fromEntries(PLATFORMS.map((p) => [p.id, p.name])) as Record<PlatformId, string>}
         />
       </div>
 
@@ -751,9 +823,14 @@ export default function CreatePostPage() {
             Save as Draft
           </button>
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+            <RequirementsPanel
+              report={readinessReport}
+              platformNames={Object.fromEntries(PLATFORMS.map((p) => [p.id, p.name])) as Record<PlatformId, string>}
+              compact
+            />
             <button
               type="button"
-              disabled={!hasAnyContent || submitting}
+              disabled={!hasAnyContent || submitting || readinessReport.overall === "blocked"}
               onClick={() => setScheduleModalOpen(true)}
               className="inline-flex items-center justify-center gap-2 rounded-md border border-zinc-200 bg-white px-4 h-9 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -761,7 +838,7 @@ export default function CreatePostPage() {
             </button>
             <button
               type="button"
-              disabled={!hasAnyContent || submitting}
+              disabled={!hasAnyContent || submitting || readinessReport.overall === "blocked"}
               onClick={() => publishPost(null)}
               className="inline-flex items-center justify-center gap-2 rounded-md bg-zinc-950 hover:bg-zinc-800 text-white px-4 h-9 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -1605,6 +1682,9 @@ interface CaptionsCardProps {
   showTagUsers: boolean;
   hasVideo: boolean;
   toast: ReturnType<typeof useToast>["toast"];
+  getAdvancedOptions: (id: PlatformId) => PlatformAdvancedOptions;
+  setAdvancedOptions: (id: PlatformId, next: PlatformAdvancedOptions) => void;
+  mediaKind: MediaKind;
 }
 
 function CaptionsCard({
@@ -1623,6 +1703,9 @@ function CaptionsCard({
   showTagUsers,
   hasVideo,
   toast,
+  getAdvancedOptions,
+  setAdvancedOptions,
+  mediaKind,
 }: CaptionsCardProps) {
   return (
     <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm flex flex-col">
@@ -1692,6 +1775,9 @@ function CaptionsCard({
                 value={getCaption(platforms[0].id)}
                 onChange={(v) => setCaption(platforms[0].id, v)}
                 hasVideo={hasVideo}
+                advancedOptions={getAdvancedOptions(platforms[0].id)}
+                onAdvancedOptionsChange={(next) => setAdvancedOptions(platforms[0].id, next)}
+                mediaKind={mediaKind}
               />
             </div>
           ) : platforms.length === 1 ? (
@@ -1705,6 +1791,9 @@ function CaptionsCard({
                 onCommunityChange={onCommunityChange}
                 quoteTweet={quoteTweet}
                 onQuoteTweetChange={onQuoteTweetChange}
+                advancedOptions={getAdvancedOptions(platforms[0].id)}
+                onAdvancedOptionsChange={(next) => setAdvancedOptions(platforms[0].id, next)}
+                mediaKind={mediaKind}
               />
             </div>
           ) : (
@@ -1722,6 +1811,9 @@ function CaptionsCard({
                   onCommunityChange={onCommunityChange}
                   quoteTweet={quoteTweet}
                   onQuoteTweetChange={onQuoteTweetChange}
+                  advancedOptions={getAdvancedOptions(p.id)}
+                  onAdvancedOptionsChange={(next) => setAdvancedOptions(p.id, next)}
+                  mediaKind={mediaKind}
                 />
               ))}
             </div>
