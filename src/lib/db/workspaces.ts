@@ -25,11 +25,15 @@ export async function getWorkspace(wid: string): Promise<WorkspaceLite | null> {
 
 export async function listWorkspacesForUser(uid: string): Promise<WorkspaceLite[]> {
   if (!adminDb) return [];
-  const membersSnap = await adminDb
-    .collectionGroup("members")
-    .where("__name__", "==", uid)
-    .get()
-    .catch(() => null);
+  let membersSnap = null;
+  try {
+    membersSnap = await adminDb
+      .collectionGroup("members")
+      .where("__name__", "==", uid)
+      .get();
+  } catch (err) {
+    // Ignore synchronous validation errors or missing index errors
+  }
 
   // Fallback: scan user's known workspace subcollection (when workspaceId is
   // stored on the user doc). Firestore collection-group queries need an index
