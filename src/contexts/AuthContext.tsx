@@ -47,9 +47,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus("disabled");
       return;
     }
-    const unsub = onAuthStateChanged(auth, (u) => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
-      setStatus(u ? "authenticated" : "unauthenticated");
+      if (u) {
+        // Mint/refresh the httpOnly server session cookie so every /api/*
+        // route is authorized. The Firebase client SDK persists the user in
+        // IndexedDB across reloads, but the server `pp_session` cookie is NOT
+        // persisted client-side — it must be re-issued on each app load, or
+        // protected API routes 401 even though the client looks "logged in".
+        try {
+          const idToken = await u.getIdToken();
+          await fetch("/api/auth/session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ idToken }),
+          });
+        } catch {
+          // Client-side auth still works; protected APIs may 401 until the
+          // next successful exchange. Don't block the UI on this.
+        }
+        setStatus("authenticated");
+      } else {
+        setStatus("unauthenticated");
+      }
     });
     return () => unsub();
   }, []);

@@ -83,13 +83,13 @@ describe("lib/log - createLogger", () => {
 
   it("debug is a no-op in production", () => {
     const prev = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    vi.stubEnv("NODE_ENV", "production");
     try {
       const log = createLogger("debug-mod");
       log.debug("hidden");
       expect(infoSpy).not.toHaveBeenCalled();
     } finally {
-      process.env.NODE_ENV = prev;
+      vi.stubEnv("NODE_ENV", prev ?? "test");
     }
   });
 });
