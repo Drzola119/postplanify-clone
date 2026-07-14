@@ -196,17 +196,17 @@ function PlatformIconLarge({ platform, className }: { platform: Platform; classN
   }
 }
 
-const AVAILABLE_PLATFORMS: { name: string; platform: Platform; key: string; connectUrl: string }[] = [
-  { name: "Facebook", platform: "facebook", key: "facebook", connectUrl: "https://app.upload-post.com/connect/facebook" },
-  { name: "Instagram", platform: "instagram", key: "instagram", connectUrl: "https://app.upload-post.com/connect/instagram" },
-  { name: "X", platform: "x", key: "x", connectUrl: "https://app.upload-post.com/connect/x" },
-  { name: "YouTube", platform: "youtube", key: "youtube", connectUrl: "https://app.upload-post.com/connect/youtube" },
-  { name: "TikTok", platform: "tiktok", key: "tiktok", connectUrl: "https://app.upload-post.com/connect/tiktok" },
-  { name: "LinkedIn", platform: "linkedin", key: "linkedin", connectUrl: "https://app.upload-post.com/connect/linkedin" },
-  { name: "Threads", platform: "threads", key: "threads", connectUrl: "https://app.upload-post.com/connect/threads" },
-  { name: "Pinterest", platform: "pinterest", key: "pinterest", connectUrl: "https://app.upload-post.com/connect/pinterest" },
-  { name: "Bluesky", platform: "bluesky", key: "bluesky", connectUrl: "https://app.upload-post.com/connect/bluesky" },
-  { name: "Google Business", platform: "facebook", key: "google-business", connectUrl: "https://app.upload-post.com/connect/google_business" },
+const AVAILABLE_PLATFORMS: { name: string; platform: Platform; key: string }[] = [
+  { name: "Facebook", platform: "facebook", key: "facebook" },
+  { name: "Instagram", platform: "instagram", key: "instagram" },
+  { name: "X", platform: "x", key: "x" },
+  { name: "YouTube", platform: "youtube", key: "youtube" },
+  { name: "TikTok", platform: "tiktok", key: "tiktok" },
+  { name: "LinkedIn", platform: "linkedin", key: "linkedin" },
+  { name: "Threads", platform: "threads", key: "threads" },
+  { name: "Pinterest", platform: "pinterest", key: "pinterest" },
+  { name: "Bluesky", platform: "bluesky", key: "bluesky" },
+  { name: "Google Business", platform: "facebook", key: "google_business" },
 ];
 
 type IntegrationKey = "unsplash" | "google-drive" | "canva" | "dropbox";
@@ -412,6 +412,61 @@ export default function AccountsPage() {
     fetchAccounts();
   }, []);
 
+  // Detect ?connected=1 / ?error= in the URL — show a toast on first paint
+  // after the user returns from the hosted connect page.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("connected") === "1") {
+      showToast("Accounts updated. Reloading connections...", "success");
+      // Refresh the account list to pick up newly linked profiles.
+      fetchAccounts();
+      // Clean the URL so a refresh doesn't re-toast.
+      const url = new URL(window.location.href);
+      url.searchParams.delete("connected");
+      window.history.replaceState({}, "", url.toString());
+    } else if (params.get("error")) {
+      showToast(`Connection failed: ${params.get("error")}`, "error");
+      const url = new URL(window.location.href);
+      url.searchParams.delete("error");
+      window.history.replaceState({}, "", url.toString());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const [connecting, setConnecting] = useState(false);
+
+  const openConnectPage = async (platformKey?: string) => {
+    if (connecting) return;
+    setConnecting(true);
+    try {
+      const res = await fetch("/api/social-accounts/connect-url", {
+        method: "GET",
+        cache: "no-store",
+        headers: getOverrideHeaders(),
+      });
+      const data = (await res.json()) as { ok?: boolean; url?: string; error?: string };
+      if (!res.ok || !data.ok || !data.url) {
+        throw new Error(data.error || "Failed to open connect page");
+      }
+      // Optional: append a platform filter via the JWT page query if upload-post
+      // supports it. For now, the hosted page lists all platforms — the user
+      // picks which one to link.
+      showToast(
+        platformKey
+          ? `Opening ${platformKey} connect page in new tab...`
+          : "Opening connect page in new tab...",
+        "info"
+      );
+      window.open(data.url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to open connect page";
+      showToast(msg, "error");
+    } finally {
+      setConnecting(false);
+    }
+  };
+
   const handleRefreshAll = async () => {
     setRefreshingAll(true);
     showToast("Refreshing accounts from upload-post.com...", "info");
@@ -427,19 +482,15 @@ export default function AccountsPage() {
     const id = confirmDeleteId;
     setDeletingId(id);
     setConfirmDeleteId(null);
-    // upload-post.com does not expose a disconnect endpoint via this JWT;
-    // removing the account locally and asking the user to revoke via upload-post.com.
+    // upload-post.com does not expose a per-platform disconnect endpoint via
+    // this JWT; removing the account locally and asking the user to revoke via
+    // the hosted connect page (or upload-post.com directly).
     setAccounts((prev) => prev.filter((a) => a.id !== id));
     setDeletingId(null);
     showToast(
-      "Account removed from view. To revoke at source, disconnect it from upload-post.com.",
+      "Account removed from view. To revoke at source, open the connect page and unlink it.",
       "info"
     );
-  };
-
-  const handleConnect = (platformKey: string, connectUrl: string) => {
-    window.open(connectUrl, "_blank", "noopener,noreferrer");
-    showToast(`Opening ${platformKey} connect page in new tab...`, "info");
   };
 
   return (
@@ -472,6 +523,19 @@ export default function AccountsPage() {
               <RefreshCw className="size-4" />
             )}
             Refresh
+          </button>
+          <button
+            type="button"
+            onClick={() => openConnectPage()}
+            disabled={connecting}
+            className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-md bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium"
+          >
+            {connecting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <ExternalLink className="size-4" />
+            )}
+            Connect accounts
           </button>
         </div>
 
@@ -530,6 +594,7 @@ export default function AccountsPage() {
                       account={account}
                       isDeleting={deletingId === account.id}
                       onDelete={() => setConfirmDeleteId(account.id)}
+                      onReconnect={() => openConnectPage(PLATFORM_META[account.platform].label)}
                     />
                   ))}
                 </div>
@@ -566,7 +631,7 @@ export default function AccountsPage() {
                     key={p.key}
                     name={p.name}
                     platform={p.platform}
-                    onConnect={() => handleConnect(p.name, p.connectUrl)}
+                    onConnect={() => openConnectPage(p.name)}
                   />
                 ))}
               </div>
@@ -704,12 +769,13 @@ function ConnectedAccountCard({
   account,
   isDeleting,
   onDelete,
+  onReconnect,
 }: {
   account: ConnectedAccount;
   isDeleting: boolean;
   onDelete: () => void;
+  onReconnect: () => void;
 }) {
-  const reconnectUrl = AVAILABLE_PLATFORMS.find((p) => p.platform === account.platform)?.connectUrl;
   return (
     <div className={`group flex items-center justify-between p-4 rounded-lg border border-zinc-200 hover:border-zinc-300 transition-colors bg-white ${isDeleting ? "opacity-50 pointer-events-none" : ""}`}>
       <div className="flex items-center gap-4 min-w-0">
@@ -754,23 +820,20 @@ function ConnectedAccountCard({
       </div>
 
       <div className="flex items-center gap-2 shrink-0">
-        {account.reauthRequired && reconnectUrl ? (
-          <a
-            href={reconnectUrl}
-            target="_blank"
-            rel="noopener noreferrer"
+        {account.reauthRequired ? (
+          <button
+            type="button"
+            onClick={onReconnect}
             title="Reconnect this account in a new tab"
             className="inline-flex items-center gap-1.5 rounded-md bg-amber-500 hover:bg-amber-600 px-3 h-8 text-xs font-medium text-white"
           >
             <RefreshCw className="size-3.5" />
             Reconnect
-          </a>
+          </button>
         ) : (
           <button
             type="button"
-            onClick={() => {
-              if (reconnectUrl) window.open(reconnectUrl, "_blank", "noopener,noreferrer");
-            }}
+            onClick={onReconnect}
             title="Open connect page in a new tab"
             className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 h-8 text-xs font-medium hover:bg-zinc-50"
           >

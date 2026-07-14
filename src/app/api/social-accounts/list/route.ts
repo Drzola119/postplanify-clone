@@ -1,8 +1,10 @@
 import "server-only";
 import { NextResponse } from "next/server";
-import { adminDb, getCurrentUser } from "@/lib/firebase/admin";
+import { requireSession } from "@/lib/auth/session-context";
+import { adminDb } from "@/lib/firebase/admin";
 import { MissingServerSecretError, resolvers } from "@/lib/security/server-config";
 import { writeCache } from "@/lib/db/account-health";
+import { ensureProfile } from "@/lib/db/upload-post-profiles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,13 +31,19 @@ interface UploadPostAccount {
 
 interface UploadPostProfile {
   username: string;
-  social_accounts: Partial<Record<PlatformKey, UploadPostAccount | "">>;
+  social_accounts?: Partial<Record<PlatformKey, UploadPostAccount | "">>;
   created_at?: string;
   redirect_url?: string;
   blocked?: boolean;
 }
 
-interface UploadPostResponse {
+interface UploadPostSingleResponse {
+  success: boolean;
+  profile?: UploadPostProfile;
+  message?: string;
+}
+
+interface UploadPostListResponse {
   success: boolean;
   profiles: UploadPostProfile[];
   limit?: number;
@@ -66,37 +74,33 @@ const SUPPORTED: PlatformKey[] = [
   "linkedin",
 ];
 
-function flatten(profiles: UploadPostProfile[]): ConnectedAccountDTO[] {
+function flatten(profile: UploadPostProfile | null): ConnectedAccountDTO[] {
+  if (!profile || !profile.social_accounts) return [];
   const out: ConnectedAccountDTO[] = [];
-  for (const profile of profiles) {
-    if (!profile.social_accounts) continue;
-    for (const key of SUPPORTED) {
-      const acct = profile.social_accounts[key];
-      // Empty string means "not connected" — skip.
-      if (!acct || typeof acct === "string" || (acct as UploadPostAccount).handle === undefined) {
-        continue;
-      }
-      const a = acct as UploadPostAccount;
-      if (!a.handle) continue;
-      out.push({
-        id: `${profile.username}:${key}`,
-        profileUsername: profile.username,
-        platform: key,
-        handle: a.handle,
-        displayName: a.display_name ?? null,
-        img: a.social_images || null,
-        reauthRequired: !!a.reauth_required,
-      });
+  for (const key of SUPPORTED) {
+    const acct = profile.social_accounts[key];
+    // Empty string means "not connected" — skip.
+    if (!acct || typeof acct === "string" || (acct as UploadPostAccount).handle === undefined) {
+      continue;
     }
+    const a = acct as UploadPostAccount;
+    if (!a.handle) continue;
+    out.push({
+      id: `${profile.username}:${key}`,
+      profileUsername: profile.username,
+      platform: key,
+      handle: a.handle,
+      displayName: a.display_name ?? null,
+      img: a.social_images || null,
+      reauthRequired: !!a.reauth_required,
+    });
   }
   return out;
 }
 
 export async function GET(request: Request) {
-  const user = await getCurrentUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireSession();
+  if (session instanceof Response) return session;
 
   let apiKey: string;
   try {
@@ -111,18 +115,39 @@ export async function GET(request: Request) {
     throw err;
   }
 
+  // Ensure this workspace has an upload-post profile (creates on first call).
+  let profileMeta: { username: string; blocked: boolean; redirectUrl: string | null; createdAt: string | null };
   try {
-    const res = await fetch("https://api.upload-post.com/api/uploadposts/users", {
-      method: "GET",
-      headers: {
-        Authorization: `Apikey ${apiKey}`,
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    });
+    const profile = await ensureProfile(session.workspaceId, apiKey);
+    profileMeta = {
+      username: profile.username,
+      blocked: profile.blocked,
+      redirectUrl: profile.redirectUrl,
+      createdAt: profile.createdAt,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to provision profile";
+    return NextResponse.json({ error: msg }, { status: 502 });
+  }
+
+  try {
+    // Fetch only THIS workspace's profile (1:1 with workspaceId) so other
+    // workspaces on the same upload-post.com plan can't see each other's
+    // connections.
+    const res = await fetch(
+      `https://api.upload-post.com/api/uploadposts/users/${encodeURIComponent(session.workspaceId)}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Apikey ${apiKey}`,
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      }
+    );
 
     const text = await res.text();
-    let data: UploadPostResponse | null = null;
+    let data: UploadPostSingleResponse | null = null;
     try {
       data = JSON.parse(text);
     } catch {
@@ -130,6 +155,18 @@ export async function GET(request: Request) {
     }
 
     if (!res.ok || !data?.success) {
+      // 404 here means the profile exists in our cache but not at upload-post
+      // (race / deleted). Return an empty list rather than 502 so the UI
+      // degrades gracefully.
+      if (res.status === 404) {
+        return NextResponse.json({
+          ok: true,
+          accounts: [],
+          profiles: [profileMeta],
+          plan: null,
+          limit: null,
+        });
+      }
       return NextResponse.json(
         {
           error: "upload-post.com fetch failed",
@@ -140,39 +177,41 @@ export async function GET(request: Request) {
       );
     }
 
-    const accounts = flatten(data.profiles);
-    const profiles = data.profiles.map((p) => ({
-      username: p.username,
-      redirectUrl: p.redirect_url ?? null,
-      blocked: !!p.blocked,
-      createdAt: p.created_at ?? null,
-    }));
+    const profile = data.profile ?? null;
+    const accounts = flatten(profile);
 
     try {
       if (adminDb) {
-        const userSnap = await adminDb.doc(`users/${user.uid}`).get().catch(() => null);
-        const workspaceId = (userSnap?.data() as { primaryWorkspaceId?: string } | undefined)?.primaryWorkspaceId;
-        if (workspaceId) {
-          await writeCache(workspaceId, {
-            accounts: accounts.map((a) => ({
-              id: a.id,
-              profileUsername: a.profileUsername,
-              platform: a.platform,
-              handle: a.handle,
-              displayName: a.displayName,
-              img: a.img,
-              reauthRequired: a.reauthRequired,
-            })),
-            profiles: profiles.map((p) => ({
-              username: p.username,
-              redirectUrl: p.redirectUrl,
-              blocked: p.blocked,
-              createdAt: p.createdAt,
-            })),
-            plan: data.plan ?? null,
-            limit: data.limit ?? null,
-          });
+        // We still call the list endpoint in the background to capture plan/limit
+        // info. Failure here is non-fatal — the user sees their accounts either way.
+        const listRes = await fetch("https://api.upload-post.com/api/uploadposts/users", {
+          method: "GET",
+          headers: { Authorization: `Apikey ${apiKey}`, Accept: "application/json" },
+          cache: "no-store",
+        }).catch(() => null);
+        let listData: UploadPostListResponse | null = null;
+        if (listRes?.ok) {
+          try {
+            listData = (await listRes.json()) as UploadPostListResponse;
+          } catch {
+            listData = null;
+          }
         }
+
+        await writeCache(session.workspaceId, {
+          accounts: accounts.map((a) => ({
+            id: a.id,
+            profileUsername: a.profileUsername,
+            platform: a.platform,
+            handle: a.handle,
+            displayName: a.displayName,
+            img: a.img,
+            reauthRequired: a.reauthRequired,
+          })),
+          profiles: [profileMeta],
+          plan: listData?.plan ?? null,
+          limit: listData?.limit ?? null,
+        });
       }
     } catch {
       // Cache write failure shouldn't block the list response.
@@ -181,9 +220,9 @@ export async function GET(request: Request) {
     return NextResponse.json({
       ok: true,
       accounts,
-      profiles,
-      plan: data.plan ?? null,
-      limit: data.limit ?? null,
+      profiles: [profileMeta],
+      plan: null,
+      limit: null,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "upload-post.com request failed";
