@@ -79,7 +79,7 @@ function extractErrorMessage(payload: unknown, fallback: string): string {
 /** Map known HTTP statuses to actionable hints for the user. */
 function hintForStatus(status: number, msg: string): string {
   if (status === 401) {
-    return "Sign-in expired or server can't verify your session. Re-login from /login, and if the problem persists check that FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY are set on the server.";
+    return "Session can't be verified. Most often this means the session cookie was signed with a different Firebase key than the one currently on the server. Log out and log back in to get a fresh cookie. If it persists, run `python scripts/diagnose-hpanel.py` to confirm the env vars.";
   }
   if (status === 500 && /not configured/i.test(msg)) {
     return "Server is missing a required secret. Set it on the host (see docs/hpanel-env-paste.md) and redeploy.";
@@ -590,7 +590,7 @@ export default function AccountsPage() {
               <p className="text-xs text-rose-700 mt-0.5">{error}</p>
               {errorStatus === 401 && (
                 <p className="text-[11px] text-rose-600 mt-2">
-                  See <code className="px-1 py-0.5 rounded bg-rose-100">docs/hpanel-env-paste.md</code> for the required env vars, or re-login if your session expired.
+                  Try <strong>logging out and logging back in</strong> first — this usually fixes a stale session cookie. If it persists, run <code className="px-1 py-0.5 rounded bg-rose-100">python scripts/diagnose-hpanel.py</code> to check the server env vars.
                 </p>
               )}
             </div>
