@@ -17,6 +17,7 @@ const ALL_PLATFORMS = [
   "pinterest",
   "discord",
   "telegram",
+  "reddit",
   "google_business",
 ] as const;
 
