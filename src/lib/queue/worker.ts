@@ -3,6 +3,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { listScheduledDue, claimPost, markPublished, markFailed, resetStuckClaims } from "@/lib/db/posts";
 import { resolvers } from "@/lib/security/server-config";
 import { deliverWebhook } from "@/lib/webhooks/delivery";
+import { ensureProfile, readProfile } from "@/lib/db/upload-post-profiles";
 import { createLogger } from "@/lib/log";
 
 const log = createLogger("queue-worker");
@@ -23,6 +24,34 @@ let running = false;
 let lastTickAt: Date | null = null;
 let lastResult: TickResult | null = null;
 
+// Per-workspace profile cache so we don't re-fetch from upload-post.com every
+// tick. Cache for the lifetime of the process; ensureProfile is itself
+// idempotent against our Firestore cache.
+const profileCache = new Map<string, { username: string; ts: number }>();
+const PROFILE_CACHE_TTL_MS = 5 * 60_000;
+
+async function resolveUploadPostUsername(workspaceId: string, apiKey: string): Promise<string> {
+  const cached = profileCache.get(workspaceId);
+  if (cached && Date.now() - cached.ts < PROFILE_CACHE_TTL_MS) {
+    return cached.username;
+  }
+  // Try cached profile first; only call upload-post.com to create one if missing.
+  const local = await readProfile(workspaceId);
+  if (local?.username) {
+    profileCache.set(workspaceId, { username: local.username, ts: Date.now() });
+    return local.username;
+  }
+  try {
+    const profile = await ensureProfile(workspaceId, apiKey);
+    profileCache.set(workspaceId, { username: profile.username, ts: Date.now() });
+    return profile.username;
+  } catch (err) {
+    log.warn("ensureProfile failed; falling back to workspaceId", { workspaceId, err: (err as Error).message });
+    profileCache.set(workspaceId, { username: workspaceId, ts: Date.now() });
+    return workspaceId;
+  }
+}
+
 async function tickOnce(): Promise<TickResult> {
   const result: TickResult = { scanned: 0, published: 0, failed: 0, reaped: 0 };
   if (!adminDb) return result;
@@ -38,10 +67,12 @@ async function tickOnce(): Promise<TickResult> {
   if (due.length === 0) return result;
 
   let n8nUrl: string;
+  let apiKey: string;
   try {
     n8nUrl = resolvers.n8nWebhookUrl(new Headers());
+    apiKey = resolvers.uploadPostApiKey(new Headers());
   } catch (err) {
-    result.error = err instanceof Error ? err.message : "N8N_WEBHOOK_URL not configured";
+    result.error = err instanceof Error ? err.message : "Missing required env (N8N_WEBHOOK_URL or UPLOAD_POST_API_KEY)";
     return result;
   }
 
@@ -50,6 +81,7 @@ async function tickOnce(): Promise<TickResult> {
     if (!claimed) continue;
     const doc = await adminDb.doc(`workspaces/${workspaceId}/posts/${postId}`).get();
     const data = doc.data() ?? {};
+    const uploadPostUsername = await resolveUploadPostUsername(workspaceId, apiKey);
     try {
       const res = await fetch(n8nUrl, {
         method: "POST",
@@ -57,7 +89,7 @@ async function tickOnce(): Promise<TickResult> {
         body: JSON.stringify({
           postId,
           userId: data.authorUid,
-          uploadPostUsername: process.env.UPLOAD_POST_DEFAULT_USERNAME ?? "trustiify_test",
+          uploadPostUsername,
           platforms: data.platforms ?? [],
           caption: data.caption ?? "",
           mediaUrls: data.mediaUrls ?? [],

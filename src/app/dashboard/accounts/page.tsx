@@ -651,15 +651,30 @@ export default function AccountsPage() {
     const id = confirmDeleteId;
     setDeletingId(id);
     setConfirmDeleteId(null);
-    // upload-post.com does not expose a per-platform disconnect endpoint via
-    // this JWT; removing the account locally and asking the user to revoke via
-    // the hosted connect page (or upload-post.com directly).
-    setAccounts((prev) => prev.filter((a) => a.id !== id));
-    setDeletingId(null);
-    showToast(
-      "Account removed from view. To revoke at source, open the connect page and unlink it.",
-      "info"
-    );
+    try {
+      const res = await fetch(`/api/social-accounts/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: getOverrideHeaders(),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `Delete failed (${res.status})`);
+      }
+      // upload-post.com does not expose a per-platform disconnect endpoint
+      // via this JWT, so the source-of-truth remove has to happen on the
+      // hosted connect page. We still update local state for instant feedback.
+      setAccounts((prev) => prev.filter((a) => a.id !== id));
+      showToast(
+        "Account removed from view. To revoke at source, open the connect page and unlink it.",
+        "info"
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to remove account";
+      showToast(msg, "error");
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (

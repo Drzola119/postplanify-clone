@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { PageHelp } from "@/components/dashboard/help/page-help";
 import { getHelpConfig } from "@/lib/help/content";
+import { getOverrideHeaders } from "@/lib/security/client-overrides";
 
 /* ============================================================
    BRAND / SOCIAL ICONS (exact paths from live page)
@@ -972,7 +973,7 @@ export default function WorkspacesPage() {
     }
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!deleting) return;
     if (deleting.id !== activeWorkspaceId) {
       push("info", "Only the active workspace can be deleted");
@@ -980,9 +981,26 @@ export default function WorkspacesPage() {
       return;
     }
     const name = deleting.name;
-    setWorkspaces((prev) => prev.filter((w) => w.id !== deleting.id));
-    setDeleting(null);
-    push("info", `Workspace "${name}" deletion is not supported yet`);
+    try {
+      const res = await fetch(`/api/workspaces/${encodeURIComponent(deleting.id)}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: { ...getOverrideHeaders() },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `Delete failed (${res.status})`);
+      }
+      setWorkspaces((prev) => prev.filter((w) => w.id !== deleting.id));
+      setDeleting(null);
+      push("success", `Workspace "${name}" deleted`);
+    } catch (err) {
+      setDeleting(null);
+      push(
+        "error",
+        err instanceof Error ? err.message : `Workspace "${name}" deletion is not supported yet`
+      );
+    }
   };
 
   return (

@@ -26,6 +26,7 @@ import { PageHelp } from "@/components/dashboard/help/page-help";
 import { getHelpConfig } from "@/lib/help/content";
 import { clientOverridesAllowed } from "@/lib/security/dev-only";
 import {
+  getOverrideHeaders,
   readDevOverrides,
   writeDevOverrides,
 } from "@/lib/security/client-overrides";
@@ -296,10 +297,12 @@ function ChangePasswordModal({
   open,
   onClose,
   onSubmit,
+  push,
 }: {
   open: boolean;
   onClose: () => void;
   onSubmit: () => void;
+  push: (level: "success" | "info" | "error", message: string) => void;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -312,16 +315,18 @@ function ChangePasswordModal({
 
   if (!open) return null;
   return (
-    <ChangePasswordModalBody onClose={onClose} onSubmit={onSubmit} />
+    <ChangePasswordModalBody onClose={onClose} onSubmit={onSubmit} push={push} />
   );
 }
 
 function ChangePasswordModalBody({
   onClose,
   onSubmit,
+  push,
 }: {
   onClose: () => void;
   onSubmit: () => void;
+  push: (level: "success" | "info" | "error", message: string) => void;
 }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -338,9 +343,27 @@ function ChangePasswordModalBody({
 
   const handleSubmit = async () => {
     setBusy(true);
-    await new Promise((r) => setTimeout(r, 700));
-    setBusy(false);
-    onSubmit();
+    try {
+      const res = await fetch("/api/auth/password", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...getOverrideHeaders() },
+        body: JSON.stringify({ currentPassword: current, newPassword: next }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        push("error", body.error ?? `Password change failed (${res.status})`);
+        return;
+      }
+      onSubmit();
+    } catch (err) {
+      push(
+        "error",
+        err instanceof Error ? err.message : "Network error changing password"
+      );
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -1195,6 +1218,7 @@ export default function SettingsPage() {
           setShowChangePassword(false);
           push("success", "Password updated successfully");
         }}
+        push={push}
       />
 
       <ConfirmModal

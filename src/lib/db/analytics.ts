@@ -47,27 +47,38 @@ export async function getOverview(
   const byPlatform = await Promise.all(
     platforms.map(async (p) => {
       const series = await getPlatformSeries(workspaceId, p, from, to);
+      const followersLatest = series.length > 0 ? series[series.length - 1].followers : 0;
+      const impressions = series.reduce((acc, x) => acc + x.impressions, 0);
+      const likes = series.reduce((acc, x) => acc + x.likes, 0);
+      const comments = series.reduce((acc, x) => acc + x.comments, 0);
+      const shares = series.reduce((acc, x) => acc + x.shares, 0);
+      const clicks = series.reduce((acc, x) => acc + x.clicks, 0);
+      const engagementRate =
+        series.length > 0
+          ? series.reduce((acc, x) => acc + x.engagementRate, 0) / series.length
+          : 0;
       return {
         platform: p,
-        followers: series.length > 0 ? series[series.length - 1].followers : 0,
-        impressions: series.reduce((acc, x) => acc + x.impressions, 0),
-        engagementRate:
-          series.length > 0
-            ? series.reduce((acc, x) => acc + x.engagementRate, 0) / series.length
-            : 0,
+        followers: followersLatest,
+        impressions,
+        likes,
+        comments,
+        shares,
+        clicks,
+        engagementRate,
       };
     })
   );
 
   const totals = byPlatform.reduce(
     (acc, p) => ({
-      followers: Math.max(acc.followers, p.followers),
+      followers: acc.followers + p.followers,
       engagementRate: acc.engagementRate + p.engagementRate,
       impressions: acc.impressions + p.impressions,
-      likes: acc.likes,
-      comments: acc.comments,
-      shares: acc.shares,
-      clicks: acc.clicks,
+      likes: acc.likes + p.likes,
+      comments: acc.comments + p.comments,
+      shares: acc.shares + p.shares,
+      clicks: acc.clicks + p.clicks,
       postsPublished: acc.postsPublished,
     }),
     {
@@ -160,6 +171,24 @@ export interface PostMetrics {
   engagementRate: number;
 }
 
+export interface AccountAnalytics {
+  accountId: string;
+  platform: PlatformId;
+  from: string;
+  to: string;
+  totals: {
+    followers: number;
+    impressions: number;
+    likes: number;
+    comments: number;
+    shares: number;
+    clicks: number;
+    engagementRate: number;
+    postsPublished: number;
+  };
+  series: PlatformSeriesPoint[];
+}
+
 export async function getPostMetrics(
   workspaceId: string,
   postId: string
@@ -206,6 +235,59 @@ export async function ingestDailyMetric(
     { merge: true }
   );
   void SERVER_TIMESTAMP;
+}
+
+/**
+ * Per-account analytics: aggregates the platform series for a single
+ * (workspaceId, platform) pair and counts published posts in the date range.
+ * The `accountId` is propagated for downstream callers (e.g. metrics endpoint
+ * cache keys); the platform field is what actually drives the query.
+ */
+export async function getAccountAnalytics(
+  workspaceId: string,
+  accountId: string,
+  platform: PlatformId,
+  from: Date,
+  to: Date
+): Promise<AccountAnalytics> {
+  const series = await getPlatformSeries(workspaceId, platform, from, to);
+  const totals = {
+    followers: series.length > 0 ? series[series.length - 1].followers : 0,
+    impressions: series.reduce((acc, x) => acc + x.impressions, 0),
+    likes: series.reduce((acc, x) => acc + x.likes, 0),
+    comments: series.reduce((acc, x) => acc + x.comments, 0),
+    shares: series.reduce((acc, x) => acc + x.shares, 0),
+    clicks: series.reduce((acc, x) => acc + x.clicks, 0),
+    engagementRate:
+      series.length > 0
+        ? series.reduce((acc, x) => acc + x.engagementRate, 0) / series.length
+        : 0,
+    postsPublished: 0,
+  };
+
+  if (adminDb) {
+    try {
+      const posts = await adminDb
+        .collection(`workspaces/${workspaceId}/posts`)
+        .where("status", "==", "published")
+        .where("platforms", "array-contains", platform)
+        .where("publishedAt", ">=", from)
+        .where("publishedAt", "<=", to)
+        .get();
+      totals.postsPublished = posts.size;
+    } catch {
+      // index may not be present yet; treat as 0 — UI shows "0 posts"
+    }
+  }
+
+  return {
+    accountId,
+    platform,
+    from: from.toISOString(),
+    to: to.toISOString(),
+    totals,
+    series,
+  };
 }
 
 function enumerateDays(from: Date, to: Date): Date[] {

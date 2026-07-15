@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   Users, Eye, BarChart3, ChevronDown, ChevronRight, Calendar, RefreshCw,
@@ -89,7 +89,15 @@ function toPlatform(key: string): Platform {
     case "threads": return "threads";
     case "pinterest": return "pinterest";
     case "linkedin": return "linkedin";
-    default: return "bluesky";
+    case "google_business":
+    case "reddit":
+    case "discord":
+    case "telegram":
+    default:
+      // UI doesn't have a dedicated card for these yet — fall back to bluesky
+      // so the avatar still renders. They'll appear with the same accent but
+      // display a generic state until we add per-platform detail views.
+      return "bluesky";
   }
 }
 
@@ -843,11 +851,76 @@ const PLATFORM_ANALYTICS: Record<Platform, PlatformAnalyticsConfig> = {
 // ============================================================
 // Per-account view
 // ============================================================
+interface PerAccountAnalytics {
+  accountId: string;
+  platform: Platform;
+  from: string;
+  to: string;
+  totals: {
+    followers: number;
+    impressions: number;
+    likes: number;
+    comments: number;
+    shares: number;
+    clicks: number;
+    engagementRate: number;
+    postsPublished: number;
+  };
+  series: { date: string; followers: number; engagementRate: number; impressions: number; likes: number; comments: number; shares: number; clicks: number }[];
+}
+
+function fmt(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toLocaleString();
+}
+
+function fmtPct(n: number): string {
+  return `${n.toFixed(2)}%`;
+}
+
+function fmtDateShort(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 function PerAccountView({ accountId, accounts }: { accountId: string; accounts: AccountSummary[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const [period, setPeriod] = useState<Period>("7d");
   const [exporting, setExporting] = useState(false);
+  const [analytics, setAnalytics] = useState<PerAccountAnalytics | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fetchNonce, setFetchNonce] = useState(0);
+
+  const fetchAnalytics = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const range = periodToRange(period);
+      const url = `/api/analytics/account/${encodeURIComponent(accountId)}?from=${encodeURIComponent(range.from.toISOString())}&to=${encodeURIComponent(range.to.toISOString())}`;
+      const res = await fetch(url, { cache: "no-store", headers: getOverrideHeaders() });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        setError(body || `Analytics request failed (${res.status})`);
+        setAnalytics(null);
+        return;
+      }
+      const data = await res.json();
+      setAnalytics(data.analytics as PerAccountAnalytics);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Network error");
+      setAnalytics(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [accountId, period]);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [fetchAnalytics, fetchNonce]);
 
   const handleAnalyticsExport = async () => {
     setExporting(true);
@@ -901,9 +974,59 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
     );
   }
 
-  const data = PLATFORM_ANALYTICS[account.platform];
-  const dates = ["Jul 7", "Jul 7", "Jul 7", "Jul 8", "Jul 8"];
   const accent = PLATFORM_ACCENT[account.platform];
+  const range = periodToRange(period);
+  const dayCount = Math.max(1, Math.round((range.to.getTime() - range.from.getTime()) / (24 * 60 * 60 * 1000)));
+  const tickDates: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    const t = new Date(range.to.getTime() - ((4 - i) * (range.to.getTime() - range.from.getTime())) / 4);
+    tickDates.push(fmtDateShort(t.toISOString()));
+  }
+
+  // Build the per-platform header / metrics / trend shape from the API response.
+  const totals = analytics?.totals;
+  const series = analytics?.series ?? [];
+  const followersSeries = series.map((p) => p.followers);
+  const viewsSeries = series.map((p) => p.impressions);
+  const engagementSeries = series.map((p) => p.engagementRate);
+  const interactionsSeries = series.map((p) => p.likes + p.comments + p.shares + p.clicks);
+
+  const isCollecting = !analytics || series.length < dayCount;
+  const isEmpty = !analytics || (totals && totals.followers === 0 && totals.impressions === 0 && totals.likes === 0);
+
+  const data = {
+    headerMetrics: totals
+      ? [
+          { value: fmt(totals.followers), label: "Followers", color: accent.color, icon: <Users className="size-4 text-white" /> },
+          { value: fmt(totals.postsPublished), label: "Posts", color: "#3b82f6", icon: <MessageCircle className="size-4 text-white" /> },
+          { value: fmt(totals.impressions), label: "Impressions", color: "#a855f7", icon: <Eye className="size-4 text-white" /> },
+        ]
+      : [],
+    metrics: totals
+      ? [
+          { label: "VIEWS", value: fmt(totals.impressions), sub: "Total impressions", color: "indigo" as MetricColor, icon: "eye" as MetricIcon },
+          { label: "LIKES", value: fmt(totals.likes), sub: "Total likes", color: "red" as MetricColor, icon: "heart" as MetricIcon },
+          { label: "COMMENTS", value: fmt(totals.comments), sub: "Total comments", color: "purple" as MetricColor, icon: "message" as MetricIcon },
+          { label: "SHARES", value: fmt(totals.shares), sub: "Total shares", color: "green" as MetricColor, icon: "share" as MetricIcon },
+          { label: "CLICKS", value: fmt(totals.clicks), sub: "Total clicks", color: "amber" as MetricColor, icon: "click" as MetricIcon },
+          { label: "ENGAGEMENT", value: fmtPct(totals.engagementRate), sub: "Avg rate", color: "orange" as MetricColor, icon: "trending" as MetricIcon },
+        ]
+      : [],
+    trends: {
+      followers: { data: followersSeries, color: "#3b82f6", collecting: isCollecting },
+      views: { data: viewsSeries, color: "#8b5cf6", collecting: isCollecting },
+      engagement: { data: engagementSeries, color: "#f97316", collecting: isCollecting },
+      interactions: { data: interactionsSeries, color: "#10b981", collecting: isCollecting },
+    },
+    updatedAt: analytics?.to ? new Date(analytics.to).toLocaleString() : "—",
+    updatedRelative: analytics?.to ? "just now" : "—",
+    table: {
+      title: "Post Performance",
+      count: `${totals?.postsPublished ?? 0} posts`,
+      columns: ["Post", "Date", "Impressions", "Likes", "Comments", "Shares", "Clicks", "Eng. Rate"],
+      rows: [] as { thumb: string; col1: string; col2: string; values: (string | number)[] }[],
+    },
+  };
 
   if (account.isError) {
     return (
@@ -912,6 +1035,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
           currentId={accountId}
           onSelect={(id) => router.push(`${pathname}?accountId=${id}`)}
           accounts={accounts}
+          onSync={() => setFetchNonce((n) => n + 1)}
         />
         <AnalyticsErrorState message={account.errorMessage || "Analytics are not available for this account."} />
       </div>
@@ -924,6 +1048,8 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
         currentId={accountId}
         onSelect={(id) => router.push(`${pathname}?accountId=${id}`)}
         accounts={accounts}
+        syncing={loading}
+        onSync={() => setFetchNonce((n) => n + 1)}
         rightExtra={
           <button
             type="button"
@@ -935,6 +1061,20 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
           </button>
         }
       />
+
+      {error ? (
+        <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-900">
+          <span className="size-1.5 mt-1.5 rounded-full bg-rose-500 shrink-0" />
+          <span>Failed to load analytics: {error}</span>
+        </div>
+      ) : null}
+
+      {isEmpty && !error ? (
+        <div className="rounded-xl border border-zinc-200 bg-white p-8 text-center text-zinc-500 text-sm">
+          <p className="font-medium text-zinc-700 mb-1">No analytics data yet for this account.</p>
+          <p>Once posts are published, daily metrics will appear here within 24 hours.</p>
+        </div>
+      ) : null}
 
       {/* ===== ACCOUNT HEADER CARD ===== */}
       <div className={`rounded-xl border border-zinc-200 bg-white border-l-4 ${accent.leftClass} shadow-sm p-4 md:p-5`}>
@@ -980,18 +1120,10 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
       <div className="flex flex-wrap items-center justify-between text-[13px]">
         <div className="inline-flex items-center gap-1.5 text-zinc-500">
           <Calendar className="size-3.5" />
-          Last updated: {data.updatedAt} <span className="text-zinc-400">({data.updatedRelative})</span>
+          Range: {fmtDateShort(range.from.toISOString())} – {fmtDateShort(range.to.toISOString())} <span className="text-zinc-400">({dayCount} days)</span>
         </div>
         <TimezoneDropdown />
       </div>
-
-      {/* ===== BANNER (X only) ===== */}
-      {data.banner ? (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
-          <span className="size-1.5 mt-1.5 rounded-full bg-amber-500 shrink-0" />
-          <span>{data.banner}</span>
-        </div>
-      ) : null}
 
       {/* ===== METRIC CARDS ===== */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -1024,34 +1156,25 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
             <p className="text-[12px] text-zinc-500 mb-1">Followers</p>
             <MiniTrend data={data.trends.followers.data} color={data.trends.followers.color} collecting={data.trends.followers.collecting} />
             <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
-              {dates.map((d, i) => <span key={i}>{d}</span>)}
+              {tickDates.map((d, i) => <span key={i}>{d}</span>)}
             </div>
           </div>
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-[12px] text-zinc-500">Views</p>
-              {data.trends.views.change && <span className="text-[11px] text-rose-600 font-medium">{data.trends.views.change}</span>}
-            </div>
+            <p className="text-[12px] text-zinc-500 mb-1">Impressions</p>
             <MiniTrend data={data.trends.views.data} color={data.trends.views.color} collecting={data.trends.views.collecting} />
             <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
-              {dates.map((d, i) => <span key={i}>{d}</span>)}
+              {tickDates.map((d, i) => <span key={i}>{d}</span>)}
             </div>
           </div>
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-[12px] text-zinc-500">Engagement Rate</p>
-              {data.trends.engagement.change && <span className="text-[11px] text-rose-600 font-medium">{data.trends.engagement.change}</span>}
-            </div>
+            <p className="text-[12px] text-zinc-500 mb-1">Engagement Rate</p>
             <MiniTrend data={data.trends.engagement.data} color={data.trends.engagement.color} collecting={data.trends.engagement.collecting} />
             <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
-              {dates.map((d, i) => <span key={i}>{d}</span>)}
+              {tickDates.map((d, i) => <span key={i}>{d}</span>)}
             </div>
           </div>
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-[12px] text-zinc-500">Interactions</p>
-              {data.trends.interactions.change && <span className="text-[11px] text-rose-600 font-medium">{data.trends.interactions.change}</span>}
-            </div>
+            <p className="text-[12px] text-zinc-500 mb-1">Interactions</p>
             <MiniTrend data={data.trends.interactions.data} color={data.trends.interactions.color} collecting={data.trends.interactions.collecting} />
             <div className="flex items-center justify-center gap-3 mt-1 text-[10px]">
               <span className="text-orange-600">← Comments</span>
@@ -1083,33 +1206,32 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {data.table.rows.map((row, i) => (
-                <tr key={i} className="hover:bg-zinc-50/50">
-                  <td className="px-3 py-2">
-                    <div className="size-10 rounded bg-gradient-to-br from-zinc-300 to-zinc-500 flex items-center justify-center text-white font-semibold text-sm">
-                      {row.thumb}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 max-w-xs">
-                    <p className="text-zinc-900 line-clamp-2 text-[13px]">{row.col1}</p>
-                  </td>
-                  <td className="px-3 py-2 text-[12px] text-zinc-500 whitespace-nowrap">{row.col2}</td>
-                  {row.values.map((v, vi) => (
-                    <td key={vi} className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
-                      {vi === row.values.length - 1 && data.table.columns.includes("Eng. Rate") ? (
-                        <span className="text-orange-600 font-medium">{v}</span>
-                      ) : (
-                        v
-                      )}
-                    </td>
-                  ))}
-                  <td className="px-3 py-2 text-right">
-                    <button type="button" className="text-zinc-400 hover:text-zinc-700" aria-label="Row actions">
-                      <MoreHorizontal className="size-4" />
-                    </button>
+              {data.table.rows.length === 0 ? (
+                <tr>
+                  <td colSpan={data.table.columns.length} className="px-3 py-8 text-center text-[12px] text-zinc-500">
+                    Post-level metrics will appear here once individual post data is ingested.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                data.table.rows.map((row, i) => (
+                  <tr key={i} className="hover:bg-zinc-50/50">
+                    <td className="px-3 py-2">
+                      <div className="size-10 rounded bg-gradient-to-br from-zinc-300 to-zinc-500 flex items-center justify-center text-white font-semibold text-sm">
+                        {row.thumb}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 max-w-xs">
+                      <p className="text-zinc-900 line-clamp-2 text-[13px]">{row.col1}</p>
+                    </td>
+                    <td className="px-3 py-2 text-[12px] text-zinc-500 whitespace-nowrap">{row.col2}</td>
+                    {row.values.map((v, vi) => (
+                      <td key={vi} className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                        {v}
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -1126,24 +1248,32 @@ function PageHeader({
   onSelect,
   accounts,
   rightExtra,
+  onSync,
+  syncing,
 }: {
   currentId: string;
   onSelect: (id: string) => void;
   accounts: AccountSummary[];
   rightExtra?: React.ReactNode;
+  onSync?: () => void;
+  syncing?: boolean;
 }) {
   return (
     <>
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <h1 className="text-[30px] font-bold leading-[36px] text-zinc-900">Analytics</h1>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 px-3 h-8 text-[12px] font-medium text-zinc-700 hover:bg-zinc-50"
-          >
-            <RefreshCw className="size-3.5" />
-            Sync Now
-          </button>
+          {onSync ? (
+            <button
+              type="button"
+              onClick={onSync}
+              disabled={syncing}
+              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 px-3 h-8 text-[12px] font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              <RefreshCw className={`size-3.5 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "Syncing…" : "Sync Now"}
+            </button>
+          ) : null}
         </div>
         <div className="ml-auto flex items-center gap-2">
           {rightExtra}

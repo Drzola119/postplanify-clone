@@ -20,7 +20,9 @@ type PlatformKey =
   | "pinterest"
   | "linkedin"
   | "google_business"
-  | "reddit";
+  | "reddit"
+  | "discord"
+  | "telegram";
 
 interface UploadPostAccount {
   display_name?: string;
@@ -72,6 +74,10 @@ const SUPPORTED: PlatformKey[] = [
   "threads",
   "pinterest",
   "linkedin",
+  "google_business",
+  "reddit",
+  "discord",
+  "telegram",
 ];
 
 function flatten(profile: UploadPostProfile | null): ConnectedAccountDTO[] {

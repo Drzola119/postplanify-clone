@@ -134,6 +134,7 @@ export default function PublishHistoryPage() {
   });
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -168,7 +169,7 @@ export default function PublishHistoryPage() {
     return () => {
       cancelled = true;
     };
-  }, [rangePreset, statusFilter, platformFilter]);
+  }, [rangePreset, statusFilter, platformFilter, reloadKey]);
 
   const filteredPosts = useMemo(() => {
     let list = posts;
@@ -188,11 +189,38 @@ export default function PublishHistoryPage() {
     return URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   }, [filteredPosts]);
 
-  function handleRetry(_post: PostRow) {
-    // Placeholder: retry would re-queue via /api/posts/[id]/reschedule. The
-    // current PATCH route requires scheduledAt — a deeper retry flow is
-    // deferred to the Command Center feature.
-    window.alert("Retry from history is wiring up next. Use the Posting Queue for now.");
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [retryError, setRetryError] = useState<string | null>(null);
+
+  async function handleRetry(post: PostRow) {
+    if (retryingId) return;
+    setRetryingId(post.id);
+    setRetryError(null);
+    try {
+      const res = await fetch(`/api/posts/scheduled/${encodeURIComponent(post.id)}/retry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getOverrideHeaders() },
+        credentials: "include",
+        body: JSON.stringify({ clearReason: true }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setRetryError(body.error ?? `Retry failed (${res.status})`);
+        return;
+      }
+      // Optimistically remove the failure reason — the post is now re-queued
+      // for the worker to pick up. Reload the full list so stats reflect the
+      // new state.
+      setPosts((prev) =>
+        prev.map((p) => (p.id === post.id ? { ...p, failureReason: undefined } : p))
+      );
+      // Trigger a reload by toggling a re-render via the data fetch effect.
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setRetryError(e instanceof Error ? e.message : "Network error");
+    } finally {
+      setRetryingId(null);
+    }
   }
 
   function handleDownloadCsv() {
@@ -210,6 +238,21 @@ export default function PublishHistoryPage() {
         title="Publish history"
         subtitle="See what got published and what failed. Audit outcomes, retry failures, and export the log."
       />
+
+      {retryError ? (
+        <div className="mb-4 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-900">
+          <XCircle className="size-3.5 mt-0.5 shrink-0" />
+          <span>Retry failed: {retryError}</span>
+          <button
+            type="button"
+            onClick={() => setRetryError(null)}
+            className="ml-auto text-rose-700 hover:text-rose-900"
+            aria-label="Dismiss error"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -389,9 +432,11 @@ export default function PublishHistoryPage() {
                           <button
                             type="button"
                             onClick={() => handleRetry(p)}
-                            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md bg-red-500 hover:bg-red-600 text-white text-xs font-medium"
+                            disabled={retryingId === p.id}
+                            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md bg-red-500 hover:bg-red-600 text-white text-xs font-medium disabled:opacity-50"
                             title="Retry publishing"
                           >
+                            {retryingId === p.id ? <Loader2 className="size-3 animate-spin" /> : null}
                             Retry
                           </button>
                         ) : null}
