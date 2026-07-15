@@ -23,7 +23,12 @@ def main() -> int:
         def on_response(resp):
             if "/api/" in resp.url:
                 try:
-                    api_results.append({"url": resp.url, "status": resp.status})
+                    text = resp.text() if resp.status != 204 else ""
+                    api_results.append({
+                        "url": resp.url, 
+                        "status": resp.status,
+                        "body": text[:300]
+                    })
                 except Exception:
                     pass
 
@@ -57,11 +62,11 @@ def main() -> int:
             print(f"    {r['status']} {r['url']}")
         print(f"\n  Sample 401s:")
         for r in auth_apis[:5]:
-            print(f"    {r['status']} {r['url']}")
+            print(f"    {r['status']} {r['url']} -> {r['body']}")
         if other_apis:
             print(f"\n  Sample others:")
             for r in other_apis[:5]:
-                print(f"    {r['status']} {r['url']}")
+                print(f"    {r['status']} {r['url']} -> {r['body']}")
 
         ctx.close()
     return 0
