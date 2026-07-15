@@ -233,6 +233,7 @@ export default function CreatePostPage() {
 
   // Set true while the publish API call is in flight.
   const [submitting, setSubmitting] = useState(false);
+  const [firstComments, setFirstComments] = useState<Record<string, string>>({});
 
   const selectedPlatforms = useMemo(
     () => PLATFORMS.filter((p) => selected.has(p.id)),
@@ -246,9 +247,16 @@ export default function CreatePostPage() {
 
   // Media kind for the advanced options panel (Feature 1).
   // Empty state → "text"; mixed media → prefers video for the rules.
-  const composerMediaKind: MediaKind = mediaItems.length === 0
-    ? "text"
-    : mediaItems.every((m) => m.kind === "image")
+  const composerMediaKind: MediaKind =
+    composerMode === "carousel"
+      ? (carouselItems.every((c) => c.kind === "image") ? "image" : "video")
+      : composerMode === "trial_reel"
+      ? "video"
+      : composerMode === "document"
+      ? "image"
+      : mediaItems.length === 0
+      ? "text"
+      : mediaItems.every((m) => m.kind === "image")
       ? "image"
       : "video";
 
@@ -262,21 +270,43 @@ export default function CreatePostPage() {
 
   // Live readiness report for the publishability gate (Feature 2).
   const readinessReport = useMemo(
-    () =>
-      checkRequirements(Array.from(selected), {
+    () => {
+      const mediaList =
+        composerMode === "carousel"
+          ? carouselItems.map((c) => ({
+              kind: c.kind,
+              mimeType: c.kind === "video" ? "video/mp4" : "image/jpeg",
+              sizeBytes: c.file.size,
+            }))
+          : composerMode === "trial_reel" && trialReelFile
+          ? [{
+              kind: "video" as const,
+              mimeType: "video/mp4",
+              sizeBytes: trialReelFile.file.size,
+            }]
+          : composerMode === "document" && documentFile
+          ? [{
+              kind: "image" as const,
+              mimeType: "image/jpeg",
+              sizeBytes: documentFile.file.size,
+            }]
+          : mediaItems.map((m) => ({
+              kind: m.kind,
+              mimeType: m.kind === "image" ? "image/jpeg" : "video/mp4",
+              sizeBytes: m.size,
+            }));
+
+      return checkRequirements(Array.from(selected), {
         captionByPlatform: Object.fromEntries(
           Array.from(selected).map((p) => [p, captionFor(p)])
         ) as Record<PlatformId, string>,
-        media: mediaItems.map((m) => ({
-          kind: m.kind,
-          mimeType: m.kind === "image" ? "image/jpeg" : "video/mp4",
-          sizeBytes: m.size,
-        })),
+        media: mediaList,
         advancedByPlatform,
         composerMediaKind,
-      }),
+      });
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [captions, mediaItems, advancedByPlatform, selected, composerMediaKind]
+    [captions, mediaItems, carouselItems, trialReelFile, documentFile, advancedByPlatform, selected, composerMediaKind, composerMode]
   );
 
   function toggleAccount(id: PlatformId) {
@@ -319,6 +349,7 @@ export default function CreatePostPage() {
     setTrialMode("TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED");
     setDocumentFile(null);
     setDocumentTitle("");
+    setFirstComments({});
     toast({ title: "Reset", description: "Composer cleared", tone: "info" });
   }
 
@@ -335,6 +366,7 @@ export default function CreatePostPage() {
       tagUsers,
       selected: Array.from(selected),
       collaborators,
+      firstComment: sameForAll ? (firstComments.__all ?? "") : (firstComments[Array.from(selected)[0] ?? PLATFORMS[0].id] ?? ""),
       mediaItems: mediaItems.map((m) => ({
         kind: m.kind,
         cdnUrl: m.cdnUrl,
@@ -378,22 +410,72 @@ export default function CreatePostPage() {
       toast({ title: "Caption is empty", tone: "warning" });
       return;
     }
-    const readyMedia = mediaItems.filter((m) => m.cdnUrl);
-    if (readyMedia.length === 0) {
-      toast({ title: "Upload at least one media file", tone: "warning" });
-      return;
+
+    let readyMediaUrls: string[] = [];
+    if (composerMode === "standard") {
+      const readyMedia = mediaItems.filter((m) => m.cdnUrl);
+      if (readyMedia.length === 0) {
+        toast({ title: "Upload at least one media file", tone: "warning" });
+        return;
+      }
+      readyMediaUrls = readyMedia.map((m) => m.cdnUrl!);
+    } else if (composerMode === "carousel") {
+      const readyCarousel = carouselItems.filter((c) => c.cdnUrl);
+      if (readyCarousel.length < 2) {
+        toast({ title: "Upload at least 2 files for carousel", tone: "warning" });
+        return;
+      }
+      readyMediaUrls = readyCarousel.map((c) => c.cdnUrl!);
+    } else if (composerMode === "trial_reel") {
+      if (!trialReelFile || !trialReelFile.cdnUrl) {
+        toast({ title: "Upload a trial reel video", tone: "warning" });
+        return;
+      }
+      readyMediaUrls = [trialReelFile.cdnUrl];
+    } else if (composerMode === "document") {
+      if (!documentFile || !documentFile.cdnUrl) {
+        toast({ title: "Upload a document file", tone: "warning" });
+        return;
+      }
+      if (!documentTitle.trim()) {
+        toast({ title: "Document title is required", tone: "warning" });
+        return;
+      }
+      readyMediaUrls = [documentFile.cdnUrl];
     }
+
+    const firstCommentText = sameForAll
+      ? (firstComments.__all ?? "")
+      : (firstComments[platforms[0] ?? PLATFORMS[0].id] ?? "");
+
     setSubmitting(true);
     try {
-      // Build per-platform advanced options payload. When sameForAll is
-      // on we replicate the first platform's options across the rest so
-      // the publisher receives the same flags for every target.
       const platformOptions = sameForAll
         ? Object.fromEntries(
-            platforms.map((p) => [p, getAdvancedOptions(platforms[0])])
+            platforms.map((p) => {
+              const opts = { ...getAdvancedOptions(platforms[0]) };
+              if (composerMode === "document" && p === "linkedin") {
+                opts.linkedin_document_title = documentTitle;
+              }
+              if (composerMode === "trial_reel" && p === "instagram") {
+                opts.instagram_media_type = "REELS";
+                opts.instagram_share_mode = trialMode;
+              }
+              return [p, opts];
+            })
           )
         : Object.fromEntries(
-            platforms.map((p) => [p, getAdvancedOptions(p)])
+            platforms.map((p) => {
+              const opts = { ...getAdvancedOptions(p) };
+              if (composerMode === "document" && p === "linkedin") {
+                opts.linkedin_document_title = documentTitle;
+              }
+              if (composerMode === "trial_reel" && p === "instagram") {
+                opts.instagram_media_type = "REELS";
+                opts.instagram_share_mode = trialMode;
+              }
+              return [p, opts];
+            })
           );
 
       const res = await fetch("/api/posts/publish", {
@@ -405,9 +487,11 @@ export default function CreatePostPage() {
         body: JSON.stringify({
           platforms,
           caption,
-          mediaUrls: readyMedia.map((m) => m.cdnUrl),
+          mediaUrls: readyMediaUrls,
           scheduledAt: scheduledAt ? scheduledAt.toISOString() : null,
           advancedByPlatform: platformOptions,
+          firstComment: firstCommentText.trim() || undefined,
+          mediaType: composerMode,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -577,6 +661,184 @@ export default function CreatePostPage() {
     });
   }
 
+  async function handleCarouselFiles(files: File[]) {
+    const remaining = Math.max(0, 10 - carouselItems.length);
+    const accepted = files.slice(0, remaining);
+    const built: CarouselItem[] = accepted.map((file) => {
+      const previewUrl = URL.createObjectURL(file);
+      const kind = file.type.startsWith("video/") ? "video" : "image";
+      return {
+        id: `carousel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        file,
+        previewUrl,
+        kind,
+        uploadStatus: "uploading",
+        uploadProgress: 0,
+      };
+    });
+
+    if (built.length === 0) return;
+    setCarouselItems((prev) => [...prev, ...built]);
+
+    toast({
+      title: `${built.length} file${built.length > 1 ? "s" : ""} added to carousel`,
+      description: "Uploading to Bunny CDN…",
+      tone: "info",
+    });
+
+    // Upload in parallel
+    await Promise.all(
+      built.map(async (item) => {
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+          progress = Math.min(90, progress + 10);
+          setCarouselItems((prev) =>
+            prev.map((c) => (c.id === item.id ? { ...c, uploadProgress: progress } : c))
+          );
+        }, 300);
+
+        try {
+          const fd = new FormData();
+          fd.append("file", item.file);
+          fd.append("folder", "posts");
+          const res = await fetch("/api/media/upload", {
+            method: "POST",
+            body: fd,
+            headers: getOverrideHeaders(),
+          });
+          const data = (await res.json().catch(() => ({}))) as {
+            ok?: boolean;
+            url?: string;
+            storedPath?: string;
+            error?: string;
+          };
+          clearInterval(progressInterval);
+          if (!res.ok || !data.ok || !data.url) {
+            throw new Error(data.error ?? `HTTP ${res.status}`);
+          }
+          setCarouselItems((prev) =>
+            prev.map((c) =>
+              c.id === item.id
+                ? { ...c, cdnUrl: data.url, uploadStatus: "ready", uploadProgress: 100 }
+                : c
+            )
+          );
+        } catch (err) {
+          clearInterval(progressInterval);
+          setCarouselItems((prev) =>
+            prev.map((c) =>
+              c.id === item.id ? { ...c, uploadStatus: "error" } : c
+            )
+          );
+        }
+      })
+    );
+  }
+
+  async function handleTrialReelFile(file: File) {
+    const previewUrl = URL.createObjectURL(file);
+    const item: TrialReelFile = {
+      file,
+      previewUrl,
+      uploadStatus: "uploading",
+      uploadProgress: 0,
+    };
+    setTrialReelFile(item);
+
+    toast({
+      title: "Reel added",
+      description: "Uploading video to Bunny CDN…",
+      tone: "info",
+    });
+
+    let progress = 0;
+    const progressInterval = setInterval(() => {
+      progress = Math.min(90, progress + 8);
+      setTrialReelFile((prev) => (prev ? { ...prev, uploadProgress: progress } : null));
+    }, 400);
+
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("folder", "posts");
+      const res = await fetch("/api/media/upload", {
+        method: "POST",
+        body: fd,
+        headers: getOverrideHeaders(),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        url?: string;
+        storedPath?: string;
+        error?: string;
+      };
+      clearInterval(progressInterval);
+      if (!res.ok || !data.ok || !data.url) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      setTrialReelFile({
+        ...item,
+        cdnUrl: data.url,
+        uploadStatus: "ready",
+        uploadProgress: 100,
+      });
+    } catch (err) {
+      clearInterval(progressInterval);
+      setTrialReelFile((prev) => (prev ? { ...prev, uploadStatus: "error" } : null));
+    }
+  }
+
+  async function handleDocumentFile(file: File) {
+    const item: DocumentFile = {
+      file,
+      uploadStatus: "uploading",
+      uploadProgress: 0,
+    };
+    setDocumentFile(item);
+
+    toast({
+      title: "Document added",
+      description: "Uploading document to Bunny CDN…",
+      tone: "info",
+    });
+
+    let progress = 0;
+    const progressInterval = setInterval(() => {
+      progress = Math.min(90, progress + 12);
+      setDocumentFile((prev) => (prev ? { ...prev, uploadProgress: progress } : null));
+    }, 250);
+
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("folder", "posts");
+      const res = await fetch("/api/media/upload", {
+        method: "POST",
+        body: fd,
+        headers: getOverrideHeaders(),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        url?: string;
+        storedPath?: string;
+        error?: string;
+      };
+      clearInterval(progressInterval);
+      if (!res.ok || !data.ok || !data.url) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      setDocumentFile({
+        ...item,
+        cdnUrl: data.url,
+        uploadStatus: "ready",
+        uploadProgress: 100,
+      });
+    } catch (err) {
+      clearInterval(progressInterval);
+      setDocumentFile((prev) => (prev ? { ...prev, uploadStatus: "error" } : null));
+    }
+  }
+
   async function handleGenerateCaptions(opts: {
     tone: string;
     includeHashtags: boolean;
@@ -699,8 +961,30 @@ export default function CreatePostPage() {
     setCaptions((prev) => ({ ...prev, [sameForAll ? "__all" : id]: v }));
   }
 
+  function firstCommentFor(id: PlatformId): string {
+    if (sameForAll) return firstComments.__all ?? "";
+    return firstComments[id] ?? "";
+  }
+
+  function setFirstCommentFor(id: PlatformId, v: string) {
+    setFirstComments((prev) => ({ ...prev, [sameForAll ? "__all" : id]: v }));
+  }
+
   function handleSameForAllChange(next: boolean) {
     setCaptions((prev) => {
+      if (next) {
+        const seed = prev.__all ?? prev[selectedPlatforms[0]?.id] ?? "";
+        return { ...prev, __all: seed };
+      }
+      const shared = prev.__all ?? "";
+      const nextState: Record<string, string> = { ...prev };
+      delete nextState.__all;
+      if (shared.length > 0) {
+        for (const p of selectedPlatforms) nextState[p.id] = shared;
+      }
+      return nextState;
+    });
+    setFirstComments((prev) => {
       if (next) {
         const seed = prev.__all ?? prev[selectedPlatforms[0]?.id] ?? "";
         return { ...prev, __all: seed };
@@ -718,6 +1002,9 @@ export default function CreatePostPage() {
 
   const hasAnyContent =
     mediaItems.length > 0 ||
+    carouselItems.length > 0 ||
+    !!trialReelFile ||
+    !!documentFile ||
     Object.values(captions).some((v) => v.trim().length > 0);
 
   return (
@@ -819,21 +1106,7 @@ export default function CreatePostPage() {
           ) : composerMode === "carousel" ? (
             <CarouselMediaCard
               items={carouselItems}
-              onAddFiles={async (files) => {
-                const newItems: CarouselItem[] = [];
-                for (const file of files) {
-                  if (carouselItems.length + newItems.length >= 10) break;
-                  const kind: "image" | "video" = file.type.startsWith("video/") ? "video" : "image";
-                  newItems.push({
-                    id: `carousel-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
-                    file,
-                    previewUrl: URL.createObjectURL(file),
-                    kind,
-                    uploadStatus: "pending",
-                  });
-                }
-                setCarouselItems((prev) => [...prev, ...newItems]);
-              }}
+              onAddFiles={handleCarouselFiles}
               onRemove={(id) => {
                 setCarouselItems((prev) => {
                   const item = prev.find((i) => i.id === id);
@@ -854,13 +1127,7 @@ export default function CreatePostPage() {
             <TrialReelCard
               videoFile={trialReelFile}
               trialMode={trialMode}
-              onVideoFile={(file) => {
-                setTrialReelFile({
-                  file,
-                  previewUrl: URL.createObjectURL(file),
-                  uploadStatus: "pending",
-                });
-              }}
+              onVideoFile={handleTrialReelFile}
               onRemoveVideo={() => {
                 if (trialReelFile) URL.revokeObjectURL(trialReelFile.previewUrl);
                 setTrialReelFile(null);
@@ -871,12 +1138,7 @@ export default function CreatePostPage() {
             <DocumentUploadCard
               docFile={documentFile}
               docTitle={documentTitle}
-              onDocFile={(file) => {
-                setDocumentFile({
-                  file,
-                  uploadStatus: "pending",
-                });
-              }}
+              onDocFile={handleDocumentFile}
               onRemoveDoc={() => setDocumentFile(null)}
               onTitleChange={setDocumentTitle}
             />
@@ -917,6 +1179,8 @@ export default function CreatePostPage() {
           onSameForAllChange={handleSameForAllChange}
           getCaption={captionFor}
           setCaption={setCaptionFor}
+          getFirstComment={firstCommentFor}
+          setFirstComment={setFirstCommentFor}
           onGenerate={() => setAiDialogOpen(true)}
           community={community}
           onCommunityChange={setCommunity}
@@ -1826,6 +2090,8 @@ interface CaptionsCardProps {
   onSameForAllChange: (b: boolean) => void;
   getCaption: (id: PlatformId) => string;
   setCaption: (id: PlatformId, v: string) => void;
+  getFirstComment: (id: PlatformId) => string;
+  setFirstComment: (id: PlatformId, v: string) => void;
   onGenerate: () => void;
   community: string;
   onCommunityChange: (v: string) => void;
@@ -1852,6 +2118,8 @@ function CaptionsCard({
   onSameForAllChange,
   getCaption,
   setCaption,
+  getFirstComment,
+  setFirstComment,
   onGenerate,
   community,
   onCommunityChange,
@@ -1969,6 +2237,8 @@ function CaptionsCard({
                 platform={{ ...platforms[0], charLimit: 2200, borderClass: "border-zinc-300", textClass: "text-zinc-700", name: "All platforms" }}
                 value={getCaption(platforms[0].id)}
                 onChange={(v) => setCaption(platforms[0].id, v)}
+                firstComment={getFirstComment(platforms[0].id)}
+                onFirstCommentChange={(v) => setFirstComment(platforms[0].id, v)}
                 hasVideo={hasVideo}
                 advancedOptions={getAdvancedOptions(platforms[0].id)}
                 onAdvancedOptionsChange={(next) => setAdvancedOptions(platforms[0].id, next)}
@@ -1981,6 +2251,8 @@ function CaptionsCard({
                 platform={platforms[0]}
                 value={getCaption(platforms[0].id)}
                 onChange={(v) => setCaption(platforms[0].id, v)}
+                firstComment={getFirstComment(platforms[0].id)}
+                onFirstCommentChange={(v) => setFirstComment(platforms[0].id, v)}
                 hasVideo={hasVideo}
                 community={community}
                 onCommunityChange={onCommunityChange}
@@ -2001,6 +2273,8 @@ function CaptionsCard({
                   platform={p}
                   value={getCaption(p.id)}
                   onChange={(v) => setCaption(p.id, v)}
+                  firstComment={getFirstComment(p.id)}
+                  onFirstCommentChange={(v) => setFirstComment(p.id, v)}
                   hasVideo={hasVideo}
                   community={community}
                   onCommunityChange={onCommunityChange}

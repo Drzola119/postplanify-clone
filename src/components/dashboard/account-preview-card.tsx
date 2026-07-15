@@ -25,6 +25,8 @@ interface AccountPreviewCardProps {
   platform: PlatformMeta;
   value: string;
   onChange: (v: string) => void;
+  firstComment?: string;
+  onFirstCommentChange?: (v: string) => void;
   hasVideo?: boolean;
   community?: string;
   onCommunityChange?: (v: string) => void;
@@ -44,6 +46,8 @@ export function AccountPreviewCard({
   platform,
   value,
   onChange,
+  firstComment,
+  onFirstCommentChange,
   hasVideo,
   community,
   onCommunityChange,
@@ -54,6 +58,7 @@ export function AccountPreviewCard({
   mediaKind,
 }: AccountPreviewCardProps) {
   const [focused, setFocused] = useState(false);
+  const [showCommentInput, setShowCommentInput] = useState(() => !!firstComment);
   const counter = `${value.length}/${platform.charLimit}`;
   const pct = Math.min(100, (value.length / platform.charLimit) * 100);
   const hasText = value.trim().length > 0;
@@ -116,12 +121,18 @@ export function AccountPreviewCard({
           />
           <ActionButton icon={<Tag className="size-3.5" />} title="Hashtag" />
           {showComment ? (
-            <ActionButton
-              icon={<Plus className="size-3.5" />}
-              title="Comment"
-              label={platform.id === "threads" ? "Thread / Comment" : "Comment"}
-              disabled={!hasText}
-            />
+            <button
+              type="button"
+              onClick={() => setShowCommentInput((prev) => !prev)}
+              title="First comment"
+              className={cn(
+                "inline-flex items-center gap-1 size-7 justify-center rounded-md transition-colors hover:bg-zinc-100 text-zinc-600 px-2 w-auto",
+                showCommentInput && "bg-zinc-100 text-zinc-950 font-semibold"
+              )}
+            >
+              <Plus className="size-3.5" />
+              <span>{platform.id === "threads" ? "Thread / Comment" : "Comment"}</span>
+            </button>
           ) : null}
           {showMention ? (
             <ActionButton
@@ -157,6 +168,19 @@ export function AccountPreviewCard({
       {platform.id === "twitter" && onQuoteTweetChange ? (
         <div className="px-3 py-3 border-t bg-zinc-50/30 flex-shrink-0">
           <QuoteTweetInput value={quoteTweet ?? ""} onChange={onQuoteTweetChange} />
+        </div>
+      ) : null}
+      {showCommentInput && onFirstCommentChange ? (
+        <div className="px-3 py-3 border-t bg-zinc-50/30 flex-shrink-0 space-y-1">
+          <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide">
+            First Comment
+          </label>
+          <textarea
+            value={firstComment ?? ""}
+            onChange={(e) => onFirstCommentChange(e.target.value)}
+            placeholder="Write the first comment to auto-post..."
+            className="w-full min-h-[60px] max-h-[120px] rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950/20 focus:border-zinc-950/30 transition-colors resize-y font-normal text-zinc-800"
+          />
         </div>
       ) : null}
       {onAdvancedOptionsChange && advancedOptions && mediaKind ? (

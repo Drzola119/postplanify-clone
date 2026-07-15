@@ -21,6 +21,7 @@ interface PublishPayload {
   firstComment?: string;
   quoteTweetUrl?: string;
   community?: string;
+  mediaType?: string;
   /** Per-platform advanced options keyed by platform id. */
   advancedByPlatform?: Record<string, Record<string, string | number | boolean | string[] | undefined>>;
 }
@@ -97,6 +98,8 @@ export async function POST(request: Request) {
     mediaUrls: body.mediaUrls,
     scheduledAt: body.scheduledAt ?? null,
     advancedByPlatform: body.advancedByPlatform ?? {},
+    firstComment: body.firstComment,
+    mediaType: body.mediaType,
   };
 
   try {

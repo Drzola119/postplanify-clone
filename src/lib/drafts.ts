@@ -41,6 +41,7 @@ export interface DraftRecord {
   activeMedia: number;
   customCoverUrl: string | null;
   frameCoverUrl: string | null;
+  firstComment?: string;
   workspaceId?: string;
 }
 
