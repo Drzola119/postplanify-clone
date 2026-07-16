@@ -33,6 +33,15 @@ const log = createLogger("inbox/events");
 const MAX_BODY_BYTES = 64 * 1024; // 64 KB — events are tiny
 
 export async function POST(request: NextRequest) {
+  // Auth first — we never read or validate the body until the
+  // workspace webhook key has been verified. This prevents unauth'd
+  // callers from probing the request schema via 400s.
+  const supplied = request.headers.get("x-workspace-webhook-key")?.trim()
+    ?? request.headers.get("x-webhook-secret")?.trim();
+  if (!supplied) {
+    return jsonError(401, "Missing X-Workspace-Webhook-Key header");
+  }
+
   const raw = await readBodyWithLimit(request, MAX_BODY_BYTES);
   if (raw instanceof Response) return raw;
 
@@ -41,13 +50,6 @@ export async function POST(request: NextRequest) {
     return jsonError(400, "Invalid event payload", parsed.error?.issues);
   }
   const evt = parsed.data;
-
-  // Auth: pick a candidate secret (per-webhook or workspace fallback).
-  const supplied = request.headers.get("x-workspace-webhook-key")?.trim()
-    ?? request.headers.get("x-webhook-secret")?.trim();
-  if (!supplied) {
-    return jsonError(401, "Missing X-Workspace-Webhook-Key header");
-  }
 
   const secretOk = await verifyWorkspaceSecret(evt.workspaceId, supplied);
   if (!secretOk) {
