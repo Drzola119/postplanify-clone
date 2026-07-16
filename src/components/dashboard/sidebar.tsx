@@ -34,6 +34,7 @@ import {
   Wand2,
   Palette,
   Send,
+  Sparkles,
 } from "lucide-react";
 import { ACTIVE_WORKSPACE_STORAGE_KEY } from "@/lib/security/storage-keys";
 import { cn } from "@/lib/utils";
@@ -75,6 +76,7 @@ const MAIN: NavItem[] = [
   { label: "Reports", href: "/dashboard/reports", icon: FileBarChart },
   { label: "Social Inbox", href: "/dashboard/inbox", icon: Inbox },
   { label: "Media Library", href: "/dashboard/assets", icon: ImageIcon },
+  { label: "Infographics", href: "/dashboard/infographics", icon: Sparkles },
 ];
 
 const CONFIG: NavItem[] = [

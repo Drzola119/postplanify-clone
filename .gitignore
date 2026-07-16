@@ -45,6 +45,7 @@ next-env.d.ts
 # Testing & Coverage
 coverage/
 .nyc_output/
+test-output/
 
 # Misc
 *.bak

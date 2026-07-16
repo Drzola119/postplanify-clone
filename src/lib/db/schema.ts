@@ -169,6 +169,44 @@ export interface ApiKeyDoc {
   revokedAt?: Date;
 }
 
+export interface ImageGenProviderKeyDoc {
+  provider: "gemini-flash-lite-image" | "gpt-image-2" | "ideogram-4" | "gemini-flash-image";
+  encryptedToken: string;
+  /** Last 4 chars of the key, for UI display. Never the full key. */
+  last4: string;
+  createdAt: Date;
+  lastUsedAt?: Date;
+}
+
+export interface ImageGenLogDoc {
+  workspaceId: string;
+  uid: string;
+  provider: "gemini-flash-lite-image" | "gpt-image-2" | "ideogram-4" | "gemini-flash-image";
+  model: string;
+  /** Resolved key source — controls how cost is attributed. */
+  keySource: "byok" | "platform" | "override";
+  /** USD cost estimated for this generation. */
+  costUsd: number;
+  /** Aspect ratio key the user requested. */
+  aspectRatio: string;
+  /** Tool that triggered the generation. */
+  tool?: "instant" | "ads";
+  /** Infographic style id used (for analytics). */
+  styleId?: string;
+  /** Wall-clock ms the successful provider took. */
+  durationMs: number;
+  /** Image dimensions. */
+  width?: number;
+  height?: number;
+  /** Width of the input prompt in characters (for usage telemetry). */
+  promptChars?: number;
+  /** True when the router fell back from the user's first-choice provider. */
+  fellBack: boolean;
+  /** Provider the user originally asked for (when fellBack = true). */
+  requestedProvider?: string;
+  createdAt: Date;
+}
+
 export interface CommentDoc {
   /** Platform-side id (e.g. Twitter comment id). Used for dedup on event ingestion. */
   externalId?: string;

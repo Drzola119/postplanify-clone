@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Copy, Plus, Eye, EyeOff, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { ImageGenKeysSection } from "@/components/dashboard/image-gen-keys-section";
 
 interface ApiKeyRow {
   id: string;
@@ -156,6 +157,8 @@ export default function ApiKeysPage() {
           ))}
         </div>
       )}
+
+      <ImageGenKeysSection />
     </div>
   );
 }
