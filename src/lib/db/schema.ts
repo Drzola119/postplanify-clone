@@ -9,8 +9,27 @@ import "server-only";
  * per-collection modules.
  */
 
-export type PostStatus = "draft" | "queued" | "scheduled" | "publishing" | "published" | "failed" | "archived" | "paused";
-export type PlatformId = "bluesky" | "instagram" | "tiktok" | "youtube" | "pinterest" | "twitter" | "linkedin" | "threads" | "facebook";
+export type PostStatus = "draft" | "queued" | "scheduled" | "publishing" | "published" | "partially_published" | "failed" | "archived" | "paused";
+/**
+ * Platform identifiers used throughout trustiify. Includes the 9 most
+ * common platforms surfaced in the composer UI plus 3 extras (discord,
+ * telegram, google_business) supported via upload-post.com. Engine uses
+ * "x" instead of "twitter"; trustiify PlatformId keeps "twitter" for
+ * UI consistency. Engine-client translates at the boundary.
+ */
+export type PlatformId =
+  | "bluesky"
+  | "instagram"
+  | "tiktok"
+  | "youtube"
+  | "pinterest"
+  | "twitter"
+  | "linkedin"
+  | "threads"
+  | "facebook"
+  | "discord"
+  | "telegram"
+  | "google_business";
 
 export type BoostStatus = "draft" | "active" | "completed" | "paused";
 
@@ -48,9 +67,29 @@ export interface PostDoc {
   claimedAt?: Date;
   failureReason?: string;
   boostConfig?: BoostConfig;
+  /**
+   * Per-platform delivery results populated when a post is published via
+   * the AI outpainting flow. Each entry records the platform-specific
+   * upload-post.com post id and status. The aggregate PostDoc.status
+   * reflects the overall outcome (published only when ALL platforms
+   * succeeded; partially_published otherwise).
+   */
+  perPlatformResults?: Record<string, PerPlatformResult>;
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date;
+}
+
+export interface PerPlatformResult {
+  status: "delivered" | "failed" | "pending";
+  /** upload-post.com post id, null when status is failed. */
+  postId: string | null;
+  /** Public CDN URL of the variant that was delivered to this platform. */
+  mediaUrl?: string | null;
+  /** ISO timestamp of the successful delivery, null otherwise. */
+  deliveredAt?: string | null;
+  /** Error code/message when status is failed. */
+  error?: { code?: string; message: string } | null;
 }
 
 export interface DraftDoc {

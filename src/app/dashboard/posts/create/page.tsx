@@ -27,7 +27,9 @@ import {
 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 import { PLATFORMS, type PlatformId } from "@/lib/platforms";
+import { needsOutpainting } from "@/lib/images/platform-ratios";
 import { loadDraft, saveDraft, newDraftId, type DraftRecord } from "@/lib/drafts";
 import {
   type PlatformAdvancedOptions,
@@ -92,6 +94,7 @@ const MAX_FILES = 10;
 
 export default function CreatePostPage() {
   const { toast, dismiss } = useToast();
+  const { getIdToken } = useAuth();
 
   // Detect ?draft=<id> from /dashboard/posts/drafts → Continue button.
   // Restore the full draft state (media metadata, per-platform captions, accounts,
@@ -233,6 +236,11 @@ export default function CreatePostPage() {
 
   // Set true while the publish API call is in flight.
   const [submitting, setSubmitting] = useState(false);
+  // Outpainting pipeline phase (image → per-platform variants → per-platform publish).
+  // "idle" when the standard single-shot publish is used.
+  const [outpaintPhase, setOutpaintPhase] = useState<
+    "idle" | "generating" | "delivering"
+  >("idle");
   const [firstComments, setFirstComments] = useState<Record<string, string>>({});
 
   const selectedPlatforms = useMemo(
@@ -448,8 +456,39 @@ export default function CreatePostPage() {
       ? (firstComments.__all ?? "")
       : (firstComments[platforms[0] ?? PLATFORMS[0].id] ?? "");
 
+    // ── Outpainting branch (image only, standard mode, multi-ratio) ─────
+    // When the user uploads a single image to multiple platforms that
+    // span different ratios (e.g. Instagram 4:5 + LinkedIn 1:1 + X 16:9),
+    // the source image must be AI-outpainted into per-ratio variants
+    // before publishing. The engine generates variants; trustiify then
+    // publishes each variant to its platform(s) under the workspace's own
+    // upload-post.com profile.
+    const canOutpaint =
+      composerMode === "standard" &&
+      composerMediaKind === "image" &&
+      readyMediaUrls.length === 1 &&
+      needsOutpainting(platforms);
+
     setSubmitting(true);
     try {
+      if (canOutpaint) {
+        const outpaintResult = await runOutpaintAndDeliver({
+          sourceMediaUrl: readyMediaUrls[0]!,
+          platforms,
+          caption,
+          firstComment: firstCommentText.trim() || undefined,
+          scheduledAt,
+          mediaType: composerMode,
+        });
+        if (!outpaintResult.ok) {
+          // Error toast already shown inside the helper.
+          return;
+        }
+        if (!scheduledAt) startOver();
+        return;
+      }
+
+      // ── Standard single-shot publish (video / carousel / single-ratio) ─
       const platformOptions = sameForAll
         ? Object.fromEntries(
             platforms.map((p) => {
@@ -523,7 +562,279 @@ export default function CreatePostPage() {
       });
     } finally {
       setSubmitting(false);
+      setOutpaintPhase("idle");
     }
+  }
+
+  /**
+   * Run the outpaint pipeline for one source image:
+   * 1. Forward the source image to /api/images/outpaint (which proxies to
+   *    the adsify engine with the caller's Firebase ID token).
+   * 2. Poll /api/images/outpaint/[jobId] every 2s, max 120s, until the
+   *    engine reports all variants complete.
+   * 3. POST to /api/images/deliver with the jobId; that route downloads
+   *    each variant from the engine CDN and uploads it to upload-post.com
+   *    per-platform under the workspace's own API key + profile username.
+   */
+  async function runOutpaintAndDeliver(args: {
+    sourceMediaUrl: string;
+    platforms: string[];
+    caption: string;
+    firstComment?: string;
+    scheduledAt: Date | null;
+    mediaType: string;
+  }): Promise<{ ok: boolean; postId?: string; results?: unknown[] }> {
+    const {
+      sourceMediaUrl,
+      platforms,
+      caption,
+      firstComment,
+      scheduledAt,
+      mediaType,
+    } = args;
+
+    const idToken = await getIdToken();
+    if (!idToken) {
+      toast({
+        title: "Sign in required",
+        description: "We couldn't refresh your session. Please reload and try again.",
+        tone: "error",
+      });
+      return { ok: false };
+    }
+
+    // ── Step 1: download source image into a File ─────────────────────
+    let sourceFile: File;
+    try {
+      sourceFile = await fetchAsFile(
+        sourceMediaUrl,
+        `source_${Date.now()}.jpg`,
+        "image/jpeg"
+      );
+    } catch (err) {
+      toast({
+        title: "Couldn't read source image",
+        description: err instanceof Error ? err.message : "Download failed",
+        tone: "error",
+      });
+      return { ok: false };
+    }
+
+    // ── Step 2: start outpaint job ─────────────────────────────────────
+    setOutpaintPhase("generating");
+    let jobId: string;
+    let totalVariants: number | undefined;
+    try {
+      const form = new FormData();
+      form.append("image", sourceFile, sourceFile.name);
+      form.append("platforms", JSON.stringify(platforms));
+      const startRes = await fetch("/api/images/outpaint", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          ...getOverrideHeaders(),
+        },
+        body: form,
+      });
+      const startData = (await startRes.json().catch(() => ({}))) as {
+        jobId?: string;
+        estimatedVariants?: number;
+        error?: string;
+      };
+      if (!startRes.ok || !startData.jobId) {
+        toast({
+          title: "Couldn't start AI variants",
+          description: startData.error ?? `HTTP ${startRes.status}`,
+          tone: "error",
+        });
+        return { ok: false };
+      }
+      jobId = startData.jobId;
+      totalVariants = startData.estimatedVariants;
+    } catch (err) {
+      toast({
+        title: "Couldn't start AI variants",
+        description: err instanceof Error ? err.message : "Network error",
+        tone: "error",
+      });
+      return { ok: false };
+    }
+
+    const generateToastId = toast({
+      title: "Generating platform variants…",
+      description: totalVariants
+        ? `Engine is creating ${totalVariants} variants. This usually takes 20–60 seconds.`
+        : "Engine is creating platform variants. This usually takes 20–60 seconds.",
+      tone: "info",
+    });
+
+    // ── Step 3: poll until complete (or timeout) ───────────────────────
+    const POLL_INTERVAL_MS = 2_000;
+    const POLL_TIMEOUT_MS = 120_000;
+    const pollDeadline = Date.now() + POLL_TIMEOUT_MS;
+    let lastVariantsCount = 0;
+    let pollResult: { status: string; variants?: Array<{ status: string; ratioKey?: string }> } | null =
+      null;
+
+    while (Date.now() < pollDeadline) {
+      await sleep(POLL_INTERVAL_MS);
+      let pollRes: Response;
+      try {
+        pollRes = await fetch(`/api/images/outpaint/${encodeURIComponent(jobId)}`, {
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+            ...getOverrideHeaders(),
+          },
+        });
+      } catch {
+        continue;
+      }
+      const pollData = (await pollRes.json().catch(() => ({}))) as {
+        status?: string;
+        variants?: Array<{ status: string; ratioKey?: string }>;
+        error?: string;
+      };
+      if (!pollRes.ok) {
+        // 404 = engine forgot the job (server restart); abort.
+        if (pollRes.status === 404) {
+          dismiss(generateToastId);
+          toast({
+            title: "Engine job lost",
+            description: "The engine restarted mid-generation. Please try again.",
+            tone: "error",
+          });
+          return { ok: false };
+        }
+        continue;
+      }
+      pollResult = {
+        status: pollData.status ?? "unknown",
+        variants: pollData.variants,
+      };
+      lastVariantsCount = (pollData.variants ?? []).filter(
+        (v) => v.status === "complete"
+      ).length;
+      const status = pollData.status;
+      if (status === "complete" || status === "delivered") break;
+      if (status === "failed" || status === "generation_failed") {
+        dismiss(generateToastId);
+        toast({
+          title: "AI variant generation failed",
+          description: pollData.error ?? "The engine couldn't complete all variants.",
+          tone: "error",
+        });
+        return { ok: false };
+      }
+    }
+
+    if (!pollResult || pollResult.status !== "complete") {
+      dismiss(generateToastId);
+      toast({
+        title: "AI variants took too long",
+        description: "We waited 2 minutes. Please try again with fewer platforms.",
+        tone: "error",
+      });
+      return { ok: false };
+    }
+    dismiss(generateToastId);
+
+    // ── Step 4: deliver per platform via upload-post.com ──────────────
+    setOutpaintPhase("delivering");
+    const deliverToastId = toast({
+      title: "Publishing to selected platforms…",
+      description: `Sending ${lastVariantsCount} variant${
+        lastVariantsCount === 1 ? "" : "s"
+      } to ${platforms.length} account${platforms.length === 1 ? "" : "s"}.`,
+      tone: "info",
+    });
+
+    let deliverData: {
+      ok?: boolean;
+      postId?: string;
+      status?: string;
+      totals?: { total: number; succeeded: number; failed: number };
+      results?: Array<{
+        platform: string;
+        status: string;
+        error?: { message: string } | null;
+      }>;
+      error?: string;
+    };
+    try {
+      const deliverRes = await fetch("/api/images/deliver", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+          ...getOverrideHeaders(),
+        },
+        body: JSON.stringify({
+          jobId,
+          caption,
+          hashtags: extractHashtags(caption),
+          scheduledAt: scheduledAt ? scheduledAt.toISOString() : null,
+          firstComment,
+          mediaType,
+          sourceMediaUrl,
+        }),
+      });
+      deliverData = (await deliverRes.json().catch(() => ({}))) as typeof deliverData;
+      if (!deliverRes.ok || !deliverData.ok) {
+        dismiss(deliverToastId);
+        toast({
+          title: scheduledAt ? "Schedule failed" : "Publish failed",
+          description:
+            deliverData.error ??
+            (deliverData.totals
+              ? `${deliverData.totals.failed}/${deliverData.totals.total} platforms failed`
+              : `HTTP ${deliverRes.status}`),
+          tone: "error",
+        });
+        return { ok: false };
+      }
+    } catch (err) {
+      dismiss(deliverToastId);
+      toast({
+        title: scheduledAt ? "Schedule failed" : "Publish failed",
+        description: err instanceof Error ? err.message : "Network error",
+        tone: "error",
+      });
+      return { ok: false };
+    }
+    dismiss(deliverToastId);
+
+    const totals = deliverData.totals ?? { total: 0, succeeded: 0, failed: 0 };
+    const failedPlatforms = (deliverData.results ?? [])
+      .filter((r) => r.status === "failed")
+      .map((r) => `${r.platform}: ${r.error?.message ?? "unknown"}`)
+      .slice(0, 3);
+
+    if (totals.failed === 0) {
+      toast({
+        title: scheduledAt ? "Post scheduled" : "Post published",
+        description: `Sent to all ${totals.total} platform${
+          totals.total === 1 ? "" : "s"
+        } with AI-tailored variants.`,
+        tone: "success",
+      });
+    } else if (totals.succeeded > 0) {
+      toast({
+        title: "Partially published",
+        description: `${totals.succeeded}/${totals.total} platforms succeeded. ${
+          failedPlatforms[0] ?? ""
+        }`,
+        tone: "warning",
+      });
+    } else {
+      toast({
+        title: "Publish failed",
+        description: failedPlatforms[0] ?? "All platforms failed",
+        tone: "error",
+      });
+      return { ok: false };
+    }
+
+    return { ok: true, postId: deliverData.postId, results: deliverData.results };
   }
 
   async function handleExternalImport(items: ImportedFile[]) {
@@ -1803,6 +2114,57 @@ function readImageSize(url: string): Promise<{ w: number; h: number }> {
     img.onerror = () => resolve({ w: 0, h: 0 });
     img.src = url;
   });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Fetch a remote image URL and return it as a File so it can be appended
+ * to a multipart/form-data request (the engine expects a real file field).
+ */
+async function fetchAsFile(
+  url: string,
+  fallbackName: string,
+  fallbackMime: string
+): Promise<File> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const blob = await res.blob();
+  const mime = blob.type || fallbackMime;
+  const name = guessFileName(url, fallbackName, mime);
+  return new File([blob], name, { type: mime });
+}
+
+function guessFileName(url: string, fallback: string, mime: string): string {
+  try {
+    const u = new URL(url);
+    const last = u.pathname.split("/").pop();
+    if (last && /\.[a-z0-9]{2,5}$/i.test(last)) return last;
+  } catch {
+    /* not a valid URL — fall through */
+  }
+  const ext = mime.includes("png")
+    ? "png"
+    : mime.includes("webp")
+    ? "webp"
+    : mime.includes("gif")
+    ? "gif"
+    : "jpg";
+  return `${fallback.replace(/\.[^.]+$/, "")}.${ext}`;
+}
+
+/**
+ * Pull hashtags out of a caption. Matches the same split-on-whitespace
+ * logic that the deliver route uses, so the persisted hashtag list stays
+ * consistent with what the publisher actually attached.
+ */
+function extractHashtags(caption: string): string {
+  return caption
+    .split(/\s+/)
+    .filter((t) => t.startsWith("#") && t.length > 1)
+    .join(" ");
 }
 
 // =========================

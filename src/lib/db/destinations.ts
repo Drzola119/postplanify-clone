@@ -1,6 +1,6 @@
 import "server-only";
 import { adminDb } from "@/lib/db";
-import type { DestinationDoc } from "@/lib/db/schema";
+import type { DestinationDoc, PlatformId } from "@/lib/db/schema";
 
 const SERVER_TIMESTAMP = { _methodName: "serverTimestamp" } as const;
 
@@ -11,7 +11,7 @@ function collection(workspaceId: string) {
 
 export interface DestinationItem {
   id: string;
-  platform: "bluesky" | "instagram" | "tiktok" | "youtube" | "pinterest" | "twitter" | "linkedin" | "threads" | "facebook" | "custom";
+  platform: PlatformId | "custom";
   type: "webhook" | "zapier" | "custom";
   url: string;
   active: boolean;

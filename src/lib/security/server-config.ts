@@ -120,4 +120,20 @@ export const resolvers = {
   sentryDsn(h: Headers): string | undefined {
     return resolveOptional("SENTRY_DSN", "x-sentry-dsn", h);
   },
+  /**
+   * Base URL of the adsify outpainting engine (Express service at
+   * C:\Users\zicko\Desktop\PROJECTS\adsify poster web app). The composer
+   * calls it via /api/images/outpaint to generate platform-ratio variants
+   * before publishing.
+   */
+  engineBaseUrl(h: Headers): string | undefined {
+    return resolveOptional("ADSIFY_ENGINE_URL", "x-engine-url", h);
+  },
+  /**
+   * Optional HMAC shared secret sent to the engine as
+   * `X-Engine-Api-Key` for additional auth beyond Firebase ID token.
+   */
+  engineApiKey(h: Headers): string | undefined {
+    return resolveOptional("ADSIFY_ENGINE_API_KEY", "x-engine-api-key", h);
+  },
 };

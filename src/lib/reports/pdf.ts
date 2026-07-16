@@ -13,6 +13,9 @@ const PLATFORM_LABELS: Record<PlatformId, string> = {
   threads: "Threads",
   pinterest: "Pinterest",
   bluesky: "Bluesky",
+  discord: "Discord",
+  telegram: "Telegram",
+  google_business: "Google Business",
 };
 
 export interface RenderReportPdfInput {
