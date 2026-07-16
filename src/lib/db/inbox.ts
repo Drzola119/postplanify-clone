@@ -7,6 +7,28 @@ import type {
   PlatformId,
 } from "@/lib/db/schema";
 
+/**
+ * Inbound event shape accepted by `upsertCommentFromEvent` and
+ * `appendMessageFromEvent`. Mirrors the validated Zod schema in
+ * src/lib/validation/inbox-events.ts but kept structurally
+ * compatible (no zod types leaking into the db layer).
+ */
+export interface InboxEventPayload {
+  workspaceId: string;
+  platform: PlatformId;
+  type: "comment" | "message";
+  postId?: string;
+  conversationId?: string;
+  externalId: string;
+  authorHandle: string;
+  authorName?: string;
+  body: string;
+  sentAt: string;
+  inReplyToId?: string;
+  direction?: "in" | "out";
+  metadata?: Record<string, unknown>;
+}
+
 const SERVER_TIMESTAMP = { _methodName: "serverTimestamp" } as const;
 
 function commentsCollection(workspaceId: string) {
@@ -36,8 +58,12 @@ export interface CommentItem {
   body: string;
   sentAt: string;
   sentiment?: "positive" | "neutral" | "negative";
+  intent?: "support" | "sales" | "feedback" | "spam" | "other";
+  topics?: string[];
   replied: boolean;
   replyId?: string;
+  /** Campaign id when the auto-responder sent the reply (UI uses this to badge). */
+  autoRepliedByCampaignId?: string;
 }
 
 export async function listComments(
@@ -186,6 +212,142 @@ export async function markConversationRead(
   await ref.update({ unreadCount: 0 });
 }
 
+/**
+ * Idempotent comment upsert keyed by `externalId`. n8n (and other
+ * sources) may replay events; we don't want duplicate comment rows
+ * for the same platform-side comment id.
+ *
+ * The dedup lookup uses a `where("externalId","==",...).limit(1)`
+ * query — fast because externalId is high-cardinality. When found
+ * we update mutable fields (sentiment, replied, metadata); when
+ * not found we create a fresh doc with replied: false.
+ *
+ * Returns the serialized CommentItem plus whether it was created
+ * vs updated.
+ */
+export async function upsertCommentFromEvent(
+  workspaceId: string,
+  payload: InboxEventPayload
+): Promise<{ comment: CommentItem; created: boolean }> {
+  const coll = commentsCollection(workspaceId);
+  const sentAt = parseSentAt(payload.sentAt);
+
+  const existing = await coll.where("externalId", "==", payload.externalId).limit(1).get();
+  if (existing.docs.length > 0) {
+    const doc = existing.docs[0];
+    const data = doc.data() as CommentDoc;
+    const updates: Record<string, unknown> = {};
+    if (payload.authorName && !data.authorHandle) updates.authorHandle = payload.authorHandle;
+    if (payload.body) updates.body = payload.body;
+    if (payload.metadata) updates.metadata = payload.metadata;
+    if (Object.keys(updates).length > 0) await coll.doc(doc.id).update(updates);
+    return {
+      comment: serializeComment(workspaceId, doc.id, { ...data, ...updates } as CommentDoc),
+      created: false,
+    };
+  }
+
+  const ref = coll.doc();
+  await ref.set({
+    externalId: payload.externalId,
+    platform: payload.platform,
+    postId: payload.postId,
+    authorHandle: payload.authorHandle,
+    authorName: payload.authorName,
+    body: payload.body,
+    sentAt,
+    direction: payload.direction,
+    inReplyToId: payload.inReplyToId,
+    metadata: payload.metadata,
+    replied: false,
+    analyzed: false,
+  });
+  return {
+    comment: {
+      id: ref.id,
+      workspaceId,
+      platform: payload.platform,
+      postId: payload.postId,
+      authorHandle: payload.authorHandle,
+      body: payload.body,
+      sentAt: toIso(sentAt),
+      sentiment: undefined,
+      replied: false,
+      replyId: undefined,
+    },
+    created: true,
+  };
+}
+
+/**
+ * Append a DM into a conversation. When `conversationId` is supplied
+ * we attach to that conversation; otherwise we look up an existing
+ * conversation for (platform, authorHandle) or create one.
+ *
+ * Returns the conversation id and the new message id.
+ */
+export async function appendMessageFromEvent(
+  workspaceId: string,
+  payload: InboxEventPayload
+): Promise<{ conversationId: string; messageId: string; created: boolean }> {
+  const coll = conversationsCollection(workspaceId);
+  let conversationId = payload.conversationId;
+  let created = false;
+
+  if (!conversationId) {
+    const existing = await coll.where("externalId", "==", payload.externalId).limit(1).get();
+    if (existing.docs.length > 0) {
+      conversationId = existing.docs[0].id;
+    } else {
+      const ref = coll.doc();
+      const sentAt = parseSentAt(payload.sentAt);
+      await ref.set({
+        externalId: payload.externalId,
+        platform: payload.platform,
+        participants: [payload.authorHandle],
+        lastMessageAt: sentAt,
+        unreadCount: payload.direction === "in" ? 1 : 0,
+        createdAt: SERVER_TIMESTAMP,
+      });
+      conversationId = ref.id;
+      created = true;
+    }
+  }
+
+  const msgRef = coll
+    .doc(conversationId)
+    .collection("messages")
+    .doc();
+  const sentAt = parseSentAt(payload.sentAt);
+  await msgRef.set({
+    externalId: payload.externalId,
+    fromHandle: payload.authorHandle,
+    authorName: payload.authorName,
+    body: payload.body,
+    sentAt,
+    direction: payload.direction,
+    inReplyToId: payload.inReplyToId,
+    metadata: payload.metadata,
+    analyzed: false,
+  });
+
+  // Bump conversation lastMessageAt + unreadCount.
+  const update: Record<string, unknown> = { lastMessageAt: sentAt };
+  if (payload.direction === "in") {
+    update.unreadCount = { _methodName: "increment", _operand: 1 };
+  } else {
+    update.unreadCount = 0;
+  }
+  await coll.doc(conversationId).update(update);
+
+  return { conversationId, messageId: msgRef.id, created };
+}
+
+function parseSentAt(raw: string): Date {
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? new Date() : d;
+}
+
 function serializeComment(workspaceId: string, id: string, data: CommentDoc): CommentItem {
   return {
     id,
@@ -196,8 +358,11 @@ function serializeComment(workspaceId: string, id: string, data: CommentDoc): Co
     body: data.body ?? "",
     sentAt: toIso(data.sentAt),
     sentiment: data.sentiment,
+    intent: data.intent,
+    topics: data.topics,
     replied: data.replied ?? false,
     replyId: data.replyId,
+    autoRepliedByCampaignId: data.autoRepliedByCampaignId,
   };
 }
 

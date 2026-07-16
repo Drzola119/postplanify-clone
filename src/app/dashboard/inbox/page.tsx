@@ -31,6 +31,7 @@ import {
   Clock,
   Sparkles,
   Download,
+  Wand2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toCsv, downloadCsv } from "@/lib/csv";
@@ -50,6 +51,7 @@ interface Comment {
   text: string;
   unread: boolean;
   platform: "instagram" | "twitter" | "tiktok" | "linkedin" | "facebook" | "threads" | "youtube" | "pinterest" | "bluesky";
+  autoRepliedByCampaignId?: string;
 }
 
 interface ApiComment {
@@ -61,6 +63,7 @@ interface ApiComment {
   sentAt?: string;
   sentiment?: Sentiment;
   replied?: boolean;
+  autoRepliedByCampaignId?: string;
 }
 
 interface Conversation {
@@ -220,6 +223,7 @@ export default function InboxPage() {
             text: c.body ?? "",
             unread: !c.replied,
             platform: (c.platform ?? "instagram") as Comment["platform"],
+            autoRepliedByCampaignId: c.autoRepliedByCampaignId,
           }));
           if (mapped.length > 0) setComments(mapped);
         }
@@ -671,6 +675,15 @@ function CommentRow({
           <span className={cn("text-sm", comment.unread ? "font-bold" : "font-semibold")}>{comment.author}</span>
           <span className="text-[11px] text-zinc-500">{comment.date}</span>
           <SentimentBadge sentiment={comment.sentiment} />
+          {comment.autoRepliedByCampaignId ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-violet-50 text-violet-700 px-2 py-0.5 text-[11px] font-medium"
+              title={`Auto-replied by campaign ${comment.autoRepliedByCampaignId}`}
+            >
+              <Wand2 className="size-3" />
+              auto-replied
+            </span>
+          ) : null}
         </div>
         <p className="text-sm text-zinc-700 truncate mt-0.5">{comment.text}</p>
       </div>

@@ -170,28 +170,49 @@ export interface ApiKeyDoc {
 }
 
 export interface CommentDoc {
+  /** Platform-side id (e.g. Twitter comment id). Used for dedup on event ingestion. */
+  externalId?: string;
   platform: PlatformId;
   postId?: string;
   authorHandle: string;
+  authorName?: string;
   body: string;
   sentAt: Date;
+  direction?: "in" | "out";
+  inReplyToId?: string;
+  metadata?: Record<string, unknown>;
   sentiment?: "positive" | "neutral" | "negative";
+  intent?: "support" | "sales" | "feedback" | "spam" | "other";
+  topics?: string[];
   replied?: boolean;
   replyId?: string;
+  /** Set when the auto-responder sends the reply, so the UI can badge it. */
+  autoRepliedByCampaignId?: string;
+  analyzed?: boolean;
 }
 
 export interface ConversationDoc {
+  /** Platform-side conversation id (DM thread). Used for dedup. */
+  externalId?: string;
   platform: PlatformId;
   participants: string[];
   lastMessageAt: Date;
   unreadCount: number;
+  createdAt?: Date;
 }
 
 export interface MessageDoc {
+  externalId?: string;
   fromHandle: string;
+  authorName?: string;
   body: string;
   sentAt: Date;
   direction: "in" | "out";
+  inReplyToId?: string;
+  metadata?: Record<string, unknown>;
+  /** Set when the auto-responder sends the reply. */
+  autoRepliedByCampaignId?: string;
+  analyzed?: boolean;
 }
 
 export interface DestinationDoc {

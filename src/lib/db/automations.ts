@@ -19,7 +19,7 @@ export interface AutoDmCampaignDoc {
   template: string;
   /** Cap sends per author per 24h to avoid spamming. */
   perAuthorPerDayCap?: number;
-  stats: { triggered: number; sent: number; lastTriggeredAt?: Date };
+  stats: { triggered: number; sent: number; skipped?: number; lastTriggeredAt?: Date };
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
@@ -36,6 +36,7 @@ export interface AutoDmCampaignItem {
   perAuthorPerDayCap?: number;
   triggered: number;
   sent: number;
+  skipped: number;
   lastTriggeredAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -128,10 +129,11 @@ export async function recordAutoDmTrigger(
   await adminDb!.runTransaction(async (tx: any) => {
     const t = tx as { get: (r: unknown) => Promise<{ data: () => unknown }>; update: (r: unknown, d: Record<string, unknown>) => void };
     const snap = await t.get(ref);
-    const cur = (snap.data() as AutoDmCampaignDoc | undefined)?.stats ?? { triggered: 0, sent: 0 };
+    const cur = (snap.data() as AutoDmCampaignDoc | undefined)?.stats ?? { triggered: 0, sent: 0, skipped: 0 };
     const next = {
       triggered: (cur.triggered ?? 0) + 1,
       sent: (cur.sent ?? 0) + (sent ? 1 : 0),
+      skipped: (cur.skipped ?? 0) + (sent ? 0 : 1),
       lastTriggeredAt: new Date(),
     };
     t.update(ref, { stats: next, updatedAt: SERVER_TIMESTAMP });
@@ -139,7 +141,7 @@ export async function recordAutoDmTrigger(
 }
 
 function serialize(workspaceId: string, id: string, data: AutoDmCampaignDoc): AutoDmCampaignItem {
-  const stats = data.stats ?? { triggered: 0, sent: 0 };
+  const stats = data.stats ?? { triggered: 0, sent: 0, skipped: 0 };
   return {
     id,
     workspaceId,
@@ -151,6 +153,7 @@ function serialize(workspaceId: string, id: string, data: AutoDmCampaignDoc): Au
     perAuthorPerDayCap: data.perAuthorPerDayCap,
     triggered: stats.triggered ?? 0,
     sent: stats.sent ?? 0,
+    skipped: stats.skipped ?? 0,
     lastTriggeredAt: stats.lastTriggeredAt ? toIso(stats.lastTriggeredAt) : undefined,
     createdAt: toIso(data.createdAt),
     updatedAt: toIso(data.updatedAt),

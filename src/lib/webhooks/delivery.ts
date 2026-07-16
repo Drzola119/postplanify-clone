@@ -1,5 +1,6 @@
 import "server-only";
 import { createHmac } from "node:crypto";
+import type { PlatformId } from "@/lib/db/schema";
 import { listWebhooks, markDelivered, getWebhookSecret } from "@/lib/db/webhooks";
 
 export interface DeliveryResult {
@@ -14,6 +15,29 @@ export interface WebhookPayload {
   event: string;
   workspaceId: string;
   data: Record<string, unknown>;
+}
+
+/**
+ * Outbound reply payload published to n8n (and any other subscribed
+ * webhook). n8n fans this out to the per-platform connector.
+ *
+ * Expected n8n workflow (documented in queue/automation-worker.ts):
+ *   - HTTP Webhook node receives this JSON
+ *   - Switch on `platform` to the right connector
+ *   - For "twitter"/"bluesky": call the platform's reply API
+ *   - For "instagram": call upload-post.com's comment-reply endpoint
+ *   - For facebook/threads: call Meta Graph API reply
+ *   - Return { "ok": true, "externalReplyId": "..." } on success
+ */
+export interface OutboundReplyPayload {
+  workspaceId: string;
+  platform: PlatformId;
+  type: "comment-reply" | "dm-reply";
+  originalExternalId: string;
+  authorHandle: string;
+  replyBody: string;
+  campaignId: string;
+  metadata?: Record<string, unknown>;
 }
 
 /** Sign the payload body with HMAC-SHA256 using the webhook's secret. */
@@ -83,4 +107,17 @@ export async function deliverWebhook(
       };
     })
   );
+}
+
+/**
+ * Send an outbound auto-reply via n8n. n8n fans out to the per-platform
+ * connector and returns { ok, externalReplyId }.
+ */
+export async function deliverInboxReply(
+  workspaceId: string,
+  reply: OutboundReplyPayload,
+  options: DeliverOptions = {},
+): Promise<DeliveryResult[]> {
+  const event = reply.type === "comment-reply" ? "inbox.reply" : "inbox.dm-reply";
+  return deliverWebhook(workspaceId, { event, workspaceId, data: reply as unknown as Record<string, unknown> }, options);
 }

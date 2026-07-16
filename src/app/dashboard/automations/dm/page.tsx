@@ -11,6 +11,7 @@ import {
   Wand2,
   ChevronRight,
   Zap,
+  SkipForward,
 } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -59,6 +60,7 @@ interface Campaign {
   perAuthorPerDayCap?: number;
   triggered: number;
   sent: number;
+  skipped: number;
   lastTriggeredAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -132,8 +134,9 @@ export default function AutoDmCampaignsPage() {
   const totals = useMemo(() => {
     const triggered = items.reduce((a, b) => a + b.triggered, 0);
     const sent = items.reduce((a, b) => a + b.sent, 0);
+    const skipped = items.reduce((a, b) => a + (b.skipped ?? 0), 0);
     const activeCount = items.filter((c) => c.status === "active").length;
-    return { triggered, sent, activeCount, totalCount: items.length };
+    return { triggered, sent, skipped, activeCount, totalCount: items.length };
   }, [items]);
 
   return (
@@ -152,7 +155,7 @@ export default function AutoDmCampaignsPage() {
         }
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-5">
         <StatCard
           label="Active"
           value={totals.activeCount}
@@ -173,6 +176,13 @@ export default function AutoDmCampaignsPage() {
           icon={<Send className="size-4" />}
           iconClassName="bg-violet-50 text-violet-700"
           footer="Confirmed deliveries"
+        />
+        <StatCard
+          label="Skipped"
+          value={totals.skipped}
+          icon={<SkipForward className="size-4" />}
+          iconClassName="bg-zinc-100 text-zinc-700"
+          footer="Caps, no webhook, errors"
         />
       </div>
 
@@ -264,7 +274,7 @@ function CampaignRow({
             “{campaign.template}”
           </p>
           <p className="mt-2 text-xs text-zinc-500">
-            {campaign.triggered} triggered · {campaign.sent} sent
+            {campaign.triggered} triggered · {campaign.sent} sent · {campaign.skipped ?? 0} skipped
             {campaign.lastTriggeredAt ? ` · last ${new Date(campaign.lastTriggeredAt).toLocaleString()}` : ""}
           </p>
         </div>
