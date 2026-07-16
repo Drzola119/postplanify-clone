@@ -15,6 +15,8 @@ interface OpenRouterChatResponse {
   choices?: Array<{
     message?: {
       content?: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
+      /** Gemini-style alternative: image returned as `message.images[]`. */
+      images?: Array<{ type?: string; image_url?: { url?: string } }>;
     };
   }>;
   usage?: { prompt_tokens?: number; completion_tokens?: number };
