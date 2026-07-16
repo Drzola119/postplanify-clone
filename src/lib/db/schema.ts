@@ -183,8 +183,8 @@ export interface ImageGenLogDoc {
   uid: string;
   provider: "gemini-flash-lite-image" | "gpt-image-2" | "ideogram-4" | "gemini-flash-image";
   model: string;
-  /** Resolved key source — controls how cost is attributed. */
-  keySource: "byok" | "platform" | "override";
+  /** Key source — always "platform"; all generations are platform-billed. */
+  keySource: "platform";
   /** USD cost estimated for this generation. */
   costUsd: number;
   /** Aspect ratio key the user requested. */
@@ -288,6 +288,18 @@ export interface WorkspaceDoc {
   plan: "free" | "pro" | "team" | "enterprise";
   settings: Record<string, unknown>;
   createdAt: Date;
+  /** Total successful AI infographic generations, never reset. */
+  imageGenUsedLifetime?: number;
+  /** Successful generations in the current `imageGenMonth` bucket. */
+  imageGenUsedThisMonth?: number;
+  /** YYYY-MM bucket the monthly counter is scoped to. */
+  imageGenMonth?: string;
+  /** Server timestamp of the most recent successful generation. */
+  imageGenLastUsedAt?: Date;
+  /** Provider that served the most recent generation. */
+  imageGenLastProvider?: string;
+  /** Estimated USD cost of the most recent generation. */
+  imageGenLastCostUsd?: number;
 }
 
 export interface LinkInBioDoc {

@@ -4,25 +4,20 @@ import { z } from "zod";
 /**
  * Validation schemas for the image-gen router surface.
  *
- * Per-provider keys live in workspaces/{workspaceId}/imageGenKeys with
- * one document per provider. The `provider` field is the doc id, and
- * the encrypted token plus last-4 hint are stored alongside.
+ * All generations are billed to the platform — there is no per-user
+ * (BYOK) override path. We charge clients through our own subscription
+ * / credit system; see src/lib/image-gen/usage.ts.
  */
 
-export const imageGenProviderSchema = z.enum([
+export const imageGenProviderIdSchema = z.enum([
   "gemini-flash-lite-image",
   "gpt-image-2",
   "ideogram-4",
   "gemini-flash-image",
 ]);
 
-export const saveImageGenKeySchema = z.object({
-  provider: imageGenProviderSchema,
-  apiKey: z.string().min(8).max(512),
-});
-
 export const imageGenRequestSchema = z.object({
-  provider: z.enum(["auto", ...imageGenProviderSchema.options]),
+  provider: z.enum(["auto", ...imageGenProviderIdSchema.options]),
   prompt: z.string().min(8).max(20_000).optional(),
   structuredPrompt: z.record(z.unknown()).optional(),
   aspectRatio: z.enum([
@@ -41,8 +36,6 @@ export const imageGenRequestSchema = z.object({
     "16x21",
     "1x2",
   ]),
-  /** Optional client-side BYOK override. Server strips it before logging. */
-  apiKeyOverride: z.string().min(8).max(512).optional(),
   colorScheme: z.enum(["light", "dark", "brand"]).optional(),
   context: z
     .object({
@@ -58,7 +51,6 @@ export const imageGenAdsRequestSchema = imageGenRequestSchema.extend({
   tool: z.literal("ads"),
   offerTitle: z.string().min(2).max(200),
   offerCopy: z.string().min(0).max(60_000),
-  /** Optional pre-scraped URL source (server may fill in offerCopy). */
   offerUrl: z.string().url().max(2048).optional(),
 });
 

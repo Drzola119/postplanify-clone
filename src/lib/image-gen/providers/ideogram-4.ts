@@ -7,6 +7,7 @@ import type {
   ProviderId,
 } from "../types";
 import { getAspectRatio, PROVIDER_PRICING } from "../types";
+import { enforceResolutionCap, platformApiKey } from "../resolution";
 
 /**
  * Ideogram 4 via Ideogram's hosted commercial API.
@@ -16,6 +17,16 @@ import { getAspectRatio, PROVIDER_PRICING } from "../types";
  * Auth: `Api-Key: <IDEOGRAM_API_KEY>` header. The hosted commercial tier
  * is required since we ship this as a paid platform feature; the
  * self-serve open-weights licence does NOT permit hosted use.
+ *
+ * Ideogram is the only provider we ship that may render up to 2K — the
+ * cap is enforced centrally by `enforceResolutionCap` (see
+ * `src/lib/image-gen/resolution.ts`). We never artificially downscale an
+ * Ideogram result; the user pays for 2K when they ask for it.
+ *
+ * `aspect_ratio` is sent as a string like `"16x9"`, matching Ideogram's
+ * documented v3 vocabulary. Sending an enum like `ASPECT_16_9` returns
+ * 400 — we verified the string form in the live response from
+ * `/v1/ideogram-v3/generate` in the production integration tests.
  *
  * Ideogram supports both free-text prompts AND structured JSON prompt
  * shapes. We prefer the JSON form when the caller supplies a
@@ -36,18 +47,25 @@ import { getAspectRatio, PROVIDER_PRICING } from "../types";
 const ENDPOINT = "https://api.ideogram.ai/v1/ideogram-v3/generate";
 const MODEL = "ideogram-v3";
 
-interface IdeogramAspectRatio {
-  value: string;
-}
-
-const IDEOGRAM_ASPECTS: Record<string, IdeogramAspectRatio> = {
-  "1x1": { value: "1x1" },
-  "4x5": { value: "4x5" },
-  "3x4": { value: "3x4" },
-  "2x3": { value: "2x3" },
-  "9x16": { value: "9x16" },
-  "16x9": { value: "16x9" },
-  "3x2": { value: "3x2" },
+/**
+ * Ideogram v3 `aspect_ratio` vocabulary, per the public API reference.
+ * "WxH" string form — not an enum.
+ */
+const IDEOGRAM_ASPECTS: Record<string, string> = {
+  "1x1": "1x1",
+  "4x5": "4x5",
+  "3x4": "3x4",
+  "2x3": "2x3",
+  "9x16": "9x16",
+  "16x9": "16x9",
+  "3x2": "3x2",
+  "5x4": "5x4",
+  "4x3": "4x3",
+  "7x5": "7x5",
+  "10x16": "10x16",
+  "16x21": "16x21",
+  "1x2": "1x2",
+  "21x9": "21x9",
 };
 
 interface IdeogramResponse {
@@ -61,7 +79,7 @@ interface IdeogramResponse {
  * in the Ideogram vocabulary.
  */
 function toIdeogramAspect(key: string): string {
-  return IDEOGRAM_ASPECTS[key]?.value ?? "1x1";
+  return IDEOGRAM_ASPECTS[key] ?? "1x1";
 }
 
 export class Ideogram4Provider implements ImageGenProvider {
@@ -69,13 +87,14 @@ export class Ideogram4Provider implements ImageGenProvider {
   readonly displayName = "Ideogram 4 (hosted)";
   readonly requiresStructuredPrompt = true;
 
-  constructor(private readonly apiKey: string) {
-    if (!apiKey) {
+  constructor() {
+    if (!platformApiKey(this.id)) {
       throw new Error("Ideogram 4 provider requires an Ideogram API key");
     }
   }
 
   async generate(input: GenerateInput): Promise<GenerateOutput> {
+    enforceResolutionCap(this.id, input.aspectRatio);
     const ratio = getAspectRatio(input.aspectRatio);
     const promptPayload = input.structuredPrompt ?? {
       subject: input.prompt,
@@ -102,7 +121,7 @@ export class Ideogram4Provider implements ImageGenProvider {
     const res = await fetch(ENDPOINT, {
       method: "POST",
       headers: {
-        "Api-Key": input.apiKeyOverride ?? this.apiKey,
+        "Api-Key": platformApiKey(this.id),
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),

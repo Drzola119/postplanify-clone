@@ -5,7 +5,8 @@ import { GeminiFlashImageProvider } from "./providers/openrouter-gemini-flash";
 import { GptImage2Provider } from "./providers/openai-gpt-image-2";
 import { Ideogram4Provider } from "./providers/ideogram-4";
 import { resolveFallbackChain } from "./fallback-chain";
-import { resolveImageGenKey } from "./key-resolver";
+import { platformApiKey, ImageGenResolutionError } from "./resolution";
+import { recordImageGenUsage } from "./usage";
 import { persistGeneratedImage } from "./asset-saver";
 import { logImageGeneration } from "./generation-log";
 import type { GenerateInput, GenerateOutput, ProviderId } from "./types";
@@ -28,10 +29,11 @@ export class ImageGenExhaustedError extends Error {
  * Generate one infographic image.
  *
  * Walks the fallback chain (or just the named provider if not "auto"),
- * trying each in order until one succeeds. On every attempt we resolve
- * the API key (override → BYOK → platform), instantiate the adapter,
- * and call it. Successful results are persisted to Bunny + Firestore and
- * logged for analytics.
+ * trying each in order until one succeeds. Every request is billed to the
+ * platform — we always use our own environment-variable API keys
+ * (OPENROUTER_API_KEY / OPENAI_API_KEY / IDEOGRAM_API_KEY), never a
+ * per-user key. Successful results are persisted to Bunny + Firestore,
+ * increment the workspace usage counter, and are logged for analytics.
  */
 export async function generateInfographic(
   input: GenerateInput & { uid: string; headers?: Headers }
@@ -45,18 +47,20 @@ export async function generateInfographic(
     const providerId = chain[i];
     const isFirstChoice = requested === providerId || (i === 0 && requested === undefined);
     try {
-      const resolved = await resolveImageGenKey({
-        workspaceId: input.workspaceId,
-        provider: providerId,
-        override: input.apiKeyOverride,
-      });
-
-      if (!resolved.apiKey) {
-        attempts.push({ provider: providerId, status: 0, message: "no API key configured" });
-        continue;
+      let apiKey: string;
+      try {
+        apiKey = platformApiKey(providerId);
+      } catch (keyErr) {
+        // Missing platform env var for this provider — skip it and try the
+        // next in the chain rather than aborting the whole request.
+        if (keyErr instanceof ImageGenResolutionError) {
+          attempts.push({ provider: providerId, status: 0, message: keyErr.message });
+          continue;
+        }
+        throw keyErr;
       }
 
-      const provider = instantiate(providerId, resolved.apiKey);
+      const provider = instantiate(providerId);
       const out = await provider.generate(input);
 
       // Persist to Bunny + Firestore.
@@ -79,18 +83,22 @@ export async function generateInfographic(
         fellBackFrom: isFirstChoice ? undefined : requested,
       };
 
-      // Best-effort analytics log. `resolved.source` is "missing" only when
-      // apiKey is null (we `continue` above), so we narrow it here.
-      const keySource: "byok" | "platform" | "override" =
-        resolved.source === "byok" || resolved.source === "platform" || resolved.source === "override"
-          ? resolved.source
-          : "platform";
+      // Increment the per-workspace usage counter so we can bill the client
+      // against their plan's included generations + overage. Fire-and-forget.
+      void recordImageGenUsage({
+        workspaceId: input.workspaceId,
+        uid: input.uid,
+        provider: providerId,
+        costUsd: out.costUsd,
+      });
+
+      // Best-effort analytics log. All generations are platform-billed.
       void logImageGeneration({
         workspaceId: input.workspaceId,
         uid: input.uid,
         provider: providerId,
         model: out.model,
-        keySource,
+        keySource: "platform",
         costUsd: out.costUsd,
         aspectRatio: input.aspectRatio,
         tool: input.context?.tool,
@@ -132,16 +140,16 @@ export async function generateInfographic(
   );
 }
 
-function instantiate(providerId: ProviderId, apiKey: string): ImageGenProvider {
+function instantiate(providerId: ProviderId): ImageGenProvider {
   switch (providerId) {
     case "gemini-flash-lite-image":
-      return new GeminiFlashLiteImageProvider(apiKey);
+      return new GeminiFlashLiteImageProvider();
     case "gemini-flash-image":
-      return new GeminiFlashImageProvider(apiKey);
+      return new GeminiFlashImageProvider();
     case "gpt-image-2":
-      return new GptImage2Provider(apiKey);
+      return new GptImage2Provider();
     case "ideogram-4":
-      return new Ideogram4Provider(apiKey);
+      return new Ideogram4Provider();
     default: {
       const exhaustive: never = providerId;
       throw new Error(`Unknown provider id: ${exhaustive as string}`);

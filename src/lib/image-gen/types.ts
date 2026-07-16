@@ -110,9 +110,13 @@ export const PROVIDER_PRICING: Record<ProviderId, ProviderPricing> = {
  * router. `prompt` is the plain-text prompt used by every provider; if the
  * caller also passes `structuredPrompt` (the JSON object shape used by
  * Ideogram) the router hands that to providers that need it instead.
+ *
+ * All generations are billed to the platform — there is no per-user BYOK
+ * override path. The router always reads `OPENROUTER_API_KEY`,
+ * `OPENAI_API_KEY`, or `IDEOGRAM_API_KEY` from the server environment.
  */
 export interface GenerateInput {
-  /** Workspace id (for cost logging and BYOK lookup). */
+  /** Workspace id (for usage counter + cost logging). */
   workspaceId: string;
   /** Provider requested. Use "auto" to walk the fallback chain. */
   provider: ProviderId | "auto";
@@ -122,12 +126,6 @@ export interface GenerateInput {
   structuredPrompt?: Record<string, unknown>;
   /** Aspect ratio of the output image. */
   aspectRatio: AspectRatioKey;
-  /**
-   * Optional user-supplied BYOK key. If present, the provider will use
-   * this key directly and skip the platform key + quota path.
-   * Never log or persist this value.
-   */
-  apiKeyOverride?: string;
   /**
    * Optional caller metadata propagated to the generation log so we can
    * attribute usage to specific tools, campaigns, or A/B buckets.

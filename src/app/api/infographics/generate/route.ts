@@ -22,13 +22,17 @@ const log = createLogger("infographics/generate");
  * POST /api/infographics/generate
  *
  * Wizard endpoint. The body shape depends on `tool`:
- *   - "instant": { tool, topic, prompt?, structuredPrompt?, provider, aspectRatio, colorScheme, styleId, footerCta?, apiKeyOverride? }
- *   - "ads":     { tool, offerTitle, offerCopy, offerUrl?, provider, aspectRatio, colorScheme, styleId, footerCta?, apiKeyOverride? }
+ *   - "instant": { tool, topic, prompt?, structuredPrompt?, provider, aspectRatio, colorScheme, styleId, footerCta? }
+ *   - "ads":     { tool, offerTitle, offerCopy, offerUrl?, provider, aspectRatio, colorScheme, styleId, footerCta? }
  *
  * `prompt` and `structuredPrompt` are accepted directly when the caller
  * wants to fully control them (e.g. the test script in scripts/test-image-gen.ts).
  * Otherwise the route builds them server-side from the structured inputs
  * via buildInfographicPrompt / buildAdsInfographicPrompt.
+ *
+ * All generations are billed to the platform — there is no per-user API
+ * key override. Clients pay for usage through our subscription/credit
+ * system; see src/lib/image-gen/usage.ts.
  */
 export async function POST(request: NextRequest) {
   const session = await requireSession();
@@ -117,7 +121,6 @@ export async function POST(request: NextRequest) {
       prompt,
       structuredPrompt,
       aspectRatio: body.aspectRatio,
-      apiKeyOverride: body.apiKeyOverride,
       context: {
         tool,
         styleId: style.id,

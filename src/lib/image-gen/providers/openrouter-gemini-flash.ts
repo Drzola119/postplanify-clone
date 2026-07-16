@@ -7,6 +7,11 @@ import type {
   ProviderId,
 } from "../types";
 import { getAspectRatio, PROVIDER_PRICING } from "../types";
+import {
+  enforceResolutionCap,
+  platformApiKey,
+  MAX_OUTPUT_TOKENS_IMAGE,
+} from "../resolution";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const MODEL = "google/gemini-2.5-flash-image";
@@ -32,22 +37,30 @@ export class GeminiFlashImageProvider implements ImageGenProvider {
   readonly displayName = "Gemini 2.5 Flash Image (OpenRouter)";
   readonly requiresStructuredPrompt = false;
 
-  constructor(private readonly apiKey: string) {
-    if (!apiKey) {
+  constructor() {
+    if (!platformApiKey(this.id)) {
       throw new Error("Gemini Flash Image provider requires an OpenRouter API key");
     }
   }
 
   async generate(input: GenerateInput): Promise<GenerateOutput> {
+    enforceResolutionCap(this.id, input.aspectRatio);
     const ratio = getAspectRatio(input.aspectRatio);
     const body = {
       model: MODEL,
       messages: [{ role: "user", content: [{ type: "text", text: input.prompt }] }],
       modalities: ["image", "text"],
+      // 1024px long edge (1K). The cap is enforced centrally by
+      // enforceResolutionCap() — if a caller asks for 2K we never reach
+      // this point.
       image_config: {
         aspect_ratio: input.aspectRatio.replace("x", ":"),
         image_size: "1K",
       },
+      // Token ceiling — Gemini burns ~1,290 output tokens per 1024×1024
+      // image. 2500 leaves headroom for any aspect ratio we ship without
+      // ever paying for a 2K-class render.
+      max_tokens: MAX_OUTPUT_TOKENS_IMAGE,
       provider: { order: ["google"] },
     };
 
@@ -55,7 +68,7 @@ export class GeminiFlashImageProvider implements ImageGenProvider {
     const res = await fetch(ENDPOINT, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${input.apiKeyOverride ?? this.apiKey}`,
+        Authorization: `Bearer ${platformApiKey(this.id)}`,
         "Content-Type": "application/json",
         "HTTP-Referer": "https://postplanify.com",
         "X-Title": "PostPlanify Infographic Generator",

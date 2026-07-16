@@ -7,6 +7,7 @@ import type {
   ProviderId,
 } from "../types";
 import { getAspectRatio, PROVIDER_PRICING } from "../types";
+import { enforceResolutionCap, platformApiKey } from "../resolution";
 
 const ENDPOINT = "https://api.openai.com/v1/images/generations";
 const MODEL = "gpt-image-2";
@@ -33,19 +34,27 @@ export class GptImage2Provider implements ImageGenProvider {
   readonly displayName = "GPT Image 2 (OpenAI)";
   readonly requiresStructuredPrompt = false;
 
-  constructor(private readonly apiKey: string) {
-    if (!apiKey) {
+  constructor() {
+    if (!platformApiKey(this.id)) {
       throw new Error("GPT Image 2 provider requires an OpenAI API key");
     }
   }
 
   async generate(input: GenerateInput): Promise<GenerateOutput> {
+    enforceResolutionCap(this.id, input.aspectRatio);
     const ratio = getAspectRatio(input.aspectRatio);
     const body = {
       model: MODEL,
       prompt: input.prompt,
       n: 1,
+      // OpenAI native WIDTHxHEIGHT format. Capped to 1K centrally —
+      // `enforceResolutionCap` throws before this point if a caller
+      // asks for 2K.
       size: `${ratio.width}x${ratio.height}`,
+      // `quality: "low"` is the only GPT Image 2 quality band that fits
+      // our per-image price ceiling at 1K. Without it, OpenAI defaults
+      // to "auto" which can promote to 2K and balloon cost.
+      quality: "low",
       response_format: "b64_json",
     };
 
@@ -53,7 +62,7 @@ export class GptImage2Provider implements ImageGenProvider {
     const res = await fetch(ENDPOINT, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${input.apiKeyOverride ?? this.apiKey}`,
+        Authorization: `Bearer ${platformApiKey(this.id)}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
