@@ -21,7 +21,7 @@ const TOOLS = [
     summary:
       "Type a topic and pick a layout. We render a finished, on-brand social infographic in one pass.",
     bullets: [
-      "8 original layouts — pathway, trade-off, timeline, iceberg, and more",
+      "30 viral layouts — roadmap, decision tree, mistakes, myth-vs-truth, before/after, and more",
       "Hook-first composition: bold headline, strong middle, save/share footer",
       "Three colour schemes — light, dark, brand",
     ],
@@ -36,7 +36,7 @@ const TOOLS = [
       "Paste a landing-page URL and we pull the offer copy for you, then render a scroll-stopping ad.",
     bullets: [
       "Server-side URL fetch — no extra browser extension required",
-      "Offer-snapshot, value-stack, transformation-path, and more layouts",
+      "20 ad layouts — offer snapshot, value stack, transformation path, audience fit, and more",
       "Footer CTA + offer title carry straight through to the image",
     ],
   },
