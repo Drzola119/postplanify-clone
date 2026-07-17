@@ -6,8 +6,14 @@ import type {
   ProviderError,
   ProviderId,
 } from "../types";
-import { getAspectRatio, PROVIDER_PRICING } from "../types";
-import { enforceResolutionCap, platformApiKey } from "../resolution";
+import { PROVIDER_PRICING } from "../types";
+import {
+  aspectDimensions,
+  aspectRatioToIdeogram,
+  enforceResolutionCap,
+  MAX_IDEOGRAM_EDGE_PX,
+  platformApiKey,
+} from "../resolution";
 
 /**
  * Ideogram 4 via Ideogram's hosted commercial API.
@@ -26,7 +32,8 @@ import { enforceResolutionCap, platformApiKey } from "../resolution";
  * `aspect_ratio` is sent as a string like `"16x9"`, matching Ideogram's
  * documented v3 vocabulary. Sending an enum like `ASPECT_16_9` returns
  * 400 — we verified the string form in the live response from
- * `/v1/ideogram-v3/generate` in the production integration tests.
+ * `/v1/ideogram-v3/generate` in the production integration tests. The
+ * conversion is centralised in `aspectRatioToIdeogram` (resolution.ts).
  *
  * Ideogram supports both free-text prompts AND structured JSON prompt
  * shapes. We prefer the JSON form when the caller supplies a
@@ -47,39 +54,9 @@ import { enforceResolutionCap, platformApiKey } from "../resolution";
 const ENDPOINT = "https://api.ideogram.ai/v1/ideogram-v3/generate";
 const MODEL = "ideogram-v3";
 
-/**
- * Ideogram v3 `aspect_ratio` vocabulary, per the public API reference.
- * "WxH" string form — not an enum.
- */
-const IDEOGRAM_ASPECTS: Record<string, string> = {
-  "1x1": "1x1",
-  "4x5": "4x5",
-  "3x4": "3x4",
-  "2x3": "2x3",
-  "9x16": "9x16",
-  "16x9": "16x9",
-  "3x2": "3x2",
-  "5x4": "5x4",
-  "4x3": "4x3",
-  "7x5": "7x5",
-  "10x16": "10x16",
-  "16x21": "16x21",
-  "1x2": "1x2",
-  "21x9": "21x9",
-};
-
 interface IdeogramResponse {
   data?: Array<{ url?: string; b64_json?: string }>;
   error?: { message?: string };
-}
-
-/**
- * Map our internal `AspectRatioKey` to the closest Ideogram ratio string.
- * Falls back to 1x1 if the caller asks for an exotic ratio we don't ship
- * in the Ideogram vocabulary.
- */
-function toIdeogramAspect(key: string): string {
-  return IDEOGRAM_ASPECTS[key] ?? "1x1";
 }
 
 export class Ideogram4Provider implements ImageGenProvider {
@@ -95,7 +72,7 @@ export class Ideogram4Provider implements ImageGenProvider {
 
   async generate(input: GenerateInput): Promise<GenerateOutput> {
     enforceResolutionCap(this.id, input.aspectRatio);
-    const ratio = getAspectRatio(input.aspectRatio);
+    const dims = aspectDimensions(input.aspectRatio, MAX_IDEOGRAM_EDGE_PX);
     const promptPayload = input.structuredPrompt ?? {
       subject: input.prompt,
       style: "flat-vector-infographic",
@@ -111,7 +88,7 @@ export class Ideogram4Provider implements ImageGenProvider {
     const body = {
       model: MODEL,
       prompt: JSON.stringify(promptPayload),
-      aspect_ratio: toIdeogramAspect(input.aspectRatio),
+      aspect_ratio: aspectRatioToIdeogram(input.aspectRatio),
       magic_prompt_option: "AUTO",
       style_type: "DESIGN",
       negative_prompt: "photo, photograph, person, face, hands, blurry, watermark",
@@ -170,8 +147,8 @@ export class Ideogram4Provider implements ImageGenProvider {
       durationMs: Date.now() - start,
       assetUrl: imageUrl,
       assetId: "",
-      width: ratio.width,
-      height: ratio.height,
+      width: dims.width,
+      height: dims.height,
     };
   }
 }

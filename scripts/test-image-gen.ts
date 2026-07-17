@@ -2,9 +2,10 @@
  * Provider-comparison test for the AI Infographic Generator.
  *
  * Calls each of the four providers behind the `generateInfographic`
- * router with the SAME prompt + aspect ratio + colour scheme, so we can
- * eyeball which engine best fits the use case and confirm pricing
- * assumptions. Also runs an Ads-flow end-to-end against a real URL.
+ * router with three representative aspect ratios ("1:1", "9:16", "16:9")
+ * across all four providers, so we can eyeball which engine best fits
+ * the use case at each ratio and confirm pricing assumptions. Also
+ * runs an Ads-flow end-to-end against a real URL.
  *
  * Usage:
  *   OPENROUTER_API_KEY=sk-or-… \
@@ -18,10 +19,10 @@
  * Node script without depending on the project's `server-only` modules.
  *
  * Outputs:
- *   ./test-output/provider-comparison/<provider>.png
- *   ./test-output/provider-comparison/<provider>.meta.json
- *   ./test-output/ads/<slug>.png
- *   ./test-output/ads/<slug>.meta.json
+ *   ./test-output/provider-comparison/{provider}-{ratio}.png
+ *   ./test-output/provider-comparison/{provider}-{ratio}.meta.json
+ *   ./test-output/ads/{slug}.png
+ *   ./test-output/ads/{slug}.meta.json
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -43,9 +44,11 @@ const ADS_STYLE_TITLE = "Offer at-a-glance";
 const OUT_DIR = resolve(process.cwd(), "test-output");
 
 type ProviderId = "gemini-flash-lite-image" | "gpt-image-2" | "ideogram-4" | "gemini-flash-image";
+type AspectRatio = "1:1" | "9:16" | "16:9";
 
 interface AttemptResult {
   provider: ProviderId;
+  ratio: AspectRatio;
   ok: boolean;
   bytes?: number;
   mime?: string;
@@ -59,9 +62,6 @@ interface AttemptResult {
   promptChars: number;
   bodySnippet?: string;
 }
-
-const W = 1024;
-const H = 1280;
 
 async function outDir(...parts: string[]): Promise<string> {
   const dir = resolve(OUT_DIR, ...parts);
@@ -77,7 +77,6 @@ function buildPrompt(): string {
     "Offer title:  (not applicable — keyword-driven infographic)",
     "Offer copy:   (not applicable — keyword-driven infographic)",
     "Color scheme: light",
-    "Aspect ratio: 4x5",
     "",
     "Visual concept (use this as the structural metaphor / layout):",
     STYLE_DIRECTIVE,
@@ -87,7 +86,6 @@ function buildPrompt(): string {
     "- Use a hook-first layout: a bold top headline, a clear middle that realises the visual concept above, and a bottom save/share trigger.",
     "- Keep every body line short and high-contrast; never write paragraphs.",
     "- Use one consistent type system, palette, and icon style across the whole image — no mixed styles, no decorative scenery.",
-    "- The colour palette should match the requested scheme end-to-end.",
     "- Do not include any URL, watermark, or footer mark.",
     "- Do not include any logo unless explicitly provided.",
     "- Do not include any person, face, photograph, or stock-style scene.",
@@ -103,7 +101,6 @@ function buildAdsPrompt(offerTitle: string, offerCopy: string): string {
     `Offer title:  ${offerTitle}`,
     `Offer copy:   ${offerCopy}`,
     "Color scheme: light",
-    "Aspect ratio: 4x5",
     "",
     "Visual concept (use this as the structural metaphor / layout):",
     ADS_STYLE_DIRECTIVE,
@@ -113,7 +110,6 @@ function buildAdsPrompt(offerTitle: string, offerCopy: string): string {
     "- Use a hook-first layout: a bold top headline, a clear middle that realises the visual concept above, and a bottom save/share trigger.",
     "- Keep every body line short and high-contrast; never write paragraphs.",
     "- Use one consistent type system, palette, and icon style across the whole image — no mixed styles, no decorative scenery.",
-    "- The colour palette should match the requested scheme end-to-end.",
     "- Render Tap to claim — link in bio as a subtle, centred footer mark — readable but not distracting.",
     "- Do not include any logo unless explicitly provided.",
     "- Do not include any person, face, photograph, or stock-style scene.",
@@ -121,8 +117,33 @@ function buildAdsPrompt(offerTitle: string, offerCopy: string): string {
   ].join("\n");
 }
 
+/** Compute pixel dimensions for a ratio at a given long-edge cap. */
+function aspectDimensions(ratio: AspectRatio, maxEdge: number): { width: number; height: number } {
+  const [w, h] = ratio.split(":").map(Number);
+  if (w >= h) {
+    const width = maxEdge;
+    const height = Math.max(16, Math.round((maxEdge * h) / w / 16) * 16);
+    return { width, height };
+  }
+  const height = maxEdge;
+  const width = Math.max(16, Math.round((maxEdge * w) / h / 16) * 16);
+  return { width, height };
+}
+
+/** Convert ratio → OpenAI `WxH` size at 1K (1024 long edge). */
+function openAiSize(ratio: AspectRatio): string {
+  const { width, height } = aspectDimensions(ratio, 1024);
+  return `${width}x${height}`;
+}
+
+/** Convert ratio → Ideogram v3 `WxH` ratio string. */
+function ideogramRatio(ratio: AspectRatio): string {
+  return ratio.replace(":", "x");
+}
+
 // ── Gemini via OpenRouter ─────────────────────────────────────────────────────
-async function runGeminiFlashLite(apiKey: string, prompt: string): Promise<{ result: AttemptResult; bytes?: Buffer }> {
+async function runGeminiFlashLite(apiKey: string, prompt: string, ratio: AspectRatio): Promise<{ result: AttemptResult; bytes?: Buffer }> {
+  const dims = aspectDimensions(ratio, 1024);
   const t0 = Date.now();
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -136,7 +157,8 @@ async function runGeminiFlashLite(apiKey: string, prompt: string): Promise<{ res
       model: "google/gemini-3.1-flash-lite-image",
       messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],
       modalities: ["image", "text"],
-      image_config: { aspect_ratio: "4:5", image_size: "1K" },
+      image_config: { aspect_ratio: ratio, image_size: "1K" },
+      max_tokens: 2500,
       provider: { order: ["google"] },
     }),
     signal: AbortSignal.timeout(120_000),
@@ -144,11 +166,11 @@ async function runGeminiFlashLite(apiKey: string, prompt: string): Promise<{ res
   const body = await res.text();
   const json: any = body.length > 0 ? safeJson(body) : null;
   if (!res.ok) {
-    return { result: { provider: "gemini-flash-lite-image", ok: false, error: json?.error?.message ?? `HTTP ${res.status}`, status: res.status, promptChars: prompt.length } };
+    return { result: { provider: "gemini-flash-lite-image", ratio, ok: false, error: json?.error?.message ?? `HTTP ${res.status}`, status: res.status, promptChars: prompt.length } };
   }
   const imageUrl = extractFirstImageUrl(json?.choices?.[0]?.message);
   if (!imageUrl) {
-    return { result: { provider: "gemini-flash-lite-image", ok: false, error: "No image in response", status: 502, promptChars: prompt.length, bodySnippet: body.slice(0, 1500) } };
+    return { result: { provider: "gemini-flash-lite-image", ratio, ok: false, error: "No image in response", status: 502, promptChars: prompt.length, bodySnippet: body.slice(0, 1500) } };
   }
   const fetched = await fetchBytes(imageUrl);
   const usage = json?.usage ?? {};
@@ -158,20 +180,22 @@ async function runGeminiFlashLite(apiKey: string, prompt: string): Promise<{ res
     bytes: fetched.bytes,
     result: {
       provider: "gemini-flash-lite-image",
+      ratio,
       ok: true,
       bytes: fetched.bytes.length,
       mime: fetched.mime,
       durationMs: Date.now() - t0,
       costUsd: round4(cost),
       model: "google/gemini-3.1-flash-lite-image",
-      width: W,
-      height: H,
+      width: dims.width,
+      height: dims.height,
       promptChars: prompt.length,
     },
   };
 }
 
-async function runGeminiFlash(apiKey: string, prompt: string): Promise<{ result: AttemptResult; bytes?: Buffer }> {
+async function runGeminiFlash(apiKey: string, prompt: string, ratio: AspectRatio): Promise<{ result: AttemptResult; bytes?: Buffer }> {
+  const dims = aspectDimensions(ratio, 1024);
   const t0 = Date.now();
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -185,7 +209,8 @@ async function runGeminiFlash(apiKey: string, prompt: string): Promise<{ result:
       model: "google/gemini-2.5-flash-image",
       messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],
       modalities: ["image", "text"],
-      image_config: { aspect_ratio: "4:5", image_size: "1K" },
+      image_config: { aspect_ratio: ratio, image_size: "1K" },
+      max_tokens: 2500,
       provider: { order: ["google"] },
     }),
     signal: AbortSignal.timeout(120_000),
@@ -193,11 +218,11 @@ async function runGeminiFlash(apiKey: string, prompt: string): Promise<{ result:
   const body = await res.text();
   const json: any = body.length > 0 ? safeJson(body) : null;
   if (!res.ok) {
-    return { result: { provider: "gemini-flash-image", ok: false, error: json?.error?.message ?? `HTTP ${res.status}`, status: res.status, promptChars: prompt.length, bodySnippet: body.slice(0, 500) } };
+    return { result: { provider: "gemini-flash-image", ratio, ok: false, error: json?.error?.message ?? `HTTP ${res.status}`, status: res.status, promptChars: prompt.length, bodySnippet: body.slice(0, 500) } };
   }
   const imageUrl = extractFirstImageUrl(json?.choices?.[0]?.message);
   if (!imageUrl) {
-    return { result: { provider: "gemini-flash-image", ok: false, error: "No image in response", status: 502, promptChars: prompt.length, bodySnippet: body.slice(0, 1500) } };
+    return { result: { provider: "gemini-flash-image", ratio, ok: false, error: "No image in response", status: 502, promptChars: prompt.length, bodySnippet: body.slice(0, 1500) } };
   }
   const fetched = await fetchBytes(imageUrl);
   const usage = json?.usage ?? {};
@@ -207,21 +232,23 @@ async function runGeminiFlash(apiKey: string, prompt: string): Promise<{ result:
     bytes: fetched.bytes,
     result: {
       provider: "gemini-flash-image",
+      ratio,
       ok: true,
       bytes: fetched.bytes.length,
       mime: fetched.mime,
       durationMs: Date.now() - t0,
       costUsd: round4(cost),
       model: "google/gemini-2.5-flash-image",
-      width: W,
-      height: H,
+      width: dims.width,
+      height: dims.height,
       promptChars: prompt.length,
     },
   };
 }
 
 // ── GPT Image 2 ──────────────────────────────────────────────────────────────
-async function runGptImage2(apiKey: string, prompt: string): Promise<{ result: AttemptResult; bytes?: Buffer }> {
+async function runGptImage2(apiKey: string, prompt: string, ratio: AspectRatio): Promise<{ result: AttemptResult; bytes?: Buffer }> {
+  const dims = aspectDimensions(ratio, 1024);
   const t0 = Date.now();
   const res = await fetch("https://api.openai.com/v1/images/generations", {
     method: "POST",
@@ -229,7 +256,8 @@ async function runGptImage2(apiKey: string, prompt: string): Promise<{ result: A
     body: JSON.stringify({
       model: "gpt-image-2",
       prompt,
-      size: `${W}x${H}`,
+      size: openAiSize(ratio),
+      quality: "low",
       n: 1,
       response_format: "b64_json",
     }),
@@ -238,32 +266,34 @@ async function runGptImage2(apiKey: string, prompt: string): Promise<{ result: A
   const body = await res.text();
   const json: any = body.length > 0 ? safeJson(body) : null;
   if (!res.ok) {
-    return { result: { provider: "gpt-image-2", ok: false, error: json?.error?.message ?? `HTTP ${res.status}`, status: res.status, promptChars: prompt.length } };
+    return { result: { provider: "gpt-image-2", ratio, ok: false, error: json?.error?.message ?? `HTTP ${res.status}`, status: res.status, promptChars: prompt.length } };
   }
   const b64 = json?.data?.[0]?.b64_json;
   if (!b64) {
-    return { result: { provider: "gpt-image-2", ok: false, error: "No b64_json in response", status: 502, promptChars: prompt.length } };
+    return { result: { provider: "gpt-image-2", ratio, ok: false, error: "No b64_json in response", status: 502, promptChars: prompt.length } };
   }
   const bytes = Buffer.from(b64, "base64");
   return {
     bytes,
     result: {
       provider: "gpt-image-2",
+      ratio,
       ok: true,
       bytes: bytes.length,
       mime: "image/png",
       durationMs: Date.now() - t0,
       costUsd: 0.04,
       model: "gpt-image-2",
-      width: W,
-      height: H,
+      width: dims.width,
+      height: dims.height,
       promptChars: prompt.length,
     },
   };
 }
 
 // ── Ideogram 4 ──────────────────────────────────────────────────────────────
-async function runIdeogram4(apiKey: string, prompt: string): Promise<{ result: AttemptResult; bytes?: Buffer }> {
+async function runIdeogram4(apiKey: string, prompt: string, ratio: AspectRatio): Promise<{ result: AttemptResult; bytes?: Buffer }> {
+  const dims = aspectDimensions(ratio, 2048);
   const t0 = Date.now();
   const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/generate", {
     method: "POST",
@@ -272,7 +302,7 @@ async function runIdeogram4(apiKey: string, prompt: string): Promise<{ result: A
       model: "ideogram-v3",
       prompt,
       style_type: "DESIGN",
-      aspect_ratio: "4x5",
+      aspect_ratio: ideogramRatio(ratio),
       magic_prompt_option: "AUTO",
       num_images: 1,
     }),
@@ -281,25 +311,26 @@ async function runIdeogram4(apiKey: string, prompt: string): Promise<{ result: A
   const body = await res.text();
   const json: any = body.length > 0 ? safeJson(body) : null;
   if (!res.ok) {
-    return { result: { provider: "ideogram-4", ok: false, error: JSON.stringify(json?.error ?? json ?? null).slice(0, 300), status: res.status, promptChars: prompt.length } };
+    return { result: { provider: "ideogram-4", ratio, ok: false, error: JSON.stringify(json?.error ?? json ?? null).slice(0, 300), status: res.status, promptChars: prompt.length } };
   }
   const imageUrl: string | undefined = json?.data?.[0]?.url;
   if (!imageUrl) {
-    return { result: { provider: "ideogram-4", ok: false, error: "No image url in response", status: 502, promptChars: prompt.length } };
+    return { result: { provider: "ideogram-4", ratio, ok: false, error: "No image url in response", status: 502, promptChars: prompt.length } };
   }
   const fetched = await fetchBytes(imageUrl);
   return {
     bytes: fetched.bytes,
     result: {
       provider: "ideogram-4",
+      ratio,
       ok: true,
       bytes: fetched.bytes.length,
       mime: fetched.mime,
       durationMs: Date.now() - t0,
       costUsd: 0.08,
       model: "ideogram-v3",
-      width: 1024,
-      height: 1280,
+      width: dims.width,
+      height: dims.height,
       promptChars: prompt.length,
     },
   };
@@ -392,9 +423,9 @@ function htmlToPlainText(html: string): string {
 
 function logResult(r: AttemptResult, prefix = ""): void {
   if (r.ok) {
-    console.log(`[${prefix || r.provider}] OK · $${r.costUsd?.toFixed(4)} · ${(r.durationMs! / 1000).toFixed(1)}s · ${r.bytes}B`);
+    console.log(`[${prefix || `${r.provider}/${r.ratio}`}] OK · ${r.width}×${r.height} · $${r.costUsd?.toFixed(4)} · ${(r.durationMs! / 1000).toFixed(1)}s · ${r.bytes}B`);
   } else {
-    console.log(`[${prefix || r.provider}] FAIL · ${r.status ?? "?"} · ${r.error}`);
+    console.log(`[${prefix || `${r.provider}/${r.ratio}`}] FAIL · ${r.status ?? "?"} · ${r.error}`);
   }
 }
 
@@ -404,7 +435,7 @@ async function main() {
   console.log("AI Infographic Generator — provider-comparison test");
   console.log("Topic:", TOPIC);
   console.log("Style:", STYLE_TITLE, "(roadmap)");
-  console.log("Aspect: 4x5 (1024×1280)");
+  console.log("Ratios: 1:1, 9:16, 16:9 (square, story, landscape)");
   console.log("Ads URL:", ADS_URL);
   console.log("─".repeat(72));
 
@@ -418,12 +449,22 @@ async function main() {
   const oaKey = process.env.OPENAI_API_KEY;
   const igKey = process.env.IDEOGRAM_API_KEY;
 
-  const tasks: Array<{ id: ProviderId; needs: string; key?: string; run: (k: string, p: string) => Promise<{ result: AttemptResult; bytes?: Buffer }> }> = [
-    { id: "gemini-flash-lite-image", needs: "OPENROUTER_API_KEY", key: orKey, run: (k, p) => runGeminiFlashLite(k, p) },
-    { id: "gemini-flash-image",      needs: "OPENROUTER_API_KEY", key: orKey, run: (k, p) => runGeminiFlash(k, p) },
-    { id: "gpt-image-2",             needs: "OPENAI_API_KEY",     key: oaKey, run: (k, p) => runGptImage2(k, p) },
-    { id: "ideogram-4",              needs: "IDEOGRAM_API_KEY",   key: igKey, run: (k, p) => runIdeogram4(k, p) },
-  ];
+  const ratios: AspectRatio[] = ["1:1", "9:16", "16:9"];
+  type Task = {
+    id: ProviderId;
+    ratio: AspectRatio;
+    needs: string;
+    key?: string;
+    run: (k: string, p: string, r: AspectRatio) => Promise<{ result: AttemptResult; bytes?: Buffer }>;
+  };
+
+  const tasks: Task[] = [];
+  for (const ratio of ratios) {
+    tasks.push({ id: "gemini-flash-lite-image", ratio, needs: "OPENROUTER_API_KEY", key: orKey, run: runGeminiFlashLite });
+    tasks.push({ id: "gemini-flash-image",      ratio, needs: "OPENROUTER_API_KEY", key: orKey, run: runGeminiFlash });
+    tasks.push({ id: "gpt-image-2",             ratio, needs: "OPENAI_API_KEY",     key: oaKey, run: runGptImage2 });
+    tasks.push({ id: "ideogram-4",              ratio, needs: "IDEOGRAM_API_KEY",   key: igKey, run: runIdeogram4 });
+  }
 
   console.log("\nRunning provider comparison in parallel...");
   type RunOutput = { result: AttemptResult; bytes?: Buffer };
@@ -433,6 +474,7 @@ async function main() {
         return Promise.resolve({
           result: {
             provider: t.id,
+            ratio: t.ratio,
             ok: false,
             error: `Missing env var ${t.needs}`,
             status: 0,
@@ -440,7 +482,7 @@ async function main() {
           },
         });
       }
-      return t.run(t.key, prompt);
+      return t.run(t.key, prompt, t.ratio);
     })
   );
 
@@ -453,6 +495,7 @@ async function main() {
       : {
           result: {
             provider: t.id,
+            ratio: t.ratio,
             ok: false,
             error: r.reason instanceof Error ? r.reason.message : String(r.reason),
             status: 0,
@@ -460,25 +503,27 @@ async function main() {
           },
         };
     results.push(out);
-    await saveAttempt(cmpDir, t.id, out.result, out.bytes);
+    await saveAttempt(cmpDir, `${t.id}-${t.ratio}`, out.result, out.bytes);
     logResult(out.result);
   }
 
-  // Ads flow
+  // Ads flow (uses 3:4 default — the closest valid Gemini ratio to our old
+  // 4:5 default and matches the dominant social-feed ad placement).
   console.log("\nRunning Ads flow end-to-end against", ADS_URL);
   let adsOut: RunOutput = {
-    result: { provider: "gemini-flash-lite-image", ok: false, error: "not run", status: 0, promptChars: 0 },
+    result: { provider: "gemini-flash-lite-image", ratio: "1:1", ok: false, error: "not run", status: 0, promptChars: 0 },
   };
   try {
     const { title, copy } = await scrapeAdsUrl(ADS_URL);
     const adsPrompt = buildAdsPrompt(title || "Our offer", copy);
     console.log("Ads prompt built:", adsPrompt.length, "chars from", title);
     if (!orKey) throw new Error("OPENROUTER_API_KEY required for Ads flow");
-    adsOut = await runGeminiFlashLite(orKey, adsPrompt);
+    adsOut = await runGeminiFlashLite(orKey, adsPrompt, "1:1");
   } catch (err) {
     adsOut = {
       result: {
         provider: "gemini-flash-lite-image",
+        ratio: "1:1",
         ok: false,
         error: err instanceof Error ? err.message : String(err),
         status: 0,
@@ -494,20 +539,22 @@ async function main() {
   console.log("SUMMARY");
   console.log("─".repeat(72));
   for (const r of results) {
+    const ratio = r.result.ratio ?? "?";
     console.log(
-      r.result.provider.padEnd(28),
+      `${(r.result.provider + "/" + ratio).padEnd(36)}`,
       r.result.ok ? "OK  " : "FAIL",
       r.result.ok ? `$${(r.result.costUsd ?? 0).toFixed(4)}` : "",
       r.result.ok ? `${(r.result.durationMs! / 1000).toFixed(1)}s` : "",
-      r.result.ok ? `${r.result.bytes}B` : "",
-      r.result.ok ? "" : (r.result.status ?? "?").toString(),
+      r.result.ok ? `${r.result.width}×${r.result.height}` : "",
+      !r.result.ok ? (r.result.status ?? "?").toString() : "",
       !r.result.ok ? r.result.error ?? "" : "",
     );
   }
-  console.log("Ads".padEnd(28),
+  console.log("Ads (gemini-flash-lite-image/1:1)".padEnd(36),
     adsOut.result.ok ? "OK  " : "FAIL",
     adsOut.result.ok ? `$${(adsOut.result.costUsd ?? 0).toFixed(4)}` : "",
     adsOut.result.ok ? `${(adsOut.result.durationMs! / 1000).toFixed(1)}s` : "",
+    adsOut.result.ok ? `${adsOut.result.width}×${adsOut.result.height}` : "",
     !adsOut.result.ok ? adsOut.result.error : "",
   );
   console.log("─".repeat(72));

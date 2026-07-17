@@ -8,6 +8,7 @@ import type {
 } from "../types";
 import { getAspectRatio, PROVIDER_PRICING } from "../types";
 import {
+  aspectRatioToGemini,
   enforceResolutionCap,
   platformApiKey,
   MAX_OUTPUT_TOKENS_IMAGE,
@@ -54,7 +55,9 @@ export class GeminiFlashImageProvider implements ImageGenProvider {
       // enforceResolutionCap() — if a caller asks for 2K we never reach
       // this point.
       image_config: {
-        aspect_ratio: input.aspectRatio.replace("x", ":"),
+        // Gemini's image_config accepts the "W:H" string verbatim. Our
+        // AspectRatio type uses the same form, so this is a passthrough.
+        aspect_ratio: aspectRatioToGemini(input.aspectRatio),
         image_size: "1K",
       },
       // Token ceiling — Gemini burns ~1,290 output tokens per 1024×1024

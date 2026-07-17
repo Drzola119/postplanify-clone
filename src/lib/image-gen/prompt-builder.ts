@@ -1,6 +1,6 @@
 import "server-only";
 import type { PromptStyle } from "./prompt-styles";
-import type { AspectRatioKey } from "./types";
+import type { AspectRatio } from "./types";
 
 /**
  * Our own prompt-template engine.
@@ -93,12 +93,12 @@ export function buildInfographicPrompt(input: {
   topic: string;
   style: PromptStyle;
   colorScheme?: ColorScheme;
-  aspectRatio?: AspectRatioKey;
+  aspectRatio?: AspectRatio;
   footerCta?: string;
 }): string {
   const t = cleanValue(input.topic, "a generic niche topic");
   const scheme = cleanValue(input.colorScheme, "light");
-  const ratio = cleanValue(input.aspectRatio, "4x5");
+  const ratio = cleanValue(input.aspectRatio, "3:4");
   const cta = footerCtaLine(input.footerCta);
 
   return substitute(TEMPLATE_BODY, {
@@ -117,7 +117,7 @@ export function buildAdsInfographicPrompt(input: {
   offerCopy: string;
   style: PromptStyle;
   colorScheme?: ColorScheme;
-  aspectRatio?: AspectRatioKey;
+  aspectRatio?: AspectRatio;
   footerCta?: string;
 }): string {
   const title = cleanValue(input.offerTitle, "the offer");
@@ -126,7 +126,7 @@ export function buildAdsInfographicPrompt(input: {
     "(the user has not provided sales copy yet — infer a plausible, internally-consistent description of the offer from its title alone)"
   );
   const scheme = cleanValue(input.colorScheme, "light");
-  const ratio = cleanValue(input.aspectRatio, "4x5");
+  const ratio = cleanValue(input.aspectRatio, "3:4");
   const cta = footerCtaLine(input.footerCta);
 
   return substitute(TEMPLATE_BODY, {
@@ -155,7 +155,7 @@ export function buildIdeogramJsonPrompt(input: {
   offerCopy?: string;
   style: PromptStyle;
   colorScheme?: ColorScheme;
-  aspectRatio?: AspectRatioKey;
+  aspectRatio?: AspectRatio;
   footerCta?: string;
 }): Record<string, unknown> {
   const scheme = input.colorScheme ?? "light";

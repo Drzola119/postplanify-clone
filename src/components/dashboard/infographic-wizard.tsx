@@ -42,12 +42,14 @@ const PROVIDERS = [
 ] as const;
 
 const ASPECTS = [
-  { id: "1x1", label: "1:1", desc: "1024×1024 — square" },
-  { id: "4x5", label: "4:5", desc: "1024×1280 — Instagram portrait" },
-  { id: "9x16", label: "9:16", desc: "1024×1820 — story / reel" },
-  { id: "16x9", label: "16:9", desc: "1820×1024 — landscape" },
-  { id: "3x2", label: "3:2", desc: "1536×1024 — wide" },
-  { id: "21x9", label: "21:9", desc: "2048×880 — ultra-wide" },
+  { id: "1:1",  label: "1:1",  desc: "Square — Instagram feed, LinkedIn" },
+  { id: "2:3",  label: "2:3",  desc: "Portrait — Pinterest" },
+  { id: "3:2",  label: "3:2",  desc: "Landscape — wide photo" },
+  { id: "3:4",  label: "3:4",  desc: "Portrait — Instagram / TikTok feed" },
+  { id: "4:3",  label: "4:3",  desc: "Landscape — presentations" },
+  { id: "9:16", label: "9:16", desc: "Story / Reel / TikTok" },
+  { id: "16:9", label: "16:9", desc: "Widescreen — YouTube, Twitter" },
+  { id: "21:9", label: "21:9", desc: "Ultra-wide cinematic" },
 ] as const;
 
 const SCHEMES = [
@@ -67,6 +69,7 @@ interface GenerateResponse {
   assetUrl: string;
   width: number;
   height: number;
+  aspectRatio: string;
   costUsd: number;
   durationMs: number;
   fellBackFrom: string | null;
@@ -91,7 +94,7 @@ export function InfographicWizard({
 }: InfographicWizardProps) {
   const [styleId, setStyleId] = useState(defaultStyleId);
   const [provider, setProvider] = useState<ProviderId>("auto");
-  const [aspect, setAspect] = useState<AspectId>("4x5");
+  const [aspect, setAspect] = useState<AspectId>("3:4");
   const [scheme, setScheme] = useState<SchemeId>("light");
 
   // Topic (Instant)
@@ -280,55 +283,65 @@ export function InfographicWizard({
             title="Provider, ratio, colour scheme"
             subtitle="Auto walks the fallback chain on retryable failure."
           >
-            <div className="grid gap-4 sm:grid-cols-3">
-              <Field label="Provider">
-                <select
-                  value={provider}
-                  onChange={(e) => setProvider(e.target.value as ProviderId)}
-                  className="w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
-                >
-                  {PROVIDERS.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Aspect ratio">
-                <select
-                  value={aspect}
-                  onChange={(e) => setAspect(e.target.value as AspectId)}
-                  className="w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
-                >
-                  {ASPECTS.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.label} — {a.desc}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Colour scheme">
-                <div className="flex items-center gap-2">
-                  {SCHEMES.map((s) => {
-                    const active = s.id === scheme;
-                    return (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => setScheme(s.id)}
-                        className={
-                          "flex flex-col items-center gap-1 rounded-md border p-1.5 transition-all " +
-                          (active ? "ring-2 ring-zinc-900/20 border-zinc-900" : "border-zinc-200 hover:border-zinc-300")
-                        }
-                      >
-                        <span className={`block size-7 rounded ${s.swatch}`} />
-                        <span className="text-[11px] font-medium">{s.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </Field>
-            </div>
+            <Field label="Provider">
+              <select
+                value={provider}
+                onChange={(e) => setProvider(e.target.value as ProviderId)}
+                className="w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+              >
+                {PROVIDERS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Aspect ratio">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {ASPECTS.map((a) => {
+                  const active = a.id === aspect;
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => setAspect(a.id)}
+                      title={a.desc}
+                      aria-pressed={active}
+                      className={
+                        "flex flex-col items-start gap-1 rounded-md border p-2 text-left transition-all " +
+                        (active
+                          ? "ring-2 ring-zinc-900/20 border-zinc-900 bg-zinc-50"
+                          : "border-zinc-200 bg-white hover:border-zinc-300")
+                      }
+                    >
+                      <span className="text-xs font-semibold text-zinc-900">{a.label}</span>
+                      <span className="text-[11px] leading-tight text-zinc-600">{a.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+            <Field label="Colour scheme">
+              <div className="flex items-center gap-2">
+                {SCHEMES.map((s) => {
+                  const active = s.id === scheme;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setScheme(s.id)}
+                      className={
+                        "flex flex-col items-center gap-1 rounded-md border p-1.5 transition-all " +
+                        (active ? "ring-2 ring-zinc-900/20 border-zinc-900" : "border-zinc-200 hover:border-zinc-300")
+                      }
+                    >
+                      <span className={`block size-7 rounded ${s.swatch}`} />
+                      <span className="text-[11px] font-medium">{s.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
           </Panel>
 
           {/* Step 3 — Input */}
@@ -482,6 +495,7 @@ export function InfographicWizard({
             {result ? (
               <div className="mt-4 space-y-3">
                 <Meta label="Provider" value={`${result.provider}${result.fellBackFrom ? ` (fell back from ${result.fellBackFrom})` : ""}`} />
+                <Meta label="Ratio" value={result.aspectRatio} />
                 <Meta label="Size" value={`${result.width}×${result.height}`} />
                 <Meta label="Cost" value={`$${result.costUsd.toFixed(4)}`} />
                 <Meta label="Duration" value={`${(result.durationMs / 1000).toFixed(1)}s`} />

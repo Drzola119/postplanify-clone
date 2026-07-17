@@ -137,6 +137,7 @@ export async function POST(request: NextRequest) {
       assetUrl: out.assetUrl,
       width: out.width,
       height: out.height,
+      aspectRatio: body.aspectRatio,
       costUsd: out.costUsd,
       durationMs: out.durationMs,
       fellBackFrom: out.fellBackFrom ?? null,

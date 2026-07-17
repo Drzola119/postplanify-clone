@@ -6,8 +6,13 @@ import type {
   ProviderError,
   ProviderId,
 } from "../types";
-import { getAspectRatio, PROVIDER_PRICING } from "../types";
-import { enforceResolutionCap, platformApiKey } from "../resolution";
+import { PROVIDER_PRICING } from "../types";
+import {
+  aspectDimensions,
+  aspectRatioToOpenAiSize,
+  enforceResolutionCap,
+  platformApiKey,
+} from "../resolution";
 
 const ENDPOINT = "https://api.openai.com/v1/images/generations";
 const MODEL = "gpt-image-2";
@@ -42,15 +47,15 @@ export class GptImage2Provider implements ImageGenProvider {
 
   async generate(input: GenerateInput): Promise<GenerateOutput> {
     enforceResolutionCap(this.id, input.aspectRatio);
-    const ratio = getAspectRatio(input.aspectRatio);
+    const dims = aspectDimensions(input.aspectRatio, 1024);
     const body = {
       model: MODEL,
       prompt: input.prompt,
       n: 1,
-      // OpenAI native WIDTHxHEIGHT format. Capped to 1K centrally —
-      // `enforceResolutionCap` throws before this point if a caller
-      // asks for 2K.
-      size: `${ratio.width}x${ratio.height}`,
+      // OpenAI native WIDTHxHEIGHT format. Both dims are multiples of 16
+      // (rounded in `aspectRatioToOpenAiSize`) per gpt-image-2's
+      // constraint, and capped at 1K long edge by `enforceResolutionCap`.
+      size: aspectRatioToOpenAiSize(input.aspectRatio),
       // `quality: "low"` is the only GPT Image 2 quality band that fits
       // our per-image price ceiling at 1K. Without it, OpenAI defaults
       // to "auto" which can promote to 2K and balloon cost.
@@ -111,8 +116,8 @@ export class GptImage2Provider implements ImageGenProvider {
       durationMs: Date.now() - start,
       assetUrl: data.url ?? "",
       assetId: "",
-      width: ratio.width,
-      height: ratio.height,
+      width: dims.width,
+      height: dims.height,
     };
   }
 }

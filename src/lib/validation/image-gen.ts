@@ -1,5 +1,7 @@
 import "server-only";
 import { z } from "zod";
+import { SUPPORTED_ASPECT_RATIOS } from "@/lib/image-gen/resolution";
+import type { AspectRatio } from "@/lib/image-gen/types";
 
 /**
  * Validation schemas for the image-gen router surface.
@@ -7,6 +9,10 @@ import { z } from "zod";
  * All generations are billed to the platform — there is no per-user
  * (BYOK) override path. We charge clients through our own subscription
  * / credit system; see src/lib/image-gen/usage.ts.
+ *
+ * Aspect ratios are restricted to the eight Gemini ImageConfig values
+ * (see `SUPPORTED_ASPECT_RATIOS`). Any other value 400s the moment we
+ * dispatch to a Gemini model, so we reject it at the validation layer.
  */
 
 export const imageGenProviderIdSchema = z.enum([
@@ -16,26 +22,19 @@ export const imageGenProviderIdSchema = z.enum([
   "gemini-flash-image",
 ]);
 
+/**
+ * Aspect-ratio schema typed as `AspectRatio` so downstream consumers
+ * (router, prompt builder) get the literal union, not `string`.
+ */
+export const imageGenAspectRatioSchema = z.enum(
+  SUPPORTED_ASPECT_RATIOS as unknown as readonly [AspectRatio, ...AspectRatio[]]
+);
+
 export const imageGenRequestSchema = z.object({
   provider: z.enum(["auto", ...imageGenProviderIdSchema.options]),
   prompt: z.string().min(8).max(20_000).optional(),
   structuredPrompt: z.record(z.unknown()).optional(),
-  aspectRatio: z.enum([
-    "1x1",
-    "4x5",
-    "3x4",
-    "2x3",
-    "9x16",
-    "16x9",
-    "3x2",
-    "21x9",
-    "5x4",
-    "4x3",
-    "7x5",
-    "10x16",
-    "16x21",
-    "1x2",
-  ]),
+  aspectRatio: imageGenAspectRatioSchema,
   colorScheme: z.enum(["light", "dark", "brand"]).optional(),
   context: z
     .object({

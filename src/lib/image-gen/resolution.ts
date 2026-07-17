@@ -1,5 +1,5 @@
 import "server-only";
-import type { AspectRatioKey, ProviderId } from "./types";
+import type { AspectRatio, ProviderId } from "./types";
 import { ASPECT_RATIOS, getAspectRatio } from "./types";
 
 /**
@@ -11,10 +11,15 @@ import { ASPECT_RATIOS, getAspectRatio } from "./types";
  *     edge longer than `MAX_NON_IDEOGRAM_EDGE_PX = 1024`.
  *   - Ideogram 4 is the sole provider allowed to render up to 2K — its
  *     native hosted baseline. We do NOT artificially downscale it.
+ *   - Aspect ratios are restricted to the 8 native Gemini ImageConfig
+ *     values ("1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9").
+ *     Anything else 400s the moment we dispatch to a Gemini model, so we
+ *     reject it centrally before the request goes out.
  *
- * This module is the single source of truth for the long-edge cap, so a
- * provider adapter can't accidentally request a 2K or 4K render and burn
- * 200s + dollars on a giant image.
+ * This module is the single source of truth for the long-edge cap AND
+ * the supported aspect-ratio vocabulary, so a provider adapter can't
+ * accidentally request a 2K or 4K render or pass an unsupported ratio
+ * and burn 200s + dollars on a broken request.
  */
 
 export const MAX_NON_IDEOGRAM_EDGE_PX = 1024;
@@ -24,10 +29,37 @@ export const MAX_IDEOGRAM_EDGE_PX = 2048;
 export const MAX_OUTPUT_TOKENS_IMAGE = 2500;
 
 /**
- * Aspect ratios we allow through. All 14 of our existing keys are valid;
- * the router caps them via `enforceResolutionCap` before dispatch.
+ * The eight aspect ratios Google's Gemini ImageConfig accepts verbatim.
+ * These are the only values the image-gen pipeline may pass through. The
+ * wizard UI, validation schema, prompt builder, and all four provider
+ * adapters derive their input vocabulary from this set.
  */
-export const ALLOWED_ASPECT_RATIOS: AspectRatioKey[] = ASPECT_RATIOS.map((a) => a.key);
+export const SUPPORTED_ASPECT_RATIOS = [
+  "1:1",
+  "2:3",
+  "3:2",
+  "3:4",
+  "4:3",
+  "9:16",
+  "16:9",
+  "21:9",
+] as const;
+
+/**
+ * Ideogram v3's `aspect_ratio` field accepts the "WxH" string form
+ * (e.g. "16x9"). Since the `AspectRatio` type already constrains input
+ * to the 8 supported values, every entry is present.
+ */
+export const IDEOGRAM_ASPECT_RATIOS: Record<AspectRatio, string> = {
+  "1:1": "1x1",
+  "2:3": "2x3",
+  "3:2": "3x2",
+  "3:4": "3x4",
+  "4:3": "4x3",
+  "9:16": "9x16",
+  "16:9": "16x9",
+  "21:9": "21x9",
+};
 
 export class ImageGenResolutionError extends Error {
   constructor(message: string) {
@@ -45,14 +77,33 @@ export function maxEdgeForProvider(providerId: ProviderId): number {
 }
 
 /**
+ * Throw if `ratio` isn't one of the 8 supported Gemini ImageConfig
+ * values. Centralised so a single call from each adapter guarantees we
+ * never send an exotic string to the provider.
+ */
+export function enforceSupportedAspectRatio(
+  ratio: string
+): asserts ratio is AspectRatio {
+  if (!(SUPPORTED_ASPECT_RATIOS as readonly string[]).includes(ratio)) {
+    throw new ImageGenResolutionError(
+      `Unsupported aspect ratio "${ratio}". ` +
+        `Must be one of: ${SUPPORTED_ASPECT_RATIOS.join(", ")}.`
+    );
+  }
+}
+
+/**
  * Throw if the requested aspect ratio's pixel dimensions exceed the
  * provider's allowed long edge. Call this from each adapter immediately
  * before dispatching the request, so an oversized config fails loudly
  * rather than silently billing the user.
+ *
+ * Implicitly validates that `aspectRatio` is a supported value — same
+ * 8-vocabulary check as `enforceSupportedAspectRatio`.
  */
 export function enforceResolutionCap(
   providerId: ProviderId,
-  aspectRatio: AspectRatioKey
+  aspectRatio: AspectRatio
 ): void {
   const ratio = getAspectRatio(aspectRatio);
   const cap = maxEdgeForProvider(providerId);
@@ -62,6 +113,62 @@ export function enforceResolutionCap(
         `which exceeds the ${cap}px long-edge cap. Pick a smaller aspect ratio.`
     );
   }
+}
+
+/**
+ * Compute pixel dimensions for an aspect ratio at the given long-edge
+ * cap. The long edge snaps to `maxEdge`; the short edge is rounded to
+ * the nearest 16 to satisfy OpenAI's gpt-image-2 constraint (and to
+ * keep Ideogram's upscale behaviour deterministic).
+ *
+ * Used by `aspectRatioToOpenAiSize` (1K cap) and `aspectRatioToIdeogram`
+ * callers that need the actual pixel pair for output reporting.
+ */
+export function aspectDimensions(
+  ratio: AspectRatio,
+  maxEdge: number
+): { width: number; height: number } {
+  const [w, h] = ratio.split(":").map(Number);
+  if (w >= h) {
+    const width = maxEdge;
+    const height = Math.max(16, Math.round((maxEdge * h) / w / 16) * 16);
+    return { width, height };
+  }
+  const height = maxEdge;
+  const width = Math.max(16, Math.round((maxEdge * w) / h / 16) * 16);
+  return { width, height };
+}
+
+/**
+ * Gemini's image_config.aspect_ratio accepts the ratio string verbatim
+ * in "W:H" form. No conversion needed beyond passing the value through.
+ */
+export function aspectRatioToGemini(ratio: AspectRatio): string {
+  return ratio;
+}
+
+/**
+ * OpenAI's `/v1/images/generations` expects a "WIDTHxHEIGHT" pixel-pair
+ * string for the `size` field. gpt-image-2 imposes an additional
+ * constraint that both dimensions must be multiples of 16, so we round
+ * the short edge to the nearest 16.
+ */
+export function aspectRatioToOpenAiSize(
+  ratio: AspectRatio,
+  maxEdge: number = MAX_NON_IDEOGRAM_EDGE_PX
+): string {
+  const { width, height } = aspectDimensions(ratio, maxEdge);
+  return `${width}x${height}`;
+}
+
+/**
+ * Ideogram v3's `aspect_ratio` field accepts the "WxH" string form
+ * (e.g. "16x9"). We pass the canonical lookup in `IDEOGRAM_ASPECT_RATIOS`
+ * — fall-through is impossible because the type already constrains the
+ * input to the 8 supported values.
+ */
+export function aspectRatioToIdeogram(ratio: AspectRatio): string {
+  return IDEOGRAM_ASPECT_RATIOS[ratio];
 }
 
 /**
@@ -90,3 +197,11 @@ const PLATFORM_KEY_ENV: Record<ProviderId, string> = {
   "gpt-image-2": "OPENAI_API_KEY",
   "ideogram-4": "IDEOGRAM_API_KEY",
 };
+
+/**
+ * Re-export the canonical AspectRatio vocabulary from `./types` so
+ * callers can `import { SUPPORTED_ASPECT_RATIOS, AspectRatio } from
+ * "@/lib/image-gen/resolution"` and get both in one place.
+ */
+export { ASPECT_RATIOS };
+export type { AspectRatio };

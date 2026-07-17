@@ -12,49 +12,48 @@ import "server-only";
  * Plus a JSON-serialisable log entry that gets written to Firestore.
  */
 
-export type AspectRatioKey =
-  | "1x1"
-  | "4x5"
-  | "3x4"
-  | "2x3"
-  | "9x16"
-  | "16x9"
-  | "3x2"
-  | "21x9"
-  | "5x4"
-  | "4x3"
-  | "7x5"
-  | "10x16"
-  | "16x21"
-  | "1x2";
+/**
+ * The single source of truth for the aspect-ratio vocabulary. Only the
+ * eight ratios Google's Gemini ImageConfig accepts verbatim are valid —
+ * `resolution.ts → SUPPORTED_ASPECT_RATIOS` is the runtime list, this
+ * type is the compile-time check. Keep both in sync.
+ */
+export type AspectRatio =
+  | "1:1"
+  | "2:3"
+  | "3:2"
+  | "3:4"
+  | "4:3"
+  | "9:16"
+  | "16:9"
+  | "21:9";
 
 /** A single requested aspect ratio in width×height pixels at 1K output. */
 export interface AspectRatioSpec {
-  key: AspectRatioKey;
+  ratio: AspectRatio;
   width: number;
   height: number;
 }
 
+/**
+ * Reference pixel dimensions for each supported ratio at 1K (long edge
+ * 1024). Actual per-provider sizes are computed in `resolution.ts` from
+ * these inputs and the relevant cap.
+ */
 export const ASPECT_RATIOS: AspectRatioSpec[] = [
-  { key: "1x1", width: 1024, height: 1024 },
-  { key: "4x5", width: 1024, height: 1280 },
-  { key: "3x4", width: 1024, height: 1365 },
-  { key: "2x3", width: 1024, height: 1536 },
-  { key: "9x16", width: 1024, height: 1820 },
-  { key: "16x9", width: 1820, height: 1024 },
-  { key: "3x2", width: 1536, height: 1024 },
-  { key: "21x9", width: 2048, height: 880 },
-  { key: "5x4", width: 1280, height: 1024 },
-  { key: "4x3", width: 1365, height: 1024 },
-  { key: "7x5", width: 1434, height: 1024 },
-  { key: "10x16", width: 1024, height: 1638 },
-  { key: "16x21", width: 1638, height: 1024 },
-  { key: "1x2", width: 1024, height: 2048 },
+  { ratio: "1:1",  width: 1024, height: 1024 },
+  { ratio: "2:3",  width:  683, height: 1024 },
+  { ratio: "3:2",  width: 1024, height:  683 },
+  { ratio: "3:4",  width:  768, height: 1024 },
+  { ratio: "4:3",  width: 1024, height:  768 },
+  { ratio: "9:16", width:  576, height: 1024 },
+  { ratio: "16:9", width: 1024, height:  576 },
+  { ratio: "21:9", width: 1024, height:  439 },
 ];
 
-export function getAspectRatio(key: AspectRatioKey): AspectRatioSpec {
-  const found = ASPECT_RATIOS.find((a) => a.key === key);
-  if (!found) throw new Error(`Unknown aspect ratio: ${key}`);
+export function getAspectRatio(ratio: AspectRatio): AspectRatioSpec {
+  const found = ASPECT_RATIOS.find((a) => a.ratio === ratio);
+  if (!found) throw new Error(`Unknown aspect ratio: ${ratio}`);
   return found;
 }
 
@@ -125,7 +124,7 @@ export interface GenerateInput {
   /** JSON-structured prompt (Ideogram only — ignored by other providers). */
   structuredPrompt?: Record<string, unknown>;
   /** Aspect ratio of the output image. */
-  aspectRatio: AspectRatioKey;
+  aspectRatio: AspectRatio;
   /**
    * Optional caller metadata propagated to the generation log so we can
    * attribute usage to specific tools, campaigns, or A/B buckets.
