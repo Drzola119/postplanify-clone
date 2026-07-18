@@ -42,6 +42,8 @@
       "offer_copy_placeholder": "Paste the offer copy, or click Fetch above to pull from a URL.",
       "footer_cta_label": "Footer CTA (optional)",
       "offer_details_title": "Offer details",
+      "provider_label": "Image provider",
+      "aspect_ratio_label": "Aspect ratio",
       "url_placeholder": "https://your-offer-page.com",
       "scrape_button": "Extract Offer Content",
       "scraping_label": "Extracting…",

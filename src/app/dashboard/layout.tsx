@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useLocale } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
 import { DashboardSidebar } from "@/components/dashboard/sidebar";
+import { DashboardTopbar } from "@/components/dashboard/topbar";
 import { DrawerProvider, useDrawer } from "@/components/dashboard/drawer-provider";
 import { LabelsDrawer } from "@/components/dashboard/labels-drawer";
 import { HashtagsDrawer } from "@/components/dashboard/hashtags-drawer";
@@ -58,7 +59,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <HelpSystemProvider>
         <div className="min-h-screen bg-zinc-50">
           <DashboardSidebar />
-          <main dir={dir} className="lg:pl-[240px]">{children}</main>
+          <DashboardTopbar />
+          <main dir={dir} className="lg:pl-[240px] pt-14 min-h-screen">{children}</main>
           <DrawersHost />
         </div>
       </HelpSystemProvider>

@@ -77,7 +77,7 @@ export function LocaleSwitcher() {
       {open ? (
         <div
           role="menu"
-          className="absolute end-0 bottom-full mb-1 z-50 w-40 rounded-md border border-zinc-200 bg-white shadow-lg py-1"
+          className="absolute end-0 top-full mt-1 z-50 w-40 rounded-md border border-zinc-200 bg-white shadow-lg py-1"
         >
           {ORDER.map((loc) => (
             <button

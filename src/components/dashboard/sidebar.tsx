@@ -22,8 +22,6 @@ import {
   Link2,
   Key,
   ChevronDown,
-  Bell,
-  BookOpen,
   Plus,
   CalendarPlus,
   ChevronLeft,
@@ -40,8 +38,7 @@ import { ACTIVE_WORKSPACE_STORAGE_KEY } from "@/lib/security/storage-keys";
 import { cn } from "@/lib/utils";
 import { useDrawer } from "@/components/dashboard/drawer-provider";
 import { UserMenu } from "@/components/dashboard/user-menu";
-import { LocaleSwitcher } from "@/components/ui/locale-switcher";
-import { useHelpSystem } from "@/components/dashboard/help/help-system";
+
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
 
 interface SidebarWorkspace {
@@ -168,7 +165,7 @@ export function DashboardSidebar() {
   const [health, setHealth] = useState<AccountHealthSummary | null>(null);
   const [healthError, setHealthError] = useState<"unauthorized" | "other" | null>(null);
   const { openDrawer } = useDrawer();
-  const { openLearn } = useHelpSystem();
+
 
   // Hydrate workspace list from /api/workspaces. Track three terminal
   // states: "loading" (initial fetch), "unauthorized" (401 → user must
@@ -317,27 +314,7 @@ export function DashboardSidebar() {
           />
           {!collapsed && <span className="text-[15px] font-semibold tracking-tight">PostPlanify</span>}
         </Link>
-        {!collapsed && (
-          <div className="flex items-center gap-0.5">
-            <button
-              type="button"
-              onClick={() => openLearn()}
-              className="inline-flex items-center justify-center size-7 rounded-md hover:bg-zinc-100"
-              aria-label="Open Learn panel"
-              title="Learn"
-            >
-              <BookOpen className="size-4 text-zinc-500" />
-            </button>
-            <button
-              type="button"
-              className="relative inline-flex items-center justify-center size-7 rounded-md hover:bg-zinc-100"
-              aria-label="Notifications"
-            >
-              <Bell className="size-4 text-zinc-500" />
-              <span className="absolute top-1 right-1 size-1.5 rounded-full bg-red-500" />
-            </button>
-          </div>
-        )}
+        {/* Topbar now renders BookOpen + Bell + LocaleSwitcher */}
       </div>
 
       {/* Workspace selector */}
@@ -455,16 +432,6 @@ export function DashboardSidebar() {
                     : "Loading…"}
             </p>
           </Link>
-        </div>
-      )}
-
-      {/* Language switcher */}
-      {!collapsed && (
-        <div className="px-3 pb-2">
-          <div className="flex items-center justify-between rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
-            <span className="text-xs font-medium text-zinc-500">Interface language</span>
-            <LocaleSwitcher />
-          </div>
         </div>
       )}
 

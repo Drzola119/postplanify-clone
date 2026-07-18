@@ -39,6 +39,8 @@
       "step3_subtitle": "Collez l'URL d'une page d'offre — nous récupérerons le texte. Ou remplissez manuellement.",
       "footer_cta_label": "CTA de pied de page (optionnel)",
       "offer_details_title": "Détails de l'offre",
+      "provider_label": "Fournisseur d'images",
+      "aspect_ratio_label": "Format",
       "offer_title_label": "Titre de l'offre",
       "offer_copy_label": "Texte de l'offre",
       "offer_copy_placeholder": "Collez le texte de l'offre, ou cliquez sur Extraire ci-dessus pour le récupérer depuis une URL.",
