@@ -71,5 +71,88 @@
   "common": {
     "ui_language_label": "لغة الواجهة",
     "output_language_label": "لغة نص الإنفوغرافيك"
+  },
+  "shell": {
+    "nav": {
+      "main_section": "الرئيسية",
+      "config_section": "الإعدادات",
+      "other_section": "أخرى",
+      "calendar": "التقويم",
+      "drafts": "المسودات",
+      "queue": "قائمة الانتظار",
+      "history": "السجل",
+      "command_center": "مركز التحكم",
+      "analytics": "التحليلات",
+      "reports": "التقارير",
+      "social_inbox": "البريد الاجتماعي",
+      "media_library": "مكتبة الوسائط",
+      "infographics": "الإنفوغرافيك",
+      "workspaces": "مساحات العمل",
+      "accounts": "الحسابات",
+      "automations": "الأتمتة",
+      "destinations": "الوجهات",
+      "branding": "العلامة التجارية",
+      "settings": "الإعدادات",
+      "posting_queue": "قائمة النشر",
+      "hashtags": "الوسوم",
+      "labels": "التسميات",
+      "get_support": "الحصول على دعم",
+      "earn_referral": "اربح 40% عمولة",
+      "link_in_bio": "الرابط في السيرة",
+      "api_keys": "مفاتيح API"
+    },
+    "workspace": {
+      "loading": "جارٍ التحميل…",
+      "relogin_required": "تسجيل الدخول مرة أخرى",
+      "no_workspaces": "لا توجد مساحات عمل",
+      "create_workspace": "+ إنشاء مساحة عمل",
+      "create_prompt": "اسم مساحة العمل؟",
+      "create_error": "تعذر إنشاء مساحة العمل. يرجى المحاولة مرة أخرى."
+    },
+    "cta": {
+      "create_post": "إنشاء منشور",
+      "bulk_schedule": "جدولة جماعية"
+    },
+    "connections": {
+      "title": "الاتصالات",
+      "healthy": "{count} سليم",
+      "total": "إجمالي {total}",
+      "need_reauth": "{count} تحتاج إعادة مصادقة",
+      "stale": "{count} قديم",
+      "disconnected": "{count} غير متصل",
+      "all_healthy": "{total} متصل · جميعها سليمة",
+      "relogin_hint": "سجّل دخولك مجددًا لعرض الاتصالات",
+      "load_error": "تعذّر التحميل — أعد المحاولة",
+      "loading": "جارٍ التحميل…"
+    },
+    "sidebar": {
+      "expand": "توسيع الشريط الجانبي",
+      "collapse": "طيّ الشريط الجانبي",
+      "interface_language": "لغة الواجهة"
+    },
+    "topbar": {
+      "page_calendar": "التقويم",
+      "page_drafts": "المسودات",
+      "page_queue": "قائمة الانتظار",
+      "page_history": "السجل",
+      "page_command_center": "مركز التحكم",
+      "page_analytics": "التحليلات",
+      "page_reports": "التقارير",
+      "page_inbox": "البريد الاجتماعي",
+      "page_assets": "مكتبة الوسائط",
+      "page_infographics": "الإنفوغرافيك",
+      "page_brands": "مساحات العمل",
+      "page_accounts": "الحسابات",
+      "page_automations": "الأتمتة",
+      "page_destinations": "الوجهات",
+      "page_branding": "العلامة التجارية",
+      "page_settings": "الإعدادات",
+      "page_api_keys": "مفاتيح API",
+      "notifications": "الإشعارات",
+      "learn": "تعلّم"
+    },
+    "plan": {
+      "growth": "خطة النمو"
+    }
   }
 }

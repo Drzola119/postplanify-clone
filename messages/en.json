@@ -71,5 +71,88 @@
   "common": {
     "ui_language_label": "Interface language",
     "output_language_label": "Infographic text language"
+  },
+  "shell": {
+    "nav": {
+      "main_section": "Main",
+      "config_section": "Configuration",
+      "other_section": "Other",
+      "calendar": "Calendar",
+      "drafts": "Drafts",
+      "queue": "Queue",
+      "history": "History",
+      "command_center": "Command Center",
+      "analytics": "Analytics",
+      "reports": "Reports",
+      "social_inbox": "Social Inbox",
+      "media_library": "Media Library",
+      "infographics": "Infographics",
+      "workspaces": "Workspaces",
+      "accounts": "Accounts",
+      "automations": "Automations",
+      "destinations": "Destinations",
+      "branding": "Branding",
+      "settings": "Settings",
+      "posting_queue": "Posting Queue",
+      "hashtags": "Hashtags",
+      "labels": "Labels",
+      "get_support": "Get Support",
+      "earn_referral": "Earn 40% Referral",
+      "link_in_bio": "Link in Bio",
+      "api_keys": "API Keys"
+    },
+    "workspace": {
+      "loading": "Loading…",
+      "relogin_required": "Re-login required",
+      "no_workspaces": "No workspaces yet",
+      "create_workspace": "+ Create Workspace",
+      "create_prompt": "Workspace name?",
+      "create_error": "Could not create workspace. Please try again."
+    },
+    "cta": {
+      "create_post": "Create Post",
+      "bulk_schedule": "Bulk Schedule"
+    },
+    "connections": {
+      "title": "Connections",
+      "healthy": "{count} healthy",
+      "total": "{total} total",
+      "need_reauth": "{count} need reauth",
+      "stale": "{count} stale",
+      "disconnected": "{count} disconnected",
+      "all_healthy": "{total} connected · all healthy",
+      "relogin_hint": "Sign in again to view connections",
+      "load_error": "Could not load — retry",
+      "loading": "Loading…"
+    },
+    "sidebar": {
+      "expand": "Expand sidebar",
+      "collapse": "Collapse sidebar",
+      "interface_language": "Interface language"
+    },
+    "topbar": {
+      "page_calendar": "Calendar",
+      "page_drafts": "Drafts",
+      "page_queue": "Queue",
+      "page_history": "History",
+      "page_command_center": "Command Center",
+      "page_analytics": "Analytics",
+      "page_reports": "Reports",
+      "page_inbox": "Social Inbox",
+      "page_assets": "Media Library",
+      "page_infographics": "Infographics",
+      "page_brands": "Workspaces",
+      "page_accounts": "Accounts",
+      "page_automations": "Automations",
+      "page_destinations": "Destinations",
+      "page_branding": "Branding",
+      "page_settings": "Settings",
+      "page_api_keys": "API Keys",
+      "notifications": "Notifications",
+      "learn": "Learn"
+    },
+    "plan": {
+      "growth": "Growth Plan"
+    }
   }
 }

@@ -135,6 +135,10 @@
   }
 }
 
+:lang(ar) {
+  font-family: var(--font-arabic), system-ui, sans-serif;
+}
+
 /* PostPlanify-specific animations */
 @layer utilities {
   @keyframes marquee {

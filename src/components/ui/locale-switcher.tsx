@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Globe } from "lucide-react";
 import { LOCALE_LABELS, type UiLocale } from "@/lib/i18n/types";
 
@@ -13,8 +12,8 @@ const ORDER: UiLocale[] = ["en", "fr", "ar"];
  * On selection it:
  *   1. Writes the "ui-locale" cookie (1 year, sameSite lax).
  *   2. Persists the choice to the user's Firestore doc via /api/settings/locale.
- *   3. Calls router.refresh() so the root layout re-renders with the new
- *      <html lang>/<html dir> without a full page reload.
+ *   3. Reloads the page so the server re-reads the cookie and serves the
+ *      correct messages bundle.
  *
  * This controls the INTERFACE language ONLY. It has nothing to do with the
  * infographic Output Language selected inside the wizard.
@@ -27,7 +26,6 @@ function getActiveCookieLocale(): UiLocale {
 }
 
 export function LocaleSwitcher() {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [current, setCurrent] = useState<UiLocale>(() => getActiveCookieLocale());
 
@@ -56,8 +54,8 @@ export function LocaleSwitcher() {
       /* non-blocking */
     }
 
-    // 3. Re-render layout with new locale.
-    router.refresh();
+    // 3. Full page reload so the server re-reads the cookie and serves the correct messages bundle.
+    window.location.href = window.location.pathname;
   }
 
   return (

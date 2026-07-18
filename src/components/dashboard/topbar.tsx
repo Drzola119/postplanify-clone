@@ -1,37 +1,42 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { BookOpen, Bell } from "lucide-react";
 import { LocaleSwitcher } from "@/components/ui/locale-switcher";
 import { useHelpSystem } from "@/components/dashboard/help/help-system";
 
-const TITLE_MAP: Record<string, string> = {
-  "/dashboard/posts": "Calendar",
-  "/dashboard/posts/drafts": "Drafts",
-  "/dashboard/queue": "Queue",
-  "/dashboard/analytics": "Analytics",
-  "/dashboard/reports": "Reports",
-  "/dashboard/inbox": "Social Inbox",
-  "/dashboard/assets": "Media Library",
-  "/dashboard/infographics": "Infographics",
-  "/dashboard/brands": "Workspaces",
-  "/dashboard/accounts": "Accounts",
-  "/dashboard/settings": "Settings",
-};
-
-function usePageTitle(): string {
+function usePageTitle(t: (key: string) => string): string {
   const path = usePathname();
-  // Exact match first
-  if (TITLE_MAP[path]) return TITLE_MAP[path];
-  // Prefix match (e.g. /dashboard/infographics/ads)
-  for (const [prefix, label] of Object.entries(TITLE_MAP)) {
+  const PAGE_TITLES: Record<string, string> = {
+    "/dashboard/posts": t("topbar.page_calendar"),
+    "/dashboard/posts/drafts": t("topbar.page_drafts"),
+    "/dashboard/queue": t("topbar.page_queue"),
+    "/dashboard/posts/history": t("topbar.page_history"),
+    "/dashboard/command-center": t("topbar.page_command_center"),
+    "/dashboard/analytics": t("topbar.page_analytics"),
+    "/dashboard/reports": t("topbar.page_reports"),
+    "/dashboard/inbox": t("topbar.page_inbox"),
+    "/dashboard/assets": t("topbar.page_assets"),
+    "/dashboard/infographics": t("topbar.page_infographics"),
+    "/dashboard/brands": t("topbar.page_brands"),
+    "/dashboard/accounts": t("topbar.page_accounts"),
+    "/dashboard/automations/dm": t("topbar.page_automations"),
+    "/dashboard/destinations": t("topbar.page_destinations"),
+    "/dashboard/settings/branding": t("topbar.page_branding"),
+    "/dashboard/settings": t("topbar.page_settings"),
+    "/dashboard/api-keys": t("topbar.page_api_keys"),
+  };
+  if (PAGE_TITLES[path]) return PAGE_TITLES[path];
+  for (const [prefix, label] of Object.entries(PAGE_TITLES)) {
     if (path.startsWith(prefix + "/")) return label;
   }
   return "";
 }
 
 export function DashboardTopbar() {
-  const pageTitle = usePageTitle();
+  const t = useTranslations("shell");
+  const pageTitle = usePageTitle(t);
   const { openLearn } = useHelpSystem();
 
   return (
@@ -43,15 +48,15 @@ export function DashboardTopbar() {
           type="button"
           onClick={() => openLearn()}
           className="inline-flex items-center justify-center size-8 rounded-md hover:bg-zinc-100"
-          aria-label="Open Learn panel"
-          title="Learn"
+          aria-label={t("topbar.learn")}
+          title={t("topbar.learn")}
         >
           <BookOpen className="size-4 text-zinc-500" />
         </button>
         <button
           type="button"
           className="relative inline-flex items-center justify-center size-8 rounded-md hover:bg-zinc-100"
-          aria-label="Notifications"
+          aria-label={t("topbar.notifications")}
         >
           <Bell className="size-4 text-zinc-500" />
           <span className="absolute top-1 right-1 size-1.5 rounded-full bg-red-500" />

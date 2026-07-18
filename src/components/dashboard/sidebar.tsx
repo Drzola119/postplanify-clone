@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import { useDrawer } from "@/components/dashboard/drawer-provider";
 import { UserMenu } from "@/components/dashboard/user-menu";
 
+import { useTranslations } from "next-intl";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
 
 interface SidebarWorkspace {
@@ -63,42 +64,9 @@ interface AccountHealthSummary {
 type WorkspaceLoadState = "loading" | "unauthorized" | "ready";
 
 type NavItem = { label: string; href: string; icon: React.ComponentType<{ className?: string }>; badge?: number };
-
-const MAIN: NavItem[] = [
-  { label: "Calendar", href: "/dashboard/posts", icon: Calendar, badge: 0 },
-  { label: "Drafts", href: "/dashboard/posts/drafts", icon: FileText },
-  { label: "Queue", href: "/dashboard/queue", icon: ListChecks },
-  { label: "History", href: "/dashboard/posts/history", icon: History },
-  { label: "Command Center", href: "/dashboard/command-center", icon: Zap },
-  { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
-  { label: "Reports", href: "/dashboard/reports", icon: FileBarChart },
-  { label: "Social Inbox", href: "/dashboard/inbox", icon: Inbox },
-  { label: "Media Library", href: "/dashboard/assets", icon: ImageIcon },
-  { label: "Infographics", href: "/dashboard/infographics", icon: Sparkles },
-];
-
-const CONFIG: NavItem[] = [
-  { label: "Workspaces", href: "/dashboard/brands", icon: Building2 },
-  { label: "Accounts", href: "/dashboard/accounts", icon: Users },
-  { label: "Automations", href: "/dashboard/automations/dm", icon: Wand2 },
-  { label: "Destinations", href: "/dashboard/destinations", icon: Send },
-  { label: "Branding", href: "/dashboard/settings/branding", icon: Palette },
-  { label: "Settings", href: "/dashboard/settings", icon: Settings },
-];
-
 type DrawerKey = "schedule" | "hashtags" | "labels";
-const CONFIG_DRAWERS: { label: string; icon: React.ComponentType<{ className?: string }>; drawer: DrawerKey }[] = [
-  { label: "Posting Queue", icon: ListChecks, drawer: "schedule" },
-  { label: "Hashtags", icon: Hash, drawer: "hashtags" },
-  { label: "Labels", icon: Tag, drawer: "labels" },
-];
 
-const OTHER: NavItem[] = [
-  { label: "Get Support", href: "mailto:support@postplanify.com", icon: LifeBuoy },
-  { label: "Earn 40% Referral", href: "/affiliates", icon: DollarSign },
-  { label: "Link in Bio", href: "/dashboard/link-in-bio", icon: Link2 },
-  { label: "API Keys", href: "/dashboard/api-keys", icon: Key, badge: 6 },
-];
+
 
 function NavLink({ item, active }: { item: NavItem; active: boolean }) {
   const Icon = item.icon;
@@ -165,7 +133,42 @@ export function DashboardSidebar() {
   const [health, setHealth] = useState<AccountHealthSummary | null>(null);
   const [healthError, setHealthError] = useState<"unauthorized" | "other" | null>(null);
   const { openDrawer } = useDrawer();
+  const t = useTranslations("shell");
 
+  const MAIN: NavItem[] = [
+    { label: t("nav.calendar"), href: "/dashboard/posts", icon: Calendar, badge: 0 },
+    { label: t("nav.drafts"), href: "/dashboard/posts/drafts", icon: FileText },
+    { label: t("nav.queue"), href: "/dashboard/queue", icon: ListChecks },
+    { label: t("nav.history"), href: "/dashboard/posts/history", icon: History },
+    { label: t("nav.command_center"), href: "/dashboard/command-center", icon: Zap },
+    { label: t("nav.analytics"), href: "/dashboard/analytics", icon: BarChart3 },
+    { label: t("nav.reports"), href: "/dashboard/reports", icon: FileBarChart },
+    { label: t("nav.social_inbox"), href: "/dashboard/inbox", icon: Inbox },
+    { label: t("nav.media_library"), href: "/dashboard/assets", icon: ImageIcon },
+    { label: t("nav.infographics"), href: "/dashboard/infographics", icon: Sparkles },
+  ];
+
+  const CONFIG: NavItem[] = [
+    { label: t("nav.workspaces"), href: "/dashboard/brands", icon: Building2 },
+    { label: t("nav.accounts"), href: "/dashboard/accounts", icon: Users },
+    { label: t("nav.automations"), href: "/dashboard/automations/dm", icon: Wand2 },
+    { label: t("nav.destinations"), href: "/dashboard/destinations", icon: Send },
+    { label: t("nav.branding"), href: "/dashboard/settings/branding", icon: Palette },
+    { label: t("nav.settings"), href: "/dashboard/settings", icon: Settings },
+  ];
+
+  const CONFIG_DRAWERS: { label: string; icon: React.ComponentType<{ className?: string }>; drawer: DrawerKey }[] = [
+    { label: t("nav.posting_queue"), icon: ListChecks, drawer: "schedule" },
+    { label: t("nav.hashtags"), icon: Hash, drawer: "hashtags" },
+    { label: t("nav.labels"), icon: Tag, drawer: "labels" },
+  ];
+
+  const OTHER: NavItem[] = [
+    { label: t("nav.get_support"), href: "mailto:support@postplanify.com", icon: LifeBuoy },
+    { label: t("nav.earn_referral"), href: "/affiliates", icon: DollarSign },
+    { label: t("nav.link_in_bio"), href: "/dashboard/link-in-bio", icon: Link2 },
+    { label: t("nav.api_keys"), href: "/dashboard/api-keys", icon: Key, badge: 6 },
+  ];
 
   // Hydrate workspace list from /api/workspaces. Track three terminal
   // states: "loading" (initial fetch), "unauthorized" (401 → user must
@@ -249,7 +252,7 @@ export function DashboardSidebar() {
   }, []);
 
   const handleCreateWorkspace = async () => {
-    const name = window.prompt("Workspace name?");
+    const name = window.prompt(t("workspace.create_prompt"));
     if (!name) return;
     const trimmed = name.trim();
     if (!trimmed) return;
@@ -261,7 +264,7 @@ export function DashboardSidebar() {
         body: JSON.stringify({ name: trimmed }),
       });
       if (!res.ok) {
-        window.alert("Could not create workspace. Please try again.");
+        window.alert(t("workspace.create_error"));
         return;
       }
       const data = (await res.json()) as { id?: string };
@@ -279,7 +282,7 @@ export function DashboardSidebar() {
         }
       }
     } catch {
-      window.alert("Could not create workspace. Please try again.");
+      window.alert(t("workspace.create_error"));
     }
   };
 
@@ -328,17 +331,17 @@ export function DashboardSidebar() {
               aria-label="Switch workspace"
             >
               {workspaceState === "loading" ? (
-              <option value="">Loading…</option>
+              <option value="">{t("workspace.loading")}</option>
             ) : workspaceState === "unauthorized" ? (
-              <option value="">Re-login required</option>
+              <option value="">{t("workspace.relogin_required")}</option>
             ) : workspaces.length === 0 ? (
-              <option value="">No workspaces yet</option>
+              <option value="">{t("workspace.no_workspaces")}</option>
             ) : (
               workspaces.map((w) => (
                 <option key={w.id} value={w.id}>{w.name}</option>
               ))
             )}
-              <option value="__create__">+ Create Workspace</option>
+              <option value="__create__">{t("workspace.create_workspace")}</option>
             </select>
             <Building2 className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-zinc-400 pointer-events-none" />
             <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 size-4 text-zinc-400 pointer-events-none" />
@@ -354,28 +357,28 @@ export function DashboardSidebar() {
             className="flex items-center justify-center gap-2 h-9 rounded-md bg-zinc-900 text-white text-sm font-medium hover:bg-zinc-800"
           >
             <Plus className="size-4" />
-            Create Post
+            {t("cta.create_post")}
           </Link>
           <Link
             href="/dashboard/posts/bulk-schedule"
             className="flex items-center justify-center gap-2 h-9 rounded-md border border-zinc-200 bg-white text-sm font-medium hover:bg-zinc-50 text-zinc-700"
           >
             <CalendarPlus className="size-4" />
-            Bulk Schedule
+            {t("cta.bulk_schedule")}
           </Link>
         </div>
       )}
 
       {/* Scrollable nav */}
       <nav className="flex-1 overflow-y-auto pb-3">
-        {!collapsed && <SectionLabel>Main</SectionLabel>}
+        {!collapsed && <SectionLabel>{t("nav.main_section")}</SectionLabel>}
         <div className="px-3 space-y-0.5">
           {MAIN.map((item) => (
             <NavLink key={item.href} item={item} active={pathname === item.href} />
           ))}
         </div>
 
-        {!collapsed && <SectionLabel>Configuration</SectionLabel>}
+        {!collapsed && <SectionLabel>{t("nav.config_section")}</SectionLabel>}
         <div className="px-3 space-y-0.5">
           {CONFIG.map((item) => (
             <NavLink key={item.href} item={item} active={pathname === item.href} />
@@ -390,7 +393,7 @@ export function DashboardSidebar() {
           ))}
         </div>
 
-        {!collapsed && <SectionLabel>Other</SectionLabel>}
+        {!collapsed && <SectionLabel>{t("nav.other_section")}</SectionLabel>}
         <div className="px-3 space-y-0.5">
           {OTHER.map((item) => (
             <NavLink key={item.href} item={item} active={pathname === item.href} />
@@ -409,27 +412,27 @@ export function DashboardSidebar() {
               <div className="size-7 rounded-full bg-emerald-500/15 flex items-center justify-center">
                 <Users className="size-3.5 text-emerald-700" />
               </div>
-              <p className="text-xs font-semibold text-emerald-900 flex-1">Connections</p>
+              <p className="text-xs font-semibold text-emerald-900 flex-1">{t("connections.title")}</p>
               <p className="text-xs font-semibold text-emerald-700">
-                {health ? `${health.healthy} healthy` : "—"}
+                {health ? t("connections.healthy", { count: health.healthy }) : "—"}
               </p>
             </div>
             <p className="mt-1.5 text-[11px] text-emerald-800/80">
               {health
                 ? health.needsReauth > 0 || health.stale > 0 || health.disconnected > 0
-                  ? `${health.total} total · ${[
-                      health.needsReauth > 0 ? `${health.needsReauth} need reauth` : null,
-                      health.stale > 0 ? `${health.stale} stale` : null,
-                      health.disconnected > 0 ? `${health.disconnected} disconnected` : null,
+                  ? `${t("connections.total", { total: health.total })} · ${[
+                      health.needsReauth > 0 ? t("connections.need_reauth", { count: health.needsReauth }) : null,
+                      health.stale > 0 ? t("connections.stale", { count: health.stale }) : null,
+                      health.disconnected > 0 ? t("connections.disconnected", { count: health.disconnected }) : null,
                     ]
                       .filter(Boolean)
                       .join(" · ")}`
-                  : `${health.total} connected · all healthy`
+                  : t("connections.all_healthy", { total: health.total })
                 : healthError === "unauthorized"
-                  ? "Sign in again to view connections"
+                  ? t("connections.relogin_hint")
                   : healthError === "other"
-                    ? "Could not load — retry"
-                    : "Loading…"}
+                    ? t("connections.load_error")
+                    : t("connections.loading")}
             </p>
           </Link>
         </div>
@@ -440,7 +443,7 @@ export function DashboardSidebar() {
 
       {!collapsed && (
         <div className="px-3 pb-3 flex items-center gap-1.5">
-          <span className="text-xs font-medium text-zinc-500">Growth Plan</span>
+          <span className="text-xs font-medium text-zinc-500">{t("plan.growth")}</span>
           <span className="text-zinc-400">⚙️</span>
         </div>
       )}
@@ -450,7 +453,7 @@ export function DashboardSidebar() {
         type="button"
         onClick={() => setCollapsed((c) => !c)}
         className="absolute top-1/2 -right-3 -translate-y-1/2 z-50 size-6 rounded-full bg-white border border-zinc-200 inline-flex items-center justify-center hover:bg-zinc-50 text-zinc-500 shadow-sm"
-        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        aria-label={collapsed ? t("sidebar.expand") : t("sidebar.collapse")}
       >
         {collapsed ? <ChevronRight className="size-3.5" /> : <ChevronLeft className="size-3.5" />}
       </button>

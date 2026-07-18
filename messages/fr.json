@@ -71,5 +71,88 @@
   "common": {
     "ui_language_label": "Langue de l'interface",
     "output_language_label": "Langue du texte de l'infographie"
+  },
+  "shell": {
+    "nav": {
+      "main_section": "Principal",
+      "config_section": "Configuration",
+      "other_section": "Autre",
+      "calendar": "Calendrier",
+      "drafts": "Brouillons",
+      "queue": "File d'attente",
+      "history": "Historique",
+      "command_center": "Centre de commandes",
+      "analytics": "Analytique",
+      "reports": "Rapports",
+      "social_inbox": "Boîte de réception",
+      "media_library": "Médiathèque",
+      "infographics": "Infographies",
+      "workspaces": "Espaces de travail",
+      "accounts": "Comptes",
+      "automations": "Automatisations",
+      "destinations": "Destinations",
+      "branding": "Image de marque",
+      "settings": "Paramètres",
+      "posting_queue": "File de publication",
+      "hashtags": "Hashtags",
+      "labels": "Étiquettes",
+      "get_support": "Obtenir de l'aide",
+      "earn_referral": "Gagner 40% de commission",
+      "link_in_bio": "Lien en bio",
+      "api_keys": "Clés API"
+    },
+    "workspace": {
+      "loading": "Chargement…",
+      "relogin_required": "Reconnexion requise",
+      "no_workspaces": "Aucun espace de travail",
+      "create_workspace": "+ Créer un espace de travail",
+      "create_prompt": "Nom de l'espace de travail ?",
+      "create_error": "Impossible de créer l'espace de travail. Veuillez réessayer."
+    },
+    "cta": {
+      "create_post": "Créer une publication",
+      "bulk_schedule": "Planification en masse"
+    },
+    "connections": {
+      "title": "Connexions",
+      "healthy": "{count} en bonne santé",
+      "total": "{total} au total",
+      "need_reauth": "{count} nécessitent une reconnexion",
+      "stale": "{count} obsolètes",
+      "disconnected": "{count} déconnectés",
+      "all_healthy": "{total} connectés · tous en bonne santé",
+      "relogin_hint": "Reconnectez-vous pour voir les connexions",
+      "load_error": "Chargement impossible — réessayer",
+      "loading": "Chargement…"
+    },
+    "sidebar": {
+      "expand": "Développer la barre latérale",
+      "collapse": "Réduire la barre latérale",
+      "interface_language": "Langue de l'interface"
+    },
+    "topbar": {
+      "page_calendar": "Calendrier",
+      "page_drafts": "Brouillons",
+      "page_queue": "File d'attente",
+      "page_history": "Historique",
+      "page_command_center": "Centre de commandes",
+      "page_analytics": "Analytique",
+      "page_reports": "Rapports",
+      "page_inbox": "Boîte de réception",
+      "page_assets": "Médiathèque",
+      "page_infographics": "Infographies",
+      "page_brands": "Espaces de travail",
+      "page_accounts": "Comptes",
+      "page_automations": "Automatisations",
+      "page_destinations": "Destinations",
+      "page_branding": "Image de marque",
+      "page_settings": "Paramètres",
+      "page_api_keys": "Clés API",
+      "notifications": "Notifications",
+      "learn": "Apprendre"
+    },
+    "plan": {
+      "growth": "Plan Croissance"
+    }
   }
 }
