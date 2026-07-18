@@ -1,0 +1,569 @@
+[
+  {
+    "tag": "a",
+    "text": "Upload Post",
+    "href": "/welcome",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "Users",
+    "href": "/manage-users",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "API Keys",
+    "href": "/api-keys",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "Upload",
+    "href": "/dashboard",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "Calendar",
+    "href": "/calendar",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "Analytics",
+    "href": "/analytics",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "Pricing",
+    "href": "/pricing",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "Docs",
+    "href": "https://docs.upload-post.com",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "",
+    "href": "/notifications",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "button",
+    "text": "👑",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "Manual",
+    "href": "/dashboard",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "Shorts Uploader",
+    "href": "/shorts",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "API",
+    "href": "/api-keys",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "upload-post.com/n8n-templates",
+    "href": "https://www.upload-post.com/n8n-templates",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "button",
+    "text": "Set up core contentPick the profile, content source, and primary copy.Media pending",
+    "href": null,
+    "placeholder": null,
+    "type": "button",
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Select ProfileContent will be posted using this profile's connected accounts.",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "select",
+    "text": "xkksLA9bPvHLwx4nThvU",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Select Upload Method",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Upload Media File",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "input",
+    "text": "",
+    "href": null,
+    "placeholder": null,
+    "type": "radio",
+    "aria": null,
+    "name": "uploadMethodOrContentType"
+  },
+  {
+    "tag": "label",
+    "text": "Use Media URL(s)",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Text-Only Post",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Upload Media FileImages, Videos or Documents (LinkedIn)",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "TitleOptional — used as caption/description",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "textarea",
+    "text": "",
+    "href": null,
+    "placeholder": "Enter title for your post",
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "button",
+    "text": "Generate now",
+    "href": null,
+    "placeholder": null,
+    "type": "button",
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Generate on upload",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "This Title is a global field used across all platforms during upload. By default, it also serves as the description/capt",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "character limit requirements",
+    "href": "https://docs.upload-post.com/resources/character-limits",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "First Comment (Optional)",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "textarea",
+    "text": "",
+    "href": null,
+    "placeholder": "Post a first comment automatically (e.g., hashtags, links, etc.)",
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Works on: Instagram, Facebook, Threads, Bluesky, Reddit, X, YouTube, and LinkedIn.",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "button",
+    "text": "Platform-specific settingsEnable each network and fine-tune channel options.None selected",
+    "href": null,
+    "placeholder": null,
+    "type": "button",
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Select PlatformsChoose where to upload",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "TikTok@nick_lorance",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Instagram@nicklorance7",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "YouTube@Zakaria 11",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "LinkedIn@Nick Lorance",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Facebook@Nick Lorance",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "X@nick lorance",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Threads@Nick Lorance",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Pinterest@nicklorance7",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Reddit",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Bluesky@nicklorance.bsky.social",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Google Business",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Discord",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Telegram",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "button",
+    "text": "Scheduling & submissionChoose when to publish and finalize the request.Immediate",
+    "href": null,
+    "placeholder": null,
+    "type": "button",
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Async uploadIf enabled, uploads are queued and processed asynchronously.",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Schedule Post (Optional)Leave blank to post immediately",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "TimezoneYour timezone",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "select",
+    "text": "America/New_YorkAmerica/ChicagoAmerica/DenverAmerica/Los_AngelesAmerica/AnchorageAmerica/PhoenixAmerica/TorontoAmerica/V",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "label",
+    "text": "Add to QueueAutomatically schedule to your next available queue slot. Configure queue",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "Configure queue",
+    "href": "/queue-settings",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "button",
+    "text": "Upload Video to 0 Platforms",
+    "href": null,
+    "placeholder": null,
+    "type": "submit",
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "Dashboard",
+    "href": "/dashboard",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "Manage Profiles",
+    "href": "/manage-users",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "Billing & Usage",
+    "href": "/myprofile",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "API & Integrations",
+    "href": "/api-keys",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "Documentation",
+    "href": "https://docs.upload-post.com",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "a",
+    "text": "Help Center",
+    "href": "/support",
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  },
+  {
+    "tag": "button",
+    "text": "Leave a review ⭐️",
+    "href": null,
+    "placeholder": null,
+    "type": null,
+    "aria": null,
+    "name": null
+  }
+]

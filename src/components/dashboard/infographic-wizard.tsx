@@ -1,7 +1,15 @@
 "use client";
 
+// RTL AUDIT LOG — classes migrated to CSS logical properties:
+//   text-left → text-start (line 254, 311)
+// No ml-/mr-/pl-/pr-/left-/right-/rounded-l-/rounded-r-/border-l-/border-r-
+// classes exist in this file; those two text-left were the only LTR-hardcoded
+// alignment utilities. Step indicators are inline circles with no connector
+// line, so no directional connector fix was required.
+
 import { useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import {
   Sparkles,
   Loader2,
@@ -13,8 +21,12 @@ import {
   Globe,
   Wand2,
   AlertCircle,
+  Info,
+  AlertTriangle,
 } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { OUTPUT_LANGUAGE_LABELS, type OutputLanguage } from "@/lib/i18n/types";
+import { ARABIC_CAPABLE_PROVIDERS } from "@/lib/image-gen/language-support";
 
 /**
  * Shared wizard for both infographic tools. The only thing that
@@ -25,6 +37,10 @@ import { PageHeader } from "@/components/dashboard/page-header";
  * Server builds the prompt from these inputs (see
  * /api/infographics/generate/route.ts → buildInfographicPrompt or
  * buildAdsInfographicPrompt), so the client never sees the template.
+ *
+ * The Output Language selector controls what language the AI renders the
+ * ON-IMAGE text in. It is INDEPENDENT from the UI locale — never derived
+ * from it and never synced.
  */
 
 interface StyleOption {
@@ -57,6 +73,8 @@ const SCHEMES = [
   { id: "dark", label: "Dark", swatch: "bg-zinc-900 border-zinc-900" },
   { id: "brand", label: "Brand", swatch: "bg-gradient-to-br from-yellow-300 via-sky-500 to-zinc-900 border-zinc-200" },
 ] as const;
+
+const OUTPUT_LANGS: OutputLanguage[] = ["en", "fr", "ar"];
 
 type ProviderId = (typeof PROVIDERS)[number]["id"];
 type AspectId = (typeof ASPECTS)[number]["id"];
@@ -92,10 +110,14 @@ export function InfographicWizard({
   styles,
   defaultStyleId,
 }: InfographicWizardProps) {
+  const t = useTranslations("infographics");
+  const ts = useTranslations("infographics.shared");
+
   const [styleId, setStyleId] = useState(defaultStyleId);
   const [provider, setProvider] = useState<ProviderId>("auto");
   const [aspect, setAspect] = useState<AspectId>("3:4");
   const [scheme, setScheme] = useState<SchemeId>("light");
+  const [outputLanguage, setOutputLanguage] = useState<OutputLanguage>("en");
 
   // Topic (Instant)
   const [topic, setTopic] = useState("");
@@ -119,6 +141,8 @@ export function InfographicWizard({
   const [result, setResult] = useState<GenerateResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const arabicCapable = ARABIC_CAPABLE_PROVIDERS.length > 0;
+
   async function handleScrape() {
     if (!offerUrl.trim()) return;
     setScraping(true);
@@ -131,7 +155,7 @@ export function InfographicWizard({
       );
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-        setError(data.error?.message ?? `Scrape failed (${res.status})`);
+        setError(data.error?.message ?? t("ads.error_scrape_failed"));
         return;
       }
       const data = (await res.json()) as {
@@ -150,7 +174,7 @@ export function InfographicWizard({
         fetchedChars: data.fetchedChars,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Scrape failed");
+      setError(err instanceof Error ? err.message : t("ads.error_scrape_failed"));
     } finally {
       setScraping(false);
     }
@@ -175,6 +199,7 @@ export function InfographicWizard({
               provider,
               aspectRatio: aspect,
               colorScheme: scheme,
+              outputLanguage,
               context: { styleId, campaignId: footerCta.trim() || undefined },
             }
           : {
@@ -185,6 +210,7 @@ export function InfographicWizard({
               provider,
               aspectRatio: aspect,
               colorScheme: scheme,
+              outputLanguage,
               context: { styleId, campaignId: footerCta.trim() || undefined },
             };
       const res = await fetch("/api/infographics/generate", {
@@ -223,15 +249,15 @@ export function InfographicWizard({
       <PageHeader
         title={title}
         subtitle={subtitle}
-        cta={
-          <Link
-            href="/dashboard/infographics"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-600 hover:text-zinc-900"
-          >
-            <ArrowRight className="size-3.5 rotate-180" />
-            All tools
-          </Link>
-        }
+            cta={
+            <Link
+              href="/dashboard/infographics"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-600 hover:text-zinc-900"
+            >
+              <ArrowRight className="size-3.5 rotate-180" />
+              {ts("all_tools")}
+            </Link>
+            }
       />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
@@ -239,8 +265,8 @@ export function InfographicWizard({
           {/* Step 1 — Style */}
           <Panel
             step="1"
-            title="Pick a layout"
-            subtitle="Each layout ships with its own structural metaphor and rule-set."
+            title={tool === "instant" ? t("instant.step1_title") : t("ads.step1_title")}
+            subtitle={t("instant.step1_subtitle")}
           >
             <div className="grid gap-2 sm:grid-cols-2">
               {styles.map((s) => {
@@ -251,7 +277,7 @@ export function InfographicWizard({
                     type="button"
                     onClick={() => setStyleId(s.id)}
                     className={
-                      "text-left rounded-xl border p-3 transition-all " +
+                      "text-start rounded-xl border p-3 transition-all " +
                       (active
                         ? "border-zinc-900 bg-zinc-50 ring-2 ring-zinc-900/10"
                         : "border-zinc-200 bg-white hover:border-zinc-300")
@@ -277,13 +303,13 @@ export function InfographicWizard({
             </div>
           </Panel>
 
-          {/* Step 2 — Provider + aspect + scheme */}
+          {/* Step 2 — Provider + aspect + scheme + OUTPUT LANGUAGE */}
           <Panel
             step="2"
-            title="Provider, ratio, colour scheme"
-            subtitle="Auto walks the fallback chain on retryable failure."
+            title={tool === "instant" ? t("instant.step2_title") : t("ads.step2_title")}
+            subtitle={t("instant.step2_subtitle")}
           >
-            <Field label="Provider">
+            <Field label={tool === "instant" ? t("instant.provider_label") : t("ads.provider_label")}>
               <select
                 value={provider}
                 onChange={(e) => setProvider(e.target.value as ProviderId)}
@@ -296,7 +322,7 @@ export function InfographicWizard({
                 ))}
               </select>
             </Field>
-            <Field label="Aspect ratio">
+            <Field label={tool === "instant" ? t("instant.aspect_ratio_label") : t("ads.aspect_ratio_label")}>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {ASPECTS.map((a) => {
                   const active = a.id === aspect;
@@ -308,7 +334,7 @@ export function InfographicWizard({
                       title={a.desc}
                       aria-pressed={active}
                       className={
-                        "flex flex-col items-start gap-1 rounded-md border p-2 text-left transition-all " +
+                        "flex flex-col items-start gap-1 rounded-md border p-2 text-start transition-all " +
                         (active
                           ? "ring-2 ring-zinc-900/20 border-zinc-900 bg-zinc-50"
                           : "border-zinc-200 bg-white hover:border-zinc-300")
@@ -321,7 +347,7 @@ export function InfographicWizard({
                 })}
               </div>
             </Field>
-            <Field label="Colour scheme">
+            <Field label={t("instant.scheme_label")}>
               <div className="flex items-center gap-2">
                 {SCHEMES.map((s) => {
                   const active = s.id === scheme;
@@ -342,25 +368,61 @@ export function InfographicWizard({
                 })}
               </div>
             </Field>
+
+            {/* Output Language — independent of UI locale */}
+            <Field label={tool === "instant" ? t("instant.output_language_label") : t("ads.output_language_label")}>
+              <select
+                value={outputLanguage}
+                onChange={(e) => setOutputLanguage(e.target.value as OutputLanguage)}
+                className="w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+              >
+                {OUTPUT_LANGS.map((l) => (
+                  <option key={l} value={l}>
+                    {OUTPUT_LANGUAGE_LABELS[l]}
+                  </option>
+                ))}
+              </select>
+              {outputLanguage === "ar" ? (
+                arabicCapable ? (
+                  <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-zinc-500">
+                    <Info className="size-3.5 mt-0.5 shrink-0" />
+                    <span>
+                      {tool === "instant"
+                        ? t("instant.output_language_helper_ar_with_provider")
+                        : t("ads.output_language_helper_ar_with_provider")}
+                    </span>
+                  </p>
+                ) : (
+                  <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-amber-700">
+                    <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
+                    <span>
+                      {tool === "instant"
+                        ? t("instant.output_language_helper_ar_no_provider")
+                        : t("ads.output_language_helper_ar_no_provider")}
+                    </span>
+                  </p>
+                )
+              ) : null}
+            </Field>
           </Panel>
 
           {/* Step 3 — Input */}
           {tool === "instant" ? (
             <Panel
               step="3"
-              title="Topic"
-              subtitle="One short phrase — we'll handle the rest."
+              title={t("instant.step1_title")}
+              subtitle={t("instant.step3_subtitle")}
             >
-              <Field label="What is the infographic about?">
+              <Field label={t("instant.step1_label")}>
                 <textarea
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
-                  placeholder="e.g. growth mindset tips for first-time managers"
+                  placeholder={t("instant.topic_placeholder")}
                   rows={3}
                   className="w-full px-3 py-2 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
                 />
               </Field>
-              <Field label="Footer CTA (optional)">
+              <Field label={t("instant.footer_cta_label")}>
                 <input
                   type="text"
                   value={footerCta}
@@ -373,16 +435,16 @@ export function InfographicWizard({
           ) : (
             <Panel
               step="3"
-              title="Offer details"
-              subtitle="Paste a landing page URL — we'll pull the copy. Or fill in by hand."
+              title={t("ads.offer_details_title")}
+              subtitle={t("ads.step3_subtitle")}
             >
-              <Field label="Landing page URL (optional)">
+              <Field label={t("ads.step1_label")}>
                 <div className="flex items-stretch gap-2">
                   <input
                     type="url"
                     value={offerUrl}
                     onChange={(e) => setOfferUrl(e.target.value)}
-                    placeholder="https://example.com/offer"
+                    placeholder={t("ads.url_placeholder")}
                     className="flex-1 h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
                   />
                   <button
@@ -392,7 +454,7 @@ export function InfographicWizard({
                     className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm font-medium hover:bg-zinc-50 disabled:opacity-50"
                   >
                     {scraping ? <Loader2 className="size-3.5 animate-spin" /> : <Globe className="size-3.5" />}
-                    Fetch
+                    {scraping ? t("ads.scraping_label") : t("ads.scrape_button")}
                   </button>
                 </div>
                 {scrapeMeta ? (
@@ -403,7 +465,7 @@ export function InfographicWizard({
                   </p>
                 ) : null}
               </Field>
-              <Field label="Offer title">
+              <Field label={t("ads.offer_title_label")}>
                 <input
                   type="text"
                   value={offerTitle}
@@ -412,16 +474,16 @@ export function InfographicWizard({
                   className="w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
                 />
               </Field>
-              <Field label="Offer copy">
+              <Field label={t("ads.offer_copy_label")}>
                 <textarea
                   value={offerCopy}
                   onChange={(e) => setOfferCopy(e.target.value)}
-                  placeholder="Paste the offer copy, or click Fetch above to pull from a URL."
+                  placeholder={t("ads.offer_copy_placeholder")}
                   rows={6}
                   className="w-full px-3 py-2 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
                 />
               </Field>
-              <Field label="Footer CTA (optional)">
+              <Field label={t("ads.footer_cta_label")}>
                 <input
                   type="text"
                   value={footerCta}
@@ -454,7 +516,13 @@ export function InfographicWizard({
               ) : (
                 <Sparkles className="size-4" />
               )}
-              Generate
+              {generating
+                ? tool === "instant"
+                  ? t("instant.generating_label")
+                  : t("ads.generating_label")
+                : tool === "instant"
+                  ? t("instant.generate_button")
+                  : t("ads.generate_button")}
             </button>
           </div>
         </div>
@@ -463,11 +531,11 @@ export function InfographicWizard({
         <div className="lg:sticky lg:top-6 lg:self-start">
           <div className="rounded-2xl border border-zinc-200 bg-white p-4">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold">Preview</p>
+              <p className="text-sm font-semibold">{ts("preview")}</p>
               {result ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 px-2 py-0.5 text-[11px] font-medium">
                   <Check className="size-3" />
-                  Rendered
+                  {ts("rendered")}
                 </span>
               ) : null}
             </div>
@@ -482,12 +550,12 @@ export function InfographicWizard({
               ) : generating ? (
                 <div className="flex flex-col items-center gap-2 text-zinc-500">
                   <Loader2 className="size-5 animate-spin" />
-                  <p className="text-xs">Generating…</p>
+                  <p className="text-xs">{tool === "instant" ? t("instant.generating_label") : t("ads.generating_label")}</p>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-2 text-zinc-400">
                   <ImageIcon className="size-6" />
-                  <p className="text-xs">Pick a layout and fill in the inputs to render.</p>
+                  <p className="text-xs">{ts("pick_layout_hint")}</p>
                 </div>
               )}
             </div>
@@ -505,7 +573,7 @@ export function InfographicWizard({
                     className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium"
                   >
                     <Check className="size-3.5" />
-                    Open in Media Library
+                    {ts("open_media_library")}
                   </Link>
                   <button
                     type="button"
@@ -514,7 +582,7 @@ export function InfographicWizard({
                     className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm font-medium hover:bg-zinc-50 disabled:opacity-50"
                   >
                     <RefreshCw className="size-3.5" />
-                    Regenerate
+                    {ts("regenerate")}
                   </button>
                   <button
                     type="button"
@@ -522,7 +590,7 @@ export function InfographicWizard({
                     className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm font-medium hover:bg-zinc-50"
                   >
                     <Shuffle className="size-3.5" />
-                    Try different style
+                    {ts("try_different")}
                   </button>
                 </div>
               </div>
@@ -530,17 +598,9 @@ export function InfographicWizard({
           </div>
 
           <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-4 text-xs text-zinc-600 space-y-1">
-            <p className="text-sm font-semibold text-zinc-700">How billing works</p>
+            <p className="text-sm font-semibold text-zinc-700">{ts("how_billing")}</p>
             <p>
-              Generations go through your BYOK key if one is saved under{" "}
-              <Link href="/dashboard/api-keys" className="font-semibold text-zinc-900 underline">
-                Settings → API Keys
-              </Link>
-              . Otherwise the platform-shared key is used. Either way the render is uploaded to your{" "}
-              <Link href="/dashboard/assets" className="font-semibold text-zinc-900 underline">
-                Media Library
-              </Link>{" "}
-              so you can re-use it.
+              {ts("billing_copy")}
             </p>
           </div>
         </div>

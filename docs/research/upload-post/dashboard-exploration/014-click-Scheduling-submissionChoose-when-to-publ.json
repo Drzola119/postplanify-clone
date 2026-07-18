@@ -1,0 +1,29 @@
+{
+  "clicked": {
+    "tag": "button",
+    "text": "Scheduling & submissionChoose when to publish and finalize the request.Immediate",
+    "href": null
+  },
+  "url": "https://app.upload-post.com/dashboard",
+  "title": "Upload Posts - Upload Videos to Social Media",
+  "h1": [
+    "Upload to all platforms with one click"
+  ],
+  "h2": [
+    "Set up core content",
+    "Platform-specific settings",
+    "Scheduling & submission"
+  ],
+  "buttons": [
+    "👑",
+    "More",
+    "Set up core contentPick the profile, content source, and primary copy.Media pending",
+    "Generate now",
+    "Platform-specific settingsEnable each network and fine-tune channel options.None selected",
+    "Scheduling & submissionChoose when to publish and finalize the request.Immediate",
+    "Upload Video to 0 Platforms",
+    "Leave a review ⭐️"
+  ],
+  "inputs": [],
+  "bodyText": "Upload Post Users API Keys Upload Calendar Analytics Pricing Docs 👑 Manual Shorts Uploader Upload to all platforms with one click Manually upload content to multiple social media platforms at once. As you configure your upload, the equivalent cURL command is generated below — copy it into automation workflows with tools like n8n or Make. For full automation, use our API and enjoy all params and options. Need a head start? Browse ready-made workflow templates at upload-post.com/n8n-templates. Set up core content Pick the profile, content source, and primary copy. Media pending Platform-specific settings Enable each network and fine-tune channel options. None selected Scheduling & submission Choose when to publish and finalize the request. Immediate Post preview xkksLA9bPvHLwx4nThvU No platforms selected Post immediately Async · Attached File TITLE No title set Add media to see preview UploadPost Your API solution for all social media platforms. Simplifying content management for developers and creators. Product Dashboard Manage Profiles Pricing Billing & Usage Resources API & Integrations Documentation Support Help Center Leave a review ⭐️ © 2026 UploadPost. All rights reserved."
+}

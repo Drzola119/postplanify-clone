@@ -1,0 +1,1 @@
+Get-WmiObject Win32_Process -Filter "Name='chrome.exe'" | Where-Object { $_.CommandLine -like '*remote-debugging*' } | Select-Object ProcessId, @{Name='Cmd';Expression={$_.CommandLine.Substring(0, [Math]::Min(500, $_.CommandLine.Length))}} | Format-Table -Wrap

@@ -1,0 +1,1 @@
+Get-Process chrome -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -like '*upload-post*' -or $_.MainWindowTitle -like '*trustiify*' -or $_.MainWindowTitle -like '*Welcome*' } | Select-Object Id, ProcessName, MainWindowTitle | Format-Table -AutoSize

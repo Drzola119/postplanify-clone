@@ -1,0 +1,73 @@
+{
+  "infographics": {
+    "instant": {
+      "page_title": "Instant Infographics",
+      "step1_label": "Topic",
+      "step1_title": "What's your infographic about?",
+      "step1_subtitle": "Each layout ships with its own structural metaphor and rule-set.",
+      "topic_placeholder": "e.g. Growth mindset tips for entrepreneurs",
+      "topic_helper": "Be specific — a focused topic produces a sharper infographic.",
+      "style_picker_title": "Choose a layout style",
+      "step2_label": "Settings",
+      "step2_title": "Customize your infographic",
+      "step2_subtitle": "Auto walks the fallback chain on retryable failure.",
+      "step3_subtitle": "One short phrase — we'll handle the rest.",
+      "offer_title_label": "Offer title",
+      "offer_copy_label": "Offer copy",
+      "offer_copy_placeholder": "Paste the offer copy, or click Fetch above to pull from a URL.",
+      "footer_cta_label": "Footer CTA (optional)",
+      "offer_details_title": "Offer details",
+      "output_language_label": "Infographic text language",
+      "output_language_helper_ar_no_provider": "Arabic output quality depends on provider availability. We'll automatically route your request to the best supported provider.",
+      "output_language_helper_ar_with_provider": "Arabic output is automatically routed to a supported provider.",
+      "provider_label": "Image provider",
+      "scheme_label": "Color scheme",
+      "aspect_ratio_label": "Aspect ratio",
+      "generate_button": "Generate Infographic",
+      "generating_label": "Generating…",
+      "error_no_topic": "Please enter a topic before generating.",
+      "error_no_style": "Please select a layout style.",
+      "error_arabic_no_provider": "No Arabic-capable provider is currently available. Please select English or French output."
+    },
+    "ads": {
+      "page_title": "Instant Infographic Ads",
+      "step1_label": "Offer URL",
+      "step1_title": "Enter your product or offer URL",
+      "step2_label": "Settings",
+      "step2_title": "Customize your ad infographic",
+      "step2_subtitle": "Auto walks the fallback chain on retryable failure.",
+      "step3_subtitle": "Paste a landing page URL — we'll pull the copy. Or fill in by hand.",
+      "offer_title_label": "Offer title",
+      "offer_copy_label": "Offer copy",
+      "offer_copy_placeholder": "Paste the offer copy, or click Fetch above to pull from a URL.",
+      "footer_cta_label": "Footer CTA (optional)",
+      "offer_details_title": "Offer details",
+      "url_placeholder": "https://your-offer-page.com",
+      "scrape_button": "Extract Offer Content",
+      "scraping_label": "Extracting…",
+      "output_language_label": "Infographic text language",
+      "output_language_helper_ar_no_provider": "Arabic output quality depends on provider availability. We'll automatically route your request to the best supported provider.",
+      "output_language_helper_ar_with_provider": "Arabic output is automatically routed to a supported provider.",
+      "generate_button": "Generate Ad Infographic",
+      "generating_label": "Generating…",
+      "error_invalid_url": "Please enter a valid URL.",
+      "error_scrape_failed": "Could not extract content from this URL. Please try a different page.",
+      "error_arabic_no_provider": "No Arabic-capable provider is currently available. Please select English or French output."
+    },
+    "shared": {
+      "preview": "Preview",
+      "rendered": "Rendered",
+      "pick_layout_hint": "Pick a layout and fill in the inputs to render.",
+      "open_media_library": "Open in Media Library",
+      "regenerate": "Regenerate",
+      "try_different": "Try different style",
+      "how_billing": "How billing works",
+      "billing_copy": "Generations go through your BYOK key if one is saved under Settings → API Keys. Otherwise the platform-shared key is used. Either way the render is uploaded to your Media Library so you can re-use it.",
+      "all_tools": "All tools"
+    }
+  },
+  "common": {
+    "ui_language_label": "Interface language",
+    "output_language_label": "Infographic text language"
+  }
+}

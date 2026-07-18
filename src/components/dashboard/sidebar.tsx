@@ -40,6 +40,7 @@ import { ACTIVE_WORKSPACE_STORAGE_KEY } from "@/lib/security/storage-keys";
 import { cn } from "@/lib/utils";
 import { useDrawer } from "@/components/dashboard/drawer-provider";
 import { UserMenu } from "@/components/dashboard/user-menu";
+import { LocaleSwitcher } from "@/components/ui/locale-switcher";
 import { useHelpSystem } from "@/components/dashboard/help/help-system";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
 
@@ -317,6 +318,7 @@ export function DashboardSidebar() {
         </Link>
         {!collapsed && (
           <div className="flex items-center gap-0.5">
+            <LocaleSwitcher />
             <button
               type="button"
               onClick={() => openLearn()}

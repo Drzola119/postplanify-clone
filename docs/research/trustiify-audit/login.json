@@ -1,0 +1,61 @@
+{
+  "page": "login",
+  "timestamp": "2026-07-15T11:54:58.091Z",
+  "url": "https://trustiify.agency/login",
+  "title": "PostPlanify: Social Media Management for Agencies and Teams",
+  "h1": [
+    "Welcome back"
+  ],
+  "h2": [],
+  "bodyText": "Welcome back Sign in to your PostPlanify account. Continue with Google or Email Password Signing in... Don't have an account? Create one",
+  "fields": [
+    {
+      "tag": "button",
+      "type": "button",
+      "placeholder": null,
+      "value": "",
+      "text": "Continue with Google"
+    },
+    {
+      "tag": "label",
+      "type": null,
+      "placeholder": null,
+      "value": "",
+      "text": "Email"
+    },
+    {
+      "tag": "input",
+      "type": "email",
+      "placeholder": "you@example.com",
+      "value": "",
+      "text": ""
+    },
+    {
+      "tag": "label",
+      "type": null,
+      "placeholder": null,
+      "value": "",
+      "text": "Password"
+    },
+    {
+      "tag": "input",
+      "type": "password",
+      "placeholder": "••••••••",
+      "value": "",
+      "text": ""
+    },
+    {
+      "tag": "button",
+      "type": "submit",
+      "placeholder": null,
+      "value": "",
+      "text": "Signing in..."
+    }
+  ],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "slowRequests": [],
+  "apiCalls": [],
+  "httpStatus": 200
+}

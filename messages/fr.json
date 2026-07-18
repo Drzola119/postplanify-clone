@@ -1,0 +1,73 @@
+{
+  "infographics": {
+    "instant": {
+      "page_title": "Infographies instantanées",
+      "step1_label": "Sujet",
+      "step1_title": "De quoi parle votre infographie ?",
+      "step1_subtitle": "Chaque mise en page intègre sa propre métaphore structurelle et ses propres règles.",
+      "topic_placeholder": "ex. Conseils pour développer un état d'esprit de croissance",
+      "topic_helper": "Soyez précis — un sujet ciblé donne une infographie plus percutante.",
+      "style_picker_title": "Choisissez un style de mise en page",
+      "step2_label": "Réglages",
+      "step2_title": "Personnalisez votre infographie",
+      "step2_subtitle": "Le mode auto parcourt la chaîne de secours en cas d'échec retryable.",
+      "step3_subtitle": "Une courte phrase — nous nous chargeons du reste.",
+      "footer_cta_label": "CTA de pied de page (optionnel)",
+      "offer_details_title": "Détails de l'offre",
+      "offer_title_label": "Titre de l'offre",
+      "offer_copy_label": "Texte de l'offre",
+      "offer_copy_placeholder": "Collez le texte de l'offre, ou cliquez sur Extraire ci-dessus pour le récupérer depuis une URL.",
+      "output_language_label": "Langue du texte de l'infographie",
+      "output_language_helper_ar_no_provider": "La qualité de la génération en arabe dépend des fournisseurs disponibles. Nous acheminerons automatiquement votre demande vers le meilleur fournisseur pris en charge.",
+      "output_language_helper_ar_with_provider": "La génération en arabe est acheminée automatiquement vers un fournisseur pris en charge.",
+      "provider_label": "Fournisseur d'images",
+      "scheme_label": "Palette de couleurs",
+      "aspect_ratio_label": "Format",
+      "generate_button": "Générer l'infographie",
+      "generating_label": "Génération en cours…",
+      "error_no_topic": "Veuillez saisir un sujet avant de générer.",
+      "error_no_style": "Veuillez sélectionner un style de mise en page.",
+      "error_arabic_no_provider": "Aucun fournisseur compatible avec l'arabe n'est disponible pour le moment. Veuillez choisir une sortie en anglais ou en français."
+    },
+    "ads": {
+      "page_title": "Infographies publicitaires instantanées",
+      "step1_label": "URL de l'offre",
+      "step1_title": "Saisissez l'URL de votre produit ou de votre offre",
+      "step2_label": "Réglages",
+      "step2_title": "Personnalisez votre infographie publicitaire",
+      "step2_subtitle": "Le mode auto parcourt la chaîne de secours en cas d'échec retryable.",
+      "step3_subtitle": "Collez l'URL d'une page d'offre — nous récupérerons le texte. Ou remplissez manuellement.",
+      "footer_cta_label": "CTA de pied de page (optionnel)",
+      "offer_details_title": "Détails de l'offre",
+      "offer_title_label": "Titre de l'offre",
+      "offer_copy_label": "Texte de l'offre",
+      "offer_copy_placeholder": "Collez le texte de l'offre, ou cliquez sur Extraire ci-dessus pour le récupérer depuis une URL.",
+      "url_placeholder": "https://votre-page-offre.com",
+      "scrape_button": "Extraire le contenu de l'offre",
+      "scraping_label": "Extraction en cours…",
+      "output_language_label": "Langue du texte de l'infographie",
+      "output_language_helper_ar_no_provider": "La qualité de la génération en arabe dépend des fournisseurs disponibles. Nous acheminerons automatiquement votre demande vers le meilleur fournisseur pris en charge.",
+      "output_language_helper_ar_with_provider": "La génération en arabe est acheminée automatiquement vers un fournisseur pris en charge.",
+      "generate_button": "Générer l'infographie publicitaire",
+      "generating_label": "Génération en cours…",
+      "error_invalid_url": "Veuillez entrer une URL valide.",
+      "error_scrape_failed": "Impossible d'extraire le contenu de cette URL. Veuillez en essayer une autre.",
+      "error_arabic_no_provider": "Aucun fournisseur compatible avec l'arabe n'est disponible pour le moment. Veuillez choisir une sortie en anglais ou en français."
+    },
+    "shared": {
+      "preview": "Aperçu",
+      "rendered": "Généré",
+      "pick_layout_hint": "Choisissez une mise en page et remplissez les champs pour générer.",
+      "open_media_library": "Ouvrir dans la bibliothèque multimédia",
+      "regenerate": "Régénérer",
+      "try_different": "Essayer un autre style",
+      "how_billing": "Comment fonctionne la facturation",
+      "billing_copy": "Les générations utilisent votre clé BYOK si une clé est enregistrée dans Paramètres → Clés API. Sinon, la clé partagée de la plateforme est utilisée. Dans tous les cas, le rendu est envoyé à votre bibliothèque multimédia pour réutilisation.",
+      "all_tools": "Tous les outils"
+    }
+  },
+  "common": {
+    "ui_language_label": "Langue de l'interface",
+    "output_language_label": "Langue du texte de l'infographie"
+  }
+}

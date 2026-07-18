@@ -1,0 +1,99 @@
+{
+  "url": "https://app.upload-post.com/dashboard",
+  "title": "Upload Posts - Upload Videos to Social Media",
+  "h1": [
+    "Upload to all platforms with one click"
+  ],
+  "h2": [
+    "Set up core content",
+    "Platform-specific settings",
+    "Pinterest Options",
+    "TikTok Options",
+    "Scheduling & submission"
+  ],
+  "h3": [
+    "X (Twitter) Options",
+    "Threads Options",
+    "Bluesky Options",
+    "nick lorance life",
+    "Post preview",
+    "Product",
+    "Resources",
+    "Support"
+  ],
+  "bodyText": "Upload Post Users API Keys Upload Calendar Analytics Pricing Docs 👑 Manual Shorts Uploader Upload to all platforms with one click Manually upload content to multiple social media platforms at once. As you configure your upload, the equivalent cURL command is generated below — copy it into automation workflows with tools like n8n or Make. For full automation, use our API and enjoy all params and options. Need a head start? Browse ready-made workflow templates at upload-post.com/n8n-templates. Set up core content Pick the profile, content source, and primary copy. File · image Platform-specific settings Enable each network and fine-tune channel options. 9 platforms Scheduling & submission Choose when to publish and finalize the request. Queue Post preview xkksLA9bPvHLwx4nThvU TikTok LinkedIn Threads Bluesky Pinterest Facebook Instagram YouTube X Add to queue · File (Image) TITLE No title set TYPE Image CONFIDENTIALITÉ Public RESTRICTIONS TIKTOK Duos Commentaires Stitch UploadPost Your API solution for all social media platforms. Simplifying content management for developers and creators. Product Dashboard Manage Profiles Pricing Billing & Usage Resources API & Integrations Documentation Support Help Center Leave a review ⭐️ © 2026 UploadPost. All rights reserved.",
+  "fields": [
+    {
+      "tag": "label",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "",
+      "labelText": "",
+      "contextText": "👑",
+      "ariaLabel": null
+    },
+    {
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "👑",
+      "labelText": "",
+      "contextText": "👑",
+      "ariaLabel": null
+    },
+    {
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "Set up core contentPick the profile, content source, and primary copy.File · image",
+      "labelText": "",
+      "contextText": "Set up core contentPick the profile, content source, and primary copy.File · image Select ProfileContent will be posted using this profile's connected accounts.xkksLA9bPvHLwx4nThvUConnected: tiktok, facebook, instagram, x, youtube, linkedin, threads, pinterest, bluesky Select Upload MethodUpload Med",
+      "ariaLabel": null
+    },
+    {
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "Platform-specific settingsEnable each network and fine-tune channel options.9 platforms",
+      "labelText": "",
+      "contextText": "Platform-specific settingsEnable each network and fine-tune channel options.9 platforms Select PlatformsChoose where to uploadTikTok@nick_loranceInstagram@nicklorance7YouTube@Zakaria 11LinkedIn@Nick LoranceFacebook@Nick LoranceX@nick loranceThreads@Nick LorancePinterest@nicklorance7Not connectedRedd",
+      "ariaLabel": null
+    },
+    {
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "Scheduling & submissionChoose when to publish and finalize the request.Queue",
+      "labelText": "",
+      "contextText": "Scheduling & submissionChoose when to publish and finalize the request.Queue Async uploadIf enabled, uploads are queued and processed asynchronously. Schedule Post (Optional)Leave blank to post immediatelyEnter the date and time you want to post.TimezoneYour timezoneAmerica/New_YorkAmerica/ChicagoAm",
+      "ariaLabel": null
+    },
+    {
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "Leave a review ⭐️",
+      "labelText": "",
+      "contextText": "Leave a review ⭐️",
+      "ariaLabel": null
+    }
+  ]
+}

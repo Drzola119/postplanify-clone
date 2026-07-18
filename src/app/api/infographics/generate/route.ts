@@ -1,5 +1,6 @@
 import "server-only";
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { requireSession } from "@/lib/auth/session-context";
 import {
   generateInfographic,
@@ -49,7 +50,9 @@ export async function POST(request: NextRequest) {
       raw.error?.issues
     );
   }
-  const body = raw.data;
+  const body = raw.data as
+    | z.infer<typeof imageGenInstantRequestSchema>
+    | z.infer<typeof imageGenAdsRequestSchema>;
   const tool = body.tool;
 
   const styleId = body.context?.styleId;
@@ -82,6 +85,7 @@ export async function POST(request: NextRequest) {
         colorScheme,
         aspectRatio: body.aspectRatio,
         footerCta,
+        outputLanguage: body.outputLanguage,
       });
       structuredPrompt = buildIdeogramJsonPrompt({
         tool: "ads",
@@ -92,6 +96,7 @@ export async function POST(request: NextRequest) {
         colorScheme,
         aspectRatio: body.aspectRatio,
         footerCta,
+        outputLanguage: body.outputLanguage,
       });
     } else {
       const inst = body as typeof body & { topic: string };
@@ -101,6 +106,7 @@ export async function POST(request: NextRequest) {
         colorScheme,
         aspectRatio: body.aspectRatio,
         footerCta,
+        outputLanguage: body.outputLanguage,
       });
       structuredPrompt = buildIdeogramJsonPrompt({
         tool: "instant",
@@ -109,6 +115,7 @@ export async function POST(request: NextRequest) {
         colorScheme,
         aspectRatio: body.aspectRatio,
         footerCta,
+        outputLanguage: body.outputLanguage,
       });
     }
   }
@@ -121,6 +128,7 @@ export async function POST(request: NextRequest) {
       prompt,
       structuredPrompt,
       aspectRatio: body.aspectRatio,
+      outputLanguage: body.outputLanguage,
       context: {
         tool,
         styleId: style.id,

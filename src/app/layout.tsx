@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { NextIntlClientProvider } from "next-intl";
+import { getMessages, getLocale } from "next-intl/server";
+import { getLocaleDir, getLocaleLang } from "@/lib/i18n/types";
 import { ToastProvider } from "@/components/ui/toast";
 import { AuthProvider } from "@/contexts/AuthContext";
 
@@ -23,14 +26,18 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = (await getLocale()) as "en" | "fr" | "ar";
+  const messages = await getMessages();
+
   return (
     <html
-      lang="en"
+      lang={getLocaleLang(locale)}
+      dir={getLocaleDir(locale)}
       className={`${inter.variable} h-full antialiased`}
     >
       <head>
@@ -174,9 +181,11 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col">
-        <AuthProvider>
-          <ToastProvider>{children}</ToastProvider>
-        </AuthProvider>
+        <NextIntlClientProvider locale={locale} messages={messages}>
+          <AuthProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </AuthProvider>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

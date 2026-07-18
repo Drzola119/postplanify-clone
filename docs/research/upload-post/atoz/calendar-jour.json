@@ -1,0 +1,171 @@
+{
+  "url": "https://app.upload-post.com/calendar",
+  "title": "Upload Posts - Upload Videos to Social Media",
+  "h1": [
+    "Calendrier"
+  ],
+  "h2": [],
+  "h3": [],
+  "bodyText": "Upload Post Users API Keys Upload Calendar Analytics Pricing Docs 👑 Calendrier Planifiez, programmez et passez en revue vos publications sur toutes les plateformes. Aujourd'hui July 15, 2026 Mois Semaine Jour Plateformes Tous les profils Créer Wednesday all-day 12am 1am 2am 3am 4am 5am 6am 7am 8am 9am 10am 11am 12pm 1pm 2pm 3pm 4pm 5pm 6pm 7pm 8pm 9pm 10pm 11pm",
+  "fields": [
+    {
+      "tag": "label",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "",
+      "labelText": "",
+      "contextText": "👑",
+      "ariaLabel": null,
+      "href": null
+    },
+    {
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "👑",
+      "labelText": "",
+      "contextText": "👑",
+      "ariaLabel": null,
+      "href": null
+    },
+    {
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "",
+      "labelText": "",
+      "contextText": "Aujourd'hui",
+      "ariaLabel": null,
+      "href": null
+    },
+    {
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "Aujourd'hui",
+      "labelText": "",
+      "contextText": "Aujourd'hui",
+      "ariaLabel": null,
+      "href": null
+    },
+    {
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "",
+      "labelText": "",
+      "contextText": "Aujourd'hui",
+      "ariaLabel": null,
+      "href": null
+    },
+    {
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "Mois",
+      "labelText": "",
+      "contextText": "MoisSemaineJour",
+      "ariaLabel": null,
+      "href": null
+    },
+    {
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "Semaine",
+      "labelText": "",
+      "contextText": "MoisSemaineJour",
+      "ariaLabel": null,
+      "href": null
+    },
+    {
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "Jour",
+      "labelText": "",
+      "contextText": "MoisSemaineJour",
+      "ariaLabel": null,
+      "href": null
+    },
+    {
+      "tag": "label",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "Plateformes",
+      "labelText": "Plateformes",
+      "contextText": "PlateformesTikTokInstagramLinkedInYouTubeFacebookXThreadsPinterestRedditUnavailableBlueskyDiscordTelegramGoogle Business",
+      "ariaLabel": null,
+      "href": null
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "all",
+      "checked": false,
+      "text": "Tous les profils",
+      "labelText": "",
+      "contextText": "MoisSemaineJourPlateformesTikTokInstagramLinkedInYouTubeFacebookXThreadsPinterestRedditUnavailableBlueskyDiscordTelegramGoogle BusinessTous les profils",
+      "ariaLabel": null,
+      "href": null,
+      "options": [
+        "all:Tous les profils"
+      ]
+    },
+    {
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "Créer",
+      "labelText": "",
+      "contextText": "Créer",
+      "ariaLabel": null,
+      "href": null
+    },
+    {
+      "tag": "button",
+      "type": "button",
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "",
+      "labelText": "",
+      "contextText": "Créer",
+      "ariaLabel": null,
+      "href": null
+    }
+  ]
+}

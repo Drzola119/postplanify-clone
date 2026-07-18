@@ -1,0 +1,74 @@
+Upload Post
+Users
+API Keys
+Upload
+Calendar
+Analytics
+Pricing
+Docs
+👑
+Manual
+Shorts Uploader
+Upload to all platforms with one click
+
+Manually upload content to multiple social media platforms at once. As you configure your upload, the equivalent cURL command is generated below — copy it into automation workflows with tools like n8n or Make. For full automation, use our API and enjoy all params and options.
+Need a head start? Browse ready-made workflow templates at upload-post.com/n8n-templates.
+
+Set up core content
+
+Pick the profile, content source, and primary copy.
+
+File · image
+Platform-specific settings
+
+Enable each network and fine-tune channel options.
+
+9 platforms
+Scheduling & submission
+
+Choose when to publish and finalize the request.
+
+Queue
+Post preview
+xkksLA9bPvHLwx4nThvU
+TikTok
+LinkedIn
+Threads
+Bluesky
+Pinterest
+Facebook
+Instagram
+YouTube
+X
+Add to queue
+·
+File (Image)
+TITLE
+
+No title set
+
+TYPE
+Image
+CONFIDENTIALITÉ
+Public
+RESTRICTIONS TIKTOK
+Duos
+Commentaires
+Stitch
+UploadPost
+
+Your API solution for all social media platforms. Simplifying content management for developers and creators.
+
+Product
+Dashboard
+Manage Profiles
+Pricing
+Billing & Usage
+Resources
+API & Integrations
+Documentation
+Support
+Help Center
+Leave a review ⭐️
+
+© 2026 UploadPost. All rights reserved.

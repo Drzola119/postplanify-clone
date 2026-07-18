@@ -13,6 +13,22 @@ import { jsonError, jsonOk } from "@/lib/validation/helpers";
  * cap bytes / chars, surface fetch errors uniformly, and never proxy
  * raw HTML back to the client (we only return the cleaned text).
  */
+/*
+ * LANGUAGE CONTRACT — READ BEFORE MODIFYING THIS FILE
+ *
+ * outputLanguage controls what language the AI renders ON-IMAGE TEXT in.
+ * It does NOT affect how scraped content is processed.
+ *
+ * Scraped offer text (product name, benefits, CTA copy, etc.) is passed
+ * to the prompt builder AS-IS, in whatever language the source page uses.
+ * This text is never translated, never modified, and never filtered based
+ * on outputLanguage.
+ *
+ * The [LANGUAGE_DIRECTIVE] token in the prompt tells the AI model what
+ * language to use for the TEXT IT GENERATES inside the infographic image.
+ * Scraped input text ≠ text to be translated. Do not conflate these.
+ */
+
 export async function GET(request: NextRequest) {
   const session = await requireSession();
   if (session instanceof Response) return session;

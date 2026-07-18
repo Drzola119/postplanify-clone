@@ -1,0 +1,54 @@
+{
+  "visited": [
+    "https://upload-post.com",
+    "https://upload-post.com/features",
+    "https://upload-post.com/pricing",
+    "https://upload-post.com/platforms",
+    "https://upload-post.com/networks",
+    "https://upload-post.com/integrations",
+    "https://upload-post.com/api",
+    "https://upload-post.com/docs",
+    "https://upload-post.com/help",
+    "https://upload-post.com/blog",
+    "https://www.upload-post.com",
+    "https://app.upload-post.com"
+  ],
+  "results": [
+    {
+      "seed": {
+        "url": "https://upload-post.com",
+        "slug": "home"
+      },
+      "status": 200,
+      "finalUrl": "https://www.upload-post.com/",
+      "title": "Social Media API - Post Everywhere Easily | Upload-Post.com"
+    },
+    {
+      "seed": {
+        "url": "https://upload-post.com/platforms",
+        "slug": "platforms"
+      },
+      "status": 200,
+      "finalUrl": "https://www.upload-post.com/platforms",
+      "title": "Supported Platforms - Upload-Post Social Media API"
+    },
+    {
+      "seed": {
+        "url": "https://www.upload-post.com",
+        "slug": "home-www"
+      },
+      "status": 200,
+      "finalUrl": "https://www.upload-post.com/",
+      "title": "Social Media API - Post Everywhere Easily | Upload-Post.com"
+    },
+    {
+      "seed": {
+        "url": "https://app.upload-post.com",
+        "slug": "app-root"
+      },
+      "status": 200,
+      "finalUrl": "https://app.upload-post.com/",
+      "title": "Upload Posts - Upload Videos to Social Media"
+    }
+  ]
+}

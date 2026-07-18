@@ -1,0 +1,173 @@
+{
+  "auditDate": "2026-07-15T11:54:34.560Z",
+  "pagesAudited": 27,
+  "pagesWithConsoleErrors": 1,
+  "pagesWithPageErrors": 0,
+  "pagesWithFailedRequests": 1,
+  "pagesWithApiCalls401": 0,
+  "pagesWithApiCalls500": 0,
+  "apiEndpointsCalled": [],
+  "brokenFeatures": [
+    {
+      "page": "signup",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/signup\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-posts",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/posts\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-posts-create",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/posts/create\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-posts-drafts",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/posts/drafts\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-posts-history",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/posts/history\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-posts-bulk",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/posts/bulk-schedule\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-queue",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/queue\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-analytics",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/analytics\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-reports",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/reports\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-accounts",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/accounts\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-destinations",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/destinations\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-inbox",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/inbox\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-assets",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/assets\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-hashtags",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/hashtags\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-labels",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/labels\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-link-in-bio",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/link-in-bio\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-brands",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/brands\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-command-center",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/command-center\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-automations",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/automations/dm\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-api-keys",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/api-keys\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-settings",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/settings\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "page": "dashboard-settings-branding",
+      "type": "navigation_failed",
+      "error": "page.goto: Page crashed\nCall log:\n\u001b[2m  - navigating to \"https://trustiify.agency/dashboard/settings/branding\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    }
+  ],
+  "perPageResults": [
+    {
+      "slug": "home",
+      "url": "https://trustiify.agency/",
+      "status": 200,
+      "consoleErrors": 1,
+      "pageErrors": 0,
+      "failedRequests": 1,
+      "api401": 0,
+      "api500": 0,
+      "apiCallCount": 0
+    },
+    {
+      "slug": "pricing",
+      "url": "https://trustiify.agency/pricing",
+      "status": 403,
+      "consoleErrors": 0,
+      "pageErrors": 0,
+      "failedRequests": 0,
+      "api401": 0,
+      "api500": 0,
+      "apiCallCount": 0
+    },
+    {
+      "slug": "features",
+      "url": "https://trustiify.agency/features",
+      "status": 200,
+      "consoleErrors": 0,
+      "pageErrors": 0,
+      "failedRequests": 0,
+      "api401": 0,
+      "api500": 0,
+      "apiCallCount": 0
+    },
+    {
+      "slug": "login",
+      "url": "https://trustiify.agency/login",
+      "status": 200,
+      "consoleErrors": 0,
+      "pageErrors": 0,
+      "failedRequests": 0,
+      "api401": 0,
+      "api500": 0,
+      "apiCallCount": 0
+    }
+  ]
+}

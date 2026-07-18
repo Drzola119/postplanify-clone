@@ -1,0 +1,324 @@
+{
+  "tiktok": [
+    {
+      "tag": "label",
+      "type": null,
+      "label": "",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "button",
+      "type": null,
+      "label": "👑",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "button",
+      "type": "button",
+      "label": "Set up core contentPick the profile, content source, and primary copy.Media pending",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "label",
+      "type": null,
+      "label": "Select ProfileContent will be posted using this profile's connected accounts.",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "label": "xkksLA9bPvHLwx4nThvU",
+      "value": "xkksLA9bPvHLwx4nThvU",
+      "checked": false,
+      "options": [
+        "xkksLA9bPvHLwx4nThvU:xkksLA9bPvHLwx4nThvU"
+      ]
+    },
+    {
+      "tag": "label",
+      "type": null,
+      "label": "Select Upload Method",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "label",
+      "type": null,
+      "label": "Upload Media File",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "label": "",
+      "value": "on",
+      "checked": true
+    },
+    {
+      "tag": "label",
+      "type": null,
+      "label": "Use Media URL(s)",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "label": "",
+      "value": "on",
+      "checked": false
+    },
+    {
+      "tag": "label",
+      "type": null,
+      "label": "Text-Only Post",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "label": "",
+      "value": "on",
+      "checked": false
+    },
+    {
+      "tag": "button",
+      "type": "button",
+      "label": "Platform-specific settingsEnable each network and fine-tune channel options.None selected",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "button",
+      "type": "button",
+      "label": "Scheduling & submissionChoose when to publish and finalize the request.Queue",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "label",
+      "type": null,
+      "label": "Async uploadIf enabled, uploads are queued and processed asynchronously.",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "label": "",
+      "value": "on",
+      "checked": true
+    },
+    {
+      "tag": "label",
+      "type": null,
+      "label": "Schedule Post (Optional)Leave blank to post immediately",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "input",
+      "type": "datetime-local",
+      "label": "",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "label",
+      "type": null,
+      "label": "TimezoneYour timezone",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "label": "America/New_YorkAmerica/ChicagoAmerica/DenverAmerica/Los_AngelesAmerica/AnchorageAmerica/PhoenixAmerica/TorontoAmerica/VancouverAmerica/Mexico_CityAme",
+      "value": "Africa/Lagos",
+      "checked": false,
+      "options": [
+        "America/New_York:America/New_York",
+        "America/Chicago:America/Chicago",
+        "America/Denver:America/Denver",
+        "America/Los_Angeles:America/Los_Angeles",
+        "America/Anchorage:America/Anchorage",
+        "America/Phoenix:America/Phoenix",
+        "America/Toronto:America/Toronto",
+        "America/Vancouver:America/Vancouver",
+        "America/Mexico_City:America/Mexico_City",
+        "America/Sao_Paulo:America/Sao_Paulo",
+        "America/Argentina/Buenos_Aires:America/Argentina/Buenos_Aires",
+        "America/Lima:America/Lima",
+        "America/Bogota:America/Bogota",
+        "America/Santiago:America/Santiago",
+        "America/Caracas:America/Caracas",
+        "Pacific/Honolulu:Pacific/Honolulu",
+        "Pacific/Auckland:Pacific/Auckland",
+        "Pacific/Fiji:Pacific/Fiji",
+        "Europe/London:Europe/London",
+        "Europe/Paris:Europe/Paris",
+        "Europe/Berlin:Europe/Berlin",
+        "Europe/Madrid:Europe/Madrid",
+        "Europe/Rome:Europe/Rome",
+        "Europe/Amsterdam:Europe/Amsterdam",
+        "Europe/Brussels:Europe/Brussels",
+        "Europe/Vienna:Europe/Vienna",
+        "Europe/Zurich:Europe/Zurich",
+        "Europe/Stockholm:Europe/Stockholm",
+        "Europe/Oslo:Europe/Oslo",
+        "Europe/Copenhagen:Europe/Copenhagen",
+        "Europe/Warsaw:Europe/Warsaw",
+        "Europe/Prague:Europe/Prague",
+        "Europe/Budapest:Europe/Budapest",
+        "Europe/Athens:Europe/Athens",
+        "Europe/Helsinki:Europe/Helsinki",
+        "Europe/Bucharest:Europe/Bucharest",
+        "Europe/Moscow:Europe/Moscow",
+        "Europe/Istanbul:Europe/Istanbul",
+        "Europe/Lisbon:Europe/Lisbon",
+        "Europe/Dublin:Europe/Dublin",
+        "Europe/Kiev:Europe/Kiev",
+        "Asia/Tokyo:Asia/Tokyo",
+        "Asia/Shanghai:Asia/Shanghai",
+        "Asia/Hong_Kong:Asia/Hong_Kong",
+        "Asia/Singapore:Asia/Singapore",
+        "Asia/Seoul:Asia/Seoul",
+        "Asia/Taipei:Asia/Taipei",
+        "Asia/Bangkok:Asia/Bangkok",
+        "Asia/Jakarta:Asia/Jakarta",
+        "Asia/Manila:Asia/Manila",
+        "Asia/Kolkata:Asia/Kolkata",
+        "Asia/Dubai:Asia/Dubai",
+        "Asia/Riyadh:Asia/Riyadh",
+        "Asia/Tel_Aviv:Asia/Tel_Aviv",
+        "Asia/Jerusalem:Asia/Jerusalem",
+        "Asia/Karachi:Asia/Karachi",
+        "Asia/Dhaka:Asia/Dhaka",
+        "Asia/Kuala_Lumpur:Asia/Kuala_Lumpur",
+        "Asia/Ho_Chi_Minh:Asia/Ho_Chi_Minh",
+        "Australia/Sydney:Australia/Sydney",
+        "Australia/Melbourne:Australia/Melbourne",
+        "Australia/Brisbane:Australia/Brisbane",
+        "Australia/Perth:Australia/Perth",
+        "Australia/Adelaide:Australia/Adelaide",
+        "Africa/Cairo:Africa/Cairo",
+        "Africa/Johannesburg:Africa/Johannesburg",
+        "Africa/Lagos:Africa/Lagos ✓",
+        "Africa/Nairobi:Africa/Nairobi",
+        "Africa/Casablanca:Africa/Casablanca",
+        "Atlantic/Reykjavik:Atlantic/Reykjavik",
+        "Atlantic/Canary:Atlantic/Canary",
+        "UTC:UTC",
+        "Etc/GMT:Etc/GMT"
+      ]
+    },
+    {
+      "tag": "label",
+      "type": null,
+      "label": "Add to QueueAutomatically schedule to your next available queue slot. Configure queue",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "label": "",
+      "value": "on",
+      "checked": true
+    },
+    {
+      "tag": "button",
+      "type": "submit",
+      "label": "Add to Queue",
+      "value": "",
+      "checked": false
+    }
+  ],
+  "LinkedIn": [
+    {
+      "tag": "label",
+      "type": null,
+      "label": "Upload Media FileImages, Videos or Documents (LinkedIn)",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "input",
+      "type": "file",
+      "label": "",
+      "value": "",
+      "checked": false
+    }
+  ],
+  "Instagram": [
+    {
+      "tag": "label",
+      "type": null,
+      "label": "TitleOptional — used as caption/description",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "textarea",
+      "type": null,
+      "label": "",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "button",
+      "type": "button",
+      "label": "Generate now",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "label",
+      "type": null,
+      "label": "Generate on upload",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "label": "",
+      "value": "on",
+      "checked": true
+    },
+    {
+      "tag": "label",
+      "type": null,
+      "label": "This Title is a global field used across all platforms during upload. By default, it also serves as the description/caption when a platform-specific d",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "label",
+      "type": null,
+      "label": "First Comment (Optional)",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "textarea",
+      "type": null,
+      "label": "",
+      "value": "",
+      "checked": false
+    },
+    {
+      "tag": "label",
+      "type": null,
+      "label": "Works on: Instagram, Facebook, Threads, Bluesky, Reddit, X, YouTube, and LinkedIn.",
+      "value": "",
+      "checked": false
+    }
+  ]
+}

@@ -1,0 +1,698 @@
+{
+  "h1": [
+    "Supported Platforms\n\nOne API for all social networks"
+  ],
+  "h2": [
+    "Ready to automate"
+  ],
+  "h3": [
+    "Bluesky",
+    "Facebook",
+    "Instagram",
+    "LinkedIn",
+    "Pinterest",
+    "Reddit",
+    "Threads",
+    "TikTok",
+    "X (Twitter)",
+    "YouTube",
+    "Google Business",
+    "Discord",
+    "Telegram"
+  ],
+  "navLinks": [
+    {
+      "text": "Upload-Post",
+      "href": "https://www.upload-post.com/"
+    },
+    {
+      "text": "Add to your SaaS",
+      "href": "https://www.upload-post.com/whitelabel"
+    },
+    {
+      "text": "TikTok",
+      "href": "https://www.upload-post.com/platforms/tiktok"
+    },
+    {
+      "text": "Instagram",
+      "href": "https://www.upload-post.com/platforms/instagram"
+    },
+    {
+      "text": "YouTube",
+      "href": "https://www.upload-post.com/platforms/youtube"
+    },
+    {
+      "text": "LinkedIn",
+      "href": "https://www.upload-post.com/platforms/linkedin"
+    },
+    {
+      "text": "Facebook",
+      "href": "https://www.upload-post.com/platforms/facebook"
+    },
+    {
+      "text": "X",
+      "href": "https://www.upload-post.com/platforms/x"
+    },
+    {
+      "text": "Threads",
+      "href": "https://www.upload-post.com/platforms/threads"
+    },
+    {
+      "text": "Pinterest",
+      "href": "https://www.upload-post.com/platforms/pinterest"
+    },
+    {
+      "text": "Reddit",
+      "href": "https://www.upload-post.com/platforms/reddit"
+    },
+    {
+      "text": "Bluesky",
+      "href": "https://www.upload-post.com/platforms/bluesky"
+    },
+    {
+      "text": "Google Business",
+      "href": "https://www.upload-post.com/platforms/google-business"
+    },
+    {
+      "text": "Discord",
+      "href": "https://www.upload-post.com/platforms/discord"
+    },
+    {
+      "text": "Telegram",
+      "href": "https://www.upload-post.com/platforms/telegram"
+    },
+    {
+      "text": "n8n",
+      "href": "https://www.upload-post.com/n8n-integration-guide"
+    },
+    {
+      "text": "Workflows",
+      "href": "https://www.upload-post.com/n8n-templates"
+    },
+    {
+      "text": "Agency Automation",
+      "href": "https://www.upload-post.com/n8n/social-media-automation"
+    },
+    {
+      "text": "TikTok",
+      "href": "https://www.upload-post.com/n8n/tiktok-upload-video"
+    },
+    {
+      "text": "Instagram",
+      "href": "https://www.upload-post.com/n8n/instagram-reels-upload"
+    },
+    {
+      "text": "YouTube",
+      "href": "https://www.upload-post.com/n8n/youtube-upload"
+    },
+    {
+      "text": "Threads",
+      "href": "https://www.upload-post.com/n8n/threads-api-integration"
+    },
+    {
+      "text": "X",
+      "href": "https://www.upload-post.com/n8n/x-twitter-upload"
+    },
+    {
+      "text": "Pinterest",
+      "href": "https://www.upload-post.com/n8n/pinterest-upload"
+    },
+    {
+      "text": "Facebook",
+      "href": "https://www.upload-post.com/n8n/facebook-upload"
+    },
+    {
+      "text": "Reddit",
+      "href": "https://www.upload-post.com/n8n/reddit-upload"
+    },
+    {
+      "text": "Bluesky",
+      "href": "https://www.upload-post.com/n8n/bluesky-upload"
+    },
+    {
+      "text": "Google Business",
+      "href": "https://www.upload-post.com/n8n/google-business-upload"
+    },
+    {
+      "text": "Make",
+      "href": "https://www.upload-post.com/make-integration-guide"
+    },
+    {
+      "text": "Blueprints",
+      "href": "https://www.upload-post.com/make-templates"
+    },
+    {
+      "text": "Zapier",
+      "href": "https://www.upload-post.com/zapier-integration-guide"
+    },
+    {
+      "text": "Airtable",
+      "href": "https://www.upload-post.com/airtable-integration-guide"
+    },
+    {
+      "text": "🤖 AI Agents",
+      "href": "https://www.upload-post.com/ai-agents"
+    },
+    {
+      "text": "MCP ChatGPT · Claude",
+      "href": "https://www.upload-post.com/mcp"
+    },
+    {
+      "text": "FFmpeg API",
+      "href": "https://www.upload-post.com/ffmpeg-integration-guide"
+    },
+    {
+      "text": "Add to your SaaS",
+      "href": "https://www.upload-post.com/whitelabel"
+    },
+    {
+      "text": "Tutorials",
+      "href": "https://www.upload-post.com/youtube-tutorials"
+    },
+    {
+      "text": "Tools",
+      "href": "https://www.upload-post.com/tools"
+    },
+    {
+      "text": "Affiliates",
+      "href": "https://www.upload-post.com/affiliates"
+    },
+    {
+      "text": "API Docs",
+      "href": "https://docs.upload-post.com/"
+    },
+    {
+      "text": "Leaderboard",
+      "href": "https://www.upload-post.com/leaderboard"
+    },
+    {
+      "text": "Status",
+      "href": "https://www.upload-post.com/status"
+    },
+    {
+      "text": "Pricing",
+      "href": "https://www.upload-post.com/#pricing"
+    },
+    {
+      "text": "🇺🇸 English",
+      "href": "https://www.upload-post.com/"
+    },
+    {
+      "text": "🇪🇸 Español",
+      "href": "https://www.upload-post.com/es"
+    },
+    {
+      "text": "🇧🇷 Português",
+      "href": "https://www.upload-post.com/br"
+    },
+    {
+      "text": "🇫🇷 Français",
+      "href": "https://www.upload-post.com/fr"
+    },
+    {
+      "text": "🇩🇪 Deutsch",
+      "href": "https://www.upload-post.com/de"
+    },
+    {
+      "text": "🇮🇹 Italiano",
+      "href": "https://www.upload-post.com/it"
+    },
+    {
+      "text": "🇯🇵 日本語",
+      "href": "https://www.upload-post.com/ja"
+    },
+    {
+      "text": "🇰🇷 한국어",
+      "href": "https://www.upload-post.com/ko"
+    },
+    {
+      "text": "🇮🇳 हिन्दी",
+      "href": "https://www.upload-post.com/hi"
+    },
+    {
+      "text": "🇻🇳 Tiếng Việt",
+      "href": "https://www.upload-post.com/vi"
+    },
+    {
+      "text": "🇮🇩 Bahasa Indonesia",
+      "href": "https://www.upload-post.com/id"
+    },
+    {
+      "text": "🇹🇷 Türkçe",
+      "href": "https://www.upload-post.com/tr"
+    },
+    {
+      "text": "🇳🇱 Nederlands",
+      "href": "https://www.upload-post.com/nl"
+    },
+    {
+      "text": "🇸🇦 العربية",
+      "href": "https://www.upload-post.com/ar"
+    },
+    {
+      "text": "🇹🇭 ไทย",
+      "href": "https://www.upload-post.com/th"
+    },
+    {
+      "text": "Try for free",
+      "href": "https://app.upload-post.com/"
+    },
+    {
+      "text": "Upload-Post",
+      "href": "https://www.upload-post.com/"
+    },
+    {
+      "text": "🇺🇸 English",
+      "href": "https://www.upload-post.com/"
+    },
+    {
+      "text": "🇪🇸 Español",
+      "href": "https://www.upload-post.com/es"
+    },
+    {
+      "text": "🇧🇷 Português",
+      "href": "https://www.upload-post.com/br"
+    },
+    {
+      "text": "🇫🇷 Français",
+      "href": "https://www.upload-post.com/fr"
+    },
+    {
+      "text": "🇩🇪 Deutsch",
+      "href": "https://www.upload-post.com/de"
+    },
+    {
+      "text": "🇮🇹 Italiano",
+      "href": "https://www.upload-post.com/it"
+    },
+    {
+      "text": "🇯🇵 日本語",
+      "href": "https://www.upload-post.com/ja"
+    },
+    {
+      "text": "🇰🇷 한국어",
+      "href": "https://www.upload-post.com/ko"
+    },
+    {
+      "text": "🇮🇳 हिन्दी",
+      "href": "https://www.upload-post.com/hi"
+    },
+    {
+      "text": "🇻🇳 Tiếng Việt",
+      "href": "https://www.upload-post.com/vi"
+    },
+    {
+      "text": "🇮🇩 Bahasa Indonesia",
+      "href": "https://www.upload-post.com/id"
+    },
+    {
+      "text": "🇹🇷 Türkçe",
+      "href": "https://www.upload-post.com/tr"
+    },
+    {
+      "text": "🇳🇱 Nederlands",
+      "href": "https://www.upload-post.com/nl"
+    },
+    {
+      "text": "🇸🇦 العربية",
+      "href": "https://www.upload-post.com/ar"
+    },
+    {
+      "text": "🇹🇭 ไทย",
+      "href": "https://www.upload-post.com/th"
+    },
+    {
+      "text": "Add to your SaaS",
+      "href": "https://www.upload-post.com/whitelabel"
+    },
+    {
+      "text": "TikTok",
+      "href": "https://www.upload-post.com/platforms/tiktok"
+    },
+    {
+      "text": "Instagram",
+      "href": "https://www.upload-post.com/platforms/instagram"
+    },
+    {
+      "text": "YouTube",
+      "href": "https://www.upload-post.com/platforms/youtube"
+    },
+    {
+      "text": "LinkedIn",
+      "href": "https://www.upload-post.com/platforms/linkedin"
+    },
+    {
+      "text": "Facebook",
+      "href": "https://www.upload-post.com/platforms/facebook"
+    },
+    {
+      "text": "X",
+      "href": "https://www.upload-post.com/platforms/x"
+    },
+    {
+      "text": "Threads",
+      "href": "https://www.upload-post.com/platforms/threads"
+    },
+    {
+      "text": "Pinterest",
+      "href": "https://www.upload-post.com/platforms/pinterest"
+    },
+    {
+      "text": "Reddit",
+      "href": "https://www.upload-post.com/platforms/reddit"
+    },
+    {
+      "text": "Bluesky",
+      "href": "https://www.upload-post.com/platforms/bluesky"
+    },
+    {
+      "text": "Google Business",
+      "href": "https://www.upload-post.com/platforms/google-business"
+    },
+    {
+      "text": "Discord",
+      "href": "https://www.upload-post.com/platforms/discord"
+    },
+    {
+      "text": "Telegram",
+      "href": "https://www.upload-post.com/platforms/telegram"
+    },
+    {
+      "text": "n8n",
+      "href": "https://www.upload-post.com/n8n-integration-guide"
+    },
+    {
+      "text": "Workflows",
+      "href": "https://www.upload-post.com/n8n-templates"
+    },
+    {
+      "text": "Make",
+      "href": "https://www.upload-post.com/make-integration-guide"
+    },
+    {
+      "text": "Blueprints",
+      "href": "https://www.upload-post.com/make-templates"
+    },
+    {
+      "text": "Zapier",
+      "href": "https://www.upload-post.com/zapier-integration-guide"
+    },
+    {
+      "text": "Airtable",
+      "href": "https://www.upload-post.com/airtable-integration-guide"
+    },
+    {
+      "text": "🤖 AI Agents",
+      "href": "https://www.upload-post.com/ai-agents"
+    },
+    {
+      "text": "MCP ChatGPT · Claude",
+      "href": "https://www.upload-post.com/mcp"
+    },
+    {
+      "text": "FFmpeg API",
+      "href": "https://www.upload-post.com/ffmpeg-integration-guide"
+    },
+    {
+      "text": "Add to your SaaS",
+      "href": "https://www.upload-post.com/whitelabel"
+    },
+    {
+      "text": "Tools",
+      "href": "https://www.upload-post.com/tools"
+    },
+    {
+      "text": "Affiliates",
+      "href": "https://www.upload-post.com/affiliates"
+    },
+    {
+      "text": "API Docs",
+      "href": "https://docs.upload-post.com/"
+    },
+    {
+      "text": "Status",
+      "href": "https://www.upload-post.com/status"
+    },
+    {
+      "text": "Leaderboard",
+      "href": "https://www.upload-post.com/leaderboard"
+    },
+    {
+      "text": "Pricing",
+      "href": "https://www.upload-post.com/#pricing"
+    },
+    {
+      "text": "Try for free",
+      "href": "https://app.upload-post.com/"
+    },
+    {
+      "text": "Start Free",
+      "href": "https://app.upload-post.com/"
+    },
+    {
+      "text": "Bluesky Upload-Post API for Bluesky",
+      "href": "https://www.upload-post.com/platforms/bluesky/"
+    },
+    {
+      "text": "Facebook Upload-Post API for Facebook",
+      "href": "https://www.upload-post.com/platforms/facebook/"
+    },
+    {
+      "text": "Instagram Upload-Post API for Instagram",
+      "href": "https://www.upload-post.com/platforms/instagram/"
+    },
+    {
+      "text": "LinkedIn Upload-Post API for LinkedIn",
+      "href": "https://www.upload-post.com/platforms/linkedin/"
+    },
+    {
+      "text": "Pinterest Upload-Post API for Pinterest",
+      "href": "https://www.upload-post.com/platforms/pinterest/"
+    },
+    {
+      "text": "Reddit Upload-Post API for Reddit",
+      "href": "https://www.upload-post.com/platforms/reddit/"
+    },
+    {
+      "text": "Threads Upload-Post API for Threads",
+      "href": "https://www.upload-post.com/platforms/threads/"
+    },
+    {
+      "text": "TikTok Upload-Post API for TikTok",
+      "href": "https://www.upload-post.com/platforms/tiktok/"
+    },
+    {
+      "text": "X (Twitter) Upload-Post API for X (Twitter)",
+      "href": "https://www.upload-post.com/platforms/x/"
+    },
+    {
+      "text": "YouTube Upload-Post API for YouTube",
+      "href": "https://www.upload-post.com/platforms/youtube/"
+    },
+    {
+      "text": "Google Business Upload-Post API for Google Business",
+      "href": "https://www.upload-post.com/platforms/google-business/"
+    },
+    {
+      "text": "Discord Upload-Post API for Discord",
+      "href": "https://www.upload-post.com/platforms/discord/"
+    },
+    {
+      "text": "Telegram Upload-Post API for Telegram",
+      "href": "https://www.upload-post.com/platforms/telegram/"
+    },
+    {
+      "text": "Start Free",
+      "href": "https://app.upload-post.com/"
+    },
+    {
+      "text": "API Documentation",
+      "href": "https://docs.upload-post.com/"
+    },
+    {
+      "text": "Home",
+      "href": "https://www.upload-post.com/"
+    },
+    {
+      "text": "Features",
+      "href": "https://www.upload-post.com/#features"
+    },
+    {
+      "text": "Use Cases",
+      "href": "https://www.upload-post.com/#use-cases"
+    },
+    {
+      "text": "FAQ",
+      "href": "https://www.upload-post.com/#faq"
+    },
+    {
+      "text": "Make Integration",
+      "href": "https://www.upload-post.com/make-integration-guide"
+    },
+    {
+      "text": "n8n Integration",
+      "href": "https://www.upload-post.com/n8n-integration-guide"
+    },
+    {
+      "text": "n8n Templates",
+      "href": "https://www.upload-post.com/n8n-templates"
+    },
+    {
+      "text": "YouTube Tutorials",
+      "href": "https://www.upload-post.com/youtube-tutorials"
+    },
+    {
+      "text": "Documentation",
+      "href": "https://docs.upload-post.com/"
+    },
+    {
+      "text": "Post to All Platforms at Once",
+      "href": "https://www.upload-post.com/how-to/post-to-multiple-social-media-at-once"
+    },
+    {
+      "text": "Schedule Posts via API",
+      "href": "https://www.upload-post.com/how-to/schedule-social-media-posts-api"
+    },
+    {
+      "text": "Bulk Upload Videos",
+      "href": "https://www.upload-post.com/how-to/bulk-upload-videos-social-media"
+    },
+    {
+      "text": "Repurpose YouTube Videos",
+      "href": "https://www.upload-post.com/how-to/repurpose-youtube-videos-to-shorts-reels-tiktok"
+    },
+    {
+      "text": "Automate with Python",
+      "href": "https://www.upload-post.com/how-to/automate-social-media-posting-with-python"
+    },
+    {
+      "text": "Post from Google Sheets",
+      "href": "https://www.upload-post.com/how-to/post-to-social-media-from-google-sheets"
+    },
+    {
+      "text": "Schedule TikTok Posts",
+      "href": "https://www.upload-post.com/how-to/schedule-tiktok-posts"
+    },
+    {
+      "text": "Automate Instagram Posts",
+      "href": "https://www.upload-post.com/how-to/automate-instagram-posts"
+    },
+    {
+      "text": "Post to LinkedIn API",
+      "href": "https://www.upload-post.com/how-to/post-to-linkedin-api"
+    },
+    {
+      "text": "Automate with n8n",
+      "href": "https://www.upload-post.com/how-to/automate-social-media-with-n8n"
+    },
+    {
+      "text": "Auto-Post YouTube Shorts",
+      "href": "https://www.upload-post.com/how-to/auto-post-youtube-shorts"
+    },
+    {
+      "text": "Airtable to Social Media",
+      "href": "https://www.upload-post.com/how-to/connect-airtable-to-social-media"
+    },
+    {
+      "text": "Podcast Clips to Social",
+      "href": "https://www.upload-post.com/how-to/automate-podcast-clips-to-social-media"
+    },
+    {
+      "text": "vs Buffer",
+      "href": "https://www.upload-post.com/buffer-alternative"
+    },
+    {
+      "text": "vs Hootsuite",
+      "href": "https://www.upload-post.com/hootsuite-alternative"
+    },
+    {
+      "text": "vs Later",
+      "href": "https://www.upload-post.com/later-alternative"
+    },
+    {
+      "text": "vs Sprout Social",
+      "href": "https://www.upload-post.com/sprout-social-alternative"
+    },
+    {
+      "text": "vs SocialBee",
+      "href": "https://www.upload-post.com/socialbee-alternative"
+    },
+    {
+      "text": "vs Loomly",
+      "href": "https://www.upload-post.com/loomly-alternative"
+    },
+    {
+      "text": "vs Sendible",
+      "href": "https://www.upload-post.com/sendible-alternative"
+    },
+    {
+      "text": "vs Ayrshare",
+      "href": "https://www.upload-post.com/ayrshare-alternative"
+    },
+    {
+      "text": "vs Blotato",
+      "href": "https://www.upload-post.com/blotato-alternative"
+    },
+    {
+      "text": "vs Postiz",
+      "href": "https://www.upload-post.com/postiz-alternative"
+    },
+    {
+      "text": "vs Publer",
+      "href": "https://www.upload-post.com/publer-alternative"
+    },
+    {
+      "text": "Claude Code",
+      "href": "https://www.upload-post.com/skills/claude-code"
+    },
+    {
+      "text": "Claude + TikTok",
+      "href": "https://www.upload-post.com/skills/claude-code/tiktok"
+    },
+    {
+      "text": "Claude + Instagram",
+      "href": "https://www.upload-post.com/skills/claude-code/instagram"
+    },
+    {
+      "text": "Claude + YouTube",
+      "href": "https://www.upload-post.com/skills/claude-code/youtube"
+    },
+    {
+      "text": "Claude + LinkedIn",
+      "href": "https://www.upload-post.com/skills/claude-code/linkedin"
+    },
+    {
+      "text": "All AI Skills",
+      "href": "https://www.upload-post.com/ai-agents"
+    },
+    {
+      "text": "OpenClaw",
+      "href": "https://www.upload-post.com/openclaw-integration"
+    },
+    {
+      "text": "Terms of Use",
+      "href": "https://www.upload-post.com/terms-of-use"
+    },
+    {
+      "text": "Privacy Policy",
+      "href": "https://www.upload-post.com/data-and-privacy-policy"
+    },
+    {
+      "text": "Sub-processors",
+      "href": "https://www.upload-post.com/subprocessors"
+    },
+    {
+      "text": "DPA",
+      "href": "https://www.upload-post.com/data-processing-agreement"
+    },
+    {
+      "text": "Legal Notice",
+      "href": "https://www.upload-post.com/legal-notice"
+    },
+    {
+      "text": "Status",
+      "href": "https://www.upload-post.com/status"
+    }
+  ],
+  "bodyText": "Upload-Post\nAdd to your SaaS\nPlatforms \nIntegrations \nAffiliates\nResources \nPricing\n🇺🇸\nEN\nTry for free\nSupported Platforms\nOne API for all social networks\n\nOne API to publish to all major social media platforms. Upload videos, images, and text posts programmatically.\n\nStart Free\nBluesky\n\nUpload-Post API for Bluesky\n\nFacebook\n\nUpload-Post API for Facebook\n\nInstagram\n\nUpload-Post API for Instagram\n\nLinkedIn\n\nUpload-Post API for LinkedIn\n\nPinterest\n\nUpload-Post API for Pinterest\n\nReddit\n\nUpload-Post API for Reddit\n\nThreads\n\nUpload-Post API for Threads\n\nTikTok\n\nUpload-Post API for TikTok\n\nX (Twitter)\n\nUpload-Post API for X (Twitter)\n\nYouTube\n\nUpload-Post API for YouTube\n\nGoogle Business\n\nUpload-Post API for Google Business\n\nDiscord\n\nUpload-Post API for Discord\n\nTelegram\n\nUpload-Post API for Telegram\n\nReady to automate\nStart Free\nAPI Documentation\nUpload-Post.com\n\nSeamlessly share your videos across multiple platforms\n\nQUICK LINKS\nHome\nFeatures\nUse Cases\nFAQ\nMake Integration\nn8n Integration\nn8n Templates\nYouTube Tutorials\nDocumentation\nGUIDES\nPost to All Platforms at Once\nSchedule Posts via API\nBulk Upload Videos\nRepurpose YouTube Videos\nAutomate with Python\nPost from Google Sheets\nSchedule TikTok Posts\nAutomate Instagram Posts\nPost to LinkedIn API\nAutomate with n8n\nAuto-Post YouTube Shorts\nAirtable to Social Media\nPodcast Clips to Social\nCOMPARE\nvs Buffer\nvs Hootsuite\nvs Later\nvs Sprout Social\nvs SocialBee\nvs Loomly\nvs Sendible\nvs Ayrshare\nvs Blotato\nvs Postiz\nvs Publer\nAI SKILLS\nClaude Code\nClaude + TikTok\nClaude + Instagram\nClaude + YouTube\nClaude + LinkedIn\nAll AI Skills\nOpenClaw\nLEGAL\nTerms of Use\nPrivacy Policy\nSub-processors\nDPA\nLegal Notice\n\n© 2026 Upload-Post.com. All rights reserved.\n\nStatus"
+}

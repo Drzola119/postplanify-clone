@@ -1,6 +1,8 @@
 import "server-only";
 import type { PromptStyle } from "./prompt-styles";
 import type { AspectRatio } from "./types";
+import { getLanguageDirective } from "./language-support";
+import type { OutputLanguage } from "../i18n/types";
 
 /**
  * Our own prompt-template engine.
@@ -32,6 +34,7 @@ const TOKENS = {
   directive:   "[DIRECTIVE]",
   ratio:       "[ASPECT_RATIO]",
   footerCta:   "[FOOTER_CTA]",
+  languageDirective: "[LANGUAGE_DIRECTIVE]",
 } as const;
 
 function cleanValue(value: string | undefined, fallback: string): string {
@@ -76,6 +79,8 @@ Hard rules:
 - Do not include any logo unless explicitly provided.
 - Do not include any person, face, photograph, or stock-style scene.
 - Commit to one strong design — do not output multiple options.
+
+${TOKENS.languageDirective}
 `.trim();
 
 function substitute(
@@ -95,11 +100,13 @@ export function buildInfographicPrompt(input: {
   colorScheme?: ColorScheme;
   aspectRatio?: AspectRatio;
   footerCta?: string;
+  outputLanguage?: OutputLanguage;
 }): string {
   const t = cleanValue(input.topic, "a generic niche topic");
   const scheme = cleanValue(input.colorScheme, "light");
   const ratio = cleanValue(input.aspectRatio, "3:4");
   const cta = footerCtaLine(input.footerCta);
+  const lang = input.outputLanguage ?? "en";
 
   return substitute(TEMPLATE_BODY, {
     topic: t,
@@ -109,6 +116,7 @@ export function buildInfographicPrompt(input: {
     directive: input.style.directive,
     ratio: ratio,
     footerCta: cta,
+    languageDirective: getLanguageDirective(lang),
   });
 }
 
@@ -119,6 +127,7 @@ export function buildAdsInfographicPrompt(input: {
   colorScheme?: ColorScheme;
   aspectRatio?: AspectRatio;
   footerCta?: string;
+  outputLanguage?: OutputLanguage;
 }): string {
   const title = cleanValue(input.offerTitle, "the offer");
   const copy = cleanValue(
@@ -128,6 +137,7 @@ export function buildAdsInfographicPrompt(input: {
   const scheme = cleanValue(input.colorScheme, "light");
   const ratio = cleanValue(input.aspectRatio, "3:4");
   const cta = footerCtaLine(input.footerCta);
+  const lang = input.outputLanguage ?? "en";
 
   return substitute(TEMPLATE_BODY, {
     topic: title,
@@ -137,6 +147,7 @@ export function buildAdsInfographicPrompt(input: {
     directive: input.style.directive,
     ratio: ratio,
     footerCta: cta,
+    languageDirective: getLanguageDirective(lang),
   });
 }
 
@@ -157,10 +168,12 @@ export function buildIdeogramJsonPrompt(input: {
   colorScheme?: ColorScheme;
   aspectRatio?: AspectRatio;
   footerCta?: string;
+  outputLanguage?: OutputLanguage;
 }): Record<string, unknown> {
   const scheme = input.colorScheme ?? "light";
   const palette = paletteForScheme(scheme);
   const footerCta = input.footerCta?.trim();
+  const lang = input.outputLanguage ?? "en";
 
   const subject =
     input.tool === "ads"
@@ -193,6 +206,7 @@ export function buildIdeogramJsonPrompt(input: {
       "No watermarks, URLs, or third-party logos.",
       "Single consistent type system and icon style throughout.",
       "Do not invent specific statistics; only reference numbers present in the input.",
+      getLanguageDirective(lang),
     ],
     footer: footerCta ?? null,
   };

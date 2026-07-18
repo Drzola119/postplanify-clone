@@ -1,0 +1,37 @@
+{
+  "clicked": {
+    "tag": "a",
+    "text": "Analytics",
+    "href": "/analytics"
+  },
+  "url": "https://app.upload-post.com/analytics",
+  "title": "Upload Posts - Upload Videos to Social Media",
+  "h1": [
+    "User Analytics"
+  ],
+  "h2": [
+    "Global Analytics",
+    "xkksLA9bPvHLwx4nThvU"
+  ],
+  "buttons": [
+    "👑",
+    "More",
+    "Reset Order",
+    "Select All",
+    "Deselect All",
+    "Instagram",
+    "Facebook",
+    "X",
+    "LinkedIn",
+    "YouTube",
+    "Threads",
+    "Pinterest",
+    "TikTok",
+    "Remove",
+    "Close",
+    "close",
+    "Leave a review ⭐️"
+  ],
+  "inputs": [],
+  "bodyText": "Upload Post Users API Keys Upload Calendar Analytics Pricing Docs 👑 ANALYTICS User Analytics Reset Order View analytics for your connected social media accounts. Note that some platforms may have limitations on historical data availability. PERIOD Last 7 days Last 30 days Last 90 days Last 365 days Custom range 2026-06-15 to 2026-07-15 Global Analytics Aggregated analytics for all selected profiles(2026-06-15 to 2026-07-15) 1 / 1 selected Select All Deselect All FOLLOWERS 0 REACH 0 IMPRESSIONS 0 No chart data available for this metric and period. xkksLA9bPvHLwx4nThvU Platform performance Instagram Facebook X LinkedIn YouTube Threads Pinterest TikTok Instagram nicklorance7 Remove Having trouble with analytics? If analytics are not loading for , it might be a permission issue. The quickest way to fix this is to reconnect the account for the selected platform. Go to User Management, disconnect the account for this platform, and then connect it again. Go to User Management Close close UploadPost Your API solution for all social media platforms. Simplifying content management for developers and creators. Product Dashboard Manage Profiles Pricing Billing & Usage Resources API & Integrations Documentation Support Help Center Leave a review ⭐️ © 2026 UploadPost. All rights reserved."
+}

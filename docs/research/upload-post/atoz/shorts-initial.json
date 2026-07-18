@@ -1,0 +1,149 @@
+{
+  "url": "https://app.upload-post.com/shorts",
+  "title": "Upload Posts - Upload Videos to Social Media",
+  "h1": [
+    "Shorts Uploader"
+  ],
+  "h2": [
+    "Upload your video"
+  ],
+  "h3": [],
+  "bodyText": "Upload Post Users API Keys Upload Calendar Analytics Pricing Docs 👑 Manual Shorts Uploader Shorts Uploader Upload short-form content and let AI generate optimized titles and descriptions. Schedule or publish directly to YouTube Shorts, Instagram Reels, TikTok, and Facebook Reels. Caption language Auto-detect language English Spanish / Espanol Portuguese / Portugues French / Francais German / Deutsch Italian / Italiano Japanese / 日本語 Chinese / 中文 Korean / 한국어 Arabic / العربية Hindi / हिन्दी Russian / Русский Post as profile xkksLA9bPvHLwx4nThvU 1 Upload your video Drop video here or tap to browse MP4, MOV, WebM • Max 100MB",
+  "fields": [
+    {
+      "tag": "label",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "",
+      "labelText": "",
+      "contextText": "👑",
+      "ariaLabel": null,
+      "href": null
+    },
+    {
+      "tag": "button",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "👑",
+      "labelText": "",
+      "contextText": "👑",
+      "ariaLabel": null,
+      "href": null
+    },
+    {
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "Manual",
+      "labelText": "",
+      "contextText": "ManualShorts Uploader",
+      "ariaLabel": null,
+      "href": "/dashboard"
+    },
+    {
+      "tag": "a",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "Shorts Uploader",
+      "labelText": "",
+      "contextText": "ManualShorts Uploader",
+      "ariaLabel": null,
+      "href": "/shorts"
+    },
+    {
+      "tag": "label",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "Caption language",
+      "labelText": "Caption language",
+      "contextText": "Caption languageAuto-detect languageEnglishSpanish / EspanolPortuguese / PortuguesFrench / FrancaisGerman / DeutschItalian / ItalianoJapanese / 日本語Chinese / 中文Korean / 한국어Arabic / العربيةHindi / हिन्दीRussian / Русский",
+      "ariaLabel": null,
+      "href": null
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "Auto-detect languageEnglishSpanish / EspanolPortuguese / PortuguesFrench / FrancaisGerman / DeutschItalian / ItalianoJapanese / 日本語Chinese / 中文Korean / 한국어Arabic / العربيةHindi / हिन्दीRussian / Русск",
+      "labelText": "",
+      "contextText": "Caption languageAuto-detect languageEnglishSpanish / EspanolPortuguese / PortuguesFrench / FrancaisGerman / DeutschItalian / ItalianoJapanese / 日本語Chinese / 中文Korean / 한국어Arabic / العربيةHindi / हिन्दीRussian / Русский",
+      "ariaLabel": null,
+      "href": null,
+      "options": [
+        ":Auto-detect language",
+        "English:English",
+        "Spanish:Spanish / Espanol",
+        "Portuguese:Portuguese / Portugues",
+        "French:French / Francais",
+        "German:German / Deutsch",
+        "Italian:Italian / Italiano",
+        "Japanese:Japanese / 日本語",
+        "Chinese:Chinese / 中文",
+        "Korean:Korean / 한국어",
+        "Arabic:Arabic / العربية",
+        "Hindi:Hindi / हिन्दी",
+        "Russian:Russian / Русский"
+      ]
+    },
+    {
+      "tag": "label",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "Post as profile",
+      "labelText": "Post as profile",
+      "contextText": "Post as profilexkksLA9bPvHLwx4nThvU",
+      "ariaLabel": null,
+      "href": null
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "xkksLA9bPvHLwx4nThvU",
+      "checked": false,
+      "text": "xkksLA9bPvHLwx4nThvU",
+      "labelText": "",
+      "contextText": "Post as profilexkksLA9bPvHLwx4nThvU",
+      "ariaLabel": null,
+      "href": null,
+      "options": [
+        "xkksLA9bPvHLwx4nThvU:xkksLA9bPvHLwx4nThvU"
+      ]
+    },
+    {
+      "tag": "label",
+      "type": null,
+      "name": null,
+      "placeholder": null,
+      "value": "",
+      "checked": false,
+      "text": "Drop video here or tap to browseMP4, MOV, WebM • Max 100MB",
+      "labelText": "Drop video here or tap to browseMP4, MOV, WebM • Max 100MB",
+      "contextText": "1Upload your videoDrop video here or tap to browseMP4, MOV, WebM • Max 100MB",
+      "ariaLabel": null,
+      "href": null
+    }
+  ]
+}

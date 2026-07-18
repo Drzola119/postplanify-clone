@@ -5,6 +5,7 @@ import { GeminiFlashImageProvider } from "./providers/openrouter-gemini-flash";
 import { GptImage2Provider } from "./providers/openai-gpt-image-2";
 import { Ideogram4Provider } from "./providers/ideogram-4";
 import { resolveFallbackChain } from "./fallback-chain";
+import { isProviderArabicCapable } from "./language-support";
 import { platformApiKey, ImageGenResolutionError } from "./resolution";
 import { recordImageGenUsage } from "./usage";
 import { persistGeneratedImage } from "./asset-saver";
@@ -39,12 +40,28 @@ export async function generateInfographic(
   input: GenerateInput & { uid: string; headers?: Headers }
 ): Promise<GenerateOutput> {
   const chain = resolveFallbackChain(input.provider);
+
+  // Arabic output is only offered on providers whose rendering quality a
+  // human has verified. When the request asks for Arabic we pre-filter the
+  // chain down to those. For en/fr the chain is untouched (effectiveChain === chain).
+  const effectiveChain =
+    input.outputLanguage === "ar"
+      ? chain.filter((p) => isProviderArabicCapable(p))
+      : chain;
+
+  if (input.outputLanguage === "ar" && effectiveChain.length === 0) {
+    throw new Error(
+      "No Arabic-capable image provider is currently available. " +
+      "Please select English or French output, or try again later."
+    );
+  }
+
   const attempts: Array<{ provider: ProviderId; status: number; message: string }> = [];
   const requested = input.provider === "auto" ? undefined : input.provider;
   let lastError: Error | null = null;
 
-  for (let i = 0; i < chain.length; i++) {
-    const providerId = chain[i];
+  for (let i = 0; i < effectiveChain.length; i++) {
+    const providerId = effectiveChain[i];
     const isFirstChoice = requested === providerId || (i === 0 && requested === undefined);
     try {
       let apiKey: string;

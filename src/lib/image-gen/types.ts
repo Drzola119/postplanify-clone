@@ -1,4 +1,5 @@
 import "server-only";
+import type { OutputLanguage } from "../i18n/types";
 
 /**
  * Shared types for the image-gen router.
@@ -125,6 +126,11 @@ export interface GenerateInput {
   structuredPrompt?: Record<string, unknown>;
   /** Aspect ratio of the output image. */
   aspectRatio: AspectRatio;
+  /**
+   * Language the AI must render ON-IMAGE text in. Independent of the UI
+   * locale. Controls the [LANGUAGE_DIRECTIVE] appended to the prompt.
+   */
+  outputLanguage?: OutputLanguage;
   /**
    * Optional caller metadata propagated to the generation log so we can
    * attribute usage to specific tools, campaigns, or A/B buckets.

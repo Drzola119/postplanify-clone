@@ -1,0 +1,47 @@
+[
+  {
+    "tag": "a",
+    "text": "Upload Post",
+    "href": "/welcome"
+  },
+  {
+    "tag": "a",
+    "text": "Upload",
+    "href": "/dashboard"
+  },
+  {
+    "tag": "a",
+    "text": "Analytics",
+    "href": "/analytics"
+  },
+  {
+    "tag": "a",
+    "text": "Shorts Uploader",
+    "href": "/shorts"
+  },
+  {
+    "tag": "a",
+    "text": "upload-post.com/n8n-templates",
+    "href": "https://www.upload-post.com/n8n-templates"
+  },
+  {
+    "tag": "button",
+    "text": "Set up core contentPick the profile, content source, and primary copy.Media pend",
+    "href": null
+  },
+  {
+    "tag": "button",
+    "text": "Platform-specific settingsEnable each network and fine-tune channel options.None",
+    "href": null
+  },
+  {
+    "tag": "button",
+    "text": "Scheduling & submissionChoose when to publish and finalize the request.Immediate",
+    "href": null
+  },
+  {
+    "tag": "button",
+    "text": "Upload Video to 0 Platforms",
+    "href": null
+  }
+]
