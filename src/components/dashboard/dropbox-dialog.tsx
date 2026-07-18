@@ -288,14 +288,14 @@ export function DropboxDialog({ open, onClose, onImport }: DropboxDialogProps) {
 
 function DropboxLogo() {
   return (
-    <svg viewBox="0 0 48 48" className="size-6" aria-hidden>
-      <path d="M14 6 L24 13 L34 6 L24 0 Z" fill="#0061FF" />
-      <path d="M14 24 L24 31 L34 24 L24 18 Z" fill="#0061FF" />
-      <path d="M0 16 L10 23 L20 16 L10 9 Z" fill="#0061FF" />
-      <path d="M28 16 L38 9 L48 16 L38 23 Z" fill="#0061FF" />
-      <path d="M0 34 L10 41 L20 34 L10 27 Z" fill="#0061FF" />
-      <path d="M28 34 L38 27 L48 34 L38 41 Z" fill="#0061FF" />
-      <path d="M14 42 L24 49 L34 42 L24 35 Z" fill="#0061FF" />
-    </svg>
+    <img
+      src="https://cdn.simpleicons.org/dropbox/0061FF"
+      alt="Dropbox"
+      width={20}
+      height={20}
+      className="shrink-0"
+      loading="lazy"
+      decoding="async"
+    />
   );
 }

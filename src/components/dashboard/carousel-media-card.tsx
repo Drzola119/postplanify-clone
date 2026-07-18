@@ -62,6 +62,16 @@ export function CarouselMediaCard({
   return (
     <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm">
       <div className="p-4 space-y-4">
+        {/* Info banner */}
+        <div className="flex items-center gap-2 rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 text-xs text-blue-700">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4 shrink-0">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 16v-4" />
+            <path d="M12 8h.01" />
+          </svg>
+          Carousel posts are supported on Instagram, Facebook, and Threads only.
+        </div>
+
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

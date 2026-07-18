@@ -289,12 +289,14 @@ export function GoogleDriveDialog({ open, onClose, onImport }: GoogleDriveDialog
 
 function DriveLogo() {
   return (
-    <svg viewBox="0 0 48 48" className="size-6" aria-hidden>
-      <path d="M15.6 7.4l-9 15.6 6.5 0 9-15.6z" fill="#0066DA" />
-      <path d="M32.4 7.4l-9 15.6 6.5 0 9-15.6z" fill="#00AC47" />
-      <path d="M9 27l6.5 11.3 6.5-11.3z" fill="#EA4335" />
-      <path d="M22 27l6.5 11.3 6.5-11.3z" fill="#00832D" />
-      <path d="M15.6 7.4L24 23l6.5-11.3z" fill="#008329" />
-    </svg>
+    <img
+      src="https://cdn.simpleicons.org/googledrive/4285F4"
+      alt="Google Drive"
+      width={20}
+      height={20}
+      className="shrink-0"
+      loading="lazy"
+      decoding="async"
+    />
   );
 }

@@ -231,6 +231,8 @@ export default function CreatePostPage() {
   });
   const [rulesOpen, setRulesOpen] = useState(false);
 
+  const [requirementsOpen, setRequirementsOpen] = useState(false);
+
   // Set true while the publish API call is in flight.
   const [submitting, setSubmitting] = useState(false);
   // Outpainting pipeline phase (image → per-platform variants → per-platform publish).
@@ -1317,12 +1319,10 @@ export default function CreatePostPage() {
           <h1 className="text-[30px] font-bold leading-[36px] tracking-tight">{t("pageTitle")}</h1>
         </div>
 
-        <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
           <PlatformTileBar
             selected={selected}
             onToggle={toggleAccount}
-            onSelectAll={selectAll}
-            onDeselectAll={deselectAll}
             getPreviewProps={(id) => {
               const active = mediaItems[activeMedia];
               const mediaUrl = active ? active.cdnUrl ?? active.url : null;
@@ -1333,6 +1333,13 @@ export default function CreatePostPage() {
               };
             }}
           />
+          <button
+            type="button"
+            onClick={deselectAll}
+            className="text-xs text-zinc-500 underline-offset-2 hover:underline"
+          >
+            Deselect All
+          </button>
           <button
             type="button"
             onClick={startOver}
@@ -1362,7 +1369,7 @@ export default function CreatePostPage() {
               } else if (m === "carousel") {
                 // keep current selection but remove incompatible ones
                 setSelected((prev) => {
-                  const compatible = new Set(["instagram","facebook","tiktok","threads","linkedin"]);
+                  const compatible = new Set(["instagram", "facebook", "threads"]);
                   return new Set([...prev].filter((id) => compatible.has(id)));
                 });
               } else {
@@ -1505,12 +1512,15 @@ export default function CreatePostPage() {
       </div>
 
       {/* Publish readiness panel — full view (Feature 2) */}
-      <div className="mt-4">
-        <RequirementsPanel
-          report={readinessReport}
-          platformNames={Object.fromEntries(PLATFORMS.map((p) => [p.id, p.name])) as Record<PlatformId, string>}
-        />
-      </div>
+      {requirementsOpen ? (
+        <div className="mt-4">
+          <RequirementsPanel
+            report={readinessReport}
+            platformNames={Object.fromEntries(PLATFORMS.map((p) => [p.id, p.name])) as Record<PlatformId, string>}
+            onClose={() => setRequirementsOpen(false)}
+          />
+        </div>
+      ) : null}
 
       {/* Sticky bottom action bar */}
       <div className="sticky bottom-0 w-full bg-background border-t mt-8 -mx-6 px-6 py-4">
@@ -1524,11 +1534,26 @@ export default function CreatePostPage() {
             {t("saveDraft")}
           </button>
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-            <RequirementsPanel
-              report={readinessReport}
-              platformNames={Object.fromEntries(PLATFORMS.map((p) => [p.id, p.name])) as Record<PlatformId, string>}
-              compact
-            />
+            {readinessReport.overall === "blocked" || readinessReport.overall === "warning" ? (
+              <button
+                type="button"
+                onClick={() => setRequirementsOpen(true)}
+                className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-medium hover:bg-amber-100 transition-colors"
+                title="View platform requirements"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2L1 21h22L12 2zm0 3.5L20.5 19H3.5L12 5.5zM11 10v4h2v-4h-2zm0 6v2h2v-2h-2z"/>
+                </svg>
+                {readinessReport.blockedCount} blocked
+              </button>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-green-50 border border-green-200 text-green-700 text-xs font-medium">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                Ready
+              </span>
+            )}
             <button
               type="button"
               disabled={!hasAnyContent || submitting || readinessReport.overall === "blocked"}
@@ -1895,10 +1920,38 @@ function EmptyState({
         <div className="mt-3 flex items-center flex-wrap justify-center gap-2">
           <span className="text-xs text-zinc-500">{t("media.importFrom")}</span>
           <ImportButton label={t("media.generateAI")} tone="violet" onClick={onGenerateAI} />
-          <ImportButton label={t("media.unsplash")} tone="blue" onClick={onUnsplash} />
-          <ImportButton label={t("media.canva")} tone="cyan" onClick={onCanva} />
-          <ImportButton label={t("media.googleDrive")} tone="amber" onClick={onDrive} />
-          <ImportButton label={t("media.dropbox")} tone="blue" onClick={onDropbox} />
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onUnsplash?.(); }}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 transition-colors text-xs font-medium text-zinc-700 shadow-sm"
+          >
+            <img src="https://cdn.simpleicons.org/unsplash/000000" alt="Unsplash" width={14} height={14} className="shrink-0" />
+            {t("media.unsplash")}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onCanva?.(); }}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 transition-colors text-xs font-medium text-zinc-700 shadow-sm"
+          >
+            <img src="https://cdn.simpleicons.org/canva/00C4CC" alt="Canva" width={14} height={14} className="shrink-0" />
+            {t("media.canva")}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onDrive?.(); }}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 transition-colors text-xs font-medium text-zinc-700 shadow-sm"
+          >
+            <img src="https://cdn.simpleicons.org/googledrive/4285F4" alt="Google Drive" width={14} height={14} className="shrink-0" />
+            {t("media.googleDrive")}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onDropbox?.(); }}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 transition-colors text-xs font-medium text-zinc-700 shadow-sm"
+          >
+            <img src="https://cdn.simpleicons.org/dropbox/0061FF" alt="Dropbox" width={14} height={14} className="shrink-0" />
+            {t("media.dropbox")}
+          </button>
         </div>
       </div>
     </div>
@@ -2301,7 +2354,7 @@ function AccountsCard({
   }, [selected]);
 
   // Platform compatibility per mode
-  const CAROUSEL_COMPATIBLE = new Set(["instagram","facebook","tiktok","threads","linkedin"]);
+  const CAROUSEL_COMPATIBLE = new Set(["instagram", "facebook", "threads"]);
   function isPlatformLocked(id: PlatformId): { locked: boolean; reason: string | null } {
     if (composerMode === "trial_reel" && id !== "instagram") {
       return { locked: true, reason: t("accounts.trialReelsOnly") };

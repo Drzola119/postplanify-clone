@@ -13,7 +13,7 @@ interface ModeOption {
 
 const MODES: ModeOption[] = [
   { id: "standard", emoji: "🖼️", label: "Standard" },
-  { id: "carousel", emoji: "📑", label: "Carousel" },
+  { id: "carousel", emoji: "📑", label: "Carousel", badge: { text: "Instagram · Facebook · Threads", color: "blue" } },
   {
     id: "trial_reel",
     emoji: "⚡",

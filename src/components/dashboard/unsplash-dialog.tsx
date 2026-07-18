@@ -199,9 +199,14 @@ export function UnsplashDialog({ open, onClose, onImport }: UnsplashDialogProps)
 
 function UnsplashLogo() {
   return (
-    <svg viewBox="0 0 48 48" className="size-6" aria-hidden>
-      <path d="M28 6h12v12h-4V14h-8V6zM16 6H4v12h4v-4h8V6z" fill="#000" />
-      <circle cx="24" cy="30" r="12" fill="#000" />
-    </svg>
+    <img
+      src="https://cdn.simpleicons.org/unsplash/000000"
+      alt="Unsplash"
+      width={20}
+      height={20}
+      className="shrink-0"
+      loading="lazy"
+      decoding="async"
+    />
   );
 }

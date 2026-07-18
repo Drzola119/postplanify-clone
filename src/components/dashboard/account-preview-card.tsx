@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PlatformMeta } from "@/lib/platforms";
+import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
 import { CommunitySelector } from "@/components/dashboard/community-selector";
 import { QuoteTweetInput } from "@/components/dashboard/quote-tweet-input";
 import { AdvancedOptionsPanel } from "@/components/dashboard/advanced-options-panel";
@@ -71,20 +72,10 @@ export function AccountPreviewCard({
 
   return (
     <div className={cn("rounded-lg border bg-card overflow-hidden flex flex-col", platform.borderClass)}>
-      <div className="px-3 py-2 border-b flex items-center justify-between gap-2 bg-zinc-50/50 flex-shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className={cn("text-sm flex-shrink-0", platform.textClass)}>{platform.icon}</span>
-          <p className="text-xs font-medium truncate">{platform.handle}</p>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="text-xs font-medium text-zinc-500">{counter}</span>
-          <div className="w-12 h-0.5 bg-zinc-200 rounded-full overflow-hidden">
-            <div
-              className={cn("h-full transition-all", pct > 90 ? "bg-red-500" : "bg-zinc-950")}
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-        </div>
+      <div className="flex items-center gap-2 py-2 px-3 border-b border-border bg-zinc-50/50 flex-shrink-0">
+        <PlatformAvatar platform={platform} size={28} rounded="sm" />
+        <span className="text-sm font-medium text-foreground">{platform.name}</span>
+        <span className="ml-auto text-xs text-muted-foreground">{counter}</span>
       </div>
       <div className="relative">
         <textarea

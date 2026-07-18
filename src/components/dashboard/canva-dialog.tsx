@@ -204,11 +204,14 @@ export function CanvaDialog({ open, onClose, onImport }: CanvaDialogProps) {
 
 function CanvaLogo() {
   return (
-    <span
-      className="inline-flex items-center justify-center size-6 rounded-md text-white font-bold text-sm"
-      style={{ backgroundColor: CANVA_BRAND }}
-    >
-      C
-    </span>
+    <img
+      src="https://cdn.simpleicons.org/canva/00C4CC"
+      alt="Canva"
+      width={20}
+      height={20}
+      className="shrink-0"
+      loading="lazy"
+      decoding="async"
+    />
   );
 }
