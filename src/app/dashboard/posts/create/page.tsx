@@ -154,11 +154,38 @@ export default function CreatePostPage() {
     window.history.replaceState({}, "", clean);
   }, [toast]);
 
-  // Account selection (default: ALL platforms — matches production postplanify.com where every platform is selected on first visit).
-  const [selected, setSelected] = useState<Set<PlatformId>>(
-    () => new Set(PLATFORMS.map((p) => p.id))
-  );
+  // Connected accounts fetched from the server (only these should appear in the picker).
+  const [connectedPlatforms, setConnectedPlatforms] = useState<Set<PlatformId>>(new Set());
+  const [accountsLoaded, setAccountsLoaded] = useState(false);
+
+  // Account selection — initialises to empty; populated after we know what's connected.
+  const [selected, setSelected] = useState<Set<PlatformId>>(new Set());
   const [remember, setRemember] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/social-accounts/list", { credentials: "include" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { ok?: boolean; accounts?: { id: string; platform: string }[] };
+        if (cancelled || !data.ok || !data.accounts) return;
+        const platformIds = new Set<PlatformId>();
+        for (const acct of data.accounts) {
+          const pid = acct.platform as PlatformId;
+          if (PLATFORMS.some((p) => p.id === pid)) platformIds.add(pid);
+        }
+        if (cancelled) return;
+        setConnectedPlatforms(platformIds);
+        if (platformIds.size > 0) setSelected(new Set(platformIds));
+      } catch {
+        // offline — fall back to showing all platforms
+      } finally {
+        if (!cancelled) setAccountsLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [feedType, setFeedType] = useState<"feed" | "story">("feed");
 
   // Per-account captions
@@ -326,7 +353,8 @@ export default function CreatePostPage() {
   }
 
   function selectAll() {
-    setSelected(new Set(PLATFORMS.map((p) => p.id)));
+    const targets = connectedPlatforms.size > 0 ? connectedPlatforms : new Set(PLATFORMS.map((p) => p.id));
+    setSelected(new Set(targets));
   }
 
   function deselectAll() {
@@ -1465,6 +1493,8 @@ export default function CreatePostPage() {
             onFeedTypeChange={setFeedType}
             onlyImage={onlyImage}
             composerMode={composerMode}
+            connectedPlatforms={connectedPlatforms}
+            accountsLoaded={accountsLoaded}
           />
 
           {isVideoActive && composerMode === "standard" ? (
@@ -2233,6 +2263,8 @@ interface AccountsCardProps {
   onFeedTypeChange: (t: "feed" | "story") => void;
   onlyImage: boolean;
   composerMode?: ComposerMode;
+  connectedPlatforms: Set<PlatformId>;
+  accountsLoaded: boolean;
 }
 
 function CoverSections({
@@ -2346,12 +2378,21 @@ function AccountsCard({
   onFeedTypeChange,
   onlyImage,
   composerMode = "standard",
+  connectedPlatforms,
+  accountsLoaded,
 }: AccountsCardProps) {
   const t = useTranslations("createPost");
   const hasSelection = selected.size > 0;
+
+  // Only show platforms the user has connected (fall back to all if still loading).
+  const visiblePlatforms = useMemo(() => {
+    if (!accountsLoaded) return PLATFORMS;
+    return PLATFORMS.filter((p) => connectedPlatforms.has(p.id));
+  }, [accountsLoaded, connectedPlatforms]);
+
   const storyAvailable = useMemo(() => {
-    return PLATFORMS.some((p) => selected.has(p.id) && (p.id === "instagram" || p.id === "facebook"));
-  }, [selected]);
+    return visiblePlatforms.some((p) => selected.has(p.id) && (p.id === "instagram" || p.id === "facebook"));
+  }, [selected, visiblePlatforms]);
 
   // Platform compatibility per mode
   const CAROUSEL_COMPATIBLE = new Set(["instagram", "facebook", "threads"]);
@@ -2414,8 +2455,14 @@ function AccountsCard({
         </div>
 
         <div className="max-h-64 overflow-y-auto -mx-1 px-1">
+          {visiblePlatforms.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <p className="text-sm font-medium text-zinc-700">No connected accounts</p>
+              <p className="text-xs text-zinc-500 mt-1">Connect social accounts in the Accounts page first.</p>
+            </div>
+          ) : (
           <div className="grid grid-cols-2 gap-2">
-            {PLATFORMS.map((p) => {
+            {visiblePlatforms.map((p) => {
               const isSel = selected.has(p.id);
               const disabledByMedia = onlyImage && p.videoOnly;
               const { locked: lockedByMode, reason: modeReason } = isPlatformLocked(p.id);
@@ -2454,6 +2501,7 @@ function AccountsCard({
               );
             })}
           </div>
+          )}
         </div>
 
         {hasSelection ? (

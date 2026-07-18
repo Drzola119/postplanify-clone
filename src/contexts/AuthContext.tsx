@@ -17,6 +17,8 @@ import {
   createUserWithEmailAndPassword,
   updateProfile,
   sendPasswordResetEmail,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
   type User,
 } from "firebase/auth";
 import { auth, isFirebaseConfigured } from "@/lib/firebase/config";
@@ -36,6 +38,7 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
   getIdToken: () => Promise<string | null>;
   sendPasswordReset: (email: string) => Promise<void>;
+  reauthenticate: (password: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -108,6 +111,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async sendPasswordReset(email) {
         if (!auth) throw new Error("Firebase is not configured");
         await sendPasswordResetEmail(auth, email);
+      },
+      async reauthenticate(password) {
+        if (!auth || !auth.currentUser || !auth.currentUser.email) {
+          throw new Error("No authenticated user");
+        }
+        const credential = EmailAuthProvider.credential(auth.currentUser.email, password);
+        await reauthenticateWithCredential(auth.currentUser, credential);
       },
     }),
     [status, user]
