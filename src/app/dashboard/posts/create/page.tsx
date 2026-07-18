@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
 import {
   Eye,
@@ -81,11 +82,6 @@ type MediaItem = {
   uploadError?: string;
 };
 
-const MEDIA_TABS: { id: MediaTab; label: string }[] = [
-  { id: "media", label: "Media" },
-  { id: "paste", label: "Paste" },
-];
-
 const MAX_FILES = 10;
 
 // Headers are sourced from the centralized client-overrides helper. In
@@ -93,6 +89,7 @@ const MAX_FILES = 10;
 // env (see src/lib/security/server-config.ts).
 
 export default function CreatePostPage() {
+  const t = useTranslations("createPost");
   const { toast, dismiss } = useToast();
   const { getIdToken } = useAuth();
 
@@ -141,14 +138,14 @@ export default function CreatePostPage() {
         setActiveMedia(Math.min(record.activeMedia ?? 0, restoredMedia.length - 1));
       }
       toast({
-        title: "Draft restored",
+        title: t("draftRestored"),
         description: droppedLocal > 0
-          ? `${droppedLocal} local-only file${droppedLocal === 1 ? "" : "s"} dropped (re-upload to include)`
-          : "All fields loaded",
+          ? t("draftDropped", { count: droppedLocal })
+          : t("draftAllLoaded"),
         tone: "info",
       });
     } else {
-      toast({ title: `Draft not found (${id})`, tone: "error" });
+      toast({ title: t("draftNotFound", { id }), tone: "error" });
     }
     // Strip ?draft= from the URL so a refresh doesn't re-fire the restore.
     params.delete("draft");
@@ -358,7 +355,7 @@ export default function CreatePostPage() {
     setDocumentFile(null);
     setDocumentTitle("");
     setFirstComments({});
-    toast({ title: "Reset", description: "Composer cleared", tone: "info" });
+    toast({ title: t("resetTitle"), description: t("resetDescription"), tone: "info" });
   }
 
   function handleSaveDraft() {
@@ -392,7 +389,7 @@ export default function CreatePostPage() {
     saveDraft(record);
     setDraftId(id);
     toast({
-      title: "Draft saved",
+      title: t("draftSaved"),
       description: mediaItems.length > 0
         ? `${mediaItems.length} file${mediaItems.length === 1 ? "" : "s"} • ${selected.size} platform${selected.size === 1 ? "" : "s"}`
         : `${selected.size} platform${selected.size === 1 ? "" : "s"} • captions preserved`,
@@ -410,12 +407,12 @@ export default function CreatePostPage() {
   async function publishPost(scheduledAt: Date | null) {
     const platforms = Array.from(selected);
     if (platforms.length === 0) {
-      toast({ title: "Pick at least one account", tone: "warning" });
+      toast({ title: t("pickAccount"), tone: "warning" });
       return;
     }
     const caption = captionForCurrent();
     if (!caption) {
-      toast({ title: "Caption is empty", tone: "warning" });
+      toast({ title: t("captionEmpty"), tone: "warning" });
       return;
     }
 
@@ -423,30 +420,30 @@ export default function CreatePostPage() {
     if (composerMode === "standard") {
       const readyMedia = mediaItems.filter((m) => m.cdnUrl);
       if (readyMedia.length === 0) {
-        toast({ title: "Upload at least one media file", tone: "warning" });
+        toast({ title: t("uploadMedia"), tone: "warning" });
         return;
       }
       readyMediaUrls = readyMedia.map((m) => m.cdnUrl!);
     } else if (composerMode === "carousel") {
       const readyCarousel = carouselItems.filter((c) => c.cdnUrl);
       if (readyCarousel.length < 2) {
-        toast({ title: "Upload at least 2 files for carousel", tone: "warning" });
+        toast({ title: t("uploadCarousel"), tone: "warning" });
         return;
       }
       readyMediaUrls = readyCarousel.map((c) => c.cdnUrl!);
     } else if (composerMode === "trial_reel") {
       if (!trialReelFile || !trialReelFile.cdnUrl) {
-        toast({ title: "Upload a trial reel video", tone: "warning" });
+        toast({ title: t("uploadReel"), tone: "warning" });
         return;
       }
       readyMediaUrls = [trialReelFile.cdnUrl];
     } else if (composerMode === "document") {
       if (!documentFile || !documentFile.cdnUrl) {
-        toast({ title: "Upload a document file", tone: "warning" });
+        toast({ title: t("uploadDocument"), tone: "warning" });
         return;
       }
       if (!documentTitle.trim()) {
-        toast({ title: "Document title is required", tone: "warning" });
+        toast({ title: t("documentTitleRequired"), tone: "warning" });
         return;
       }
       readyMediaUrls = [documentFile.cdnUrl];
@@ -540,27 +537,27 @@ export default function CreatePostPage() {
       };
       if (!res.ok || !data.ok) {
         toast({
-          title: scheduledAt ? "Schedule failed" : "Publish failed",
+          title: scheduledAt ? t("scheduleFailed") : t("publishFailed"),
           description: data.error ?? `HTTP ${res.status}`,
           tone: "error",
         });
         return;
       }
       toast({
-        title: scheduledAt ? "Post scheduled" : "Post published",
+        title: scheduledAt ? t("scheduleSuccess") : t("publishSuccess"),
         description: scheduledAt
           ? scheduledAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
-          : `Job ${data.jobId?.slice(0, 8)} sent to workflow`,
+          : t("jobSent", { id: data.jobId?.slice(0, 8) ?? "?" }),
         tone: "success",
       });
       if (!scheduledAt) startOver();
     } catch (err) {
       toast({
-        title: scheduledAt ? "Schedule failed" : "Publish failed",
-        description: err instanceof Error ? err.message : "Network error",
-        tone: "error",
-      });
-    } finally {
+          title: scheduledAt ? t("scheduleFailed") : t("publishFailed"),
+          description: err instanceof Error ? err.message : "Network error",
+          tone: "error",
+        });
+      } finally {
       setSubmitting(false);
       setOutpaintPhase("idle");
     }
@@ -596,8 +593,8 @@ export default function CreatePostPage() {
     const idToken = await getIdToken();
     if (!idToken) {
       toast({
-        title: "Sign in required",
-        description: "We couldn't refresh your session. Please reload and try again.",
+        title: t("signInRequired"),
+        description: t("signInDescription"),
         tone: "error",
       });
       return { ok: false };
@@ -613,7 +610,7 @@ export default function CreatePostPage() {
       );
     } catch (err) {
       toast({
-        title: "Couldn't read source image",
+        title: t("outpaint.cantReadSource"),
         description: err instanceof Error ? err.message : "Download failed",
         tone: "error",
       });
@@ -643,7 +640,7 @@ export default function CreatePostPage() {
       };
       if (!startRes.ok || !startData.jobId) {
         toast({
-          title: "Couldn't start AI variants",
+          title: t("outpaint.cantStartAI"),
           description: startData.error ?? `HTTP ${startRes.status}`,
           tone: "error",
         });
@@ -653,7 +650,7 @@ export default function CreatePostPage() {
       totalVariants = startData.estimatedVariants;
     } catch (err) {
       toast({
-        title: "Couldn't start AI variants",
+        title: scheduledAt ? t("scheduleFailed") : t("publishFailed"),
         description: err instanceof Error ? err.message : "Network error",
         tone: "error",
       });
@@ -661,10 +658,10 @@ export default function CreatePostPage() {
     }
 
     const generateToastId = toast({
-      title: "Generating platform variants…",
+      title: t("outpaint.generating"),
       description: totalVariants
-        ? `Engine is creating ${totalVariants} variants. This usually takes 20–60 seconds.`
-        : "Engine is creating platform variants. This usually takes 20–60 seconds.",
+        ? t("outpaint.generatingDesc", { count: totalVariants })
+        : t("outpaint.generatingDescNoCount"),
       tone: "info",
     });
 
@@ -699,8 +696,8 @@ export default function CreatePostPage() {
         if (pollRes.status === 404) {
           dismiss(generateToastId);
           toast({
-            title: "Engine job lost",
-            description: "The engine restarted mid-generation. Please try again.",
+            title: t("outpaint.engineJobLost"),
+            description: t("outpaint.engineJobLostDesc"),
             tone: "error",
           });
           return { ok: false };
@@ -719,7 +716,7 @@ export default function CreatePostPage() {
       if (status === "failed" || status === "generation_failed") {
         dismiss(generateToastId);
         toast({
-          title: "AI variant generation failed",
+          title: t("outpaint.generationFailed"),
           description: pollData.error ?? "The engine couldn't complete all variants.",
           tone: "error",
         });
@@ -730,8 +727,8 @@ export default function CreatePostPage() {
     if (!pollResult || pollResult.status !== "complete") {
       dismiss(generateToastId);
       toast({
-        title: "AI variants took too long",
-        description: "We waited 2 minutes. Please try again with fewer platforms.",
+        title: t("outpaint.tookTooLong"),
+        description: t("outpaint.tookTooLongDesc"),
         tone: "error",
       });
       return { ok: false };
@@ -741,10 +738,8 @@ export default function CreatePostPage() {
     // ── Step 4: deliver per platform via upload-post.com ──────────────
     setOutpaintPhase("delivering");
     const deliverToastId = toast({
-      title: "Publishing to selected platforms…",
-      description: `Sending ${lastVariantsCount} variant${
-        lastVariantsCount === 1 ? "" : "s"
-      } to ${platforms.length} account${platforms.length === 1 ? "" : "s"}.`,
+      title: t("outpaint.delivering"),
+      description: t("outpaint.deliveringDesc", { count: lastVariantsCount, platforms: platforms.length }),
       tone: "info",
     });
 
@@ -782,7 +777,7 @@ export default function CreatePostPage() {
       if (!deliverRes.ok || !deliverData.ok) {
         dismiss(deliverToastId);
         toast({
-          title: scheduledAt ? "Schedule failed" : "Publish failed",
+          title: scheduledAt ? t("scheduleFailed") : t("publishFailed"),
           description:
             deliverData.error ??
             (deliverData.totals
@@ -811,23 +806,19 @@ export default function CreatePostPage() {
 
     if (totals.failed === 0) {
       toast({
-        title: scheduledAt ? "Post scheduled" : "Post published",
-        description: `Sent to all ${totals.total} platform${
-          totals.total === 1 ? "" : "s"
-        } with AI-tailored variants.`,
+        title: scheduledAt ? t("scheduleSuccess") : t("publishSuccess"),
+        description: t("outpaint.allVariants", { count: totals.total }),
         tone: "success",
       });
     } else if (totals.succeeded > 0) {
       toast({
-        title: "Partially published",
-        description: `${totals.succeeded}/${totals.total} platforms succeeded. ${
-          failedPlatforms[0] ?? ""
-        }`,
+        title: t("outpaint.partial", { succeeded: totals.succeeded, total: totals.total }),
+        description: failedPlatforms[0] ?? "",
         tone: "warning",
       });
     } else {
       toast({
-        title: "Publish failed",
+        title: t("publishFailed"),
         description: failedPlatforms[0] ?? "All platforms failed",
         tone: "error",
       });
@@ -904,8 +895,8 @@ export default function CreatePostPage() {
       return next;
     });
     toast({
-      title: `${newItems.length} file${newItems.length > 1 ? "s" : ""} added`,
-      description: "Uploading to Bunny CDN…",
+      title: t("media.filesAdded", { count: newItems.length }),
+      description: t("media.uploading"),
       tone: "info",
     });
 
@@ -992,8 +983,8 @@ export default function CreatePostPage() {
     setCarouselItems((prev) => [...prev, ...built]);
 
     toast({
-      title: `${built.length} file${built.length > 1 ? "s" : ""} added to carousel`,
-      description: "Uploading to Bunny CDN…",
+      title: t("media.filesAdded", { count: built.length }),
+      description: t("media.uploading"),
       tone: "info",
     });
 
@@ -1158,11 +1149,11 @@ export default function CreatePostPage() {
   }) {
     const active = mediaItems[activeMedia];
     if (!active) {
-      toast({ title: "Upload an image or video first", tone: "warning" });
+      toast({ title: t("uploadMedia"), tone: "warning" });
       return;
     }
     if (selectedPlatforms.length === 0) {
-      toast({ title: "Pick at least one account", tone: "warning" });
+      toast({ title: t("pickAccount"), tone: "warning" });
       return;
     }
 
@@ -1194,7 +1185,7 @@ export default function CreatePostPage() {
         ? active.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim()
         : null;
     if (!imageUrl && !videoTitle) {
-      toast({ title: "Upload an image or video first", tone: "warning" });
+      toast({ title: t("uploadMedia"), tone: "warning" });
       return;
     }
 
@@ -1246,14 +1237,14 @@ export default function CreatePostPage() {
         });
       }
       toast({
-        title: "Captions generated",
+        title: t("captionsGenerated"),
         description: `Applied to ${selectedPlatforms.length} account${selectedPlatforms.length === 1 ? "" : "s"}`,
         tone: "success",
       });
       setAiDialogOpen(false);
     } catch (err) {
       toast({
-        title: "Caption generation failed",
+        title: t("outpaint.cantStartAI"),
         description: err instanceof Error ? err.message : "Network error",
         tone: "error",
       });
@@ -1323,7 +1314,7 @@ export default function CreatePostPage() {
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-3 pb-6">
         <div className="flex items-center gap-3">
-          <h1 className="text-[30px] font-bold leading-[36px] tracking-tight">Create New Post</h1>
+          <h1 className="text-[30px] font-bold leading-[36px] tracking-tight">{t("pageTitle")}</h1>
         </div>
 
         <div className="flex items-center gap-4 flex-wrap">
@@ -1348,7 +1339,7 @@ export default function CreatePostPage() {
             className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-white px-3 h-9 text-sm font-medium text-red-600 hover:bg-red-50"
           >
             <RotateCcw className="size-3.5" />
-            Start Over
+            {t("startOver")}
           </button>
         </div>
       </div>
@@ -1411,7 +1402,7 @@ export default function CreatePostPage() {
               onPickCustomCover={() => customCoverInputRef.current?.click()}
               onRemoveCustomCover={() => {
                 setCustomCoverUrl(null);
-                toast({ title: "Custom cover removed", tone: "info" });
+                toast({ title: t("cover.customRemoved"), tone: "info" });
               }}
             />
           ) : composerMode === "carousel" ? (
@@ -1477,7 +1468,7 @@ export default function CreatePostPage() {
               onPickCustomCover={() => customCoverInputRef.current?.click()}
               onRemoveCustomCover={() => {
                 setCustomCoverUrl(null);
-                toast({ title: "Custom cover removed", tone: "info" });
+                toast({ title: t("cover.customRemoved"), tone: "info" });
               }}
             />
           ) : null}
@@ -1530,7 +1521,7 @@ export default function CreatePostPage() {
             onClick={handleSaveDraft}
             className="inline-flex items-center justify-center gap-2 rounded-md border border-zinc-200 bg-white px-4 h-9 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Save as Draft
+            {t("saveDraft")}
           </button>
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
             <RequirementsPanel
@@ -1544,7 +1535,7 @@ export default function CreatePostPage() {
               onClick={() => setScheduleModalOpen(true)}
               className="inline-flex items-center justify-center gap-2 rounded-md border border-zinc-200 bg-white px-4 h-9 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Schedule
+              {t("schedule")}
             </button>
             <button
               type="button"
@@ -1553,7 +1544,7 @@ export default function CreatePostPage() {
               className="inline-flex items-center justify-center gap-2 rounded-md bg-zinc-950 hover:bg-zinc-800 text-white px-4 h-9 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Send className="size-3.5" />
-              {submitting ? "Publishing…" : "Publish Now"}
+              {submitting ? t("publishing") : t("publishNow")}
             </button>
           </div>
         </div>
@@ -1604,7 +1595,7 @@ export default function CreatePostPage() {
         onApply={(dataUrl) => {
           setFrameCoverUrl(dataUrl);
           setCoverModalOpen(false);
-          toast({ title: "Frame cover updated", tone: "success" });
+          toast({ title: t("cover.frameUpdated"), tone: "success" });
         }}
       />
 
@@ -1627,7 +1618,7 @@ export default function CreatePostPage() {
         imageUrl={activeMediaItem?.kind === "image" ? activeMediaItem.url : null}
         onApply={() => {
           setCropModalOpen(false);
-          toast({ title: "Crop applied", tone: "success" });
+          toast({ title: t("cropApplied"), tone: "success" });
         }}
       />
 
@@ -1637,7 +1628,7 @@ export default function CreatePostPage() {
         imageUrl={activeMediaItem?.kind === "image" ? activeMediaItem.url : null}
         onSave={(value) => {
           toast({
-            title: value ? "Alt text saved" : "Alt text cleared",
+            title: value ? t("altTextSaved") : t("altTextCleared"),
             tone: "success",
           });
         }}
@@ -1663,7 +1654,7 @@ export default function CreatePostPage() {
           if (!file) return;
           const url = URL.createObjectURL(file);
           setCustomCoverUrl(url);
-          toast({ title: "Custom cover uploaded", tone: "success" });
+          toast({ title: t("cover.customUploaded"), tone: "success" });
           e.target.value = "";
         }}
       />
@@ -1732,6 +1723,7 @@ function MediaCard({
   onPickCustomCover,
   onRemoveCustomCover,
 }: MediaCardProps) {
+  const t = useTranslations("createPost");
   const [dragging, setDragging] = useState(false);
   const active = items[activeIndex];
   const atMax = items.length >= MAX_FILES;
@@ -1751,12 +1743,12 @@ function MediaCard({
           <div className="flex flex-wrap items-center gap-3">
             <StepCircle n={1} />
             <div className="flex flex-row items-center gap-2">
-              <h3 className="text-lg font-semibold leading-none">Media</h3>
-              <span className="text-xs font-normal text-zinc-500/70 ml-1">(optional)</span>
+              <h3 className="text-lg font-semibold leading-none">{t("media.title")}</h3>
+              <span className="text-xs font-normal text-zinc-500/70 ml-1">{t("media.optional")}</span>
             </div>
             {active ? (
               <div className="flex items-center flex-wrap gap-2">
-                <Pill icon={<ImageIcon className="size-3" />} label={active.kind === "image" ? "Image" : "Video"} />
+                <Pill icon={<ImageIcon className="size-3" />} label={active.kind === "image" ? t("media.image") : t("media.video")} />
                 <Pill label={formatBytes(active.size)} />
                 {active.kind === "image" && active.width > 0 ? (
                   <Pill label={`${active.width}×${active.height}px`} />
@@ -1851,6 +1843,11 @@ function EmptyState({
   onDrive: () => void;
   onDropbox: () => void;
 }) {
+  const t = useTranslations("createPost");
+  const tabs: { id: MediaTab; label: string }[] = [
+    { id: "media", label: t("media.tabMedia") },
+    { id: "paste", label: t("media.tabPaste") },
+  ];
   return (
     <div
       onDragOver={(e) => {
@@ -1870,20 +1867,20 @@ function EmptyState({
       )}
     >
       <div className="absolute top-2 right-2 inline-flex items-center rounded-md border border-zinc-300 bg-white/80 p-0.5 gap-0.5">
-        {MEDIA_TABS.map((t) => (
+        {tabs.map((tabItem) => (
           <button
-            key={t.id}
+            key={tabItem.id}
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onTabChange(t.id);
+              onTabChange(tabItem.id);
             }}
             className={cn(
               "inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors",
-              tab === t.id ? "bg-zinc-100 text-zinc-900 font-medium" : "text-zinc-600 hover:bg-zinc-50"
+              tab === tabItem.id ? "bg-zinc-100 text-zinc-900 font-medium" : "text-zinc-600 hover:bg-zinc-50"
             )}
           >
-            {t.label}
+            {tabItem.label}
           </button>
         ))}
       </div>
@@ -1891,17 +1888,17 @@ function EmptyState({
       <div className="flex flex-col items-center justify-center min-h-[160px] gap-2">
         <ImageIcon className="size-6 text-zinc-400" />
         <p className="text-sm font-medium text-zinc-900">
-          Drag and drop media{tab === "paste" ? " URL or paste content" : " here"}
+          {tab === "paste" ? t("media.dragDropPaste") : t("media.dragDrop")}
         </p>
-        <p className="text-xs text-zinc-500">or click to browse</p>
+        <p className="text-xs text-zinc-500">{t("media.clickBrowse")}</p>
 
         <div className="mt-3 flex items-center flex-wrap justify-center gap-2">
-          <span className="text-xs text-zinc-500">Import from:</span>
-          <ImportButton label="Generate with AI" tone="violet" onClick={onGenerateAI} />
-          <ImportButton label="Unsplash" tone="blue" onClick={onUnsplash} />
-          <ImportButton label="Canva" tone="cyan" onClick={onCanva} />
-          <ImportButton label="Google Drive" tone="amber" onClick={onDrive} />
-          <ImportButton label="Dropbox" tone="blue" onClick={onDropbox} />
+          <span className="text-xs text-zinc-500">{t("media.importFrom")}</span>
+          <ImportButton label={t("media.generateAI")} tone="violet" onClick={onGenerateAI} />
+          <ImportButton label={t("media.unsplash")} tone="blue" onClick={onUnsplash} />
+          <ImportButton label={t("media.canva")} tone="cyan" onClick={onCanva} />
+          <ImportButton label={t("media.googleDrive")} tone="amber" onClick={onDrive} />
+          <ImportButton label={t("media.dropbox")} tone="blue" onClick={onDropbox} />
         </div>
       </div>
     </div>
@@ -1965,6 +1962,7 @@ function UploadedState({
   onOpenAltText: () => void;
   onOpenTagUsers: () => void;
 }) {
+  const t = useTranslations("createPost");
   const active = items[activeIndex];
   const isImage = active.kind === "image";
   return (
@@ -2040,24 +2038,24 @@ function UploadedState({
       <div className="flex flex-wrap items-center gap-2">
         <MediaAction
           icon={<Crop className="size-3.5" />}
-          label="Crop"
+          label={t("media.crop")}
           onClick={onOpenCrop}
           disabled={!isImage}
         />
         <MediaAction
           icon={<FileText className="size-3.5" />}
-          label="Alt text"
+          label={t("media.altText")}
           onClick={onOpenAltText}
           disabled={!isImage}
         />
         <MediaAction
           icon={<AtSign className="size-3.5" />}
-          label="Tag users (0)"
+          label={t("media.tagUsers", { count: 0 })}
           onClick={onOpenTagUsers}
         />
         <MediaAction
           icon={<Users className="size-3.5" />}
-          label={`Collaborators (${collaboratorsCount})`}
+          label={t("media.collaborators", { count: collaboratorsCount })}
           onClick={onOpenCollaborators}
         />
       </div>
@@ -2197,13 +2195,14 @@ function CoverSections({
   onPickCustomCover: () => void;
   onRemoveCustomCover: () => void;
 }) {
+  const t = useTranslations("createPost");
   return (
     <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm">
       <div className="p-4 grid grid-cols-2 gap-4">
         {/* Video Frame Cover */}
         <div className="space-y-2">
           <div className="flex items-center gap-1.5">
-            <h4 className="text-sm font-semibold">Video Frame Cover</h4>
+            <h4 className="text-sm font-semibold">{t("cover.frameTitle")}</h4>
             <button
               type="button"
               aria-label="About Video Frame Cover"
@@ -2213,7 +2212,7 @@ function CoverSections({
             </button>
           </div>
           <p className="text-xs text-zinc-500 leading-relaxed min-h-[36px]">
-            Select a frame from your video to use as the cover image
+            {t("cover.frameDesc")}
           </p>
           <div className="flex items-center gap-2">
             <div className="relative w-14 h-20 rounded-md overflow-hidden bg-zinc-100 border border-zinc-200 flex-shrink-0">
@@ -2229,7 +2228,7 @@ function CoverSections({
               className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50"
             >
               <RefreshCw className="size-3.5" />
-              Change Frame
+              {t("cover.changeFrame")}
             </button>
           </div>
         </div>
@@ -2237,7 +2236,7 @@ function CoverSections({
         {/* Custom Cover Image */}
         <div className="space-y-2">
           <div className="flex items-center gap-1.5">
-            <h4 className="text-sm font-semibold">Custom Cover Image</h4>
+            <h4 className="text-sm font-semibold">{t("cover.customTitle")}</h4>
             <button
               type="button"
               aria-label="About Custom Cover Image"
@@ -2247,7 +2246,7 @@ function CoverSections({
             </button>
           </div>
           <p className="text-xs text-zinc-500 leading-relaxed min-h-[36px]">
-            Upload your own custom thumbnail image (instead of frame)
+            {t("cover.customDesc")}
           </p>
           <div className="flex items-center gap-2">
             <div className="relative w-14 h-20 rounded-md overflow-hidden border-2 border-dashed border-zinc-300 bg-zinc-50 flex items-center justify-center flex-shrink-0">
@@ -2264,7 +2263,7 @@ function CoverSections({
                 className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-white px-3 h-8 text-xs font-medium text-red-600 hover:bg-red-50"
               >
                 <X className="size-3.5" />
-                Remove
+                {t("cover.remove")}
               </button>
             ) : (
               <button
@@ -2273,7 +2272,7 @@ function CoverSections({
                 className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50"
               >
                 <Upload className="size-3.5" />
-                Upload Custom
+                {t("cover.uploadCustom")}
               </button>
             )}
           </div>
@@ -2295,6 +2294,7 @@ function AccountsCard({
   onlyImage,
   composerMode = "standard",
 }: AccountsCardProps) {
+  const t = useTranslations("createPost");
   const hasSelection = selected.size > 0;
   const storyAvailable = useMemo(() => {
     return PLATFORMS.some((p) => selected.has(p.id) && (p.id === "instagram" || p.id === "facebook"));
@@ -2304,13 +2304,13 @@ function AccountsCard({
   const CAROUSEL_COMPATIBLE = new Set(["instagram","facebook","tiktok","threads","linkedin"]);
   function isPlatformLocked(id: PlatformId): { locked: boolean; reason: string | null } {
     if (composerMode === "trial_reel" && id !== "instagram") {
-      return { locked: true, reason: "Trial Reels: Instagram only" };
+      return { locked: true, reason: t("accounts.trialReelsOnly") };
     }
     if (composerMode === "document" && id !== "linkedin") {
-      return { locked: true, reason: "Documents: LinkedIn only" };
+      return { locked: true, reason: t("accounts.documentsOnly") };
     }
     if (composerMode === "carousel" && !CAROUSEL_COMPATIBLE.has(id)) {
-      return { locked: true, reason: "Carousel not supported" };
+      return { locked: true, reason: t("accounts.carouselUnsupported") };
     }
     return { locked: false, reason: null };
   }
@@ -2321,7 +2321,7 @@ function AccountsCard({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <StepCircle n={2} />
-            <h3 className="text-lg font-semibold leading-none">Accounts</h3>
+            <h3 className="text-lg font-semibold leading-none">{t("accounts.title")}</h3>
           </div>
           <div className="flex items-center gap-2">
             <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer">
@@ -2331,7 +2331,7 @@ function AccountsCard({
                 onChange={(e) => onRememberChange(e.target.checked)}
                 className="size-4 rounded-sm border-zinc-300 text-zinc-950 focus:ring-zinc-950"
               />
-              Remember
+              {t("accounts.remember")}
             </label>
             <button
               type="button"
@@ -2347,7 +2347,7 @@ function AccountsCard({
               onClick={onSelectAll}
               className="inline-flex items-center rounded-md border border-zinc-200 bg-white px-2 h-7 text-xs font-medium hover:bg-zinc-50"
             >
-              Select All
+              {t("accounts.selectAll")}
             </button>
             <button
               type="button"
@@ -2355,7 +2355,7 @@ function AccountsCard({
               disabled={!hasSelection}
               className="inline-flex items-center rounded-md border border-zinc-200 bg-white px-2 h-7 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Deselect All
+              {t("accounts.deselectAll")}
             </button>
           </div>
         </div>
@@ -2366,7 +2366,7 @@ function AccountsCard({
               const isSel = selected.has(p.id);
               const disabledByMedia = onlyImage && p.videoOnly;
               const { locked: lockedByMode, reason: modeReason } = isPlatformLocked(p.id);
-              const disabledReason = lockedByMode ? modeReason : (disabledByMedia ? "Only video files are supported" : null);
+              const disabledReason = lockedByMode ? modeReason : (disabledByMedia ? t("onlyVideoSupported") : null);
               const disabled = disabledByMedia || lockedByMode;
               return (
                 <button
@@ -2406,7 +2406,7 @@ function AccountsCard({
         {hasSelection ? (
           <div className="pt-3 border-t space-y-2">
             <div className="flex items-center gap-2 text-xs">
-              <span className="font-medium">Post in:</span>
+              <span className="font-medium">{t("accounts.postIn")}</span>
               <label className="inline-flex items-center gap-1.5 cursor-pointer">
                 <input
                   type="checkbox"
@@ -2414,7 +2414,7 @@ function AccountsCard({
                   onChange={() => onFeedTypeChange("feed")}
                   className="size-4 rounded-sm border-zinc-300 text-emerald-500 focus:ring-emerald-500"
                 />
-                Feed
+                {t("accounts.feed")}
               </label>
               <label
                 className={cn(
@@ -2429,11 +2429,11 @@ function AccountsCard({
                   disabled={!storyAvailable}
                   className="size-4 rounded-sm border-zinc-300 text-emerald-500 focus:ring-emerald-500"
                 />
-                Story
+                {t("accounts.story")}
               </label>
             </div>
             {!storyAvailable ? (
-              <p className="text-xs text-zinc-500">Stories are only available for FB and IG.</p>
+              <p className="text-xs text-zinc-500">{t("accounts.storiesNote")}</p>
             ) : null}
           </div>
         ) : null}
@@ -2501,6 +2501,7 @@ function CaptionsCard({
   onRulesOpenChange,
   sampleCaption = "",
 }: CaptionsCardProps) {
+  const t = useTranslations("createPost");
   const hasActiveRules = metadataRules.enabled && (metadataRules.hashtags.length > 0 || metadataRules.ctaLine);
 
   return (
@@ -2509,7 +2510,7 @@ function CaptionsCard({
         <div className="flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2">
             <StepCircle n={3} />
-            <h3 className="text-lg font-semibold leading-none">Captions</h3>
+            <h3 className="text-lg font-semibold leading-none">{t("captions.title")}</h3>
           </div>
           <div className="flex items-center gap-2">
             {/* Campaign Rules toggle */}
@@ -2524,7 +2525,7 @@ function CaptionsCard({
               )}
             >
               <Hash className="size-3.5" />
-              {rulesOpen ? "Hide Rules" : "Campaign Rules"}
+              {rulesOpen ? t("captions.hideRules") : t("captions.campaignRules")}
               {hasActiveRules && !rulesOpen && (
                 <span className="size-1.5 rounded-full bg-emerald-400 inline-block" />
               )}
@@ -2536,7 +2537,7 @@ function CaptionsCard({
               className="inline-flex items-center gap-1.5 rounded bg-zinc-950 hover:bg-zinc-800 text-white px-4 h-9 text-sm font-medium shadow-sm"
             >
               <Sparkles className="size-3.5" />
-              Generate AI Captions
+              {t("captions.generateAI")}
             </button>
           </div>
         </div>
@@ -2569,7 +2570,7 @@ function CaptionsCard({
                 )}
               />
             </button>
-            <span>Use same caption for all platforms</span>
+            <span>{t("captions.sameForAll")}</span>
           </label>
           <HashtagsDropdown
             onInsert={(tags) => {
@@ -2588,15 +2589,15 @@ function CaptionsCard({
               <div className="size-12 rounded-full bg-zinc-100 flex items-center justify-center mb-3">
                 <Type className="size-6 text-zinc-300" />
               </div>
-              <p className="text-sm font-medium text-zinc-700">No accounts selected</p>
+              <p className="text-sm font-medium text-zinc-700">{t("captions.noAccounts")}</p>
               <p className="text-xs text-zinc-500 mt-1 max-w-[260px]">
-                Pick accounts in the Accounts card to write platform-specific captions.
+                {t("captions.noAccountsDesc")}
               </p>
             </div>
           ) : sameForAll ? (
             <div className="overflow-y-auto max-h-[60vh] rounded-lg">
               <AccountPreviewCard
-                platform={{ ...platforms[0], charLimit: 2200, borderClass: "border-zinc-300", textClass: "text-zinc-700", name: "All platforms" }}
+                platform={{ ...platforms[0], charLimit: 2200, borderClass: "border-zinc-300", textClass: "text-zinc-700", name: t("captions.allPlatforms") }}
                 value={getCaption(platforms[0].id)}
                 onChange={(v) => setCaption(platforms[0].id, v)}
                 firstComment={getFirstComment(platforms[0].id)}
