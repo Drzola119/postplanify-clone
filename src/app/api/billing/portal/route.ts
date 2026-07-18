@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireSession } from "@/lib/auth/session-context";
-import { stripe, createPortalSession } from "@/lib/stripe";
+import { getStripe, createPortalSession } from "@/lib/stripe";
 import { jsonError, jsonOk } from "@/lib/validation/helpers";
 
 export const runtime = "nodejs";
@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { returnUrl } = await request.json() as { returnUrl?: string };
+  const stripe = getStripe();
   const customers = await stripe.customers.list({ email: session.email ?? "", limit: 1 });
   if (customers.data.length === 0) {
     return jsonError(404, "No billing account found");

@@ -1,9 +1,13 @@
 import Stripe from "stripe";
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "", {
-  apiVersion: "2026-06-24.dahlia",
-  typescript: true,
-});
+function getStripe(): Stripe {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error("STRIPE_SECRET_KEY is not configured");
+  return new Stripe(key, {
+    apiVersion: "2026-06-24.dahlia",
+    typescript: true,
+  });
+}
 
 export const PLANS = {
   growth: { priceId: process.env.STRIPE_PRICE_GROWTH ?? "", name: "Growth", monthlyCents: 7900 },
@@ -27,7 +31,7 @@ export async function createCheckoutSession(
   successUrl: string,
   cancelUrl: string,
 ) {
-  return stripe.checkout.sessions.create({
+  return getStripe().checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
     line_items: [{ price: priceId, quantity: 1 }],
@@ -40,14 +44,17 @@ export async function createCheckoutSession(
 }
 
 export async function createPortalSession(customerId: string, returnUrl: string) {
-  return stripe.billingPortal.sessions.create({
+  return getStripe().billingPortal.sessions.create({
     customer: customerId,
     return_url: returnUrl,
   });
 }
 
 export async function getOrCreateCustomer(uid: string, email: string) {
+  const stripe = getStripe();
   const customers = await stripe.customers.list({ email, limit: 1 });
   if (customers.data.length > 0) return customers.data[0];
   return stripe.customers.create({ email, metadata: { uid } });
 }
+
+export { getStripe };
