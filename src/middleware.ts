@@ -33,7 +33,7 @@ export function middleware(request: NextRequest) {
       const loginUrl = request.nextUrl.clone();
       loginUrl.pathname = "/login";
       loginUrl.search = "";
-      loginUrl.searchParams.set("redirect", pathname + search);
+      loginUrl.searchParams.set("next", pathname + search);
       return NextResponse.redirect(loginUrl);
     }
   }

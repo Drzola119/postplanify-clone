@@ -14,6 +14,7 @@ export interface DestinationItem {
   platform: PlatformId | "custom";
   type: "webhook" | "zapier" | "custom";
   url: string;
+  events: string[];
   active: boolean;
   createdAt: string;
 }
@@ -29,6 +30,13 @@ export async function getDestination(workspaceId: string, id: string): Promise<D
   return serialize(snap.id, snap.data() as DestinationDoc);
 }
 
+/** Internal: returns the secret for signing deliveries. Never expose to clients. */
+export async function getDestinationSecret(workspaceId: string, id: string): Promise<string | null> {
+  const snap = await collection(workspaceId).doc(id).get();
+  if (!snap.exists) return null;
+  return (snap.data() as DestinationDoc).secret ?? null;
+}
+
 export async function createDestination(
   workspaceId: string,
   data: Partial<DestinationDoc>
@@ -38,6 +46,7 @@ export async function createDestination(
     platform: data.platform ?? "custom",
     type: data.type ?? "webhook",
     url: data.url ?? "",
+    events: data.events ?? [],
     secret: data.secret,
     active: data.active ?? true,
     createdAt: SERVER_TIMESTAMP,
@@ -58,12 +67,17 @@ export async function deleteDestination(workspaceId: string, id: string): Promis
   await collection(workspaceId).doc(id).delete();
 }
 
+export async function markDestinationDelivered(workspaceId: string, id: string): Promise<void> {
+  await collection(workspaceId).doc(id).update({ lastDeliveryAt: SERVER_TIMESTAMP });
+}
+
 function serialize(id: string, data: DestinationDoc): DestinationItem {
   return {
     id,
     platform: data.platform ?? "custom",
     type: data.type ?? "webhook",
     url: data.url ?? "",
+    events: data.events ?? [],
     active: data.active ?? true,
     createdAt: toIso(data.createdAt),
   };

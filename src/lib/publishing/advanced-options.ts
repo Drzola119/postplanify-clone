@@ -605,35 +605,6 @@ export const FIELD_SPECS: Record<PlatformId, FieldSpec[]> = {
   ],
 
   // ─────────────────────────────────────────────────────────────
-  x: [
-    {
-      key: "x_reply_settings",
-      label: "Reply settings",
-      kind: "select",
-      options: [
-        { value: "everyone", label: "Everyone" },
-        { value: "following", label: "People you follow" },
-        { value: "mentionedUsers", label: "Only mentioned" },
-      ],
-      default: "everyone",
-    },
-    {
-      key: "x_community_id",
-      label: "Community ID",
-      kind: "text",
-      placeholder: "Community ID",
-      advanced: true,
-    },
-    {
-      key: "x_geo_place_id",
-      label: "Location",
-      kind: "text",
-      placeholder: "Place ID",
-      advanced: true,
-    },
-  ],
-
-  // ─────────────────────────────────────────────────────────────
   discord: [
     {
       key: "discord_channel_id",

@@ -8,7 +8,50 @@ import {
   trackView,
   trackLinkClick,
   getCurrentUsername,
+  newLinkId,
 } from "@/lib/link-in-bio/store";
+
+interface ApiLinkInBio {
+  username?: string;
+  bio?: string;
+  blocks?: { type: string; data?: Record<string, unknown> }[];
+  theme?: string;
+  socials?: Record<string, string>;
+  avatarUrl?: string;
+  updatedAt?: string;
+}
+
+function apiBioToLocal(username: string, api: ApiLinkInBio): Bio {
+  const linkBlocks = (api.blocks ?? []).filter((b) => b.type === "link");
+  const links = linkBlocks.map((b) => {
+    const data = (b.data ?? {}) as { title?: string; url?: string; enabled?: boolean };
+    return {
+      id: newLinkId(),
+      title: data.title ?? "Untitled",
+      url: data.url ?? "",
+      enabled: data.enabled ?? true,
+      clicks: 0,
+    };
+  });
+  const socialLinks = Object.entries(api.socials ?? {}).map(([platform, url]) => ({
+    id: `soc_${Date.now().toString(36)}_${platform}`,
+    platform: (platform as Bio["socialLinks"][number]["platform"]),
+    url,
+  }));
+  const now = Date.now();
+  return {
+    username,
+    displayName: username,
+    bio: api.bio ?? "",
+    links,
+    socialLinks,
+    themeId: (api.theme as Bio["themeId"]) ?? "minimal-light",
+    style: "rounded" as const,
+    customColors: null,
+    createdAt: now,
+    updatedAt: api.updatedAt ? new Date(api.updatedAt).getTime() : now,
+  };
+}
 
 type Props = {
   username: string;
@@ -21,16 +64,36 @@ export default function LinkInBioPublicClient({ username }: Props) {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    const b = getBio(username);
-    if (!b) {
-      setNotFound(true);
-    } else {
-      setBio(b);
-      // Track a view on mount
-      trackView(username);
-    }
-    setIsOwner(getCurrentUsername() === username);
-    setHydrated(true);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/link-in-bio/by-username/${username}`);
+        if (res.ok) {
+          const data = (await res.json()) as { bio?: ApiLinkInBio };
+          if (cancelled) return;
+          if (data.bio) {
+            setBio(apiBioToLocal(username, data.bio));
+            trackView(username);
+            setIsOwner(getCurrentUsername() === username);
+            setHydrated(true);
+            return;
+          }
+        }
+      } catch {
+        // fall through to localStorage
+      }
+      if (cancelled) return;
+      const b = getBio(username);
+      if (!b) {
+        setNotFound(true);
+      } else {
+        setBio(b);
+        trackView(username);
+      }
+      setIsOwner(getCurrentUsername() === username);
+      setHydrated(true);
+    })();
+    return () => { cancelled = true; };
   }, [username]);
 
   if (!hydrated) {

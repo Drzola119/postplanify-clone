@@ -23,6 +23,10 @@ const SUPPORTED_PLATFORMS = [
   "linkedin",
 ] as const;
 
+function toInternalPlatform(key: string): string {
+  return key === "x" ? "twitter" : key;
+}
+
 interface UploadPostAccount {
   display_name?: string;
   handle?: string;
@@ -66,7 +70,7 @@ async function fetchLiveAccounts(apiKey: string): Promise<CachedAccount[] | null
         out.push({
           id: `${p.username}:${key}`,
           profileUsername: p.username,
-          platform: key,
+          platform: toInternalPlatform(key),
           handle: a.handle,
           displayName: a.display_name ?? null,
           img: a.social_images || null,

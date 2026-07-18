@@ -184,20 +184,6 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
       image: { maxBytes: 1 * MB, formats: ["image/jpeg", "image/png", "image/gif", "image/webp"], maxItems: 4 },
     },
   },
-  x: {
-    displayName: "X",
-    supportsText: true,
-    supportsImage: true,
-    supportsVideo: true,
-    maxTitleLength: 0,
-    maxCaptionLength: 280,
-    hardCapPer24h: 300,
-    requiredTargets: [],
-    media: {
-      image: { maxBytes: 5 * MB, formats: ["image/jpeg", "image/png", "image/gif", "image/webp"], maxItems: 4 },
-      video: { maxBytes: 512 * MB, formats: ["video/mp4"], minDurationSec: 1, maxDurationSec: 140 },
-    },
-  },
   discord: {
     displayName: "Discord",
     supportsText: true,

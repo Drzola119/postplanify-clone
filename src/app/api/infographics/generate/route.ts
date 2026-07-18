@@ -158,7 +158,15 @@ export async function POST(request: NextRequest) {
         workspaceId: session.workspaceId,
         attempts: err.attempts,
       });
-      return jsonError(502, "All image-gen providers failed", err.attempts);
+      const allMissingKeys = err.attempts.every(
+        (a) => a.status === 0 && a.message.includes("missing platform env var")
+      );
+      const userMessage = allMissingKeys
+        ? "Image generation is not available: no API keys configured. "
+          + "Ask your administrator to set OPENROUTER_API_KEY, OPENAI_API_KEY, "
+          + "or IDEOGRAM_API_KEY in the server environment."
+        : "All image-gen providers failed. Try a different provider or style, or try again later.";
+      return jsonError(502, userMessage, err.attempts);
     }
     const message = err instanceof Error ? err.message : "Generation failed";
     log.error("image-gen error", { workspaceId: session.workspaceId, message });

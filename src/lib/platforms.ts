@@ -11,7 +11,6 @@ export type PlatformId =
   | "linkedin"
   | "threads"
   | "facebook"
-  | "x"
   | "discord"
   | "telegram"
   | "reddit"

@@ -1,7 +1,7 @@
 import "server-only";
 import { createHmac } from "node:crypto";
 import type { PlatformId } from "@/lib/db/schema";
-import { listWebhooks, markDelivered, getWebhookSecret } from "@/lib/db/webhooks";
+import { listDestinations, getDestinationSecret, markDestinationDelivered } from "@/lib/db/destinations";
 
 export interface DeliveryResult {
   url: string;
@@ -63,13 +63,13 @@ export async function deliverWebhook(
 ): Promise<DeliveryResult[]> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const retryDelays = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
-  const webhooks = await listWebhooks(workspaceId);
-  const subscribed = webhooks.filter((w) => w.active && w.events.includes(payload.event));
+  const destinations = await listDestinations(workspaceId);
+  const subscribed = destinations.filter((d) => d.active && d.events.includes(payload.event));
 
   return Promise.all(
-    subscribed.map(async (w) => {
+    subscribed.map(async (d) => {
       const body = JSON.stringify(payload);
-      const secret = (await getWebhookSecret(workspaceId, w.id)) ?? "";
+      const secret = (await getDestinationSecret(workspaceId, d.id)) ?? "";
       const signature = signPayload(body, secret);
       let lastError: string | undefined;
       let lastStatus: number | undefined;
@@ -78,19 +78,19 @@ export async function deliverWebhook(
           await new Promise((r) => setTimeout(r, retryDelays[attempt]));
         }
         try {
-          const res = await fetchImpl(w.url, {
+          const res = await fetchImpl(d.url, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               "X-PostPlanify-Signature": signature,
               "X-PostPlanify-Event": payload.event,
-              "X-Webhook-Id": w.id,
+              "X-Webhook-Id": d.id,
             },
             body,
           });
           if (res.ok) {
-            await markDelivered(workspaceId, w.id);
-            return { url: w.url, success: true, attempts: attempt + 1, status: res.status };
+            await markDestinationDelivered(workspaceId, d.id);
+            return { url: d.url, success: true, attempts: attempt + 1, status: res.status };
           }
           lastStatus = res.status;
           lastError = `HTTP ${res.status}`;
@@ -99,7 +99,7 @@ export async function deliverWebhook(
         }
       }
       return {
-        url: w.url,
+        url: d.url,
         success: false,
         attempts: retryDelays.length,
         status: lastStatus,

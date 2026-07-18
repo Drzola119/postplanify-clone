@@ -52,11 +52,16 @@ interface UploadPostListResponse {
   plan?: string;
 }
 
+/** Translate upload-post.com platform key to trustiify platform id. */
+function toInternalPlatform(key: PlatformKey): string {
+  return key === "x" ? "twitter" : key;
+}
+
 export interface ConnectedAccountDTO {
   /** Unique id combining profile + platform. */
   id: string;
   profileUsername: string;
-  platform: PlatformKey;
+  platform: string;
   handle: string;
   displayName: string | null;
   img: string | null;
@@ -94,7 +99,7 @@ function flatten(profile: UploadPostProfile | null): ConnectedAccountDTO[] {
     out.push({
       id: `${profile.username}:${key}`,
       profileUsername: profile.username,
-      platform: key,
+      platform: toInternalPlatform(key),
       handle: a.handle,
       displayName: a.display_name ?? null,
       img: a.social_images || null,

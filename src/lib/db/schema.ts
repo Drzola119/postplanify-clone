@@ -257,8 +257,10 @@ export interface DestinationDoc {
   platform: PlatformId | "custom";
   type: "webhook" | "zapier" | "custom";
   url: string;
+  events: string[];
   secret?: string;
   active: boolean;
+  lastDeliveryAt?: Date;
   createdAt: Date;
 }
 

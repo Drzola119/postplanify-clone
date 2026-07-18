@@ -32,7 +32,7 @@ type Platform =
   | "youtube"
   | "facebook"
   | "linkedin"
-  | "x"
+  | "twitter"
   | "discord"
   | "telegram"
   | "reddit"
@@ -115,7 +115,7 @@ const PLATFORM_META: Record<
   youtube: { label: "YouTube", badgeColor: "text-red-600" },
   facebook: { label: "Facebook", badgeColor: "text-blue-600" },
   linkedin: { label: "LinkedIn", badgeColor: "text-blue-700" },
-  x: { label: "X", badgeColor: "text-zinc-900" },
+  twitter: { label: "X / Twitter", badgeColor: "text-zinc-900" },
   discord: { label: "Discord", badgeColor: "text-indigo-500" },
   telegram: { label: "Telegram", badgeColor: "text-sky-500" },
   reddit: { label: "Reddit", badgeColor: "text-orange-500" },
@@ -147,7 +147,7 @@ function PlatformIconLarge({ platform, className }: { platform: Platform; classN
 const AVAILABLE_PLATFORMS: { name: string; platform: Platform; key: string }[] = [
   { name: "Facebook", platform: "facebook", key: "facebook" },
   { name: "Instagram", platform: "instagram", key: "instagram" },
-  { name: "X", platform: "x", key: "x" },
+  { name: "X / Twitter", platform: "twitter", key: "twitter" },
   { name: "YouTube", platform: "youtube", key: "youtube" },
   { name: "TikTok", platform: "tiktok", key: "tiktok" },
   { name: "LinkedIn", platform: "linkedin", key: "linkedin" },

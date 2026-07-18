@@ -10,6 +10,7 @@ import {
 import { resolvers } from "@/lib/security/server-config";
 import { readCache } from "@/lib/db/account-health";
 import { createPost, updatePost } from "@/lib/db/posts";
+import { toEnginePlatform } from "@/lib/images/platform-ratios";
 import { createLogger } from "@/lib/log";
 
 const log = createLogger("api/images/deliver");
@@ -401,7 +402,7 @@ async function deliverVariantToPlatform(args: {
 
   // ── b) Build the upload-post.com multipart payload ────────────────────
   const form = new FormData();
-  form.append("platform[]", platform);
+  form.append("platform[]", toEnginePlatform(platform));
   form.append("title", caption);
   if (firstComment) form.append("first_comment", firstComment);
   form.append(
