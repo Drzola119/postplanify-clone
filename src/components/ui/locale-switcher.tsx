@@ -19,18 +19,21 @@ const ORDER: UiLocale[] = ["en", "fr", "ar"];
  * This controls the INTERFACE language ONLY. It has nothing to do with the
  * infographic Output Language selected inside the wizard.
  */
+function getActiveCookieLocale(): UiLocale {
+  if (typeof document === "undefined") return "en";
+  const match = document.cookie.match(/(?:^|;\s*)ui-locale=([^;]+)/);
+  const val = match?.[1] as UiLocale | undefined;
+  return val && ORDER.includes(val) ? val : "en";
+}
+
 export function LocaleSwitcher() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-
-  const active: UiLocale =
-    (typeof document !== "undefined"
-      ? document.documentElement.lang
-      : "en") as UiLocale;
-  const current: UiLocale = ORDER.includes(active) ? active : "en";
+  const [current, setCurrent] = useState<UiLocale>(() => getActiveCookieLocale());
 
   async function select(locale: UiLocale) {
     setOpen(false);
+    setCurrent(locale);
 
     // 1. Cookie — runtime source of truth for rendering.
     // eslint-disable-next-line react-hooks/immutability
@@ -74,7 +77,7 @@ export function LocaleSwitcher() {
       {open ? (
         <div
           role="menu"
-          className="absolute end-0 mt-1 z-50 w-40 rounded-md border border-zinc-200 bg-white shadow-lg py-1"
+          className="absolute end-0 bottom-full mb-1 z-50 w-40 rounded-md border border-zinc-200 bg-white shadow-lg py-1"
         >
           {ORDER.map((loc) => (
             <button

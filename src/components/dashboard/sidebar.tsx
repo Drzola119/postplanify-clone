@@ -299,6 +299,7 @@ export function DashboardSidebar() {
 
   return (
     <aside
+      dir="ltr"
       className={cn(
         "hidden lg:flex flex-col fixed inset-y-0 z-40 bg-white border-r border-zinc-200 transition-all duration-300",
         collapsed ? "w-[64px]" : "w-[240px]"
@@ -318,7 +319,6 @@ export function DashboardSidebar() {
         </Link>
         {!collapsed && (
           <div className="flex items-center gap-0.5">
-            <LocaleSwitcher />
             <button
               type="button"
               onClick={() => openLearn()}
@@ -455,6 +455,16 @@ export function DashboardSidebar() {
                     : "Loading…"}
             </p>
           </Link>
+        </div>
+      )}
+
+      {/* Language switcher */}
+      {!collapsed && (
+        <div className="px-3 pb-2">
+          <div className="flex items-center justify-between rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
+            <span className="text-xs font-medium text-zinc-500">Interface language</span>
+            <LocaleSwitcher />
+          </div>
         </div>
       )}
 

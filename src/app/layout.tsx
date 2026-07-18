@@ -3,7 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages, getLocale } from "next-intl/server";
-import { getLocaleDir, getLocaleLang } from "@/lib/i18n/types";
+import { getLocaleLang } from "@/lib/i18n/types";
 import { ToastProvider } from "@/components/ui/toast";
 import { AuthProvider } from "@/contexts/AuthContext";
 
@@ -37,7 +37,6 @@ export default async function RootLayout({
   return (
     <html
       lang={getLocaleLang(locale)}
-      dir={getLocaleDir(locale)}
       className={`${inter.variable} h-full antialiased`}
     >
       <head>

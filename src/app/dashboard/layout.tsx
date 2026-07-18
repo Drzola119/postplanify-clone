@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useLocale } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
 import { DashboardSidebar } from "@/components/dashboard/sidebar";
 import { DrawerProvider, useDrawer } from "@/components/dashboard/drawer-provider";
@@ -9,6 +10,8 @@ import { LabelsDrawer } from "@/components/dashboard/labels-drawer";
 import { HashtagsDrawer } from "@/components/dashboard/hashtags-drawer";
 import { PostingScheduleModal } from "@/components/dashboard/posting-schedule-modal";
 import { HelpSystemProvider } from "@/components/dashboard/help/help-system";
+import { getLocaleDir } from "@/lib/i18n/types";
+import type { UiLocale } from "@/lib/i18n/types";
 
 function DrawersHost() {
   const { active, closeDrawer } = useDrawer();
@@ -24,6 +27,8 @@ function DrawersHost() {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { status } = useAuth();
   const router = useRouter();
+  const locale = useLocale() as UiLocale;
+  const dir = getLocaleDir(locale);
 
   useEffect(() => {
     // Only force a redirect when the SDK is loaded and there is no session.
@@ -53,7 +58,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <HelpSystemProvider>
         <div className="min-h-screen bg-zinc-50">
           <DashboardSidebar />
-          <div className="lg:pl-[240px]">{children}</div>
+          <main dir={dir} className="lg:pl-[240px]">{children}</main>
           <DrawersHost />
         </div>
       </HelpSystemProvider>
