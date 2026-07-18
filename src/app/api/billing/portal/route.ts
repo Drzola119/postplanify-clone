@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import { requireSession } from "@/lib/auth/session-context";
-import { getStripe, createPortalSession } from "@/lib/stripe";
 import { jsonError, jsonOk } from "@/lib/validation/helpers";
 
 export const runtime = "nodejs";
@@ -13,6 +12,8 @@ export async function POST(request: NextRequest) {
   if (!process.env.STRIPE_SECRET_KEY) {
     return jsonError(503, "Billing not configured");
   }
+
+  const { getStripe, createPortalSession } = await import("@/lib/stripe");
 
   const { returnUrl } = await request.json() as { returnUrl?: string };
   const stripe = getStripe();

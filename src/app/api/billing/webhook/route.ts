@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getStripe, getPlanByPriceId } from "@/lib/stripe";
 import { adminDb } from "@/lib/db";
 import { createLogger } from "@/lib/log";
 
@@ -14,12 +13,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not configured" }, { status: 503 });
   }
 
-  let stripe: ReturnType<typeof getStripe>;
-  try {
-    stripe = getStripe();
-  } catch {
+  if (!process.env.STRIPE_SECRET_KEY) {
     return NextResponse.json({ error: "Stripe not configured" }, { status: 503 });
   }
+
+  const { getStripe, getPlanByPriceId } = await import("@/lib/stripe");
+  const stripe = getStripe();
 
   let event: ReturnType<typeof stripe.webhooks.constructEvent>;
   try {

@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import { requireSession } from "@/lib/auth/session-context";
-import { PLANS, createCheckoutSession, getOrCreateCustomer } from "@/lib/stripe";
 import { jsonError, jsonOk } from "@/lib/validation/helpers";
 
 export const runtime = "nodejs";
@@ -10,21 +9,23 @@ export async function POST(request: NextRequest) {
   const session = await requireSession();
   if (session instanceof Response) return session;
 
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return jsonError(503, "Billing not configured");
+  }
+
   const { planId, successUrl, cancelUrl } = await request.json() as {
     planId?: string;
     successUrl?: string;
     cancelUrl?: string;
   };
 
+  const { PLANS, createCheckoutSession, getOrCreateCustomer } = await import("@/lib/stripe");
+
   if (!planId || !(planId in PLANS)) {
     return jsonError(400, "Invalid plan");
   }
   if (!successUrl || !cancelUrl) {
     return jsonError(400, "Missing successUrl or cancelUrl");
-  }
-
-  if (!process.env.STRIPE_SECRET_KEY) {
-    return jsonError(503, "Billing not configured");
   }
 
   const plan = PLANS[planId as keyof typeof PLANS];
