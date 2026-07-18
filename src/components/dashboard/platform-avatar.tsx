@@ -13,6 +13,11 @@ export const PLATFORM_BRAND_COLORS: Record<string, string> = {
   bluesky: "#0085FF",
   youtube: "#FF0000",
   pinterest: "#E60023",
+  x: "#000000",
+  discord: "#5865F2",
+  telegram: "#2AABEE",
+  reddit: "#FF4500",
+  googlebusiness: "#4285F4",
 };
 
 export const PLATFORM_GRADIENTS: Record<string, string> = {
@@ -30,14 +35,20 @@ const SIMPLE_ICONS_SLUGS: Record<string, string> = {
   bluesky: "bluesky",
   youtube: "youtube",
   pinterest: "pinterest",
+  x: "x",
+  discord: "discord",
+  telegram: "telegram",
+  reddit: "reddit",
+  googlebusiness: "googleforms",
 };
 
-function simpleIconsSlug(id: string): string {
-  return SIMPLE_ICONS_SLUGS[id] ?? id;
+function iconUrl(id: string): string {
+  const slug = SIMPLE_ICONS_SLUGS[id] ?? id;
+  return `https://cdn.simpleicons.org/${slug}/ffffff`;
 }
 
-function iconUrl(id: string, color: string): string {
-  return `https://cdn.simpleicons.org/${simpleIconsSlug(id)}/${color.replace("#", "")}`;
+function getInitials(name: string): string {
+  return name.slice(0, 2).toUpperCase();
 }
 
 interface PlatformAvatarProps {
@@ -56,7 +67,7 @@ export function PlatformAvatar({
   const id = platform.id;
   const color = PLATFORM_BRAND_COLORS[id] ?? "#666";
   const gradient = PLATFORM_GRADIENTS[id];
-  const iconSize = Math.round(size * 0.6);
+  const iconSize = Math.round(size * 0.58);
 
   const borderRadius =
     rounded === "sm" ? "8px" : rounded === "md" ? "12px" : "9999px";
@@ -69,7 +80,7 @@ export function PlatformAvatar({
 
   return (
     <div
-      className={cn("relative flex-shrink-0 overflow-hidden", className)}
+      className={cn("relative flex-shrink-0 overflow-hidden flex items-center justify-center", className)}
       style={{
         width: size,
         height: size,
@@ -79,15 +90,35 @@ export function PlatformAvatar({
       }}
     >
       <img
-        src={iconUrl(id, "ffffff")}
+        src={iconUrl(id)}
         alt={platform.name}
         width={iconSize}
         height={iconSize}
-        className="absolute inset-0 m-auto"
-        style={{ width: iconSize, height: iconSize }}
         loading="lazy"
         decoding="async"
+        style={{ width: iconSize, height: iconSize }}
+        onError={(e) => {
+          const target = e.currentTarget;
+          target.style.display = "none";
+          const fallback = target.nextElementSibling as HTMLSpanElement | null;
+          if (fallback) fallback.style.display = "flex";
+        }}
       />
+      <span
+        style={{
+          display: "none",
+          position: "absolute",
+          inset: 0,
+          alignItems: "center",
+          justifyContent: "center",
+          color: "white",
+          fontSize: Math.round(size * 0.35),
+          fontWeight: 700,
+          letterSpacing: "-0.02em",
+        }}
+      >
+        {getInitials(platform.name)}
+      </span>
     </div>
   );
 }

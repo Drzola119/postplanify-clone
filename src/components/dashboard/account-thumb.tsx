@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Pencil, Trash2, MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PlatformMeta } from "@/lib/platforms";
+import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
 
 interface AccountThumbProps {
   platform: PlatformMeta;
@@ -31,7 +32,7 @@ export function AccountThumb({ platform, onEdit, onRemove }: AccountThumbProps) 
         type="button"
         onClick={() => setMenuOpen((o) => !o)}
         aria-label={`${platform.name} options`}
-        className="size-7 rounded-full ring-2 ring-white overflow-hidden bg-zinc-100 flex items-center justify-center text-[10px] hover:ring-zinc-200 transition-all focus:outline-none focus:ring-2 focus:ring-zinc-950"
+        className="size-7 rounded-full ring-2 ring-white overflow-hidden bg-zinc-100 flex items-center justify-center hover:ring-zinc-200 transition-all focus:outline-none focus:ring-2 focus:ring-zinc-950"
       >
         {platform.avatar ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -41,9 +42,7 @@ export function AccountThumb({ platform, onEdit, onRemove }: AccountThumbProps) 
             className="size-full object-cover"
           />
         ) : (
-          <span className={cn("font-semibold", platform.textClass)}>
-            {platform.icon}
-          </span>
+          <PlatformAvatar platform={platform} size={28} rounded="full" />
         )}
       </button>
       {menuOpen ? (

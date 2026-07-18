@@ -12,7 +12,8 @@ import {
   ImagePlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PLATFORMS, type PlatformId } from "@/lib/platforms";
+import { PLATFORMS, getPlatform, type PlatformId } from "@/lib/platforms";
+import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
 import { PageHelp } from "@/components/dashboard/help/page-help";
 import { getHelpConfig } from "@/lib/help/content";
 
@@ -616,11 +617,7 @@ export default function BulkSchedulePage() {
                         onChange={() => toggleAccount(p.id)}
                         className="size-4 rounded-sm border-zinc-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer flex-shrink-0"
                       />
-                      <span
-                        className="size-7 rounded-full bg-zinc-100 inline-flex items-center justify-center text-sm flex-shrink-0"
-                      >
-                        {p.icon}
-                      </span>
+                      <PlatformAvatar platform={p} size={28} rounded="full" />
                       <span className="text-sm font-medium truncate">{p.handle}</span>
                     </label>
                   );
@@ -1065,9 +1062,7 @@ function PostRow({
                     onChange={() => onToggleAccount(p.id)}
                     className="size-3.5 rounded-sm border-zinc-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer flex-shrink-0"
                   />
-                  <span className="size-4 rounded-full bg-zinc-100 inline-flex items-center justify-center text-[10px] flex-shrink-0">
-                    {p.icon}
-                  </span>
+                  <PlatformAvatar platform={p} size={16} rounded="full" />
                   <span className="truncate flex-1 text-[11px]">{p.handle}</span>
                 </label>
               );

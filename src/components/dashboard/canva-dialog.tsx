@@ -207,11 +207,12 @@ function CanvaLogo() {
     <img
       src="https://cdn.simpleicons.org/canva/00C4CC"
       alt="Canva"
-      width={20}
-      height={20}
-      className="shrink-0"
+      width={22}
+      height={22}
       loading="lazy"
       decoding="async"
+      style={{ width: 22, height: 22 }}
+      className="shrink-0"
     />
   );
 }

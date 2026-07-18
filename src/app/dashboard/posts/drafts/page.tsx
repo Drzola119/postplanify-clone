@@ -20,6 +20,8 @@ import {
   type DraftRecord,
 } from "@/lib/drafts";
 import { cn } from "@/lib/utils";
+import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
+import { getPlatform } from "@/lib/platforms";
 
 type Platform =
   | "instagram"
@@ -51,79 +53,21 @@ interface Draft {
 }
 
 function PlatformGlyph({ platform, className }: { platform: Platform; className?: string }) {
-  switch (platform) {
-    case "instagram":
-      return (
-        <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-          <rect x="3" y="3" width="18" height="18" rx="5" stroke="currentColor" strokeWidth="2" />
-          <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="2" />
-          <circle cx="17.5" cy="6.5" r="1" fill="currentColor" />
-        </svg>
-      );
-    case "pinterest":
-      return (
-        <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-          <path d="M12 2C6.477 2 2 6.477 2 12c0 4.236 2.636 7.855 6.356 9.314-.087-.79-.166-2.005.035-2.868.181-.78 1.172-4.97 1.172-4.97s-.299-.6-.299-1.486c0-1.39.806-2.428 1.81-2.428.853 0 1.265.64 1.265 1.408 0 .858-.546 2.14-.828 3.33-.236.995.5 1.807 1.48 1.807 1.778 0 3.144-1.874 3.144-4.58 0-2.393-1.72-4.068-4.177-4.068-2.845 0-4.515 2.135-4.515 4.34 0 .859.331 1.781.745 2.282a.3.3 0 0 1 .069.288l-.278 1.133c-.044.183-.145.222-.335.134-1.249-.581-2.03-2.407-2.03-3.874 0-3.154 2.292-6.052 6.608-6.052 3.469 0 6.165 2.473 6.165 5.776 0 3.447-2.173 6.22-5.19 6.22-1.013 0-1.965-.527-2.291-1.148l-.623 2.378c-.226.869-.835 1.958-1.244 2.621.937.29 1.931.446 2.962.446 5.523 0 10-4.477 10-10S17.523 2 12 2z" />
-        </svg>
-      );
-    case "threads":
-      return (
-        <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-          <path d="M12.186 24h-.007c-3.581-.024-6.334-1.205-8.184-3.509C2.35 18.44 1.5 15.586 1.472 12.01v-.017c.03-3.579.879-6.43 2.525-8.482C5.845 1.205 8.6.024 12.18 0h.014c2.746.02 5.043.725 6.826 2.098 1.677 1.29 2.858 3.13 3.509 5.467l-2.04.569c-1.104-3.96-3.898-5.984-8.304-6.015-2.91.022-5.11.936-6.54 2.717C4.307 6.504 3.616 8.914 3.589 12c.027 3.086.718 5.496 2.057 7.164 1.43 1.781 3.631 2.695 6.54 2.717 2.623-.02 4.358-.631 5.8-2.045 1.647-1.613 1.618-3.593 1.09-4.798-.31-.71-.873-1.3-1.634-1.75-.192 1.352-.622 2.446-1.284 3.272-.886 1.102-2.14 1.704-3.73 1.79-1.202.065-2.361-.218-3.259-.801-1.063-.689-1.685-1.74-1.752-2.964-.065-1.19.408-2.285 1.33-3.082.88-.76 2.119-1.207 3.583-1.291a13.853 13.853 0 0 1 3.02.142c-.126-.742-.375-1.332-.745-1.757-.513-.593-1.281-.892-2.298-.892H12c-.785 0-1.378.16-1.769.474-.41.33-.65.836-.717 1.503l-2.06-.272c.146-2.302 1.656-3.788 4.362-3.788h.013c3.062 0 4.932 2.02 5.146 5.564.022.302.034.612.034.93 1.63.708 2.778 1.85 3.317 3.314.617 1.685.488 3.834-.764 5.512-1.745 2.337-3.876 3.51-7.114 3.535h-.026" />
-        </svg>
-      );
-    case "bluesky":
-      return (
-        <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-          <path d="M12 10.8c-1.087-2.114-4.046-6.053-6.798-7.995C2.566.944 1.561 1.266.902 1.565.139 1.908 0 3.08 0 3.768c0 .69.378 5.65.624 6.479.785 2.627 3.59 3.513 6.182 3.225-3.71.547-7.081 2.118-3.36 7.498 4.166 5.965 5.706-1.275 6.554-4.846.848 3.571 1.927 10.654 6.554 4.846 3.72-5.38.349-6.951-3.36-7.498 2.591.288 5.397-.598 6.182-3.225.246-.828.624-5.789.624-6.479 0-.688-.139-1.86-.902-2.203-.659-.3-1.664-.62-4.3 1.24C16.046 4.747 13.087 8.686 12 10.8Z" />
-        </svg>
-      );
-    case "x":
-      return (
-        <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-        </svg>
-      );
-    case "youtube":
-      return (
-        <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-          <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
-        </svg>
-      );
-    case "facebook":
-      return (
-        <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-        </svg>
-      );
-    case "tiktok":
-      return (
-        <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-          <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43V8.92a8.16 8.16 0 0 0 4.77 1.52V7a4.85 4.85 0 0 1-1.84-.33z" />
-        </svg>
-      );
-    case "linkedin":
-      return (
-        <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-          <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.063 2.063 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
-        </svg>
-      );
-  }
+  const meta = getPlatform(platform);
+  if (!meta) return null;
+  return <PlatformAvatar platform={meta} size={16} className={className} />;
 }
 
-const PLATFORM_META: Record<
-  Platform,
-  { label: string; bg: string; color: string }
-> = {
-  instagram: { label: "Instagram", bg: "bg-pink-50", color: "text-pink-600" },
-  pinterest: { label: "Pinterest", bg: "bg-rose-50", color: "text-rose-600" },
-  threads: { label: "Threads", bg: "bg-zinc-100", color: "text-zinc-900" },
-  bluesky: { label: "Bluesky", bg: "bg-sky-50", color: "text-sky-500" },
-  x: { label: "X", bg: "bg-zinc-900", color: "text-white" },
-  youtube: { label: "YouTube", bg: "bg-red-50", color: "text-red-600" },
-  facebook: { label: "Facebook", bg: "bg-blue-50", color: "text-blue-600" },
-  tiktok: { label: "TikTok", bg: "bg-zinc-900", color: "text-white" },
-  linkedin: { label: "LinkedIn", bg: "bg-blue-50", color: "text-blue-700" },
+const PLATFORM_META: Record<Platform, { label: string }> = {
+  instagram: { label: "Instagram" },
+  pinterest: { label: "Pinterest" },
+  threads: { label: "Threads" },
+  bluesky: { label: "Bluesky" },
+  x: { label: "X" },
+  youtube: { label: "YouTube" },
+  facebook: { label: "Facebook" },
+  tiktok: { label: "TikTok" },
+  linkedin: { label: "LinkedIn" },
 };
 
 const SAMPLE_ACCOUNTS: DraftAccount[] = [
@@ -201,17 +145,14 @@ function apiDraftToRow(d: ApiDraft): Draft {
 }
 
 function PlatformBadge({ account }: { account: DraftAccount }) {
-  const meta = PLATFORM_META[account.platform];
+  const meta = getPlatform(account.platform);
+  if (!meta) return null;
   return (
     <div
       className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white pl-1 pr-2.5 py-1 text-xs font-medium text-zinc-700"
-      title={`${meta.label}: ${account.handle}`}
+      title={`${meta.name}: ${account.handle}`}
     >
-      <span
-        className={`inline-flex items-center justify-center size-5 rounded-full ${meta.bg}`}
-      >
-        <PlatformGlyph platform={account.platform} className={`size-3 ${meta.color}`} />
-      </span>
+      <PlatformAvatar platform={meta} size={20} rounded="full" />
       <span className="max-w-[110px] truncate">{account.handle}</span>
     </div>
   );

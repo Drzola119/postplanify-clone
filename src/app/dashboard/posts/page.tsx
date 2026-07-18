@@ -16,6 +16,7 @@ import {
   Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
 import { PageHelp } from "@/components/dashboard/help/page-help";
 import { getHelpConfig } from "@/lib/help/content";
 import { toCsv, downloadCsv } from "@/lib/csv";
@@ -56,97 +57,16 @@ interface ApiPost {
 }
 
 // ===== PLATFORM ICONS (color + glyph) =====
-const PLATFORM_META: Record<Platform, { color: string; bg: string; label: string; svg: React.ReactNode }> = {
-  instagram: {
-    color: "#DD2A7B",
-    bg: "bg-pink-50",
-    label: "Instagram",
-    svg: (
-      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor">
-        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
-      </svg>
-    ),
-  },
-  twitter: {
-    color: "#000000",
-    bg: "bg-zinc-100",
-    label: "Twitter/X",
-    svg: (
-      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor">
-        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-      </svg>
-    ),
-  },
-  tiktok: {
-    color: "#000000",
-    bg: "bg-zinc-100",
-    label: "TikTok",
-    svg: (
-      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor">
-        <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43V8.51a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1.84-.05z" />
-      </svg>
-    ),
-  },
-  linkedin: {
-    color: "#0A66C2",
-    bg: "bg-blue-50",
-    label: "LinkedIn",
-    svg: (
-      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor">
-        <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.79M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z" />
-      </svg>
-    ),
-  },
-  facebook: {
-    color: "#1877F2",
-    bg: "bg-blue-50",
-    label: "Facebook",
-    svg: (
-      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor">
-        <path d="M12 2.04c-5.5 0-10 4.49-10 10.02 0 5 3.66 9.15 8.44 9.9v-7H7.9v-2.9h2.54V9.85c0-2.51 1.49-3.89 3.78-3.89 1.09 0 2.23.19 2.23.19v2.47h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.45 2.9h-2.33v7a10 10 0 0 0 8.44-9.9c0-5.53-4.5-10.02-10-10.02z" />
-      </svg>
-    ),
-  },
-  threads: {
-    color: "#000000",
-    bg: "bg-zinc-100",
-    label: "Threads",
-    svg: (
-      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor">
-        <path d="M12.186 24h-.007c-3.581-.024-6.334-1.205-8.184-3.509C2.35 18.44 1.5 15.586 1.472 12.01v-.017c.03-3.579.879-6.43 2.525-8.482C5.845 1.205 8.6.024 12.18 0h.014c2.746.02 5.043.725 6.826 2.098 1.677 1.29 2.858 3.13 3.509 5.467l-2.04.569c-1.104-3.96-3.898-5.984-8.304-6.015-2.91.022-5.11.936-6.54 2.717C4.307 6.504 3.616 8.914 3.589 12c.027 3.086.718 5.496 2.057 7.164 1.43 1.781 3.631 2.695 6.54 2.717 2.623-.02 4.358-.631 5.8-2.045 1.647-1.613 1.618-3.593 1.09-4.798-.31-.71-.873-1.3-1.634-1.75-.192 1.352-.622 2.446-1.284 3.272-.886 1.102-2.14 1.704-3.73 1.79-1.202.065-2.361-.218-3.259-.801-1.063-.689-1.685-1.74-1.752-2.964-.065-1.19.408-2.285 1.33-3.082.88-.76 2.119-1.207 3.583-1.291a13.853 13.853 0 0 1 3.02.142c-.126-.742-.375-1.332-.75-1.757-.513-.586-1.308-.883-2.359-.89h-.029c-.844 0-1.992.232-2.721 1.32L7.734 7.847c.98-1.454 2.568-2.256 4.478-2.256h.044c3.194.02 5.097 1.975 5.287 5.388.108.046.216.094.32.143 1.49.7 2.58 1.761 3.154 3.07.797 1.82.871 4.79-1.548 7.158-1.85 1.81-4.094 2.628-7.277 2.65zm1.003-11.69c-.242 0-.487.007-.739.021-1.836.103-2.98.946-2.916 2.143.067 1.256 1.452 1.839 2.784 1.767 1.224-.065 2.818-.543 3.086-3.71a10.5 10.5 0 0 0-2.215-.221z" />
-      </svg>
-    ),
-  },
-  youtube: {
-    color: "#FF0000",
-    bg: "bg-red-50",
-    label: "YouTube",
-    svg: (
-      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor">
-        <path d="M10 15l5.19-3L10 9v6m11.56-7.83c.13.47.22 1.1.28 1.9.07.8.1 1.49.1 2.09L22 12c0 2.19-.16 3.8-.44 4.83-.25.9-.83 1.48-1.73 1.73-.47.13-1.33.22-2.65.28-1.3.07-2.49.1-3.59.1L12 19c-4.19 0-6.8-.16-7.83-.44-.9-.25-1.48-.83-1.73-1.73-.13-.47-.22-1.1-.28-1.9-.07-.8-.1-1.49-.1-2.09L2 12c0-2.19.16-3.8.44-4.83.25-.9.83-1.48 1.73-1.73.47-.13 1.33-.22 2.65-.28 1.3-.07 2.49-.1 3.59-.1L12 5c4.19 0 6.8.16 7.83.44.9.25 1.48.83 1.73 1.73z" />
-      </svg>
-    ),
-  },
-  pinterest: {
-    color: "#E60023",
-    bg: "bg-red-50",
-    label: "Pinterest",
-    svg: (
-      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor">
-        <path d="M9.04 21.54c.96.29 1.93.46 2.96.46a10 10 0 0 0 10-10A10 10 0 0 0 12 2 10 10 0 0 0 2 12c0 4.25 2.67 7.9 6.44 9.34-.09-.78-.18-2.07 0-2.96l1.15-4.94s-.29-.58-.29-1.5c0-1.38.86-2.41 1.84-2.41.86 0 1.26.63 1.26 1.44 0 .86-.57 2.09-.86 3.27-.17.98.52 1.84 1.52 1.84 1.78 0 3.16-1.9 3.16-4.58 0-2.4-1.72-4.04-4.19-4.04-2.82 0-4.48 2.1-4.48 4.31 0 .86.28 1.73.74 2.3.09.06.09.14.06.29l-.29 1.09c0 .17-.11.23-.28.11-1.28-.56-2.02-2.38-2.02-3.85 0-3.16 2.24-6.03 6.56-6.03 3.44 0 6.12 2.47 6.12 5.74 0 3.44-2.13 6.2-5.18 6.2-.97 0-1.92-.52-2.26-1.13l-.67 2.37c-.23.86-.86 2.01-1.29 2.7v-.03z" />
-      </svg>
-    ),
-  },
-  bluesky: {
-    color: "#1185FE",
-    bg: "bg-blue-50",
-    label: "Bluesky",
-    svg: (
-      <svg viewBox="0 -3.268 64 68.414" className="h-3 w-3 text-blue-500" fill="currentColor">
-        <path d="M13.873 3.805C21.21 9.332 29.103 20.537 32 26.55v15.882c0-.338-.13.044-.41.867-1.512 4.456-7.418 21.847-20.923 7.944-7.111-7.32-3.819-14.64 9.125-16.85-7.405 1.264-15.73-.825-18.014-9.015C1.12 23.022 0 8.51 0 6.55 0-3.268 8.579-.182 13.873 3.805zm36.254 0C42.79 9.332 34.897 20.537 32 26.55v15.882c0-.338.13.044.41.867 1.512 4.456 7.418 21.847 20.923 7.944 7.111-7.32 3.819-14.64-9.125-16.85 7.405 1.264 15.73-.825 18.014-9.015C62.88 23.022 64 8.51 64 6.55c0-9.818-8.578-6.732-13.873-2.745z" />
-      </svg>
-    ),
-  },
+const PLATFORM_LABELS: Record<Platform, string> = {
+  instagram: "Instagram",
+  twitter: "Twitter/X",
+  tiktok: "TikTok",
+  linkedin: "LinkedIn",
+  facebook: "Facebook",
+  threads: "Threads",
+  youtube: "YouTube",
+  pinterest: "Pinterest",
+  bluesky: "Bluesky",
 };
 
 // ===== STATUS CONFIG =====
@@ -499,7 +419,7 @@ export default function PostsCalendarPage() {
 function PostDetailsModal({ post, onClose }: { post: CalendarPost; onClose: () => void }) {
   const status = STATUS_META[post.status];
   const primaryPlatform = post.platforms[0];
-  const platformMeta = PLATFORM_META[primaryPlatform];
+  const platformLabel = PLATFORM_LABELS[primaryPlatform] ?? primaryPlatform;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 animate-in fade-in-0" onClick={onClose}>
@@ -547,7 +467,7 @@ function PostDetailsModal({ post, onClose }: { post: CalendarPost; onClose: () =
                   </span>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <span style={{ color: platformMeta.color }}>{platformMeta.svg}</span>
+                  <PlatformAvatar platform={{ id: primaryPlatform, name: platformLabel, handle: "", avatar: null, charLimit: 0, borderClass: "", textClass: "", icon: "" }} size={16} rounded="sm" />
                   <a className="text-sm font-medium hover:underline" href="#">{post.accountName}</a>
                 </div>
               </div>
@@ -870,7 +790,7 @@ function EventCard({ post, onClick }: { post: CalendarPost; onClick?: () => void
         {/* Platform icons */}
         <div className="flex items-center space-x-0.5">
           {post.platforms.slice(0, 6).map((p, i) => (
-            <span key={i} style={{ color: PLATFORM_META[p].color }}>{PLATFORM_META[p].svg}</span>
+            <PlatformAvatar key={i} platform={{ id: p, name: PLATFORM_LABELS[p] ?? p, handle: "", avatar: null, charLimit: 0, borderClass: "", textClass: "", icon: "" }} size={14} rounded="sm" />
           ))}
         </div>
         {/* Time + caption preview */}
@@ -1013,7 +933,7 @@ function WeekEventCard({ post, onClick }: { post: CalendarPost; onClick?: () => 
       {post.thumbnail && <img alt="" className="w-3 h-3 rounded-sm object-cover" src={post.thumbnail} />}
       <div className="flex items-center gap-0.5">
         {post.platforms.slice(0, 2).map((p, i) => (
-          <span key={i} style={{ color: PLATFORM_META[p].color }}>{PLATFORM_META[p].svg}</span>
+          <PlatformAvatar key={i} platform={{ id: p, name: PLATFORM_LABELS[p] ?? p, handle: "", avatar: null, charLimit: 0, borderClass: "", textClass: "", icon: "" }} size={14} rounded="sm" />
         ))}
       </div>
       {post.time && <span className="font-semibold">{post.time}</span>}
@@ -1145,7 +1065,7 @@ function ListView({ currentDate, posts, onPostClick, onBulkDelete }: { currentDa
                 <td className="px-3 py-2 whitespace-nowrap">
                   <div className="flex items-center gap-1.5">
                     {row.platforms.slice(0, 1).map((p, i) => (
-                      <span key={i} style={{ color: PLATFORM_META[p].color }}>{PLATFORM_META[p].svg}</span>
+            <PlatformAvatar key={i} platform={{ id: p, name: PLATFORM_LABELS[p] ?? p, handle: "", avatar: null, charLimit: 0, borderClass: "", textClass: "", icon: "" }} size={14} rounded="sm" />
                     ))}
                     <span className="text-xs text-zinc-700">{row.accountName}</span>
                   </div>

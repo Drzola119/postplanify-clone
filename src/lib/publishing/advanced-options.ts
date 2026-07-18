@@ -603,6 +603,125 @@ export const FIELD_SPECS: Record<PlatformId, FieldSpec[]> = {
       advanced: true,
     },
   ],
+
+  // ─────────────────────────────────────────────────────────────
+  x: [
+    {
+      key: "x_reply_settings",
+      label: "Reply settings",
+      kind: "select",
+      options: [
+        { value: "everyone", label: "Everyone" },
+        { value: "following", label: "People you follow" },
+        { value: "mentionedUsers", label: "Only mentioned" },
+      ],
+      default: "everyone",
+    },
+    {
+      key: "x_community_id",
+      label: "Community ID",
+      kind: "text",
+      placeholder: "Community ID",
+      advanced: true,
+    },
+    {
+      key: "x_geo_place_id",
+      label: "Location",
+      kind: "text",
+      placeholder: "Place ID",
+      advanced: true,
+    },
+  ],
+
+  // ─────────────────────────────────────────────────────────────
+  discord: [
+    {
+      key: "discord_channel_id",
+      label: "Channel ID",
+      kind: "text",
+      placeholder: "Channel ID",
+      help: "Required. The Discord channel to post to.",
+    },
+    {
+      key: "discord_mention_role",
+      label: "Role to mention",
+      kind: "text",
+      placeholder: "@role name",
+      advanced: true,
+    },
+  ],
+
+  // ─────────────────────────────────────────────────────────────
+  telegram: [
+    {
+      key: "telegram_chat_id",
+      label: "Chat ID",
+      kind: "text",
+      placeholder: "Chat ID",
+      help: "Required. The Telegram chat or channel ID.",
+    },
+    {
+      key: "telegram_disable_web_preview",
+      label: "Disable web preview",
+      kind: "switch",
+      default: false,
+      advanced: true,
+    },
+  ],
+
+  // ─────────────────────────────────────────────────────────────
+  reddit: [
+    {
+      key: "reddit_subreddit",
+      label: "Subreddit",
+      kind: "text",
+      placeholder: "subreddit name (without r/)",
+      help: "Required. The subreddit to post to.",
+    },
+    {
+      key: "reddit_flair_id",
+      label: "Post flair ID",
+      kind: "text",
+      placeholder: "Flair ID",
+      advanced: true,
+    },
+    {
+      key: "reddit_spoiler",
+      label: "Mark as spoiler",
+      kind: "switch",
+      default: false,
+      advanced: true,
+    },
+    {
+      key: "reddit_nsfw",
+      label: "Mark as NSFW",
+      kind: "switch",
+      default: false,
+      advanced: true,
+    },
+  ],
+
+  // ─────────────────────────────────────────────────────────────
+  google_business: [
+    {
+      key: "google_business_location_id",
+      label: "Location ID",
+      kind: "text",
+      placeholder: "Location ID",
+      help: "Required. Your Google Business location ID.",
+    },
+    {
+      key: "google_business_post_type",
+      label: "Post type",
+      kind: "select",
+      options: [
+        { value: "STANDARD", label: "Standard" },
+        { value: "EVENT", label: "Event" },
+        { value: "OFFER", label: "Offer" },
+      ],
+      default: "STANDARD",
+    },
+  ],
 };
 
 export function getFieldSpecs(platform: PlatformId, mediaKind: MediaKind): FieldSpec[] {

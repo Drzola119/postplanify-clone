@@ -1,28 +1,38 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { LayoutGrid, GalleryHorizontal, Zap, FileText } from "lucide-react";
 
 export type ComposerMode = "standard" | "carousel" | "trial_reel" | "document";
 
 interface ModeOption {
   id: ComposerMode;
-  emoji: string;
+  icon: React.ReactNode;
   label: string;
   badge?: { text: string; color: "amber" | "blue" };
 }
 
 const MODES: ModeOption[] = [
-  { id: "standard", emoji: "🖼️", label: "Standard" },
-  { id: "carousel", emoji: "📑", label: "Carousel", badge: { text: "Instagram · Facebook · Threads", color: "blue" } },
+  {
+    id: "standard",
+    icon: <LayoutGrid className="size-4 shrink-0" />,
+    label: "Standard",
+  },
+  {
+    id: "carousel",
+    icon: <GalleryHorizontal className="size-4 shrink-0" />,
+    label: "Carousel",
+    badge: { text: "Instagram · Facebook · Threads", color: "blue" },
+  },
   {
     id: "trial_reel",
-    emoji: "⚡",
+    icon: <Zap className="size-4 shrink-0" />,
     label: "Trial Reel",
     badge: { text: "Instagram Only", color: "amber" },
   },
   {
     id: "document",
-    emoji: "📄",
+    icon: <FileText className="size-4 shrink-0" />,
     label: "Document",
     badge: { text: "LinkedIn Only", color: "blue" },
   },
@@ -55,7 +65,7 @@ export function ComposerModeSelector({ mode, onChange }: ComposerModeSelectorPro
                     : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50 hover:border-zinc-300"
                 )}
               >
-                <span className="text-base leading-none">{m.emoji}</span>
+                {m.icon}
                 <span>{m.label}</span>
                 {m.badge && (
                   <span

@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toCsv, downloadCsv } from "@/lib/csv";
+import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
+import { getPlatform } from "@/lib/platforms";
 
 type CompareMode = "none" | "previous_period" | "previous_year" | "week_over_week" | "custom_range";
 
@@ -78,15 +80,15 @@ const SAMPLE_ACCOUNTS: Account[] = [
 ];
 
 const PLATFORM_ICONS: Record<string, ReactNode> = {
-  youtube: <span className="inline-block w-3.5 h-3.5 bg-red-600 rounded-sm text-white text-[8px] flex items-center justify-center font-bold">▶</span>,
-  bluesky: <span className="inline-block w-3.5 h-3.5 bg-sky-500 rounded-sm text-white text-[9px] flex items-center justify-center font-bold">B</span>,
-  threads: <span className="inline-block w-3.5 h-3.5 bg-black rounded-full text-white text-[9px] flex items-center justify-center font-bold">@</span>,
-  instagram: <span className="inline-block w-3.5 h-3.5 bg-gradient-to-br from-pink-500 via-red-500 to-yellow-500 rounded text-white text-[10px] flex items-center justify-center font-bold">○</span>,
-  tiktok: <span className="inline-block w-3.5 h-3.5 bg-black rounded text-white text-[9px] flex items-center justify-center font-bold">♪</span>,
-  pinterest: <span className="inline-block w-3.5 h-3.5 bg-red-600 rounded-full text-white text-[10px] flex items-center justify-center font-bold">P</span>,
-  facebook: <span className="inline-block w-3.5 h-3.5 bg-blue-600 rounded text-white text-[10px] flex items-center justify-center font-bold font-sans">f</span>,
-  linkedin: <span className="inline-block w-3.5 h-3.5 bg-blue-700 rounded text-white text-[9px] flex items-center justify-center font-bold">in</span>,
-  x: <span className="inline-block w-3.5 h-3.5 bg-black rounded text-white text-[10px] flex items-center justify-center font-bold">𝕏</span>,
+  youtube: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("youtube")!} />,
+  bluesky: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("bluesky")!} />,
+  threads: <PlatformAvatar size={14} rounded="full" platform={getPlatform("threads")!} />,
+  instagram: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("instagram")!} />,
+  tiktok: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("tiktok")!} />,
+  pinterest: <PlatformAvatar size={14} rounded="full" platform={getPlatform("pinterest")!} />,
+  facebook: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("facebook")!} />,
+  linkedin: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("linkedin")!} />,
+  x: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("twitter")!} />,
 };
 
 const COMPARE_OPTIONS: { id: CompareMode; label: string }[] = [

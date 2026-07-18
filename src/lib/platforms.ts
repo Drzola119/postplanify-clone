@@ -10,7 +10,12 @@ export type PlatformId =
   | "twitter"
   | "linkedin"
   | "threads"
-  | "facebook";
+  | "facebook"
+  | "x"
+  | "discord"
+  | "telegram"
+  | "reddit"
+  | "google_business";
 
 export interface PlatformMeta {
   id: PlatformId;

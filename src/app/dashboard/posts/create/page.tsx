@@ -1933,7 +1933,7 @@ function EmptyState({
             onClick={(e) => { e.stopPropagation(); onCanva?.(); }}
             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 transition-colors text-xs font-medium text-zinc-700 shadow-sm"
           >
-            <img src="https://cdn.simpleicons.org/canva/00C4CC" alt="Canva" width={14} height={14} className="shrink-0" />
+            <img src="https://cdn.simpleicons.org/canva/00C4CC" alt="Canva" width={16} height={16} loading="lazy" decoding="async" style={{ width: 16, height: 16 }} className="shrink-0" />
             {t("media.canva")}
           </button>
           <button

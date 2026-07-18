@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo, useEffect, type ReactNode } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { FilterBar } from "@/components/dashboard/filter-bar";
+import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
 import {
   Search,
   Reply,
@@ -85,18 +86,6 @@ interface ApiConversation {
   unreadCount?: number;
 }
 
-const PLATFORM_COLORS: Record<Comment["platform"], string> = {
-  instagram: "from-purple-500 via-pink-500 to-orange-400",
-  twitter: "bg-sky-500",
-  tiktok: "bg-zinc-900",
-  linkedin: "bg-blue-700",
-  facebook: "bg-blue-600",
-  threads: "bg-zinc-900",
-  youtube: "bg-red-600",
-  pinterest: "bg-red-500",
-  bluesky: "bg-sky-400",
-};
-
 const PLATFORM_LABEL: Record<Comment["platform"], string> = {
   instagram: "Instagram",
   twitter: "X / Twitter",
@@ -107,56 +96,6 @@ const PLATFORM_LABEL: Record<Comment["platform"], string> = {
   youtube: "YouTube",
   pinterest: "Pinterest",
   bluesky: "Bluesky",
-};
-
-const PLATFORM_SVG: Record<Comment["platform"], ReactNode> = {
-  instagram: (
-    <svg viewBox="0 0 24 24" fill="none" className="size-3.5" aria-hidden>
-      <rect x="3" y="3" width="18" height="18" rx="5" stroke="currentColor" strokeWidth="2" />
-      <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="2" />
-      <circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" />
-    </svg>
-  ),
-  twitter: (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="size-3.5" aria-hidden>
-      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-    </svg>
-  ),
-  tiktok: (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="size-3.5" aria-hidden>
-      <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43V8.86a8.16 8.16 0 0 0 4.77 1.52V6.93a4.85 4.85 0 0 1-1.84-.24z" />
-    </svg>
-  ),
-  linkedin: (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="size-3.5" aria-hidden>
-      <path d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.85 0-2.13 1.45-2.13 2.94v5.67H9.36V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.38-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.8 0 0 .77 0 1.72v20.56C0 23.23.8 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.72V1.72C24 .77 23.2 0 22.22 0z" />
-    </svg>
-  ),
-  facebook: (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="size-3.5" aria-hidden>
-      <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.413c0-3.024 1.792-4.694 4.533-4.694 1.313 0 2.686.235 2.686.235v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.262h3.328l-.531 3.49h-2.797V24C19.612 23.094 24 18.1 24 12.073z" />
-    </svg>
-  ),
-  threads: (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="size-3.5" aria-hidden>
-      <path d="M12.186 24h-.007c-3.581-.024-6.334-1.205-8.184-3.509C2.35 18.44 1.5 15.586 1.472 12.01v-.017C1.5 8.413 2.35 5.56 3.995 3.509 5.846 1.205 8.6.024 12.18 0h.014c2.746.02 5.043.725 6.826 2.098 1.677 1.29 2.858 3.13 3.509 5.467l-2.04.569c-1.104-3.96-3.898-5.984-8.304-6.015-2.91.022-5.11.936-6.54 2.717C4.307 6.504 3.616 8.914 3.589 12c.027 3.086.718 5.496 2.057 7.164 1.43 1.781 3.631 2.695 6.54 2.717 2.623-.02 4.358-.631 5.8-2.045 1.647-1.613 1.618-3.593 1.09-4.798-.31-.71-.873-1.3-1.634-1.75-.192 1.352-.622 2.446-1.284 3.272-.886 1.102-2.14 1.704-3.73 1.79-1.202.065-2.361-.218-3.259-.801-1.063-.689-1.685-1.74-1.752-2.964-.065-1.19.408-2.285 1.33-3.082.88-.76 2.119-1.207 3.583-1.291.518-.029 1.002-.04 1.451-.034.014-.81-.072-1.5-.328-2.045-.34-.722-.999-1.108-1.844-1.085-.832.022-1.49.398-1.834 1.067l-1.793-1.107c.665-1.298 2.062-2.085 3.737-2.118 1.504-.025 2.713.553 3.42 1.658.515.81.728 1.86.7 3.063.092.024.184.05.276.078 1.392.42 2.466 1.276 3.108 2.485.713 1.348.81 3.111-.85 4.797-1.84 1.802-3.99 2.626-7.005 2.652h-.014zm-.116-12.7c-.31 0-.628.01-.957.028-1.495.083-2.65.731-2.79 1.495-.063.345.057.708.347 1.014.464.49 1.31.737 2.197.7.945-.05 1.638-.41 2.058-1.069.31-.49.43-1.13.345-1.91-.13-.014-.276-.022-.43-.026-.27-.014-.55-.022-.77-.022v-.21z" />
-    </svg>
-  ),
-  youtube: (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="size-3.5" aria-hidden>
-      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
-    </svg>
-  ),
-  pinterest: (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="size-3.5" aria-hidden>
-      <path d="M12.017 0C5.396 0 .029 5.367.029 11.987c0 5.079 3.158 9.417 7.618 11.162-.105-.949-.199-2.403.041-3.439.219-.937 1.406-5.957 1.406-5.957s-.359-.72-.359-1.781c0-1.663.967-2.911 2.168-2.911 1.024 0 1.518.769 1.518 1.688 0 1.029-.653 2.567-.992 3.992-.285 1.193.6 2.165 1.775 2.165 2.128 0 3.768-2.245 3.768-5.487 0-2.861-2.063-4.869-5.008-4.869-3.41 0-5.409 2.562-5.409 5.199 0 1.033.394 2.143.889 2.741.099.12.112.225.085.345-.09.375-.293 1.199-.334 1.363-.053.225-.172.271-.402.165-1.495-.69-2.433-2.878-2.433-4.646 0-3.776 2.748-7.252 7.92-7.252 4.158 0 7.392 2.967 7.392 6.923 0 4.135-2.607 7.462-6.233 7.462-1.214 0-2.357-.629-2.746-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24 12.017 24c6.624 0 11.99-5.367 11.99-11.988C24.007 5.367 18.641 0 12.017 0z" />
-    </svg>
-  ),
-  bluesky: (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="size-3.5" aria-hidden>
-      <path d="M12 10.8c-1.087-2.114-4.046-6.053-6.798-7.995C2.566.944 1.561 1.266.902 1.565.139 1.908 0 3.08 0 3.768c0 .69.378 5.65.624 6.479.815 2.736 3.713 3.66 6.383 3.364.136-.02.275-.039.415-.056-.138.022-.276.04-.415.056-3.911.58-7.387 2.005-2.83 7.078 5.013 5.19 6.87-1.113 7.823-4.308.953 3.195 2.05 9.271 7.733 4.308 4.267-4.308 1.172-6.498-2.74-7.078a8.741 8.741 0 0 1-.415-.056c.14.017.279.036.415.056 2.67.297 5.568-.628 6.383-3.364.246-.828.624-5.79.624-6.478 0-.69-.139-1.861-.902-2.206-.659-.298-1.664-.62-4.3 1.24C16.046 4.748 13.087 8.687 12 10.8Z" />
-    </svg>
-  ),
 };
 
 const SUPPORTED_PLATFORMS: Comment["platform"][] = [
@@ -402,11 +341,14 @@ export default function InboxPage() {
         </button>
         <div className="flex items-center gap-1.5 text-xs text-zinc-500">
           <span>supported</span>
-          <div className="flex items-center gap-1 text-zinc-700">
+          <div className="flex items-center gap-1">
             {SUPPORTED_PLATFORMS.map((p) => (
-              <span key={p} className={cn("inline-flex items-center justify-center text-white", PLATFORM_COLORS[p].split(" ")[0])} style={{ width: 18, height: 18, borderRadius: 4 }}>
-                {PLATFORM_SVG[p]}
-              </span>
+              <PlatformAvatar
+                key={p}
+                platform={{ id: p, name: PLATFORM_LABEL[p] ?? p, handle: "", avatar: null, charLimit: 0, borderClass: "", textClass: "", icon: "" }}
+                size={18}
+                rounded="sm"
+              />
             ))}
           </div>
         </div>
@@ -1029,9 +971,11 @@ function InsightsTab({ range, setRange, comments }: { range: Range; setRange: (r
           <h3 className="text-sm font-semibold text-zinc-900 mb-4">By platform</h3>
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center justify-center size-6 rounded bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 text-white">
-                {PLATFORM_SVG.instagram}
-              </span>
+              <PlatformAvatar
+                platform={{ id: "instagram", name: "Instagram", handle: "", avatar: null, charLimit: 0, borderClass: "", textClass: "", icon: "" }}
+                size={24}
+                rounded="sm"
+              />
               <span className="text-sm font-medium flex-1">Instagram</span>
               <span className="text-sm text-zinc-500">1</span>
               <span className="inline-flex items-center rounded-full bg-emerald-50 text-emerald-700 px-2 py-0.5 text-[11px] font-medium">0% replied</span>

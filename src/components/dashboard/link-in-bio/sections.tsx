@@ -14,15 +14,8 @@ import {
   Check,
   RotateCcw,
 } from "lucide-react";
-import {
-  InstagramIcon,
-  TwitterIcon,
-  YoutubeIcon,
-  LinkedinIcon,
-  FacebookIcon,
-  GithubIcon,
-  TiktokIcon,
-} from "@/components/icons/social";
+import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
+import { getPlatform } from "@/lib/platforms";
 import { Bio, BioLink, SocialLink, SocialPlatform, newLinkId, newSocialId, StyleOption } from "@/lib/link-in-bio/store";
 import { THEMES, Theme, getTheme } from "@/lib/link-in-bio/themes";
 import { cn } from "@/lib/utils";
@@ -241,15 +234,15 @@ export function LinksEditorSection({ bio, onChange }: LinksEditorProps) {
 // SOCIAL LINKS EDITOR
 // ============================================================================
 
-const SOCIAL_OPTIONS: { id: SocialPlatform; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: "instagram", label: "Instagram", Icon: InstagramIcon },
-  { id: "twitter", label: "X (Twitter)", Icon: TwitterIcon },
-  { id: "tiktok", label: "TikTok", Icon: TiktokIcon },
-  { id: "youtube", label: "YouTube", Icon: YoutubeIcon },
-  { id: "linkedin", label: "LinkedIn", Icon: LinkedinIcon },
-  { id: "facebook", label: "Facebook", Icon: FacebookIcon },
-  { id: "github", label: "GitHub", Icon: GithubIcon },
-  { id: "email", label: "Email", Icon: Mail },
+const SOCIAL_OPTIONS: { id: SocialPlatform; label: string }[] = [
+  { id: "instagram", label: "Instagram" },
+  { id: "twitter", label: "X (Twitter)" },
+  { id: "tiktok", label: "TikTok" },
+  { id: "youtube", label: "YouTube" },
+  { id: "linkedin", label: "LinkedIn" },
+  { id: "facebook", label: "Facebook" },
+  { id: "github", label: "GitHub" },
+  { id: "email", label: "Email" },
 ];
 
 type SocialLinksEditorProps = {
@@ -286,15 +279,19 @@ export function SocialLinksEditorSection({ bio, onChange }: SocialLinksEditorPro
       <div className="mt-4 space-y-2">
         {bio.socialLinks.map((s) => {
           const opt = SOCIAL_OPTIONS.find((o) => o.id === s.platform);
-          const Icon = opt?.Icon ?? Link2;
+          const plat = getPlatform(s.platform);
           return (
             <div
               key={s.id}
               className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white p-2"
             >
-              <div className="size-7 rounded-md bg-zinc-100 flex items-center justify-center shrink-0">
-                <Icon className="size-4 text-zinc-700" />
-              </div>
+              {plat ? (
+                <PlatformAvatar platform={plat} size={28} rounded="sm" />
+              ) : (
+                <div className="size-7 rounded-md bg-zinc-200 flex items-center justify-center shrink-0 text-[10px] font-bold text-zinc-500">
+                  {opt?.label?.[0] ?? "?"}
+                </div>
+              )}
               <span className="text-xs font-medium w-20 shrink-0">{opt?.label ?? s.platform}</span>
               <input
                 type="text"
@@ -323,7 +320,7 @@ export function SocialLinksEditorSection({ bio, onChange }: SocialLinksEditorPro
         {adding ? (
           <div className="grid grid-cols-4 gap-2">
             {SOCIAL_OPTIONS.map((o) => {
-              const Icon = o.Icon;
+              const plat = getPlatform(o.id);
               return (
                 <button
                   key={o.id}
@@ -334,7 +331,13 @@ export function SocialLinksEditorSection({ bio, onChange }: SocialLinksEditorPro
                   }}
                   className="flex flex-col items-center gap-1 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 py-2.5"
                 >
-                  <Icon className="size-4 text-zinc-700" />
+                  {plat ? (
+                    <PlatformAvatar platform={plat} size={28} rounded="sm" />
+                  ) : (
+                    <div className="size-7 rounded-md bg-zinc-200 flex items-center justify-center text-[10px] font-bold text-zinc-500">
+                      {o.label[0]}
+                    </div>
+                  )}
                   <span className="text-[10px] text-zinc-600">{o.label}</span>
                 </button>
               );

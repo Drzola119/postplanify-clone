@@ -2,15 +2,8 @@
 
 import { useMemo } from "react";
 import { Mail, Music2, ExternalLink, Eye } from "lucide-react";
-import {
-  InstagramIcon,
-  TwitterIcon,
-  YoutubeIcon,
-  LinkedinIcon,
-  FacebookIcon,
-  GithubIcon,
-  TiktokIcon,
-} from "@/components/icons/social";
+import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
+import { getPlatform, type PlatformMeta } from "@/lib/platforms";
 import { Bio, SocialLink } from "@/lib/link-in-bio/store";
 import { getTheme, Theme } from "@/lib/link-in-bio/themes";
 import { cn } from "@/lib/utils";
@@ -28,15 +21,15 @@ type Props = {
   className?: string;
 };
 
-const SOCIAL_ICONS: Record<SocialLink["platform"], React.ComponentType<{ className?: string }>> = {
-  instagram: InstagramIcon,
-  twitter: TwitterIcon,
-  tiktok: TiktokIcon,
-  youtube: YoutubeIcon,
-  linkedin: LinkedinIcon,
-  facebook: FacebookIcon,
-  github: GithubIcon,
-  email: Mail,
+const SOCIAL_ICONS: Record<string, PlatformMeta | undefined> = {
+  instagram: getPlatform("instagram"),
+  twitter: getPlatform("twitter"),
+  tiktok: getPlatform("tiktok"),
+  youtube: getPlatform("youtube"),
+  linkedin: getPlatform("linkedin"),
+  facebook: getPlatform("facebook"),
+  github: undefined,
+  email: undefined,
 };
 
 function getInitial(name: string): string {
@@ -119,7 +112,7 @@ export function BioRenderer({
       {visibleSocials.length > 0 && !compact && (
         <div className="mt-4 flex items-center justify-center gap-3">
           {visibleSocials.map((s) => {
-            const Icon = SOCIAL_ICONS[s.platform] ?? Mail;
+            const platform = SOCIAL_ICONS[s.platform];
             const href =
               s.platform === "email"
                 ? `mailto:${s.url}`
@@ -136,7 +129,11 @@ export function BioRenderer({
                 className="opacity-70 hover:opacity-100 transition-opacity"
                 style={{ color: colors.text }}
               >
-                <Icon className="size-5" />
+                {platform ? (
+                  <PlatformAvatar platform={platform} size={20} rounded="full" />
+                ) : (
+                  <Mail className="size-5" />
+                )}
               </a>
             );
           })}

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
 import { toCsv, downloadCsv } from "@/lib/csv";
+import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
 
 // ============================================================
 // Types
@@ -145,50 +146,14 @@ const PLATFORM_ACCENT: Record<Platform, { color: string; leftClass: string }> = 
 // Platform avatar / icon
 // ============================================================
 function PlatformIcon({ platform, className = "" }: { platform: Platform; className?: string }) {
-  const map: Record<Platform, { bg: string; letter: string }> = {
-    youtube:   { bg: "#FF0000", letter: "▶" },
-    instagram: { bg: "linear-gradient(135deg, #feda75 0%, #fa7e1e 25%, #d62976 50%, #962fbf 75%, #4f5bd5 100%)", letter: "📷" },
-    twitter:   { bg: "#000000", letter: "𝕏" },
-    tiktok:    { bg: "#000000", letter: "♪" },
-    facebook:  { bg: "#1877F2", letter: "f" },
-    threads:   { bg: "#000000", letter: "@" },
-    linkedin:  { bg: "#0A66C2", letter: "in" },
-    pinterest: { bg: "#E60023", letter: "P" },
-    bluesky:   { bg: "#1185FE", letter: "🦋" },
-  };
-  const info = map[platform];
   return (
-    <span
-      className={`inline-flex items-center justify-center size-4 rounded-md text-[10px] font-bold text-white shrink-0 ${className}`}
-      style={{ background: info.bg }}
-      aria-label={platform}
-    >
-      {info.letter}
+    <span className={`inline-flex items-center justify-center shrink-0 ${className}`}>
+      <PlatformAvatar
+        platform={{ id: platform, name: platform.charAt(0).toUpperCase() + platform.slice(1), handle: "", avatar: null, charLimit: 0, borderClass: "", textClass: "", icon: "" }}
+        size={16}
+        rounded="sm"
+      />
     </span>
-  );
-}
-
-function PlatformAvatar({ platform, name, initials, avatar, size = 56 }: { platform: Platform; name: string; initials?: string; avatar?: string; size?: number }) {
-  const ringClass = {
-    youtube: "ring-red-500/20", instagram: "ring-pink-500/20", twitter: "ring-zinc-500/30",
-    tiktok: "ring-zinc-500/30", facebook: "ring-blue-500/20", threads: "ring-pink-500/20",
-    linkedin: "ring-blue-500/20", pinterest: "ring-red-500/20", bluesky: "ring-sky-500/20",
-  }[platform];
-
-  return (
-    <div
-      className={`relative shrink-0 rounded-full ring-2 ${ringClass} shadow-md overflow-hidden bg-gradient-to-br from-zinc-300 to-zinc-500 flex items-center justify-center`}
-      style={{ width: size, height: size }}
-    >
-      {avatar ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={avatar} alt={name} className="w-full h-full object-cover" />
-      ) : (
-        <span className="text-white font-semibold" style={{ fontSize: size * 0.4 }}>
-          {initials ?? name[0]?.toUpperCase() ?? "?"}
-        </span>
-      )}
-    </div>
   );
 }
 
@@ -404,11 +369,12 @@ function AccountAvatar({ account, size = 32 }: { account: AccountSummary; size?:
           account.initials ?? account.name[0]?.toUpperCase()
         )}
       </div>
-      <span
-        className="absolute -bottom-0.5 -right-0.5 rounded-full bg-white flex items-center justify-center border border-zinc-200"
-        style={{ width: size * 0.45, height: size * 0.45 }}
-      >
-        <PlatformIcon platform={account.platform} className="size-2.5" />
+      <span className="absolute -bottom-0.5 -right-0.5">
+        <PlatformAvatar
+          platform={{ id: account.platform, name: account.platform.charAt(0).toUpperCase() + account.platform.slice(1), handle: "", avatar: null, charLimit: 0, borderClass: "", textClass: "", icon: "" }}
+          size={size * 0.45 >= 16 ? Math.round(size * 0.45) : 16}
+          rounded="full"
+        />
       </span>
     </div>
   );
@@ -1081,13 +1047,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
         <div className="flex flex-col md:flex-row md:justify-between gap-6">
           <div className="space-y-3 min-w-0">
             <div className="flex items-start gap-3">
-              <PlatformAvatar
-                platform={account.platform}
-                name={account.name}
-                initials={account.initials}
-                avatar={account.avatar}
-                size={48}
-              />
+              <AccountAvatar account={account} size={48} />
               <div className="min-w-0">
                 <h3 className="text-lg font-bold text-zinc-900 truncate">{account.name}</h3>
                 <p className="text-sm text-zinc-500 truncate">{account.handle}{account.bio ? ` · ${account.bio}` : ""}</p>

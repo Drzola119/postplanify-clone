@@ -18,7 +18,8 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { StatCard } from "@/components/ui/stat-card";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
-import { cn } from "@/lib/utils";
+import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
+import { PLATFORMS } from "@/lib/platforms";
 
 type Platform =
   | "bluesky"
@@ -43,17 +44,9 @@ const PLATFORM_LABELS: Record<Platform, string> = {
   facebook: "Facebook",
 };
 
-const PLATFORM_COLORS: Record<Platform, string> = {
-  bluesky: "bg-sky-100 text-sky-700",
-  instagram: "bg-pink-100 text-pink-700",
-  tiktok: "bg-zinc-900 text-white",
-  youtube: "bg-red-100 text-red-700",
-  pinterest: "bg-rose-100 text-rose-700",
-  twitter: "bg-zinc-900 text-white",
-  linkedin: "bg-blue-100 text-blue-700",
-  threads: "bg-zinc-200 text-zinc-900",
-  facebook: "bg-blue-100 text-blue-700",
-};
+const PLATFORM_META = Object.fromEntries(
+  PLATFORMS.map((p) => [p.id, p])
+) as Record<Platform, (typeof PLATFORMS)[number]>;
 
 interface PostRow {
   id: string;
@@ -401,17 +394,12 @@ export default function PublishHistoryPage() {
                       ) : null}
                     </td>
                     <td className="px-3 py-3 align-middle">
-                      <div className="flex flex-wrap gap-1">
+                      <div className="flex flex-wrap gap-1.5">
                         {p.platforms.map((plat) => (
-                          <span
-                            key={plat}
-                            className={cn(
-                              "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
-                              PLATFORM_COLORS[plat],
-                            )}
-                          >
-                            {PLATFORM_LABELS[plat]}
-                          </span>
+                          <div key={plat} className="inline-flex items-center gap-1.5">
+                            <PlatformAvatar platform={PLATFORM_META[plat]} size={20} rounded="sm" />
+                            <span className="text-[11px] font-medium">{PLATFORM_LABELS[plat]}</span>
+                          </div>
                         ))}
                       </div>
                     </td>
