@@ -50,10 +50,9 @@ interface AccountSummary {
 }
 
 // ============================================================
-// Accounts (9 connected — 8 unique platforms, 2 Bluesky)
-// Fallback mock data used when API fails or user is unauthenticated
+// Accounts — fallback used when API call fails or user is unauthenticated
 // ============================================================
-const MOCK_ACCOUNTS: AccountSummary[] = [
+const FALLBACK_ACCOUNTS: AccountSummary[] = [
   { id: "yt-zakaria", name: "Zakaria 11", handle: "@zakaria_119", platform: "youtube", initials: "Z",
     subscribers: 1, videos: 6, totalViews: 9, syncedAgo: "47m ago" },
   { id: "pin-nick", name: "nicklorance7", handle: "pinterest.com/nicklorance7", platform: "pinterest", initials: "N",
@@ -521,298 +520,7 @@ function AnalyticsErrorState({ message }: { message: string }) {
   );
 }
 
-// ============================================================
-// Per-platform analytics config
-// ============================================================
-interface TrendSeries {
-  data: number[];
-  color: string;
-  collecting?: boolean;
-  change?: string;
-}
-interface PlatformAnalyticsConfig {
-  headerMetrics: { value: string; label: string; color: string; icon: React.ReactNode }[];
-  metrics: MetricCardSpec[];
-  trends: { followers: TrendSeries; views: TrendSeries; engagement: TrendSeries; interactions: TrendSeries };
-  table: {
-    title: string;
-    count: string;
-    columns: string[];
-    rows: { thumb?: string; col1: string; col2: string; values: (string | number)[]; engRate?: string }[];
-  };
-  banner?: string;
-  updatedAt: string;
-  updatedRelative: string;
-}
 
-const PLATFORM_ANALYTICS: Record<Platform, PlatformAnalyticsConfig> = {
-  youtube: {
-    updatedAt: "Jul 8, 2026, 02:56 PM",
-    updatedRelative: "47 minutes ago",
-    headerMetrics: [
-      { value: "1", label: "Subscribers", color: "#ef4444", icon: <Users className="size-4 text-white" /> },
-      { value: "6", label: "Videos", color: "#a855f7", icon: <Play className="size-4 text-white" /> },
-      { value: "9", label: "Total Views", color: "#3b82f6", icon: <Eye className="size-4 text-white" /> },
-    ],
-    metrics: [
-      { label: "VIEWS", value: "0", sub: "Total views", color: "indigo", icon: "eye" },
-      { label: "LIKES", value: "0", sub: "Total likes", color: "red", icon: "heart" },
-      { label: "COMMENTS", value: "0", sub: "Total comments", color: "purple", icon: "message" },
-      { label: "ENGAGEMENT", value: "0.00%", sub: "Avg rate", color: "orange", icon: "trending" },
-      { label: "INTERACTIONS", value: "0", sub: "Total", color: "teal", icon: "chart" },
-    ],
-    trends: {
-      followers: { data: [1, 1, 1, 1, 1], color: "#3b82f6" },
-      views: { data: [0, 0, 0, 0, 0], color: "#8b5cf6", collecting: true },
-      engagement: { data: [0, 0, 0, 0, 0], color: "#f97316", collecting: true },
-      interactions: { data: [0, 0, 0, 0, 0], color: "#10b981", collecting: true },
-    },
-    table: {
-      title: "Video Performance",
-      count: "1 videos",
-      columns: ["Video", "Title", "Date", "Views", "Likes", "Comments", "Eng. Rate", "Duration", "Interactions", "Actions"],
-      rows: [
-        { thumb: "🎬", col1: "hello guys", col2: "Jul 8, 2026\n14:55", values: ["0", "0", "0", "0.00%", "57s", "0"] },
-      ],
-    },
-  },
-  pinterest: {
-    updatedAt: "Jul 8, 2026, 03:01 PM",
-    updatedRelative: "42 minutes ago",
-    headerMetrics: [
-      { value: "0", label: "Followers", color: "#E60023", icon: <Users className="size-4 text-white" /> },
-      { value: "0", label: "Monthly Views", color: "#3b82f6", icon: <Eye className="size-4 text-white" /> },
-      { value: "14", label: "Pins", color: "#a855f7", icon: <Bookmark className="size-4 text-white" /> },
-    ],
-    metrics: [
-      { label: "IMPRESSIONS", value: "0", sub: "Total impressions", color: "indigo", icon: "eye" },
-      { label: "SAVES", value: "0", sub: "Total saves", color: "red", icon: "heart" },
-      { label: "PIN CLICKS", value: "0", sub: "Total pin clicks", color: "blue", icon: "click" },
-      { label: "LINK CLICKS", value: "0", sub: "Total link clicks", color: "teal", icon: "click" },
-      { label: "COMMENTS", value: "0", sub: "Total comments", color: "purple", icon: "message" },
-      { label: "REACTIONS", value: "0", sub: "Total reactions", color: "pink", icon: "heart" },
-    ],
-    trends: {
-      followers: { data: [0, 0, 0, 0, 0], color: "#3b82f6" },
-      views: { data: [0, 0, 0, 0, 1.2], color: "#8b5cf6" },
-      engagement: { data: [0, 0, 0, 0, 0], color: "#f97316", collecting: true },
-      interactions: { data: [0, 0, 0, 0, 0], color: "#10b981" },
-    },
-    table: {
-      title: "Pin Performance",
-      count: "2 pins",
-      columns: ["Pin", "Content", "Date", "Impressions", "Saves", "Pin Clicks", "Link Clicks", "Comments", "Reactions", "Eng. Rate", "Actions"],
-      rows: [
-        { thumb: "📌", col1: "hello guys tt", col2: "Jul 8, 2026\n14:56", values: ["0", "0", "0", "0", "0", "0", "0.00%"] },
-        { thumb: "📌", col1: "hey", col2: "Jul 7, 2026\n19:52", values: ["0", "0", "0", "0", "0", "0", "0.00%"] },
-      ],
-    },
-  },
-  facebook: {
-    updatedAt: "Jul 8, 2026, 01:07 AM",
-    updatedRelative: "14 hours ago",
-    headerMetrics: [
-      { value: "0", label: "Followers", color: "#1877F2", icon: <Users className="size-4 text-white" /> },
-      { value: "1", label: "Posts", color: "#3b82f6", icon: <MessageCircle className="size-4 text-white" /> },
-      { value: "0", label: "Total Views", color: "#0ea5e9", icon: <Eye className="size-4 text-white" /> },
-    ],
-    metrics: [
-      { label: "VIEWS", value: "0", sub: "Total views", color: "indigo", icon: "eye" },
-      { label: "REACTIONS", value: "0", sub: "Total reactions", color: "blue", icon: "heart" },
-      { label: "COMMENTS", value: "0", sub: "Total comments", color: "purple", icon: "message" },
-      { label: "SHARES", value: "0", sub: "Total shares", color: "green", icon: "share" },
-      { label: "CLICKS", value: "0", sub: "Total clicks", color: "amber", icon: "click" },
-      { label: "ENGAGEMENT", value: "0.00%", sub: "Avg rate", color: "orange", icon: "trending" },
-    ],
-    trends: {
-      followers: { data: [0, 0, 0, 0, 0], color: "#3b82f6" },
-      views: { data: [0, 0, 0, 0, 0], color: "#8b5cf6", collecting: true },
-      engagement: { data: [0, 0, 0, 0, 0], color: "#f97316", collecting: true },
-      interactions: { data: [0, 0, 0, 0, 0], color: "#10b981", collecting: true },
-    },
-    table: {
-      title: "Post Performance",
-      count: "1 posts",
-      columns: ["Post", "Content", "Date", "Views", "Reactions", "Comments", "Shares", "Clicks", "Eng. Rate", "Actions"],
-      rows: [
-        { thumb: "📄", col1: "Ever catch a cat mid-lick and realize they still look more photogenic than you do on a good day?", col2: "Jul 7, 2026\n19:52", values: ["0", "0", "0", "0", "0", "0.00%"] },
-      ],
-    },
-  },
-  threads: {
-    updatedAt: "Jul 8, 2026, 11:01 AM",
-    updatedRelative: "4 hours ago",
-    headerMetrics: [
-      { value: "2", label: "Followers", color: "#ec4899", icon: <Users className="size-4 text-white" /> },
-      { value: "11", label: "Following", color: "#a855f7", icon: <Users className="size-4 text-white" /> },
-      { value: "25", label: "Posts", color: "#3b82f6", icon: <MessageCircle className="size-4 text-white" /> },
-    ],
-    metrics: [
-      { label: "VIEWS", value: "1", sub: "Total views", color: "indigo", icon: "eye" },
-      { label: "REACH", value: "1", sub: "Total accounts", color: "blue", icon: "eye" },
-      { label: "LIKES", value: "0", sub: "Total likes", color: "red", icon: "heart" },
-      { label: "COMMENTS", value: "0", sub: "Total comments", color: "purple", icon: "message" },
-      { label: "SHARES", value: "0", sub: "Total shares", color: "green", icon: "share" },
-      { label: "ENGAGEMENT", value: "0.00%", sub: "Avg rate", color: "orange", icon: "trending" },
-      { label: "SAVED", value: "0", sub: "Total saved", color: "teal", icon: "bookmark" },
-    ],
-    trends: {
-      followers: { data: [0, 0, 0, 1, 2], color: "#3b82f6" },
-      views: { data: [0, 0, 0, 0, 1], color: "#8b5cf6" },
-      engagement: { data: [0, 0, 0, 0, 0], color: "#f97316", collecting: true },
-      interactions: { data: [0, 0, 0, 0, 0], color: "#10b981" },
-    },
-    table: {
-      title: "Post Performance",
-      count: "1 posts",
-      columns: ["Media", "Type", "Caption", "Date", "Views", "Reach", "Likes", "Comments", "Eng. Rate", "Saves", "Shares", "Replies", "Profile Visits", "Follows", "Watch Time", "Avg Watch", "Interactions", "Actions"],
-      rows: [
-        { thumb: "🖼️", col1: "Image", col2: "This is the exact face of \"I was not eating anything.\"", values: ["Jul 7, 2026\n19:53", "1", "1", "0", "0", "0.00%", "0", "0", "0", "0", "0", "-", "-", "0"], engRate: "0.00%" },
-      ],
-    },
-  },
-  bluesky: {
-    updatedAt: "Jul 8, 2026, 03:02 PM",
-    updatedRelative: "41 minutes ago",
-    headerMetrics: [
-      { value: "17", label: "Followers", color: "#1185FE", icon: <Users className="size-4 text-white" /> },
-      { value: "33", label: "Following", color: "#a855f7", icon: <Users className="size-4 text-white" /> },
-      { value: "26", label: "Posts", color: "#3b82f6", icon: <MessageCircle className="size-4 text-white" /> },
-    ],
-    metrics: [
-      { label: "LIKES", value: "1", sub: "Total likes", color: "red", icon: "heart" },
-      { label: "REPOSTS", value: "0", sub: "Total reposts", color: "green", icon: "repost" },
-      { label: "REPLIES", value: "0", sub: "Total replies", color: "blue", icon: "reply" },
-      { label: "QUOTES", value: "0", sub: "Total quotes", color: "purple", icon: "quote" },
-      { label: "BOOKMARKS", value: "0", sub: "Total bookmarks", color: "amber", icon: "bookmark" },
-    ],
-    trends: {
-      followers: { data: [17, 17, 17, 17, 17], color: "#3b82f6" },
-      views: { data: [0, 0, 0, 0, 0], color: "#8b5cf6", collecting: true },
-      engagement: { data: [0, 0, 0, 0, 0], color: "#f97316", collecting: true },
-      interactions: { data: [1, 0, 0, 0, 0], color: "#10b981", change: "-100%" },
-    },
-    table: {
-      title: "Post Performance",
-      count: "2 posts",
-      columns: ["Post", "Content", "Date", "Likes", "Reposts", "Replies", "Quotes", "Bookmarks", "Eng. Rate", "Actions"],
-      rows: [
-        { thumb: "📝", col1: "The moment a soft hospital scene turns into panic is brutal.", col2: "Jul 8, 2026\n14:54", values: ["0", "0", "0", "0", "0", "0.00%"] },
-        { thumb: "📝", col1: "POV: you smelled treats from three rooms away.", col2: "Jul 7, 2026\n19:52", values: ["1", "0", "0", "0", "0", "5.88%"] },
-      ],
-    },
-  },
-  tiktok: {
-    updatedAt: "Jul 8, 2026, 12:36 PM",
-    updatedRelative: "3 hours ago",
-    headerMetrics: [
-      { value: "3", label: "Followers", color: "#000000", icon: <Users className="size-4 text-white" /> },
-      { value: "1", label: "Following", color: "#737373", icon: <Users className="size-4 text-white" /> },
-      { value: "22", label: "Videos", color: "#a855f7", icon: <Play className="size-4 text-white" /> },
-      { value: "183", label: "Total Likes", color: "#ec4899", icon: <Heart className="size-4 text-white" /> },
-    ],
-    metrics: [
-      { label: "VIEWS", value: "101", sub: "Total views", color: "indigo", icon: "eye" },
-      { label: "LIKES", value: "32", sub: "Total likes", color: "red", icon: "heart" },
-      { label: "COMMENTS", value: "0", sub: "Total comments", color: "purple", icon: "message" },
-      { label: "SHARES", value: "0", sub: "Total shares", color: "green", icon: "share" },
-      { label: "ENGAGEMENT", value: "31.68%", sub: "Avg rate", color: "orange", icon: "trending" },
-      { label: "INTERACTIONS", value: "32", sub: "Total", color: "teal", icon: "chart" },
-    ],
-    trends: {
-      followers: { data: [3, 3, 3, 3, 3], color: "#3b82f6" },
-      views: { data: [2.7, 3.4, 17, 101, 0], color: "#8b5cf6", change: "-100%" },
-      engagement: { data: [0, 0.7, 1.5, 15.9, 31.68], color: "#f97316", change: "-99.7%" },
-      interactions: { data: [0, 0, 1, 32, 0], color: "#10b981", change: "-95.7%" },
-    },
-    table: {
-      title: "Post Performance",
-      count: "1 posts",
-      columns: ["Video", "Description", "Date", "Views", "Likes", "Comments", "Shares", "Eng. Rate", "Duration", "Interactions", "Actions"],
-      rows: [
-        { thumb: "🎬", col1: "This cat said: \"No crumbs left behind.\" The tongue. The stare. The suspiciously innocent energy. If ...", col2: "Jul 7, 2026\n19:52", values: ["101", "32", "0", "0", "31.68%", "-", "32"], engRate: "31.68%" },
-      ],
-    },
-  },
-  linkedin: {
-    updatedAt: "—",
-    updatedRelative: "—",
-    headerMetrics: [],
-    metrics: [],
-    trends: {
-      followers: { data: [], color: "#0A66C2" },
-      views: { data: [], color: "#0A66C2" },
-      engagement: { data: [], color: "#0A66C2" },
-      interactions: { data: [], color: "#0A66C2" },
-    },
-    table: { title: "", count: "", columns: [], rows: [] },
-  },
-  twitter: {
-    updatedAt: "Jul 8, 2026, 01:24 PM",
-    updatedRelative: "2 hours ago",
-    headerMetrics: [
-      { value: "0", label: "Followers", color: "#000000", icon: <Users className="size-4 text-white" /> },
-      { value: "12", label: "Following", color: "#737373", icon: <Users className="size-4 text-white" /> },
-      { value: "42", label: "Posts", color: "#3b82f6", icon: <MessageCircle className="size-4 text-white" /> },
-      { value: "0", label: "Likes", color: "#ef4444", icon: <Heart className="size-4 text-white" /> },
-      { value: "0", label: "Listed", color: "#a855f7", icon: <Bookmark className="size-4 text-white" /> },
-    ],
-    metrics: [
-      { label: "IMPRESSIONS", value: "1", sub: "Total views", color: "indigo", icon: "eye" },
-      { label: "LIKES", value: "0", sub: "Total favorites", color: "red", icon: "heart" },
-      { label: "REPOSTS", value: "0", sub: "Retweets", color: "green", icon: "repost" },
-      { label: "REPLIES", value: "0", sub: "Total replies", color: "purple", icon: "message" },
-      { label: "ENGAGEMENT", value: "0.00%", sub: "Avg rate", color: "orange", icon: "trending" },
-      { label: "BOOKMARKS", value: "0", sub: "Saved posts", color: "teal", icon: "bookmark" },
-    ],
-    banner: "Showing posts published via PostPlanify only",
-    trends: {
-      followers: { data: [0, 0, 0, 0, 0], color: "#3b82f6" },
-      views: { data: [0, 0, 0, 1, 0], color: "#8b5cf6" },
-      engagement: { data: [0, 0, 0, 0, 0], color: "#f97316", collecting: true },
-      interactions: { data: [0, 0, 0, 0, 0], color: "#10b981" },
-    },
-    table: {
-      title: "Post Performance",
-      count: "1 posts",
-      columns: ["", "Media", "Content", "Date", "Views", "Likes", "Replies", "Reposts", "Eng. Rate", "Actions"],
-      rows: [
-        { thumb: "🐦", col1: "✓", col2: "That face when the treat bag makes a noise in another zip code.", values: ["Jul 7, 2026\n19:52", "1", "0", "0", "0", "0.00%"] },
-      ],
-    },
-  },
-  instagram: {
-    updatedAt: "Jul 8, 2026, 03:02 PM",
-    updatedRelative: "41 minutes ago",
-    headerMetrics: [
-      { value: "17", label: "Followers", color: "#E1306C", icon: <Users className="size-4 text-white" /> },
-      { value: "33", label: "Following", color: "#a855f7", icon: <Users className="size-4 text-white" /> },
-      { value: "26", label: "Posts", color: "#3b82f6", icon: <MessageCircle className="size-4 text-white" /> },
-    ],
-    metrics: [
-      { label: "LIKES", value: "1", sub: "Total likes", color: "red", icon: "heart" },
-      { label: "REPOSTS", value: "0", sub: "Total reposts", color: "green", icon: "repost" },
-      { label: "REPLIES", value: "0", sub: "Total replies", color: "blue", icon: "reply" },
-      { label: "QUOTES", value: "0", sub: "Total quotes", color: "purple", icon: "quote" },
-      { label: "BOOKMARKS", value: "0", sub: "Total bookmarks", color: "amber", icon: "bookmark" },
-    ],
-    trends: {
-      followers: { data: [17, 17, 17, 17, 17], color: "#3b82f6" },
-      views: { data: [0, 0, 0, 0, 0], color: "#8b5cf6", collecting: true },
-      engagement: { data: [0, 0, 0, 0, 0], color: "#f97316", collecting: true },
-      interactions: { data: [1, 0, 0, 0, 0], color: "#10b981", change: "-100%" },
-    },
-    table: {
-      title: "Post Performance",
-      count: "2 posts",
-      columns: ["Post", "Content", "Date", "Likes", "Reposts", "Replies", "Quotes", "Bookmarks", "Eng. Rate", "Actions"],
-      rows: [
-        { thumb: "📝", col1: "The moment a soft hospital scene turns into panic is brutal.", col2: "Jul 8, 2026\n14:54", values: ["0", "0", "0", "0", "0", "0.00%"] },
-        { thumb: "📝", col1: "POV: you smelled treats from three rooms away.", col2: "Jul 7, 2026\n19:52", values: ["1", "0", "0", "0", "0", "5.88%"] },
-      ],
-    },
-  },
-};
 
 // ============================================================
 // Per-account view
@@ -860,6 +568,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fetchNonce, setFetchNonce] = useState(0);
+  const [publishedPosts, setPublishedPosts] = useState<{ id: string; caption: string; publishedAt: string | null; platforms: string[] }[] | null>(null);
 
   const fetchAnalytics = useCallback(async () => {
     setLoading(true);
@@ -887,6 +596,32 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
   useEffect(() => {
     fetchAnalytics();
   }, [fetchAnalytics, fetchNonce]);
+
+  // Fetch published posts for this account's platform.
+  useEffect(() => {
+    const account = accounts.find((a) => a.id === accountId);
+    if (!account) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const range = periodToRange(period);
+        const from = encodeURIComponent(range.from.toISOString());
+        const to = encodeURIComponent(range.to.toISOString());
+        const platform = encodeURIComponent(account.platform);
+        const res = await fetch(
+          `/api/posts/published?from=${from}&to=${to}&platform=${platform}`,
+          { cache: "no-store", headers: getOverrideHeaders() }
+        );
+        if (!cancelled && res.ok) {
+          const data = await res.json();
+          setPublishedPosts(data.posts as typeof publishedPosts);
+        }
+      } catch {
+        // silent
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [period, accountId, accounts, fetchNonce]);
 
   const handleAnalyticsExport = async () => {
     setExporting(true);
@@ -983,14 +718,6 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
       views: { data: viewsSeries, color: "#8b5cf6", collecting: isCollecting },
       engagement: { data: engagementSeries, color: "#f97316", collecting: isCollecting },
       interactions: { data: interactionsSeries, color: "#10b981", collecting: isCollecting },
-    },
-    updatedAt: analytics?.to ? new Date(analytics.to).toLocaleString() : "—",
-    updatedRelative: analytics?.to ? "just now" : "—",
-    table: {
-      title: "Post Performance",
-      count: `${totals?.postsPublished ?? 0} posts`,
-      columns: ["Post", "Date", "Impressions", "Likes", "Comments", "Shares", "Clicks", "Eng. Rate"],
-      rows: [] as { thumb: string; col1: string; col2: string; values: (string | number)[] }[],
     },
   };
 
@@ -1145,50 +872,51 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
         </div>
       </div>
 
-      {/* ===== PERFORMANCE TABLE ===== */}
+      {/* ===== PUBLISHED POSTS TABLE ===== */}
       <div className="rounded-xl border border-zinc-200/70 bg-white overflow-hidden">
         <div className="px-4 py-3 border-b border-zinc-100 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-zinc-900">{data.table.title}</h3>
+          <h3 className="text-base font-semibold text-zinc-900">Published Posts</h3>
           <div className="text-[12px] text-zinc-500 inline-flex items-center gap-1.5">
             <BarChart3 className="size-3.5" />
-            {data.table.count}
+            {publishedPosts ? `${publishedPosts.length} posts` : "—"}
           </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-[12px] font-medium text-zinc-500 border-b border-zinc-100 bg-zinc-50/40">
               <tr>
-                {data.table.columns.map((c, i) => (
-                  <th key={i} className={`px-3 py-2.5 ${i === 0 ? "w-12" : ""} ${i >= 3 ? "text-right" : "text-left"} whitespace-nowrap`}>
-                    {c}
-                  </th>
-                ))}
+                <th className="px-3 py-2.5 text-left w-12">#</th>
+                <th className="px-3 py-2.5 text-left">Content</th>
+                <th className="px-3 py-2.5 text-left">Date</th>
+                <th className="px-3 py-2.5 text-left">Platforms</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {data.table.rows.length === 0 ? (
+              {!publishedPosts || publishedPosts.length === 0 ? (
                 <tr>
-                  <td colSpan={data.table.columns.length} className="px-3 py-8 text-center text-[12px] text-zinc-500">
+                  <td colSpan={4} className="px-3 py-8 text-center text-[12px] text-zinc-500">
                     Post-level metrics will appear here once individual post data is ingested.
                   </td>
                 </tr>
               ) : (
-                data.table.rows.map((row, i) => (
-                  <tr key={i} className="hover:bg-zinc-50/50">
+                publishedPosts.map((post, i) => (
+                  <tr key={post.id} className="hover:bg-zinc-50/50">
+                    <td className="px-3 py-2 text-[12px] text-zinc-400 tabular-nums">{i + 1}</td>
+                    <td className="px-3 py-2 max-w-xs">
+                      <p className="text-zinc-900 line-clamp-2 text-[13px]">{post.caption || "(no caption)"}</p>
+                    </td>
+                    <td className="px-3 py-2 text-[12px] text-zinc-500 whitespace-nowrap">
+                      {post.publishedAt ? fmtDateShort(post.publishedAt) : "—"}
+                    </td>
                     <td className="px-3 py-2">
-                      <div className="size-10 rounded bg-gradient-to-br from-zinc-300 to-zinc-500 flex items-center justify-center text-white font-semibold text-sm">
-                        {row.thumb}
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {post.platforms.map((p) => (
+                          <span key={p} className="inline-flex items-center gap-0.5 rounded-md bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 capitalize">
+                            {p}
+                          </span>
+                        ))}
                       </div>
                     </td>
-                    <td className="px-3 py-2 max-w-xs">
-                      <p className="text-zinc-900 line-clamp-2 text-[13px]">{row.col1}</p>
-                    </td>
-                    <td className="px-3 py-2 text-[12px] text-zinc-500 whitespace-nowrap">{row.col2}</td>
-                    {row.values.map((v, vi) => (
-                      <td key={vi} className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
-                        {v}
-                      </td>
-                    ))}
                   </tr>
                 ))
               )}
@@ -1249,19 +977,167 @@ function PageHeader({
 // ============================================================
 // Overview (All) view
 // ============================================================
+interface OverviewData {
+  workspaceId: string;
+  from: string;
+  to: string;
+  totals: {
+    followers: number;
+    engagementRate: number;
+    impressions: number;
+    likes: number;
+    comments: number;
+    shares: number;
+    clicks: number;
+    postsPublished: number;
+  };
+  byPlatform: Array<{
+    platform: string;
+    followers: number;
+    impressions: number;
+    engagementRate: number;
+  }>;
+}
+
 function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
   const router = useRouter();
   const pathname = usePathname();
+  const [period, setPeriod] = useState<Period>("7d");
+  const [loading, setLoading] = useState(false);
+  const [overview, setOverview] = useState<OverviewData | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [fetchNonce, setFetchNonce] = useState(0);
+
+  const fetchOverview = useCallback(async () => {
+    setLoading(true);
+    try {
+      const range = periodToRange(period);
+      const from = encodeURIComponent(range.from.toISOString());
+      const to = encodeURIComponent(range.to.toISOString());
+      const res = await fetch(`/api/analytics/overview?from=${from}&to=${to}`, {
+        cache: "no-store",
+        headers: getOverrideHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setOverview(data.overview as OverviewData);
+      }
+    } catch {
+      // keep previous data
+    } finally {
+      setLoading(false);
+    }
+  }, [period]);
+
+  useEffect(() => {
+    fetchOverview();
+  }, [fetchOverview, fetchNonce]);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      await fetch("/api/analytics/sync", { method: "POST", headers: getOverrideHeaders() });
+      setFetchNonce((n) => n + 1);
+    } catch {
+      // silent
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const range = periodToRange(period);
+  const dayCount = Math.max(1, Math.round((range.to.getTime() - range.from.getTime()) / (24 * 60 * 60 * 1000)));
+  const t = overview?.totals;
+
   return (
     <div className="px-6 py-6 space-y-4">
       <PageHeader
         currentId=""
         onSelect={(id) => router.push(`${pathname}?accountId=${id}`)}
         accounts={accounts}
+        onSync={handleSync}
+        syncing={syncing}
       />
-      <div className="rounded-xl border border-zinc-200/70 bg-white p-6 text-center text-zinc-500 text-sm">
-        Switch to a specific account using the avatar row above to view per-platform analytics.
+
+      {/* Date range + timezone */}
+      <div className="flex flex-wrap items-center justify-between text-[13px]">
+        <div className="inline-flex items-center gap-1.5 text-zinc-500">
+          <Calendar className="size-3.5" />
+          Range: {fmtDateShort(range.from.toISOString())} – {fmtDateShort(range.to.toISOString())} <span className="text-zinc-400">({dayCount} days)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <TimezoneDropdown />
+          <TimeFilter value={period} onChange={setPeriod} />
+        </div>
       </div>
+
+      {loading && !overview ? (
+        <div className="rounded-xl border border-zinc-200/70 bg-white p-8 text-center text-sm text-zinc-500">
+          Loading overview…
+        </div>
+      ) : null}
+
+      {!t ? null : (
+        <>
+          {/* KPI Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <MetricCard spec={{ label: "FOLLOWERS", value: fmt(t.followers), sub: "Total followers", color: "indigo", icon: "eye" }} />
+            <MetricCard spec={{ label: "IMPRESSIONS", value: fmt(t.impressions), sub: "Total impressions", color: "blue", icon: "eye" }} />
+            <MetricCard spec={{ label: "ENGAGEMENT", value: fmtPct(t.engagementRate), sub: "Avg rate", color: "orange", icon: "trending" }} />
+            <MetricCard spec={{ label: "POSTS", value: fmt(t.postsPublished), sub: "Published", color: "green", icon: "chart" }} />
+            <MetricCard spec={{ label: "LIKES", value: fmt(t.likes), sub: "Total likes", color: "red", icon: "heart" }} />
+            <MetricCard spec={{ label: "COMMENTS", value: fmt(t.comments), sub: "Total comments", color: "purple", icon: "message" }} />
+            <MetricCard spec={{ label: "SHARES", value: fmt(t.shares), sub: "Total shares", color: "teal", icon: "share" }} />
+            <MetricCard spec={{ label: "CLICKS", value: fmt(t.clicks), sub: "Total clicks", color: "amber", icon: "click" }} />
+          </div>
+
+          {/* Per-platform breakdown */}
+          <div className="rounded-xl border border-zinc-200/70 bg-white overflow-hidden">
+            <div className="px-4 py-3 border-b border-zinc-100 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-zinc-900 inline-flex items-center gap-1.5">
+                <BarChart3 className="size-4" /> Per-Platform Breakdown
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-[12px] font-medium text-zinc-500 border-b border-zinc-100 bg-zinc-50/40">
+                  <tr>
+                    <th className="px-3 py-2.5 text-left">Platform</th>
+                    <th className="px-3 py-2.5 text-right">Followers</th>
+                    <th className="px-3 py-2.5 text-right">Impressions</th>
+                    <th className="px-3 py-2.5 text-right">Eng. Rate</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {overview.byPlatform.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-8 text-center text-[12px] text-zinc-500">
+                        No platform data available yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    overview.byPlatform
+                      .filter((p) => p.followers > 0 || p.impressions > 0)
+                      .map((p, i) => (
+                        <tr key={i} className="hover:bg-zinc-50/50">
+                          <td className="px-3 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <PlatformIcon platform={p.platform as Platform} />
+                              <span className="capitalize text-zinc-900 text-[13px]">{p.platform}</span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums">{fmt(p.followers)}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums">{fmt(p.impressions)}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums">{fmtPct(p.engagementRate)}</td>
+                        </tr>
+                      ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1272,8 +1148,9 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
 function AnalyticsPageInner() {
   const searchParams = useSearchParams();
   const accountId = searchParams.get("accountId") ?? undefined;
-  const [accounts, setAccounts] = useState<AccountSummary[]>(MOCK_ACCOUNTS);
+  const [accounts, setAccounts] = useState<AccountSummary[]>(FALLBACK_ACCOUNTS);
 
+  // Fetch accounts from social-accounts/list and auto-sync analytics on mount.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -1288,9 +1165,11 @@ function AnalyticsPageInner() {
         const adapted = data.accounts.map(adaptAccount);
         if (adapted.length > 0) setAccounts(adapted);
       } catch {
-        // API unavailable (e.g. unauthenticated or network error) — keep MOCK_ACCOUNTS
+        // API unavailable — keep FALLBACK_ACCOUNTS
       }
     })();
+    // Fire-and-forget auto-sync: refresh analytics cache in the background.
+    fetch("/api/analytics/sync", { method: "POST", headers: getOverrideHeaders() }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
 
