@@ -21,6 +21,10 @@ const SUPPORTED_PLATFORMS = [
   "threads",
   "pinterest",
   "linkedin",
+  "discord",
+  "telegram",
+  "reddit",
+  "google_business",
 ] as const;
 
 function toInternalPlatform(key: string): string {

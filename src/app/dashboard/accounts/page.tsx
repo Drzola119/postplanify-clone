@@ -680,7 +680,7 @@ export default function AccountsPage() {
                     name={p.name}
                     platform={p.platform}
                     onConnect={() => openConnectPage(p.name)}
-                    isComingSoon={p.key === "reddit"}
+                    isComingSoon={false}
                   />
                 ))}
               </div>

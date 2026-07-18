@@ -16,6 +16,7 @@ import {
   signOut as fbSignOut,
   createUserWithEmailAndPassword,
   updateProfile,
+  sendPasswordResetEmail,
   type User,
 } from "firebase/auth";
 import { auth, isFirebaseConfigured } from "@/lib/firebase/config";
@@ -34,6 +35,7 @@ interface AuthContextValue {
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   getIdToken: () => Promise<string | null>;
+  sendPasswordReset: (email: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -102,6 +104,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async getIdToken() {
         if (!auth || !auth.currentUser) return null;
         return auth.currentUser.getIdToken();
+      },
+      async sendPasswordReset(email) {
+        if (!auth) throw new Error("Firebase is not configured");
+        await sendPasswordResetEmail(auth, email);
       },
     }),
     [status, user]

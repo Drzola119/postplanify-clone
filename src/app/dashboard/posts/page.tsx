@@ -152,11 +152,11 @@ type ViewMode = "weekly" | "monthly" | "list";
 
 export default function PostsCalendarPage() {
   const [view, setView] = useState<ViewMode>("monthly");
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 5, 27)); // June 27 2026
+  const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedPost, setSelectedPost] = useState<CalendarPost | null>(null);
   const [posts, setPosts] = useState<CalendarPost[]>(SAMPLE_POSTS);
   const [postsVersion, setPostsVersion] = useState(0);
-  const today = new Date(2026, 5, 27);
+  const today = new Date();
 
   const refetchPosts = useCallback(async () => {
     try {
@@ -615,6 +615,10 @@ function FilterPill({ label, showCheck }: { label: string; showCheck?: boolean }
 }
 
 function TimezonePill() {
+  const [tz, setTz] = useState("UTC");
+  useEffect(() => {
+    setTz(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+  }, []);
   return (
     <button
       type="button"
@@ -622,7 +626,7 @@ function TimezonePill() {
     >
       <span className="flex items-center gap-2">
         <GlobeIcon />
-        Lagos +01:00
+        {tz}
       </span>
       <ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
     </button>

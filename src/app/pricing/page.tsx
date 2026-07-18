@@ -8,9 +8,9 @@ import { Footer } from "@/components/sections/Footer";
 import { PLANS, COMPARE_CATEGORIES, COMMUNITY_ITEMS } from "@/data/pricing";
 
 const PLAN_HEADERS = [
-  { name: "Growth", price: "$129/mo", cta: "Try for free", href: "/signup?show_first_signup_message=true" },
-  { name: "Premium", price: "$249/mo", cta: "Try for free", href: "/signup?show_first_signup_message=true" },
-  { name: "Scale", price: "$399/mo", cta: "Try for free", href: "/signup?show_first_signup_message=true" },
+  { name: "Growth", price: "$79/mo", cta: "Try for free", href: "/signup?show_first_signup_message=true" },
+  { name: "Premium", price: "$159/mo", cta: "Try for free", href: "/signup?show_first_signup_message=true" },
+  { name: "Scale", price: "$239/mo", cta: "Try for free", href: "/signup?show_first_signup_message=true" },
   { name: "Enterprise", price: "Custom", cta: "Book a demo", href: "https://cal.com/hasancagli/postplanify-demo-call" },
 ];
 
