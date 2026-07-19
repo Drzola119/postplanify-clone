@@ -53,8 +53,8 @@ export function DashboardShellClient({
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-zinc-900 dark:border-zinc-100" />
+      <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--color-text)]" />
       </div>
     );
   }
@@ -66,7 +66,7 @@ export function DashboardShellClient({
   return (
     <DrawerProvider>
       <HelpSystemProvider>
-        <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+        <div className="min-h-screen bg-[var(--color-bg)]">
           <DashboardSidebar />
           <DashboardTopbar notificationSlot={notificationSlot} />
           <main dir={dir} className="lg:pl-[240px] pt-14 min-h-screen">
