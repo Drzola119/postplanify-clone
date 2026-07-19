@@ -8,6 +8,7 @@ import { createLogger } from "@/lib/log";
 import { resolvers } from "@/lib/security/server-config";
 import type { AutoDmCampaignItem, AutoDmTrigger } from "@/lib/db/automations";
 import type { PlatformId } from "@/lib/db/schema";
+import { toInternalPlatform } from "@/lib/platforms";
 
 /**
  * Auto-reply worker. Mirrors queue/worker.ts design (start/stop, runOnce).
@@ -105,7 +106,8 @@ async function processWorkspace(
   for (const cdoc of unrepliedCommentsSnap.docs) {
     r.scanned++;
     const data = cdoc.data() as Record<string, unknown>;
-    const platform = data.platform as PlatformId | undefined;
+    const platform = data.platform ? toInternalPlatform(data.platform as string) as PlatformId : undefined;
+    if (platform) data.platform = platform;
     const body = typeof data.body === "string" ? data.body : "";
     const authorHandle = typeof data.authorHandle === "string" ? data.authorHandle : "";
     const authorName = typeof data.authorName === "string" ? data.authorName : undefined;
@@ -202,7 +204,8 @@ async function processWorkspace(
     const lastMsg = msgsSnap.docs[0];
     const mdata = lastMsg.data() as Record<string, unknown>;
     if (mdata.direction !== "in" || mdata.autoRepliedByCampaignId) continue;
-    const platform = cdata.platform as PlatformId | undefined;
+    const platform = cdata.platform ? toInternalPlatform(cdata.platform as string) as PlatformId : undefined;
+    if (platform) cdata.platform = platform;
     const body = typeof mdata.body === "string" ? mdata.body : "";
     const authorHandle = typeof mdata.fromHandle === "string" ? mdata.fromHandle : "";
     const externalId = typeof mdata.externalId === "string" ? mdata.externalId : lastMsg.id;
@@ -256,7 +259,8 @@ export function campaignMatchesComment(
   campaign: AutoDmCampaignItem,
   data: Record<string, unknown>,
 ): boolean {
-  if (!campaign.platforms.includes(data.platform as PlatformId)) return false;
+  const p = data.platform ? toInternalPlatform(data.platform as string) as PlatformId : undefined;
+  if (!p || !campaign.platforms.includes(p)) return false;
   const trig: AutoDmTrigger = campaign.trigger;
   if (trig.kind === "comment-keyword") {
     const body = typeof data.body === "string" ? data.body : "";
@@ -280,7 +284,8 @@ export function campaignMatchesDm(
   campaign: AutoDmCampaignItem,
   conv: Record<string, unknown>,
 ): boolean {
-  if (!campaign.platforms.includes(conv.platform as PlatformId)) return false;
+  const cp = conv.platform ? toInternalPlatform(conv.platform as string) as PlatformId : undefined;
+  if (!cp || !campaign.platforms.includes(cp)) return false;
   const trig = campaign.trigger;
   if (trig.kind === "first-comment") {
     if (!trig.postId) return true;

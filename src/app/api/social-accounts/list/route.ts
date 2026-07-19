@@ -5,6 +5,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { MissingServerSecretError, resolvers } from "@/lib/security/server-config";
 import { writeCache } from "@/lib/db/account-health";
 import { ensureProfile } from "@/lib/db/upload-post-profiles";
+import { toInternalPlatform } from "@/lib/platforms";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,11 +51,6 @@ interface UploadPostListResponse {
   profiles: UploadPostProfile[];
   limit?: number;
   plan?: string;
-}
-
-/** Translate upload-post.com platform key to trustiify platform id. */
-function toInternalPlatform(key: PlatformKey): string {
-  return key === "x" ? "twitter" : key;
 }
 
 export interface ConnectedAccountDTO {

@@ -1,11 +1,28 @@
 import "server-only";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { requireSession } from "@/lib/auth/session-context";
 import { MissingServerSecretError, resolvers } from "@/lib/security/server-config";
 import { createPost, updatePost } from "@/lib/db/posts";
 import { createLogger } from "@/lib/log";
+import { parseBody } from "@/lib/validation/helpers";
 
 const log = createLogger("posts/publish");
+
+const publishPayloadSchema = z.object({
+  jobId: z.string().optional(),
+  uploadPostUsername: z.string().optional(),
+  platforms: z.array(z.string().min(1)).min(1),
+  caption: z.string().min(1),
+  hashtags: z.string().optional(),
+  mediaUrls: z.array(z.string().min(1)).min(1),
+  scheduledAt: z.string().nullable().optional(),
+  firstComment: z.string().optional(),
+  quoteTweetUrl: z.string().optional(),
+  community: z.string().optional(),
+  mediaType: z.string().optional(),
+  advancedByPlatform: z.record(z.string(), z.unknown()).optional(),
+});
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,19 +61,14 @@ export async function POST(request: Request) {
     throw err;
   }
 
-  const body = (await request.json().catch(() => null)) as Partial<PublishPayload> | null;
-  if (!body?.platforms?.length || !body.caption) {
+  const parsed = await parseBody(request, publishPayloadSchema);
+  if (!parsed.ok || !parsed.data) {
     return NextResponse.json(
       { error: "Missing platforms / caption" },
       { status: 400 }
     );
   }
-  if (!Array.isArray(body.mediaUrls) || body.mediaUrls.length === 0) {
-    return NextResponse.json(
-      { error: "At least one mediaUrl is required" },
-      { status: 400 }
-    );
-  }
+  const body = parsed.data;
 
   const uploadPostUsername =
     body.uploadPostUsername?.trim() ||

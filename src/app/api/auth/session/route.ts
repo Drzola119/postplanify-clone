@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { SESSION_COOKIE, SESSION_MAX_AGE_MS, createSessionCookie, getCurrentUser } from "@/lib/firebase/admin";
 import { createLogger } from "@/lib/log";
+import { parseBody } from "@/lib/validation/helpers";
 
 const log = createLogger("auth/session");
+
+const sessionSchema = z.object({
+  idToken: z.string().min(1),
+});
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -10,10 +16,11 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => null)) as { idToken?: string } | null;
-  if (!body?.idToken) {
+  const parsed = await parseBody(request, sessionSchema);
+  if (!parsed.ok || !parsed.data) {
     return NextResponse.json({ error: "Missing idToken" }, { status: 400 });
   }
+  const body = parsed.data;
 
   // Try to mint a proper Firebase session cookie. If that fails (e.g. Node
   // version mismatch with firebase-admin, network issues, missing credentials),

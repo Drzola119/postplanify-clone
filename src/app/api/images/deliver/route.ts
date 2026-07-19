@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { randomUUID } from "crypto";
+import { z } from "zod";
 import { requireSession } from "@/lib/auth/session-context";
 import {
   EngineError,
@@ -12,8 +13,20 @@ import { readCache } from "@/lib/db/account-health";
 import { createPost, updatePost } from "@/lib/db/posts";
 import { toEnginePlatform } from "@/lib/images/platform-ratios";
 import { createLogger } from "@/lib/log";
+import { parseBody } from "@/lib/validation/helpers";
 
 const log = createLogger("api/images/deliver");
+
+const deliverPayloadSchema = z.object({
+  jobId: z.string().min(1),
+  caption: z.string().min(1),
+  hashtags: z.string().optional(),
+  scheduledAt: z.string().nullable().optional(),
+  firstComment: z.string().optional(),
+  mediaType: z.string().optional(),
+  advancedByPlatform: z.record(z.string(), z.unknown()).optional(),
+  sourceMediaUrl: z.string().optional(),
+});
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -120,17 +133,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Empty Firebase ID token" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as Partial<DeliverPayload> | null;
-  if (!body?.jobId || typeof body.jobId !== "string") {
-    return NextResponse.json({ error: "Missing jobId" }, { status: 400 });
+  const parsed = await parseBody(request, deliverPayloadSchema);
+  if (!parsed.ok || !parsed.data) {
+    return NextResponse.json({ error: "Missing jobId or caption" }, { status: 400 });
   }
-  if (!body.caption || typeof body.caption !== "string") {
-    return NextResponse.json({ error: "Missing caption" }, { status: 400 });
-  }
-  // After validation, `body` is guaranteed to have jobId/caption. Cast
-  // once so downstream code (incl. callbacks) sees non-nullable fields.
-  const safeBody = body as Required<Pick<DeliverPayload, "jobId" | "caption">> &
-    DeliverPayload;
+  const safeBody = parsed.data;
 
   // ── 1. Resolve upload-post credentials (workspace-scoped) ─────────────
   let uploadPostApiKey: string;
@@ -273,7 +280,7 @@ export async function POST(request: NextRequest) {
         username: uploadPostUsername,
         caption: safeBody.caption ?? "",
         ...(safeBody.firstComment ? { firstComment: safeBody.firstComment } : {}),
-        ...(platformAdvancedOpts ? { advancedOptions: platformAdvancedOpts } : {}),
+        ...(platformAdvancedOpts && Object.keys(platformAdvancedOpts).length ? { advancedOptions: platformAdvancedOpts as Record<string, string | number | boolean | string[] | undefined> } : {}),
         jobId: safeBody.jobId,
       });
     })

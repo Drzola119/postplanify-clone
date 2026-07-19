@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { adminAuth, adminDb } from "@/lib/firebase/admin";
 import { getCurrentUser } from "@/lib/firebase/admin";
 import { SESSION_COOKIE, SESSION_MAX_AGE_MS } from "@/lib/firebase/admin";
-import { jsonError, jsonOk } from "@/lib/validation/helpers";
+import { jsonError, jsonOk, parseBody } from "@/lib/validation/helpers";
+
+const workspaceSwitchSchema = z.object({
+  workspaceId: z.string().min(1),
+});
 
 /**
  * Switch the active workspace for the current session. Mints a new session
@@ -13,14 +18,11 @@ export async function POST(request: NextRequest) {
   if (!user) return jsonError(401, "Unauthorized");
   if (!adminAuth || !adminDb) return jsonError(503, "Auth/DB not configured");
 
-  let body: { workspaceId?: string };
-  try {
-    body = await request.json();
-  } catch {
-    return jsonError(400, "Invalid JSON body");
+  const parsed = await parseBody(request, workspaceSwitchSchema);
+  if (!parsed.ok || !parsed.data) {
+    return jsonError(400, "workspaceId is required");
   }
-  const workspaceId = body.workspaceId;
-  if (!workspaceId) return jsonError(400, "workspaceId is required");
+  const workspaceId = parsed.data.workspaceId;
 
   // Verify membership.
   const memberSnap = await adminDb.doc(`workspaces/${workspaceId}/members/${user.uid}`).get();

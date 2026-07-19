@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth/session-context";
 import { MissingServerSecretError, resolvers } from "@/lib/security/server-config";
 import { readCache, writeCache } from "@/lib/db/account-health";
 import { ingestDailyMetric } from "@/lib/db/analytics";
+import { toInternalPlatform } from "@/lib/platforms";
 import { jsonError, jsonOk } from "@/lib/validation/helpers";
 import { createLogger } from "@/lib/log";
 import type { PlatformId } from "@/lib/db/schema";
@@ -95,18 +96,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // For each connected account, try to ingest basic stats — upload-post.com
-    // returns profile metadata only (no follower counts, etc.), so we store
-    // what we have. Rich daily metrics are populated via the ingest endpoint.
-    const UP_ACCT_TO_PLATFORM: Record<string, PlatformId> = {
-      tiktok: "tiktok", facebook: "facebook", x: "twitter", bluesky: "bluesky",
-      instagram: "instagram", youtube: "youtube", threads: "threads",
-      pinterest: "pinterest", linkedin: "linkedin",
-      google_business: "google_business", reddit: "bluesky", discord: "discord", telegram: "telegram",
-    };
     const today = new Date();
     for (const acct of accounts) {
-      const pid = UP_ACCT_TO_PLATFORM[acct.platform] ?? "bluesky";
+      const pid = toInternalPlatform(acct.platform) as PlatformId;
       try {
         await ingestDailyMetric(session.workspaceId, today, pid, {
           followers: 0,

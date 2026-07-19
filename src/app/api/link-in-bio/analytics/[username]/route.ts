@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { requireSession } from "@/lib/auth/session-context";
 import { getAnalytics, recordClick, recordView } from "@/lib/db/link-in-bio";
 import { jsonOk } from "@/lib/validation/helpers";
+
+const analyticsEventSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("click"), linkId: z.string().min(1) }),
+  z.object({ type: z.literal("view") }),
+]);
 
 export async function GET(
   _request: NextRequest,
@@ -22,13 +28,15 @@ export async function POST(
   if (!/^[a-z0-9_-]{3,30}$/.test(username)) {
     return NextResponse.json({ error: "Invalid username" }, { status: 400 });
   }
-  const body = await request.json().catch(() => ({})) as { type?: string; linkId?: string };
-  if (body.type === "click" && body.linkId) {
-    void recordClick(username, body.linkId).catch(() => {});
-  } else if (body.type === "view") {
-    void recordView(username).catch(() => {});
-  } else {
+  const parsed = analyticsEventSchema.safeParse(await request.json().catch(() => ({})));
+  if (!parsed.success) {
     return NextResponse.json({ error: "Invalid analytics event" }, { status: 400 });
+  }
+  const body = parsed.data;
+  if (body.type === "click") {
+    void recordClick(username, body.linkId).catch(() => {});
+  } else {
+    void recordView(username).catch(() => {});
   }
   return NextResponse.json({ ok: true });
 }

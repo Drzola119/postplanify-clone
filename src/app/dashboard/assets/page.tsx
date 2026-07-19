@@ -29,6 +29,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/toast";
 
 type Tab = "all" | "images" | "videos";
 type ViewMode = "grid" | "list";
@@ -37,12 +38,13 @@ type Sort = "newest" | "oldest" | "name" | "size" | "type";
 interface MediaAsset {
   id: string;
   name: string;
-  size: number; // bytes
+  size: number;
   type: "image" | "video" | "doc";
   folder: string;
   tags: string[];
-  uploadedAt: string; // ISO
-  thumbnail: string; // url or gradient
+  uploadedAt: string;
+  thumbnail: string;
+  storedPath: string;
   width?: number;
   height?: number;
   duration?: number;
@@ -59,6 +61,7 @@ interface ApiMediaAsset {
   height?: number;
   duration?: number;
   tags?: string[];
+  storedPath?: string;
   uploadedAt?: string;
 }
 
@@ -78,6 +81,7 @@ const SAMPLE_ASSETS: MediaAsset[] = [
     type: "video",
     folder: "",
     tags: [],
+    storedPath: "",
     uploadedAt: "2026-06-23",
     thumbnail: "https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=400&q=75",
     isVideo: true,
@@ -90,6 +94,7 @@ const SAMPLE_ASSETS: MediaAsset[] = [
     type: "image",
     folder: "",
     tags: [],
+    storedPath: "",
     uploadedAt: "2026-06-23",
     thumbnail: "https://images.unsplash.com/photo-1574144611937-0df059b5ef3e?w=200&q=75",
   },
@@ -100,6 +105,7 @@ const SAMPLE_ASSETS: MediaAsset[] = [
     type: "image",
     folder: "",
     tags: [],
+    storedPath: "",
     uploadedAt: "2026-06-23",
     thumbnail: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=200&q=75",
   },
@@ -110,6 +116,7 @@ const SAMPLE_ASSETS: MediaAsset[] = [
     type: "image",
     folder: "",
     tags: [],
+    storedPath: "",
     uploadedAt: "2026-06-23",
     thumbnail: "https://images.unsplash.com/photo-1535930891776-0c2dfb7fda1a?w=200&q=75",
   },
@@ -131,6 +138,7 @@ function formatDate(iso: string): string {
 }
 
 export default function AssetsPage() {
+  const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("all");
   const [view, setView] = useState<ViewMode>("list");
   const [sort, setSort] = useState<Sort>("newest");
@@ -163,6 +171,7 @@ export default function AssetsPage() {
             : "doc",
           folder: "",
           tags: a.tags ?? [],
+          storedPath: a.storedPath ?? "",
           uploadedAt: a.uploadedAt ?? new Date().toISOString(),
           thumbnail: a.url,
           width: a.width,
@@ -215,6 +224,7 @@ export default function AssetsPage() {
   const [preview, setPreview] = useState<MediaAsset | null>(null);
   const [sortOpen, setSortOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ asset: MediaAsset; x: number; y: number } | null>(null);
+  const [tagTargetAsset, setTagTargetAsset] = useState<string | null>(null);
 
   // Escape key handler for modals
   useEffect(() => {
@@ -335,6 +345,7 @@ export default function AssetsPage() {
                   : "doc",
                 folder: "",
                 tags: a.tags ?? [],
+                storedPath: a.storedPath ?? "",
                 uploadedAt: a.uploadedAt ?? new Date().toISOString(),
                 thumbnail: a.url,
                 width: a.width,
@@ -586,7 +597,7 @@ export default function AssetsPage() {
           }}
         />
       )}
-      {tagsOpen && <TagsPanel onClose={() => setTagsOpen(false)} />}
+      {tagsOpen && <TagsPanel targetAssetId={tagTargetAsset} onClose={() => { setTagsOpen(false); setTagTargetAsset(null); }} />}
       {preview && <PreviewModal asset={preview} onClose={() => setPreview(null)} />}
       {contextMenu && (
         <ContextMenu
@@ -595,6 +606,9 @@ export default function AssetsPage() {
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
           onPreview={() => { setPreview(contextMenu.asset); setContextMenu(null); }}
+          onDelete={(id) => setAssets((prev) => prev.filter((a) => a.id !== id))}
+          onTag={(id) => { setTagTargetAsset(id); setTagsOpen(true); }}
+          toast={toast}
         />
       )}
     </div>
@@ -979,7 +993,7 @@ function saveLocalTags(tags: { name: string; assets: number }[]) {
   localStorage.setItem(LOCAL_TAGS_KEY, JSON.stringify(tags));
 }
 
-function TagsPanel({ onClose }: { onClose: () => void }) {
+function TagsPanel({ onClose, targetAssetId }: { onClose: () => void; targetAssetId?: string | null }) {
   const [tags, setTags] = useState<{ name: string; assets: number }[]>(loadLocalTags);
   const [input, setInput] = useState("");
 
@@ -1020,6 +1034,11 @@ function TagsPanel({ onClose }: { onClose: () => void }) {
             <X className="size-5" />
           </button>
         </div>
+        {targetAssetId && (
+          <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 text-xs text-blue-700">
+            Tagging asset: <span className="font-mono font-medium">{targetAssetId.slice(0, 8)}…</span>
+          </div>
+        )}
 
         <div className="p-4 border-b border-zinc-100">
           <div className="flex gap-2">
@@ -1143,7 +1162,7 @@ function Row({ label, value }: { label: string; value: string }) {
 
 /* ============================== CONTEXT MENU ============================== */
 
-function ContextMenu({ asset, x, y, onClose, onPreview }: { asset: MediaAsset; x: number; y: number; onClose: () => void; onPreview: () => void }) {
+function ContextMenu({ asset, x, y, onClose, onPreview, onDelete, onTag, toast }: { asset: MediaAsset; x: number; y: number; onClose: () => void; onPreview: () => void; onDelete: (id: string) => void; onTag: (id: string) => void; toast: (opts: { tone: "success" | "error" | "warning" | "info"; title: string }) => void }) {
   return (
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
@@ -1152,13 +1171,13 @@ function ContextMenu({ asset, x, y, onClose, onPreview }: { asset: MediaAsset; x
         style={{ left: x, top: y }}
       >
         <MenuItem icon={Eye} label="Preview" onClick={onPreview} />
-        <MenuItem icon={Download} label="Download" onClick={onClose} />
-        <MenuItem icon={Copy} label="Copy link" onClick={onClose} />
-        <MenuItem icon={Move} label="Move to folder" onClick={onClose} />
-        <MenuItem icon={TagIcon} label="Add tag" onClick={onClose} />
-        <MenuItem icon={Edit3} label="Rename" onClick={onClose} />
+        <MenuItem icon={Download} label="Download" onClick={() => { window.open(asset.thumbnail, "_blank"); onClose(); }} />
+        <MenuItem icon={Copy} label="Copy link" onClick={async () => { await navigator.clipboard.writeText(asset.thumbnail); toast({ tone: "info", title: "Link copied to clipboard" }); onClose(); }} />
+        <MenuItem icon={Move} label="Move to folder" onClick={() => { const folder = window.prompt("Enter folder name:"); if (folder?.trim()) { toast({ tone: "info", title: "Move not yet implemented" }); } onClose(); }} />
+        <MenuItem icon={TagIcon} label="Add tag" onClick={() => { onTag(asset.id); onClose(); }} />
+        <MenuItem icon={Edit3} label="Rename" onClick={() => { const name = window.prompt("Enter new name:"); if (name?.trim()) { toast({ tone: "info", title: "Rename not yet implemented" }); } onClose(); }} />
         <div className="my-1 border-t border-zinc-100" />
-        <MenuItem icon={Trash2} label="Delete" onClick={onClose} danger />
+        <MenuItem icon={Trash2} label="Delete" onClick={() => { if (window.confirm(`Delete "${asset.name}"?`)) { fetch("/api/media/delete", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ storedPath: asset.storedPath }) }).then(() => onDelete(asset.id)).catch(() => {}); } onClose(); }} danger />
       </div>
     </>
   );

@@ -1,15 +1,17 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { requireSession } from "@/lib/auth/session-context";
 import { getPost, updatePost, softDeletePost } from "@/lib/db/posts";
 import { createLogger } from "@/lib/log";
+import { parseBody } from "@/lib/validation/helpers";
 
 const log = createLogger("posts/scheduled/[id]");
 
-interface PatchBody {
-  scheduledAt?: string;
-  status?: "scheduled" | "queued" | "paused";
-}
+const patchSchema = z.object({
+  scheduledAt: z.string().optional(),
+  status: z.enum(["scheduled", "queued", "paused"]).optional(),
+});
 
 export async function PATCH(
   request: NextRequest,
@@ -30,10 +32,11 @@ export async function PATCH(
     );
   }
 
-  const body = (await request.json().catch(() => null)) as PatchBody | null;
-  if (!body) {
+  const parsed = await parseBody(request, patchSchema);
+  if (!parsed.ok || !parsed.data) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
+  const body = parsed.data;
 
   const patch: Record<string, unknown> = {};
 

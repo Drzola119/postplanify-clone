@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { adminDb } from "@/lib/db";
+
+const subscribeSchema = z.object({
+  email: z.string().email(),
+});
 
 export async function POST(request: NextRequest) {
   try {
-    const { email } = await request.json() as { email?: string };
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const parsed = subscribeSchema.safeParse(await request.json().catch(() => ({})));
+    if (!parsed.success) {
       return NextResponse.json({ error: "Invalid email address" }, { status: 400 });
     }
+    const { email } = parsed.data;
     if (!adminDb) {
       return NextResponse.json({ error: "Service unavailable" }, { status: 503 });
     }

@@ -10,6 +10,7 @@ import {
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
+import { toInternalPlatform } from "@/lib/platforms";
 
 // ============================================================
 // Types
@@ -79,26 +80,9 @@ const FALLBACK_ACCOUNTS: AccountSummary[] = [
 
 // Map upload-post.com platform key → our Platform type
 function toPlatform(key: string): Platform {
-  switch (key) {
-    case "tiktok": return "tiktok";
-    case "facebook": return "facebook";
-    case "x": return "twitter";
-    case "bluesky": return "bluesky";
-    case "instagram": return "instagram";
-    case "youtube": return "youtube";
-    case "threads": return "threads";
-    case "pinterest": return "pinterest";
-    case "linkedin": return "linkedin";
-    case "google_business":
-    case "reddit":
-    case "discord":
-    case "telegram":
-    default:
-      // UI doesn't have a dedicated card for these yet — fall back to bluesky
-      // so the avatar still renders. They'll appear with the same accent but
-      // display a generic state until we add per-platform detail views.
-      return "bluesky";
-  }
+  const p = toInternalPlatform(key);
+  if (p in PLATFORM_ACCENT) return p as Platform;
+  return "bluesky";
 }
 
 // Convert upload-post.com ConnectedAccountDTO → AccountSummary

@@ -25,9 +25,9 @@ const PLANS: Plan[] = [
   {
     name: "Growth",
     description: "For small teams and solo agency owners managing a few accounts.",
-    monthly: 99,
-    yearly: 69,
-    yearlyTotal: 828,
+    monthly: 79,
+    yearly: 63,
+    yearlyTotal: 756,
     features: [
       "15 Social Accounts",
       "5 Workspaces",
@@ -50,9 +50,9 @@ const PLANS: Plan[] = [
     name: "Premium",
     tag: "Most Popular",
     description: "For growing agencies with full team collaboration features.",
-    monthly: 199,
-    yearly: 149,
-    yearlyTotal: 1788,
+    monthly: 159,
+    yearly: 127,
+    yearlyTotal: 1524,
     features: [
       "Everything in Growth, plus:",
       "30 Social Accounts",
@@ -73,9 +73,9 @@ const PLANS: Plan[] = [
   {
     name: "Scale",
     description: "For established agencies managing dozens of clients + need white-label.",
-    monthly: 349,
-    yearly: 249,
-    yearlyTotal: 2988,
+    monthly: 239,
+    yearly: 191,
+    yearlyTotal: 2292,
     features: [
       "Everything in Premium, plus:",
       "100 Social Accounts",

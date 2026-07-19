@@ -622,6 +622,18 @@ export default function SettingsPage() {
   // Subscription state
   const [autoRenew, setAutoRenew] = useState(true);
   const [showCancel, setShowCancel] = useState(false);
+  const [stripeConfigured, setStripeConfigured] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    fetch("/api/billing/portal", { method: "POST", body: "{}", signal: controller.signal })
+      .then((res) => { if (!cancelled) setStripeConfigured(res.status !== 503); })
+      .catch(() => { if (!cancelled) setStripeConfigured(false); })
+      .finally(() => clearTimeout(timeout));
+    return () => { cancelled = true; controller.abort(); };
+  }, []);
 
   // Notifications state
   const [notif, setNotif] = useState({
@@ -1078,13 +1090,22 @@ export default function SettingsPage() {
               </div>
 
               <div className="p-6 pt-0 space-y-4">
+                {stripeConfigured === false && (
+                  <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
+                    <Info className="size-4 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium">Stripe billing is not configured.</p>
+                      <p className="mt-1 text-amber-800">Stripe billing requires STRIPE_SECRET_KEY env var.</p>
+                    </div>
+                  </div>
+                )}
                 {/* Single combined card with all info */}
                 <div className="rounded-lg border border-zinc-200 bg-white">
                   {/* Plan + auto-renew */}
                   <div className="flex items-start justify-between gap-4 p-5 flex-wrap">
                     <div className="min-w-0">
                       <p className="text-2xl font-bold text-zinc-900">
-                        $99.00
+                        $79.00
                         <span className="text-sm font-medium text-zinc-500">/monthly</span>
                       </p>
                     </div>
@@ -1117,7 +1138,7 @@ export default function SettingsPage() {
                   {/* Current period */}
                   <div className="flex items-center justify-between p-5">
                     <p className="text-sm text-zinc-700">Current period</p>
-                    <p className="text-sm text-zinc-700">22/06/2026 - 29/06/2026</p>
+                    <p className="text-sm text-zinc-700">N/A</p>
                   </div>
 
                   <div className="border-t border-zinc-200" />
@@ -1180,7 +1201,7 @@ export default function SettingsPage() {
         onClose={() => setShowCancel(false)}
         onConfirm={handleCancelSubscription}
         title="Cancel subscription?"
-        description="Your subscription will remain active until Jul 27, 2026. After that, your account will switch to the Free plan and you'll lose access to premium features."
+        description="Your subscription will remain active until the end of the current billing period. After that, your account will switch to the Free plan and you'll lose access to premium features."
         confirmText="Cancel subscription"
         cancelText="Keep subscription"
         destructive

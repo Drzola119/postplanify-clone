@@ -7,6 +7,7 @@ import {
   writeCache,
   type CachedAccount,
 } from "@/lib/db/account-health";
+import { toInternalPlatform } from "@/lib/platforms";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,10 +27,6 @@ const SUPPORTED_PLATFORMS = [
   "reddit",
   "google_business",
 ] as const;
-
-function toInternalPlatform(key: string): string {
-  return key === "x" ? "twitter" : key;
-}
 
 interface UploadPostAccount {
   display_name?: string;

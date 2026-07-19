@@ -169,3 +169,8 @@ export const PLATFORMS: PlatformMeta[] = [
 export function getPlatform(id: string): PlatformMeta | undefined {
   return PLATFORMS.find((p) => p.id === id);
 }
+
+export function toInternalPlatform(key: string): string {
+  if (key === "x") return "twitter";
+  return key;
+}

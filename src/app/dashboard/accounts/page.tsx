@@ -439,7 +439,7 @@ export default function AccountsPage() {
         else if (key === "pinterest") key = "pinterest";
         else if (key === "threads") key = "threads";
         else if (key === "bluesky") key = "bluesky";
-        else if (key === "x" || key.includes("twitter")) key = "x";
+        else if (key === "x" || key === "twitter") key = "x";
         url.searchParams.set("platform", key);
       }
 

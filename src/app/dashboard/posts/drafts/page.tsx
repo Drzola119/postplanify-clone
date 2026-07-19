@@ -28,7 +28,7 @@ type Platform =
   | "pinterest"
   | "threads"
   | "bluesky"
-  | "x"
+  | "twitter"
   | "youtube"
   | "facebook"
   | "tiktok"
@@ -63,7 +63,7 @@ const PLATFORM_META: Record<Platform, { label: string }> = {
   pinterest: { label: "Pinterest" },
   threads: { label: "Threads" },
   bluesky: { label: "Bluesky" },
-  x: { label: "X" },
+  twitter: { label: "X" },
   youtube: { label: "YouTube" },
   facebook: { label: "Facebook" },
   tiktok: { label: "TikTok" },
@@ -75,7 +75,7 @@ const SAMPLE_ACCOUNTS: DraftAccount[] = [
   { id: "2", handle: "nicklorance7", platform: "pinterest" },
   { id: "3", handle: "nicklorance7", platform: "threads" },
   { id: "4", handle: "nicklorance.bsky.social", platform: "bluesky" },
-  { id: "5", handle: "LoranceNic36048", platform: "x" },
+  { id: "5", handle: "LoranceNic36048", platform: "twitter" },
   { id: "6", handle: "Zakaria 11", platform: "youtube" },
   { id: "7", handle: "nick lorance life", platform: "facebook" },
   { id: "8", handle: "nick_lorance", platform: "tiktok" },
@@ -110,8 +110,8 @@ function recordToRow(r: DraftRecord): Draft {
     caption,
     accounts: (r.selected ?? []).map((p, i) => ({
       id: `${r.id}-${p}-${i}`,
-      handle: SAMPLE_ACCOUNTS.find((a) => a.platform === (p === "twitter" ? "x" : p))?.handle ?? p,
-      platform: (p === "twitter" ? "x" : p) as Platform,
+      handle: SAMPLE_ACCOUNTS.find((a) => a.platform === p)?.handle ?? p,
+      platform: p as Platform,
     })),
     createdDate: date.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
     createdTime: date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }),

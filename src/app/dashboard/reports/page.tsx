@@ -76,7 +76,7 @@ const SAMPLE_ACCOUNTS: Account[] = [
   { id: "a6", name: "nicklorance7", platform: "pinterest", color: "#E60023" },
   { id: "a7", name: "nick lorance life", platform: "facebook", color: "#1877F2" },
   { id: "a8", name: "Nick Lorance", platform: "linkedin", color: "#0A66C2" },
-  { id: "a9", name: "LoranceNic36048", platform: "x", color: "#000000" },
+  { id: "a9", name: "LoranceNic36048", platform: "twitter", color: "#000000" },
 ];
 
 const PLATFORM_ICONS: Record<string, ReactNode> = {
@@ -88,7 +88,7 @@ const PLATFORM_ICONS: Record<string, ReactNode> = {
   pinterest: <PlatformAvatar size={14} rounded="full" platform={getPlatform("pinterest")!} />,
   facebook: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("facebook")!} />,
   linkedin: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("linkedin")!} />,
-  x: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("twitter")!} />,
+  twitter: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("twitter")!} />,
 };
 
 const COMPARE_OPTIONS: { id: CompareMode; label: string }[] = [

@@ -1,6 +1,13 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { requireSession } from "@/lib/auth/session-context";
-import { jsonError, jsonOk } from "@/lib/validation/helpers";
+import { jsonError, jsonOk, parseBody } from "@/lib/validation/helpers";
+
+const checkoutSchema = z.object({
+  planId: z.string().min(1),
+  successUrl: z.string().url().max(2048),
+  cancelUrl: z.string().url().max(2048),
+});
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,19 +20,16 @@ export async function POST(request: NextRequest) {
     return jsonError(503, "Billing not configured");
   }
 
-  const { planId, successUrl, cancelUrl } = await request.json() as {
-    planId?: string;
-    successUrl?: string;
-    cancelUrl?: string;
-  };
+  const parsed = await parseBody(request, checkoutSchema);
+  if (!parsed.ok || !parsed.data) {
+    return jsonError(400, "Invalid payload", parsed.error?.issues);
+  }
+  const { planId, successUrl, cancelUrl } = parsed.data;
 
   const { PLANS, createCheckoutSession, getOrCreateCustomer } = await import("@/lib/stripe");
 
-  if (!planId || !(planId in PLANS)) {
+  if (!(planId in PLANS)) {
     return jsonError(400, "Invalid plan");
-  }
-  if (!successUrl || !cancelUrl) {
-    return jsonError(400, "Missing successUrl or cancelUrl");
   }
 
   const plan = PLANS[planId as keyof typeof PLANS];

@@ -1,15 +1,33 @@
 import "server-only";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { getCurrentUser } from "@/lib/firebase/admin";
 import { MissingServerSecretError, resolvers } from "@/lib/security/server-config";
 import { buildCaptionPrompt } from "@/lib/ai/caption-templates";
 import { callGroq, GroqError, GroqMessage, GROQ_VISION_MODEL, GROQ_TEXT_MODEL } from "@/lib/ai/groq";
+import { parseBody } from "@/lib/validation/helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_PROMPT_LEN = 1200;
 const MAX_EXTRA_LEN = 400;
+
+const captionRequestSchema = z.object({
+  tone: z.string().optional().default("default"),
+  voice: z.string().nullable().optional(),
+  template: z.string().nullable().optional(),
+  includeHashtags: z.boolean().optional().default(false),
+  useEmojis: z.boolean().optional().default(false),
+  extra: z.string().optional(),
+  platforms: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    charLimit: z.number(),
+  })).optional(),
+  imageUrl: z.string().nullable().optional(),
+  videoTitle: z.string().nullable().optional(),
+});
 
 interface CaptionRequest {
   tone: string;
@@ -90,12 +108,11 @@ export async function POST(request: Request) {
     throw err;
   }
 
-  let body: CaptionRequest;
-  try {
-    body = (await request.json()) as CaptionRequest;
-  } catch {
+  const parsed = await parseBody(request, captionRequestSchema);
+  if (!parsed.ok || !parsed.data) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
+  const body = parsed.data;
 
   const tone = typeof body.tone === "string" ? body.tone.slice(0, 32) : "default";
   const includeHashtags = !!body.includeHashtags;
