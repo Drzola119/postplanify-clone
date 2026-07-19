@@ -41,7 +41,7 @@ export const metadata: Metadata = {
     title: "Instagram Carousel Splitter — Free Online Tool | PostPlanify",
     description:
       "Split any image into perfectly sized Instagram carousel slides. 100% free, runs in your browser, no signup.",
-    images: ["/seo/postplanify-og-image.png"],
+    images: ["/opengraph-image"],
   },
 };
 

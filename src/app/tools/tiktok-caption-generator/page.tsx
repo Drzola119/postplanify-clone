@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     title: "Free TikTok Caption Generator — AI Captions + Hashtags (2026)",
     description:
       "Free AI-powered TikTok caption generator. Get viral, FYP-ready captions with trending hashtag suggestions in seconds.",
-    images: ["/seo/postplanify-og-image.png"],
+    images: ["/opengraph-image"],
   },
 };
 

@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     title: "Free Instagram Handle Checker — Check Username Availability (2026)",
     description:
       "Free Instagram handle checker. Validate format, find alternatives, and check Instagram username availability instantly.",
-    images: ["/seo/postplanify-og-image.png"],
+    images: ["/opengraph-image"],
   },
 };
 

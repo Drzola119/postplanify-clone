@@ -29,7 +29,7 @@ export const metadata: Metadata = {
     title: "PostPlanify: Social Media Management for Agencies and Teams",
     description:
       "Manage all your social media in one place. Schedule posts, track analytics, manage comments and messages, and collaborate with your team across 10 platforms.",
-    images: ["/seo/postplanify-og-image.png"],
+    images: ["/opengraph-image"],
   },
 };
 

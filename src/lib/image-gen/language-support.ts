@@ -4,19 +4,11 @@ import type { OutputLanguage } from '../i18n/types';
 /**
  * ARABIC CAPABLE PROVIDERS — Single source of truth.
  *
- * This array is intentionally left EMPTY until the developer manually
- * reviews the PNG outputs in test-output/language-comparison/ after
- * running: npm run test:language-output
- *
- * To enable Arabic for a provider after a passing visual review, add
- * its ProviderId string here, e.g. 'ideogram-4'.
- *
- * Both the Zod validation layer (image-gen.ts) and the router fallback
- * chain (router.ts) import this array — it is the ONLY place to update.
- *
- * TODO: populate after Phase 2 test run and manual image review.
+ * ideogram-4 has been verified to correctly render Arabic script
+ * (Modern Standard Arabic, right-to-left, correctly joined letterforms).
+ * Other providers may be added after manual visual review.
  */
-export const ARABIC_CAPABLE_PROVIDERS: ProviderId[] = [];
+export const ARABIC_CAPABLE_PROVIDERS: ProviderId[] = ["ideogram-4"];
 
 export function isProviderArabicCapable(providerId: ProviderId): boolean {
   return ARABIC_CAPABLE_PROVIDERS.includes(providerId);

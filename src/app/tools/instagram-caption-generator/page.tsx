@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     title: "Free Instagram Caption Generator — AI Captions + Hashtags (2026)",
     description:
       "Free AI-powered Instagram caption generator. Get scroll-stopping captions with strategic hashtag suggestions in seconds.",
-    images: ["/seo/postplanify-og-image.png"],
+    images: ["/opengraph-image"],
   },
 };
 

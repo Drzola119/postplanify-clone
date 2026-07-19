@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     title: "Free Instagram Username Generator — AI Usernames (2026)",
     description:
       "Free AI-powered Instagram username generator. Generate creative, aesthetic Instagram usernames in seconds.",
-    images: ["/seo/postplanify-og-image.png"],
+    images: ["/opengraph-image"],
   },
 };
 

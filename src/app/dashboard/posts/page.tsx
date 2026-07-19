@@ -83,11 +83,17 @@ const STATUS_META: Record<PostStatus, { bg: string; text: string; border: string
   pending: { bg: "bg-amber-500/10", text: "text-amber-700", border: "border-amber-400", label: "Pending" },
 };
 
+function todayOffset(days: number) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 // ===== SAMPLE DATA =====
 const SAMPLE_POSTS: CalendarPost[] = [
   {
     id: "p1",
-    date: "2026-06-23",
+    date: todayOffset(0),
     time: "10:44",
     caption: "Your full reminder that cats do not need a gym membership...",
     status: "scheduled",
@@ -97,7 +103,7 @@ const SAMPLE_POSTS: CalendarPost[] = [
   },
   {
     id: "p2",
-    date: "2026-06-23",
+    date: todayOffset(0),
     time: "10:44",
     caption: "Productivity lessons from a black cat and a remote cat!...",
     status: "scheduled",
@@ -107,7 +113,7 @@ const SAMPLE_POSTS: CalendarPost[] = [
   },
   {
     id: "p3",
-    date: "2026-06-27",
+    date: todayOffset(4),
     time: "19:00",
     caption: "Saturday night content",
     status: "scheduled",
@@ -1089,11 +1095,16 @@ function ListView({ currentDate, posts, onPostClick, onBulkDelete }: { currentDa
   );
 }
 
+function todayLabel() {
+  const d = new Date();
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) + " 8:4";
+}
+
 const LIST_SAMPLE: (CalendarPost & { dateLabel: string })[] = [
   {
     id: "l1",
-    date: "2026-06-23",
-    dateLabel: "Jun 23, 2026 8:4",
+    date: todayOffset(0),
+    dateLabel: todayLabel(),
     caption: "Why you bought a tennis ball for fitness. Your cat likes hustle sideways...",
     status: "scheduled",
     platforms: ["twitter"],
@@ -1101,8 +1112,8 @@ const LIST_SAMPLE: (CalendarPost & { dateLabel: string })[] = [
   },
   {
     id: "l2",
-    date: "2026-06-23",
-    dateLabel: "Jun 23, 2026 8:4",
+    date: todayOffset(0),
+    dateLabel: todayLabel(),
     caption: "Ever seen a house panther descend quietly? 👀 This little shadow match has everything...",
     status: "published",
     platforms: ["instagram"],
@@ -1110,8 +1121,8 @@ const LIST_SAMPLE: (CalendarPost & { dateLabel: string })[] = [
   },
   {
     id: "l3",
-    date: "2026-06-23",
-    dateLabel: "Jun 23, 2026 8:4",
+    date: todayOffset(0),
+    dateLabel: todayLabel(),
     caption: "Your daily reminder that cats do not need a gym membership...",
     status: "published",
     platforms: ["bluesky"],
@@ -1119,8 +1130,8 @@ const LIST_SAMPLE: (CalendarPost & { dateLabel: string })[] = [
   },
   {
     id: "l4",
-    date: "2026-06-23",
-    dateLabel: "Jun 23, 2026 8:4",
+    date: todayOffset(0),
+    dateLabel: todayLabel(),
     caption: "A tennis ball entered his kitchen. The tiny panther chose violence...",
     status: "published",
     platforms: ["twitter"],
@@ -1128,8 +1139,8 @@ const LIST_SAMPLE: (CalendarPost & { dateLabel: string })[] = [
   },
   {
     id: "l5",
-    date: "2026-06-23",
-    dateLabel: "Jun 23, 2026 8:4",
+    date: todayOffset(0),
+    dateLabel: todayLabel(),
     caption: "Productivity lessons from a black cat and a remote cat! Focus on one target...",
     status: "published",
     platforms: ["linkedin"],
@@ -1137,8 +1148,8 @@ const LIST_SAMPLE: (CalendarPost & { dateLabel: string })[] = [
   },
   {
     id: "l6",
-    date: "2026-06-23",
-    dateLabel: "Jun 23, 2026 8:4",
+    date: todayOffset(0),
+    dateLabel: todayLabel(),
     caption: "Not in the dramatic, but the cat in one paw away from a sports documentary...",
     status: "published",
     platforms: ["tiktok"],
@@ -1146,8 +1157,8 @@ const LIST_SAMPLE: (CalendarPost & { dateLabel: string })[] = [
   },
   {
     id: "l7",
-    date: "2026-06-23",
-    dateLabel: "Jun 23, 2026 8:4",
+    date: todayOffset(0),
+    dateLabel: todayLabel(),
     caption: "Watch cat play time, approved by one very serious dog partner...",
     status: "published",
     platforms: ["pinterest"],
@@ -1155,8 +1166,8 @@ const LIST_SAMPLE: (CalendarPost & { dateLabel: string })[] = [
   },
   {
     id: "l8",
-    date: "2026-06-23",
-    dateLabel: "Jun 23, 2026 8:4",
+    date: todayOffset(0),
+    dateLabel: todayLabel(),
     caption: "The panther no tennis ball. Kitchen floor edition. The ball is trying really...",
     status: "draft",
     platforms: ["instagram"],

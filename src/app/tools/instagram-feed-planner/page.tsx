@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     title: "Free Instagram Feed Planner — Visual Grid Preview (2026)",
     description:
       "Free Instagram feed planner. Plan and preview your Instagram grid before posting.",
-    images: ["/seo/postplanify-og-image.png"],
+    images: ["/opengraph-image"],
   },
 };
 

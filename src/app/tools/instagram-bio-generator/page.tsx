@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     title: "Free Instagram Bio Generator — AI Bios (2026)",
     description:
       "Free AI-powered Instagram bio generator. Create the perfect Instagram bio in seconds.",
-    images: ["/seo/postplanify-og-image.png"],
+    images: ["/opengraph-image"],
   },
 };
 

@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     title: "Free Instagram Image Resizer — Square, Story, Reel (2026)",
     description:
       "Free Instagram image resizer. Resize images to perfect dimensions for Instagram posts, Stories, Reels, and profile pictures.",
-    images: ["/seo/postplanify-og-image.png"],
+    images: ["/opengraph-image"],
   },
 };
 

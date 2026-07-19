@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     title: "Free Emoji Translator — Text to Emoji & Emoji to Text (2026)",
     description:
       "Free AI-powered emoji translator. Convert text to emojis or decode emoji messages to text instantly.",
-    images: ["/seo/postplanify-og-image.png"],
+    images: ["/opengraph-image"],
   },
 };
 
