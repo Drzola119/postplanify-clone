@@ -21,12 +21,25 @@ const STATUS_COLORS: Record<string, string> = {
   trialing: "bg-blue-50 text-blue-700",
 };
 
-export function SubscriptionsTableClient({ subscriptions }: { subscriptions: Subscription[] }) {
+export function SubscriptionsTableClient({
+  subscriptions: propSubs,
+  initialSubs,
+  filterTab = "all",
+  onCancel,
+  onGrantFreeMonth,
+}: {
+  subscriptions?: Subscription[];
+  initialSubs?: Subscription[];
+  filterTab?: string;
+  onCancel?: (id: string) => void;
+  onGrantFreeMonth?: (id: string) => void;
+}) {
+  const subsList = initialSubs || propSubs || [];
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(filterTab);
 
   const filtered = useMemo(() => {
-    let rows = subscriptions;
+    let rows = subsList;
     if (search.trim()) {
       const q = search.toLowerCase();
       rows = rows.filter(
@@ -35,7 +48,7 @@ export function SubscriptionsTableClient({ subscriptions }: { subscriptions: Sub
     }
     if (statusFilter !== "all") rows = rows.filter((s) => s.status === statusFilter);
     return rows;
-  }, [subscriptions, search, statusFilter]);
+  }, [subsList, search, statusFilter]);
 
   return (
     <div className="space-y-4">

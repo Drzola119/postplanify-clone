@@ -32,7 +32,24 @@ const STATUS_COLORS: Record<string, string> = {
   deleted: "bg-rose-50 text-rose-700",
 };
 
-export function UsersTableClient({ users }: { users: User[] }) {
+export function UsersTableClient({
+  users: propUsers,
+  initialUsers,
+  onImpersonate,
+  onChangePlan,
+  onSuspend,
+  onUnsuspend,
+  onDelete,
+}: {
+  users?: User[];
+  initialUsers?: User[];
+  onImpersonate?: (uid: string) => void;
+  onChangePlan?: (uid: string, plan: string) => void;
+  onSuspend?: (uid: string) => void;
+  onUnsuspend?: (uid: string) => void;
+  onDelete?: (uid: string) => void;
+}) {
+  const usersList = initialUsers || propUsers || [];
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<keyof User>("joined");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -40,7 +57,7 @@ export function UsersTableClient({ users }: { users: User[] }) {
   const [statusFilter, setStatusFilter] = useState("all");
 
   const filtered = useMemo(() => {
-    let rows = users;
+    let rows = usersList;
     if (search.trim()) {
       const q = search.toLowerCase();
       rows = rows.filter(
@@ -58,7 +75,7 @@ export function UsersTableClient({ users }: { users: User[] }) {
       const cmp = String(av).localeCompare(String(bv));
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [users, search, sortKey, sortDir, planFilter, statusFilter]);
+  }, [usersList, search, sortKey, sortDir, planFilter, statusFilter]);
 
   const toggleSort = (key: keyof User) => {
     if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
