@@ -27,19 +27,25 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function PostsTableClient({
-  posts,
+  posts: propPosts,
+  initialPosts,
+  onlyFailed = false,
   onRetry,
   onDelete,
 }: {
-  posts: Post[];
+  posts?: Post[];
+  initialPosts?: Post[];
+  onlyFailed?: boolean;
   onRetry?: (id: string) => void;
   onDelete?: (id: string) => void;
 }) {
+  const postsList = initialPosts || propPosts || [];
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(onlyFailed ? "failed" : "all");
 
   const filtered = useMemo(() => {
-    let rows = posts;
+    let rows = postsList;
+    if (onlyFailed) rows = rows.filter((p) => p.status === "failed");
     if (search.trim()) {
       const q = search.toLowerCase();
       rows = rows.filter(
@@ -48,7 +54,7 @@ export function PostsTableClient({
     }
     if (statusFilter !== "all") rows = rows.filter((p) => p.status === statusFilter);
     return rows;
-  }, [posts, search, statusFilter]);
+  }, [postsList, search, statusFilter, onlyFailed]);
 
   return (
     <div className="space-y-4">
