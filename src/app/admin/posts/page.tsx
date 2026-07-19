@@ -4,7 +4,7 @@ import { PostsTableClient } from "./_components/PostsTableClient";
 
 async function PostsFetcher() {
   const posts = await getPostsData();
-  return <PostsTableClient initialPosts={posts} />;
+  return <PostsTableClient posts={posts} />;
 }
 
 export default function AdminPostsPage() {
