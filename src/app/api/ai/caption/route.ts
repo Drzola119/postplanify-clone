@@ -3,13 +3,10 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/firebase/admin";
 import { MissingServerSecretError, resolvers } from "@/lib/security/server-config";
 import { buildCaptionPrompt } from "@/lib/ai/caption-templates";
+import { callGroq, GroqError, GroqMessage, GROQ_VISION_MODEL, GROQ_TEXT_MODEL } from "@/lib/ai/groq";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
-const VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
-const TEXT_MODEL = "llama-3.3-70b-versatile";
 
 const MAX_PROMPT_LEN = 1200;
 const MAX_EXTRA_LEN = 400;
@@ -126,7 +123,7 @@ export async function POST(request: Request) {
   }
 
   const useVision = !!imageUrl;
-  const model = useVision ? VISION_MODEL : TEXT_MODEL;
+  const model = useVision ? GROQ_VISION_MODEL : GROQ_TEXT_MODEL;
   const userPrompt = buildUserPrompt({
     tone,
     includeHashtags,
@@ -138,7 +135,7 @@ export async function POST(request: Request) {
   });
   const systemPrompt = buildSystemPrompt();
 
-  const messages: { role: "system" | "user"; content: unknown }[] = [
+  const messages: GroqMessage[] = [
     { role: "system", content: systemPrompt },
   ];
 
@@ -155,39 +152,25 @@ export async function POST(request: Request) {
   }
 
   try {
-    const groqRes = await fetch(GROQ_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0.8,
-        max_tokens: 600,
-        top_p: 0.95,
-        stream: false,
-      }),
+    const result = await callGroq({
+      apiKey,
+      model,
+      messages,
+      temperature: 0.8,
+      maxTokens: 600,
+      topP: 0.95,
     });
 
-    const data = (await groqRes.json().catch(() => ({}))) as {
-      choices?: { message?: { content?: string } }[];
-      error?: { message?: string };
-    };
-
-    if (!groqRes.ok) {
-      const msg = data?.error?.message ?? `Groq API error ${groqRes.status}`;
-      return NextResponse.json({ error: msg }, { status: groqRes.status >= 500 ? 502 : 400 });
-    }
-
-    const caption = data.choices?.[0]?.message?.content?.trim() ?? "";
+    const caption = result.content.trim();
     if (!caption) {
       return NextResponse.json({ error: "Empty caption from model" }, { status: 502 });
     }
 
     return NextResponse.json({ ok: true, caption, model });
   } catch (err) {
+    if (err instanceof GroqError) {
+      return NextResponse.json({ error: err.message }, { status: err.status >= 500 ? 502 : 400 });
+    }
     const msg = err instanceof Error ? err.message : "Groq request failed";
     return NextResponse.json({ error: msg }, { status: 502 });
   }

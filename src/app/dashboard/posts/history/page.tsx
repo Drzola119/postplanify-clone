@@ -173,10 +173,14 @@ export default function PublishHistoryPage() {
     return list;
   }, [posts, search]);
 
+  function esc(v: string) {
+    return /[,"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  }
+
   const csvHref = useMemo(() => {
     const headers = ["id", "status", "caption", "platforms", "publishedAt"];
     const rows = (filteredPosts.length ? filteredPosts : []).map((p) =>
-      [p.id, p.status, JSON.stringify(p.caption), p.platforms.join("|"), p.publishedAt ?? ""].join(","),
+      [esc(p.id), esc(p.status), esc(p.caption), esc(p.platforms.join("|")), esc(p.publishedAt ?? "")].join(","),
     );
     const csv = [headers.join(","), ...rows].join("\n");
     return URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));

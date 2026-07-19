@@ -17,7 +17,8 @@ export async function POST(request: NextRequest) {
   const replyId = await replyToComment(
     session.workspaceId,
     parsed.data.commentId,
-    parsed.data.body
+    parsed.data.body,
+    parsed.data.platform
   );
 
   // Fire-and-forget delivery — never blocks the response.

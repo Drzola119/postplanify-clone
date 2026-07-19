@@ -779,7 +779,7 @@ function EventCard({ post, onClick }: { post: CalendarPost; onClick?: () => void
   const status = STATUS_META[post.status];
   return (
     <div
-      draggable={false}
+      draggable={true}
       onClick={onClick}
       className={cn(
         "text-xs rounded px-1.5 py-1 transition-all flex items-center justify-between border flex-shrink-0 relative z-10 overflow-visible cursor-pointer hover:shadow-sm",

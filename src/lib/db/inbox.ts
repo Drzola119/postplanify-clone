@@ -125,13 +125,14 @@ export async function updateCommentSentiment(
 export async function replyToComment(
   workspaceId: string,
   commentId: string,
-  body: string
+  body: string,
+  platform: string = "twitter"
 ): Promise<string> {
   // Reply becomes a sibling message-like doc under comments collection with
   // direction metadata — we keep replies searchable alongside comments.
   const ref = commentsCollection(workspaceId).doc();
   await ref.set({
-    platform: "twitter",
+    platform,
     authorHandle: "you",
     body,
     sentAt: SERVER_TIMESTAMP,

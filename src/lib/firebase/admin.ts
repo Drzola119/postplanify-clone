@@ -74,30 +74,6 @@ export async function createSessionCookie(idToken: string): Promise<string | nul
   return adminAuth.createSessionCookie(idToken, { expiresIn: SESSION_MAX_AGE_MS });
 }
 
-/**
- * Unverified JWT payload decode — ONLY used as a last-resort fallback when
- * the admin SDK is configured (so the signature was already verified) but
- * the cookie happens to be a raw ID token rather than a session cookie.
- *
- * NEVER used when adminAuth is null: in that case the cookie was never
- * verified, so trusting its claims would be a security hole. Callers must
- * check `adminAuth` themselves to distinguish "unconfigured" from "verified".
- */
-function decodeUnverifiedJwt(token: string): { uid: string; email: string | null } | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    const payloadBuf = Buffer.from(parts[1], "base64");
-    const payload = JSON.parse(payloadBuf.toString("utf-8"));
-    const uid = payload.user_id || payload.sub;
-    if (!uid) return null;
-    return { uid, email: payload.email ?? null };
-  } catch (error) {
-    console.error("[firebase-admin] Failed to decode JWT:", error);
-    return null;
-  }
-}
-
 export async function verifySessionCookie(
   sessionCookie: string
 ): Promise<{ uid: string; email: string | null } | null> {
