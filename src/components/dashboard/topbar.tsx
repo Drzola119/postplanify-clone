@@ -1,10 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { BookOpen, Bell } from "lucide-react";
+import { BookOpen, Bell, ShieldAlert } from "lucide-react";
 import { LocaleSwitcher } from "@/components/ui/locale-switcher";
 import { useHelpSystem } from "@/components/dashboard/help/help-system";
+import { useAuth } from "@/contexts/AuthContext";
+import { isAdminUser } from "@/lib/firebase/admin-auth";
 
 function usePageTitle(t: (key: string) => string): string {
   const path = usePathname();
@@ -38,11 +41,21 @@ export function DashboardTopbar() {
   const t = useTranslations("shell");
   const pageTitle = usePageTitle(t);
   const { openLearn } = useHelpSystem();
+  const auth = useAuth();
 
   return (
     <header className="fixed top-0 left-0 right-0 lg:left-[240px] h-14 z-30 bg-white border-b border-zinc-200 flex items-center justify-between px-6">
       <span className="text-sm font-semibold text-zinc-800">{pageTitle}</span>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
+        {isAdminUser(auth.user) && (
+          <Link
+            href="/admin"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold transition-colors shadow-xs"
+          >
+            <ShieldAlert className="size-3.5 text-white" />
+            Admin Panel
+          </Link>
+        )}
         <LocaleSwitcher />
         <button
           type="button"

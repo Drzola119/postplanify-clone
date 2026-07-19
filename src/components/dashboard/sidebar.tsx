@@ -38,6 +38,9 @@ import { ACTIVE_WORKSPACE_STORAGE_KEY } from "@/lib/security/storage-keys";
 import { cn } from "@/lib/utils";
 import { useDrawer } from "@/components/dashboard/drawer-provider";
 import { UserMenu } from "@/components/dashboard/user-menu";
+import { useAuth } from "@/contexts/AuthContext";
+import { isAdminUser } from "@/lib/firebase/admin-auth";
+import { ShieldAlert } from "lucide-react";
 
 import { useTranslations } from "next-intl";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
@@ -297,6 +300,8 @@ export function DashboardSidebar() {
     }
   };
 
+  const auth = useAuth();
+
   return (
     <aside
       dir="ltr"
@@ -319,6 +324,19 @@ export function DashboardSidebar() {
         </Link>
         {/* Topbar now renders BookOpen + Bell + LocaleSwitcher */}
       </div>
+
+      {/* Admin Panel Button */}
+      {!collapsed && isAdminUser(auth.user) && (
+        <div className="px-3 pt-3 pb-1">
+          <Link
+            href="/admin"
+            className="flex items-center justify-center gap-2 h-9 rounded-md bg-teal-600 text-white text-xs font-bold hover:bg-teal-700 shadow-sm transition-colors"
+          >
+            <ShieldAlert className="size-4" />
+            Go to Admin Panel
+          </Link>
+        </div>
+      )}
 
       {/* Workspace selector */}
       {!collapsed && (
