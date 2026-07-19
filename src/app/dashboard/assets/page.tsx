@@ -582,7 +582,6 @@ export default function AssetsPage() {
         <NewFolderModal
           onClose={() => setNewFolderOpen(false)}
           onCreate={(name) => {
-            setFolders((prev) => [...prev, name]);
             setNewFolderOpen(false);
           }}
         />
