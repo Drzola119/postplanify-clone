@@ -3,8 +3,9 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { LogOut, ChevronUp, Settings } from "lucide-react";
+import { LogOut, ChevronUp, Settings, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { isAdminUser } from "@/lib/firebase/admin-auth";
 
 export function UserMenu() {
   const auth = useAuth();
@@ -81,6 +82,16 @@ export function UserMenu() {
 
       {open && (
         <div className="absolute bottom-full left-3 right-3 mb-1 rounded-lg border border-zinc-200 bg-white shadow-lg py-1 z-50">
+          {isAdminUser(auth.user) && (
+            <Link
+              href="/admin"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 px-3 h-9 text-sm text-teal-600 font-semibold hover:bg-teal-50 transition-colors"
+            >
+              <ShieldAlert className="size-4 text-teal-600" />
+              Go to Admin Panel
+            </Link>
+          )}
           <Link
             href="/dashboard/settings"
             onClick={() => setOpen(false)}

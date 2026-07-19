@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 const SESSION_COOKIE = "pp_session";
-const PROTECTED_PREFIXES = ["/dashboard"];
+const PROTECTED_PREFIXES = ["/dashboard", "/admin"];
 
 export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
@@ -21,20 +21,42 @@ export function middleware(request: NextRequest) {
   // session cookie to be PRESENT here. The cookie is HTTPOnly + signed
   // by Firebase; cryptographic verification is performed by the API
   // routes via `verifySessionCookie` (`src/lib/firebase/admin.ts`).
-  // This blocks direct URL access / link sharing for unauthenticated
-  // visitors and prevents search engines from indexing the dashboard.
   const isProtected = PROTECTED_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   );
 
   if (isProtected) {
-    const hasSession = request.cookies.get(SESSION_COOKIE)?.value;
-    if (!hasSession) {
+    const sessionCookie = request.cookies.get(SESSION_COOKIE)?.value;
+    if (!sessionCookie) {
       const loginUrl = request.nextUrl.clone();
       loginUrl.pathname = "/login";
       loginUrl.search = "";
       loginUrl.searchParams.set("next", pathname + search);
       return NextResponse.redirect(loginUrl);
+    }
+
+    if (pathname === "/admin" || pathname.startsWith("/admin/")) {
+      try {
+        const payloadBase64 = sessionCookie.split(".")[1];
+        if (payloadBase64) {
+          const base64 = payloadBase64.replace(/-/g, "+").replace(/_/g, "/");
+          const jsonPayload = decodeURIComponent(
+            atob(base64)
+              .split("")
+              .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+              .join("")
+          );
+          const decoded = JSON.parse(jsonPayload);
+          if (decoded?.email && decoded.email.toLowerCase() !== "edylabels@gmail.com") {
+            const dashboardUrl = request.nextUrl.clone();
+            dashboardUrl.pathname = "/dashboard";
+            dashboardUrl.search = "error=access_denied";
+            return NextResponse.redirect(dashboardUrl);
+          }
+        }
+      } catch {
+        // Fallback to server layout check if decoding fails
+      }
     }
   }
 
@@ -42,5 +64,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/_next/image"],
+  matcher: ["/dashboard/:path*", "/admin/:path*", "/_next/image"],
 };
