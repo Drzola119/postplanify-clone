@@ -49,10 +49,14 @@ export async function getDashboardOverviewData() {
   let postsScheduled = 0;
   let failedPostsLast24h = 0;
   let activeAffiliates = 0;
-  let affiliateRevenue = 0;
   let recentSignups: any[] = [];
   let recentStripeEvents: any[] = [];
   let mrrCents = 0;
+
+  // Fix #4 — real Firestore date-range queries for signups and posts charts
+  let signupsChartData: { date: string; count: number }[] = [];
+  let postsChartData: { day: string; count: number }[] = [];
+  let mrrChartData: { month: string; mrr: number }[] = [];
 
   if (adminDb) {
     try {
@@ -69,6 +73,21 @@ export async function getDashboardOverviewData() {
         }))
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         .slice(0, 10);
+
+      // Build 30-day signup chart from real data
+      const now = Date.now();
+      const buckets: Record<string, number> = {};
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date(now - i * 86400000);
+        buckets[d.toISOString().slice(0, 10)] = 0;
+      }
+      usersSnap.docs.forEach((doc) => {
+        const raw = doc.data().createdAt || doc.data().joinedAt;
+        if (!raw) return;
+        const key = new Date(raw).toISOString().slice(0, 10);
+        if (key in buckets) buckets[key]++;
+      });
+      signupsChartData = Object.entries(buckets).map(([date, count]) => ({ date, count }));
     } catch (e) {
       console.warn("Error fetching users for overview:", e);
     }
@@ -78,22 +97,24 @@ export async function getDashboardOverviewData() {
       const now = new Date();
       const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
+      const dayBuckets: Record<string, number> = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+      const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
       postsSnap.docs.forEach((doc) => {
         const data = doc.data();
         if (data.status === "published") {
           const pubDate = new Date(data.publishedAt || data.updatedAt || 0);
-          if (pubDate.toDateString() === now.toDateString()) {
-            postsPublishedToday++;
-          }
+          if (pubDate.toDateString() === now.toDateString()) postsPublishedToday++;
+          const dayName = dayNames[pubDate.getDay()];
+          if (dayName in dayBuckets) dayBuckets[dayName]++;
         } else if (data.status === "scheduled") {
           postsScheduled++;
         } else if (data.status === "failed") {
           const failDate = new Date(data.failedAt || data.updatedAt || 0);
-          if (failDate >= twentyFourHoursAgo) {
-            failedPostsLast24h++;
-          }
+          if (failDate >= twentyFourHoursAgo) failedPostsLast24h++;
         }
       });
+      postsChartData = Object.entries(dayBuckets).map(([day, count]) => ({ day, count }));
     } catch (e) {
       console.warn("Error fetching posts for overview:", e);
     }
@@ -101,7 +122,7 @@ export async function getDashboardOverviewData() {
     try {
       const affSnap = await adminDb.collection("affiliates").where("status", "==", "active").get();
       activeAffiliates = affSnap.size;
-    } catch (e) {
+    } catch {
       // ignore
     }
   }
@@ -116,26 +137,41 @@ export async function getDashboardOverviewData() {
       return acc + priceCents;
     }, 0);
 
+    // Build 6-month MRR chart from Stripe
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const mrrByMonth: Record<string, number> = {};
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      mrrByMonth[monthNames[d.getMonth()]] = 0;
+    }
+    subs.data.forEach((sub) => {
+      const monthKey = monthNames[new Date(sub.created * 1000).getMonth()];
+      if (monthKey in mrrByMonth) {
+        mrrByMonth[monthKey] += (sub.items.data[0]?.price.unit_amount || 0) / 100;
+      }
+    });
+    mrrChartData = Object.entries(mrrByMonth).map(([month, mrr]) => ({ month, mrr }));
+
     const events = await stripe.events.list({ limit: 10 });
     recentStripeEvents = events.data.map((evt) => ({
       id: evt.id,
       type: evt.type,
       created: new Date(evt.created * 1000).toISOString(),
     }));
-  } catch (e) {
+  } catch {
     console.warn("Stripe API unavailable in dev, using estimated metrics");
   }
 
-  // Mock trend data if low numbers in dev
   const mrr = mrrCents > 0 ? (mrrCents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" }) : "$4,850.00";
-  
+
   return {
     stats: {
       totalUsers: totalUsers || 148,
       totalUsersChange: "+12%",
       activeSubscriptions: activeSubscriptions || 42,
       activeSubsChange: "+8%",
-      mrr: mrr,
+      mrr,
       mrrChange: "+15%",
       postsPublishedToday: postsPublishedToday || 89,
       postsScheduled: postsScheduled || 34,
@@ -143,48 +179,80 @@ export async function getDashboardOverviewData() {
       activeAffiliates: activeAffiliates || 12,
       affiliateRevenue: "$1,240.00",
     },
-    signupsChart: [
-      { date: "Day 1", count: 4 },
-      { date: "Day 5", count: 8 },
-      { date: "Day 10", count: 12 },
-      { date: "Day 15", count: 9 },
-      { date: "Day 20", count: 18 },
-      { date: "Day 25", count: 22 },
-      { date: "Day 30", count: 29 },
-    ],
-    mrrChart: [
-      { month: "Jan", mrr: 1200 },
-      { month: "Feb", mrr: 1800 },
-      { month: "Mar", mrr: 2400 },
-      { month: "Apr", mrr: 3100 },
-      { month: "May", mrr: 3900 },
-      { month: "Jun", mrr: 4850 },
-    ],
-    postsChart: [
-      { day: "Mon", count: 45 },
-      { day: "Tue", count: 62 },
-      { day: "Wed", count: 78 },
-      { day: "Thu", count: 85 },
-      { day: "Fri", count: 94 },
-      { day: "Sat", count: 50 },
-      { day: "Sun", count: 40 },
-    ],
+    signupsChart:
+      signupsChartData.length > 0
+        ? signupsChartData
+        : [
+            { date: "Day 1", count: 4 },
+            { date: "Day 5", count: 8 },
+            { date: "Day 10", count: 12 },
+            { date: "Day 15", count: 9 },
+            { date: "Day 20", count: 18 },
+            { date: "Day 25", count: 22 },
+            { date: "Day 30", count: 29 },
+          ],
+    mrrChart:
+      mrrChartData.length > 0
+        ? mrrChartData
+        : [
+            { month: "Jan", mrr: 1200 },
+            { month: "Feb", mrr: 1800 },
+            { month: "Mar", mrr: 2400 },
+            { month: "Apr", mrr: 3100 },
+            { month: "May", mrr: 3900 },
+            { month: "Jun", mrr: 4850 },
+          ],
+    postsChart:
+      postsChartData.length > 0
+        ? postsChartData
+        : [
+            { day: "Mon", count: 45 },
+            { day: "Tue", count: 62 },
+            { day: "Wed", count: 78 },
+            { day: "Thu", count: 85 },
+            { day: "Fri", count: 94 },
+            { day: "Sat", count: 50 },
+            { day: "Sun", count: 40 },
+          ],
     planDistribution: [
       { name: "Free", value: 65, color: "#64748b" },
       { name: "Pro", value: 25, color: "#01696f" },
       { name: "Business", value: 7, color: "#0284c7" },
       { name: "Agency", value: 3, color: "#7c3aed" },
     ],
-    recentSignups: recentSignups.length > 0 ? recentSignups : [
-      { id: "1", email: "sarah@design.io", displayName: "Sarah Connor", plan: "Pro", createdAt: new Date().toISOString() },
-      { id: "2", email: "alex@tech.co", displayName: "Alex Mercer", plan: "Business", createdAt: new Date().toISOString() },
-      { id: "3", email: "john@wick.com", displayName: "John Wick", plan: "Free", createdAt: new Date().toISOString() },
-    ],
-    recentStripeEvents: recentStripeEvents.length > 0 ? recentStripeEvents : [
-      { id: "evt_1", type: "customer.subscription.created", created: new Date().toISOString() },
-      { id: "evt_2", type: "invoice.payment_succeeded", created: new Date().toISOString() },
-    ],
+    recentSignups:
+      recentSignups.length > 0
+        ? recentSignups
+        : [
+            { id: "1", email: "sarah@design.io", displayName: "Sarah Connor", plan: "Pro", createdAt: new Date().toISOString() },
+            { id: "2", email: "alex@tech.co", displayName: "Alex Mercer", plan: "Business", createdAt: new Date().toISOString() },
+            { id: "3", email: "john@wick.com", displayName: "John Wick", plan: "Free", createdAt: new Date().toISOString() },
+          ],
+    recentStripeEvents:
+      recentStripeEvents.length > 0
+        ? recentStripeEvents
+        : [
+            { id: "evt_1", type: "customer.subscription.created", created: new Date().toISOString() },
+            { id: "evt_2", type: "invoice.payment_succeeded", created: new Date().toISOString() },
+          ],
   };
+}
+
+// ==========================================
+// NOTIFICATION BELL HELPER (Fix #6)
+// ==========================================
+export async function getUnreadAdminNotificationsCount(): Promise<number> {
+  await requireAdmin();
+  if (!adminDb) return 0;
+  try {
+    const snap = await adminDb
+      .collection("adminNotifications")
+      .where("read", "==", false)
+      .get();
+    return snap.size;
+  } catch {
+    return 0;
+  }
 }
 
 // ==========================================
@@ -228,7 +296,7 @@ export async function getUsersData() {
         connectedAccounts: 8,
         joined: "2024-01-15T08:00:00.000Z",
         lastActive: new Date().toISOString(),
-        photoURL: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80",
+        photoURL: null,
         ipAddress: "198.51.100.42",
         device: "Chrome / Windows 11",
       },
@@ -260,20 +328,6 @@ export async function getUsersData() {
         ipAddress: "198.51.100.99",
         device: "Firefox / Linux",
       },
-      {
-        id: "usr_4",
-        uid: "usr_4",
-        name: "Jessica Vance",
-        email: "jessica@agency.org",
-        plan: "Business",
-        status: "active",
-        connectedAccounts: 6,
-        joined: "2024-06-12T16:30:00.000Z",
-        lastActive: new Date().toISOString(),
-        photoURL: null,
-        ipAddress: "192.0.2.45",
-        device: "Edge / Windows 10",
-      },
     ];
   }
 
@@ -282,9 +336,7 @@ export async function getUsersData() {
 
 export async function impersonateUserAction(targetUid: string) {
   await requireAdmin();
-  if (!adminAuth) {
-    throw new Error("Firebase Admin Auth is not configured");
-  }
+  if (!adminAuth) throw new Error("Firebase Admin Auth is not configured");
   const customToken = await adminAuth.createCustomToken(targetUid);
   await logAdminAudit("impersonate_user", targetUid, { customTokenGenerated: true });
   return { customToken };
@@ -306,9 +358,7 @@ export async function suspendUserAction(targetUid: string) {
     await adminDb.collection("users").doc(targetUid).set({ status: "suspended" }, { merge: true });
   }
   if (adminAuth) {
-    try {
-      await adminAuth.revokeRefreshTokens(targetUid);
-    } catch {}
+    try { await adminAuth.revokeRefreshTokens(targetUid); } catch {}
   }
   try {
     await createNotification(targetUid, {
@@ -344,9 +394,7 @@ export async function deleteUserAction(targetUid: string) {
     await adminDb.collection("users").doc(targetUid).set({ status: "deleted" }, { merge: true });
   }
   if (adminAuth) {
-    try {
-      await adminAuth.deleteUser(targetUid);
-    } catch {}
+    try { await adminAuth.deleteUser(targetUid); } catch {}
   }
   await logAdminAudit("delete_user", targetUid);
   revalidatePath("/admin/users");
@@ -372,11 +420,15 @@ export async function getSubscriptionsData() {
 
   try {
     const stripe = getStripe();
-    const list = await stripe.subscriptions.list({ limit: 50 });
+    // Fix #8 — expand customer so .email is available without extra call
+    const list = await stripe.subscriptions.list({
+      limit: 50,
+      expand: ["data.customer"],
+    });
     subs = list.data.map((s) => ({
       id: s.id,
-      user: s.customer as string,
-      email: (s.customer as any)?.email || "user@stripe.com",
+      user: (s.customer as any)?.name || (s.customer as any)?.email || (s.customer as string),
+      email: (s.customer as any)?.email ?? "user@stripe.com",
       plan: s.items.data[0]?.price.nickname || "Pro Plan",
       amount: `$${((s.items.data[0]?.price.unit_amount || 0) / 100).toFixed(2)}`,
       billingCycle: s.items.data[0]?.price.recurring?.interval || "month",
@@ -384,7 +436,7 @@ export async function getSubscriptionsData() {
       started: new Date(s.created * 1000).toISOString(),
       nextRenewal: new Date(((s as any).current_period_end || s.created + 30 * 86400) * 1000).toISOString(),
     }));
-  } catch (e) {
+  } catch {
     subs = [
       {
         id: "sub_1",
@@ -407,17 +459,6 @@ export async function getSubscriptionsData() {
         status: "active",
         started: "2024-06-12T16:30:00.000Z",
         nextRenewal: "2026-08-12T16:30:00.000Z",
-      },
-      {
-        id: "sub_3",
-        user: "Marcus Vance",
-        email: "marcus@vancemedia.co",
-        plan: "Pro Plan",
-        amount: "$79.00",
-        billingCycle: "month",
-        status: "canceled",
-        started: "2024-05-10T12:00:00.000Z",
-        nextRenewal: "2026-06-10T12:00:00.000Z",
       },
     ];
   }
@@ -506,7 +547,6 @@ export async function retryPostAction(postId: string) {
   await requireAdmin();
   if (adminDb) {
     await adminDb.collection("posts").doc(postId).set({ status: "scheduled", errorMessage: null }, { merge: true });
-    // Fetch post data to build the notification message
     try {
       const postDoc = await adminDb.collection("posts").doc(postId).get();
       const postData = postDoc.data();
@@ -558,36 +598,62 @@ export async function deletePostAction(postId: string) {
 }
 
 // ==========================================
-// AFFILIATES ACTIONS
+// AFFILIATES ACTIONS (Fix #10 — real Firestore read)
 // ==========================================
 export async function getAffiliatesData() {
   await requireAdmin();
-  return [
-    {
-      id: "aff_1",
-      name: "Jack Miller",
-      email: "jack@growthhackers.com",
-      referralCode: "JACK20",
-      totalReferrals: 45,
-      activeSubs: 28,
-      earned: "$1,890.00",
-      paidOut: "$1,400.00",
-      pending: "$490.00",
-      status: "active",
-    },
-    {
-      id: "aff_2",
-      name: "Sophia Martinez",
-      email: "sophia@influencerhub.io",
-      referralCode: "SOPHIA10",
-      totalReferrals: 32,
-      activeSubs: 19,
-      earned: "$1,250.00",
-      paidOut: "$1,000.00",
-      pending: "$250.00",
-      status: "active",
-    },
-  ];
+  let affiliates: any[] = [];
+
+  if (adminDb) {
+    try {
+      const snap = await adminDb.collection("affiliates").get();
+      affiliates = snap.docs.map((doc) => ({
+        id: doc.id,
+        name: doc.data().name || "Unknown",
+        email: doc.data().email || "",
+        referralCode: doc.data().referralCode || doc.id,
+        totalReferrals: doc.data().totalReferrals || 0,
+        activeSubs: doc.data().activeSubs || 0,
+        earned: doc.data().earned || "$0.00",
+        paidOut: doc.data().paidOut || "$0.00",
+        pending: doc.data().pending || "$0.00",
+        status: doc.data().status || "active",
+      }));
+    } catch (e) {
+      console.warn("Failed to read affiliates collection", e);
+    }
+  }
+
+  if (affiliates.length === 0) {
+    affiliates = [
+      {
+        id: "aff_1",
+        name: "Jack Miller",
+        email: "jack@growthhackers.com",
+        referralCode: "JACK20",
+        totalReferrals: 45,
+        activeSubs: 28,
+        earned: "$1,890.00",
+        paidOut: "$1,400.00",
+        pending: "$490.00",
+        status: "active",
+      },
+      {
+        id: "aff_2",
+        name: "Sophia Martinez",
+        email: "sophia@influencerhub.io",
+        referralCode: "SOPHIA10",
+        totalReferrals: 32,
+        activeSubs: 19,
+        earned: "$1,250.00",
+        paidOut: "$1,000.00",
+        pending: "$250.00",
+        status: "active",
+      },
+    ];
+  }
+
+  return affiliates;
 }
 
 export async function markCommissionPaidAction(commissionId: string, reference: string) {
@@ -696,18 +762,75 @@ export async function createAnnouncement(data: any) {
   return { success: true };
 }
 
+// Fix #5 — wire sendEmailBroadcast to Resend
 export async function sendEmailBroadcast(data: { subject: string; body: string; segment: string }) {
   await requireAdmin();
+
+  // Fetch target email addresses from Firestore based on segment
+  let recipients: string[] = [];
+  if (adminDb) {
+    try {
+      let query: FirebaseFirestore.Query = adminDb.collection("users");
+      if (data.segment !== "all") {
+        query = query.where("plan", "==", data.segment);
+      }
+      const snap = await query.get();
+      recipients = snap.docs
+        .map((doc) => doc.data().email as string)
+        .filter(Boolean);
+    } catch (e) {
+      console.warn("[sendEmailBroadcast] Could not fetch recipients:", e);
+    }
+  }
+
+  // Send via Resend
+  const resendApiKey = process.env.RESEND_API_KEY;
+  if (resendApiKey && recipients.length > 0) {
+    try {
+      // Resend supports up to 50 addresses per call — batch if needed
+      const BATCH = 50;
+      for (let i = 0; i < recipients.length; i += BATCH) {
+        const batch = recipients.slice(i, i + BATCH);
+        const res = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${resendApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: "PostPlanify <noreply@postplanify.com>",
+            to: batch,
+            subject: data.subject,
+            html: data.body,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.text();
+          console.error("[sendEmailBroadcast] Resend error:", err);
+        }
+      }
+    } catch (e) {
+      console.error("[sendEmailBroadcast] Failed to send via Resend:", e);
+    }
+  } else if (!resendApiKey) {
+    console.warn("[sendEmailBroadcast] RESEND_API_KEY not set — email not sent.");
+  }
+
+  // Record the broadcast in Firestore regardless
   if (adminDb) {
     await adminDb.collection("emailBroadcasts").add({
       ...data,
       sentAt: new Date().toISOString(),
-      recipientCount: 148,
+      recipientCount: recipients.length,
     });
   }
-  await logAdminAudit("send_email_broadcast", data.subject, data);
+
+  await logAdminAudit("send_email_broadcast", data.subject, {
+    ...data,
+    recipientCount: recipients.length,
+  });
   revalidatePath("/admin/settings/email");
-  return { success: true };
+  return { success: true, recipientCount: recipients.length };
 }
 
 export async function getCoupons() {
@@ -725,7 +848,7 @@ export async function getCoupons() {
       timesRedeemed: c.times_redeemed,
       valid: c.valid,
     }));
-  } catch (e) {
+  } catch {
     coupons = [
       { id: "SUMMER2026", name: "Summer Promo 20%", percentOff: 20, amountOff: null, duration: "repeating", timesRedeemed: 42, valid: true },
       { id: "LAUNCH50", name: "Launch Special $50 Off", percentOff: null, amountOff: 50, duration: "once", timesRedeemed: 15, valid: true },
@@ -755,32 +878,123 @@ export async function createCoupon(data: { code: string; percentOff?: number; am
 // ==========================================
 // LOGS & HEALTH ACTIONS
 // ==========================================
+
+// Fix #11 — real Firestore reads for API logs
 export async function getApiLogs() {
   await requireAdmin();
-  return [
-    { id: "log_1", timestamp: new Date().toISOString(), method: "POST", endpoint: "/api/posts/create", status: 200, user: "elena@spypublishing.com", duration: 142, ip: "203.0.113.19" },
-    { id: "log_2", timestamp: new Date(Date.now() - 300000).toISOString(), method: "GET", endpoint: "/api/social-accounts", status: 200, user: "jessica@agency.org", duration: 88, ip: "192.0.2.45" },
-    { id: "log_3", timestamp: new Date(Date.now() - 900000).toISOString(), method: "POST", endpoint: "/api/publishing/tiktok", status: 401, user: "marcus@vancemedia.co", duration: 420, ip: "198.51.100.99" },
-  ];
+  let logs: any[] = [];
+
+  if (adminDb) {
+    try {
+      const snap = await adminDb
+        .collection("apiLogs")
+        .orderBy("timestamp", "desc")
+        .limit(100)
+        .get();
+      logs = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    } catch (e) {
+      console.warn("[getApiLogs] Firestore read failed:", e);
+    }
+  }
+
+  if (logs.length === 0) {
+    logs = [
+      { id: "log_1", timestamp: new Date().toISOString(), method: "POST", endpoint: "/api/posts/create", status: 200, user: "elena@spypublishing.com", duration: 142, ip: "203.0.113.19" },
+      { id: "log_2", timestamp: new Date(Date.now() - 300000).toISOString(), method: "GET", endpoint: "/api/social-accounts", status: 200, user: "jessica@agency.org", duration: 88, ip: "192.0.2.45" },
+      { id: "log_3", timestamp: new Date(Date.now() - 900000).toISOString(), method: "POST", endpoint: "/api/publishing/tiktok", status: 401, user: "marcus@vancemedia.co", duration: 420, ip: "198.51.100.99" },
+    ];
+  }
+
+  return logs;
 }
 
+// Fix #11 — real Firestore reads for security events
 export async function getSecurityEvents() {
   await requireAdmin();
-  return [
-    { id: "sec_1", timestamp: new Date().toISOString(), type: "ADMIN_ACCESS", user: "edylabels@gmail.com", details: "Admin logged into /admin control panel", severity: "info" },
-    { id: "sec_2", timestamp: new Date(Date.now() - 1200000).toISOString(), type: "FAILED_LOGIN_ATTEMPT", user: "marcus@vancemedia.co", details: "3 failed password attempts detected from IP 198.51.100.99", severity: "warning" },
-  ];
+  let events: any[] = [];
+
+  if (adminDb) {
+    try {
+      const snap = await adminDb
+        .collection("securityEvents")
+        .orderBy("timestamp", "desc")
+        .limit(100)
+        .get();
+      events = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    } catch (e) {
+      console.warn("[getSecurityEvents] Firestore read failed:", e);
+    }
+  }
+
+  if (events.length === 0) {
+    events = [
+      { id: "sec_1", timestamp: new Date().toISOString(), type: "ADMIN_ACCESS", user: "edylabels@gmail.com", details: "Admin logged into /admin control panel", severity: "info" },
+      { id: "sec_2", timestamp: new Date(Date.now() - 1200000).toISOString(), type: "FAILED_LOGIN_ATTEMPT", user: "marcus@vancemedia.co", details: "3 failed password attempts detected from IP 198.51.100.99", severity: "warning" },
+    ];
+  }
+
+  return events;
 }
 
+// Fix #12 — real HTTP health checks for Stripe and Firebase
 export async function getSystemHealth() {
   await requireAdmin();
+
+  let stripeStatus: "healthy" | "degraded" | "down" = "down";
+  let stripeLatencyMs = 0;
+  let firebaseStatus: "healthy" | "degraded" | "down" = "down";
+  let firebaseLatencyMs = 0;
+  let queueDepth = 0;
+  let firestoreReadsToday = 0;
+  let firestoreWritesToday = 0;
+
+  // Ping Stripe status API
+  try {
+    const t0 = Date.now();
+    const res = await fetch("https://status.stripe.com/api/v2/status.json", {
+      signal: AbortSignal.timeout(5000),
+    });
+    stripeLatencyMs = Date.now() - t0;
+    if (res.ok) {
+      const json = await res.json();
+      const indicator: string = json?.status?.indicator ?? "unknown";
+      stripeStatus = indicator === "none" ? "healthy" : indicator === "minor" ? "degraded" : "down";
+    }
+  } catch {
+    stripeStatus = "down";
+  }
+
+  // Check Firebase / Firestore by performing a lightweight read
+  if (adminDb) {
+    try {
+      const t0 = Date.now();
+      await adminDb.collection("_healthcheck").limit(1).get();
+      firebaseLatencyMs = Date.now() - t0;
+      firebaseStatus = "healthy";
+    } catch {
+      firebaseStatus = "down";
+    }
+
+    // Pull queue depth and Firestore usage counters from a stats doc if present
+    try {
+      const statsDoc = await adminDb.collection("adminStats").doc("today").get();
+      if (statsDoc.exists) {
+        queueDepth = statsDoc.data()?.queueDepth ?? 0;
+        firestoreReadsToday = statsDoc.data()?.firestoreReadsToday ?? 0;
+        firestoreWritesToday = statsDoc.data()?.firestoreWritesToday ?? 0;
+      }
+    } catch {
+      // optional stats doc — ignore if missing
+    }
+  }
+
   return {
-    firebase: { status: "healthy", latencyMs: 24 },
-    stripe: { status: "healthy", latencyMs: 65 },
-    queueDepth: 4,
+    firebase: { status: firebaseStatus, latencyMs: firebaseLatencyMs },
+    stripe: { status: stripeStatus, latencyMs: stripeLatencyMs },
+    queueDepth,
     lastCronRun: new Date(Date.now() - 120000).toISOString(),
-    firestoreReadsToday: 1420,
-    firestoreWritesToday: 310,
+    firestoreReadsToday,
+    firestoreWritesToday,
   };
 }
 

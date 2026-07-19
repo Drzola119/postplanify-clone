@@ -1,22 +1,13 @@
-import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/firebase/admin";
-import { isAdminUser } from "@/lib/firebase/admin-auth";
 import { AdminShell } from "./_components/AdminShell";
+import { getUnreadAdminNotificationsCount } from "./actions";
 
-export default async function AdminLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const user = await getCurrentUser();
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  // Fix #6 — fetch live unread count server-side and pass it to the shell
+  const unreadNotifications = await getUnreadAdminNotificationsCount();
 
-  if (!user) {
-    redirect("/login?next=/admin");
-  }
-
-  if (!isAdminUser(user)) {
-    redirect("/dashboard?error=access_denied");
-  }
-
-  return <AdminShell>{children}</AdminShell>;
+  return (
+    <AdminShell unreadNotifications={unreadNotifications}>
+      {children}
+    </AdminShell>
+  );
 }

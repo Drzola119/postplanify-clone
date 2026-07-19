@@ -36,6 +36,31 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
+// Fix #7 — map every known path to its display title
+const BREADCRUMB_MAP: Record<string, string> = {
+  "/admin": "Dashboard",
+  "/admin/analytics": "Analytics",
+  "/admin/users": "All Users",
+  "/admin/users/banned": "Banned Users",
+  "/admin/users/impersonate": "User Impersonation",
+  "/admin/subscriptions": "Plans Overview",
+  "/admin/subscriptions/active": "Active Subscriptions",
+  "/admin/subscriptions/churned": "Churned / Cancelled",
+  "/admin/subscriptions/revenue": "Revenue",
+  "/admin/posts": "All Posts",
+  "/admin/posts/queue": "Scheduled Queue",
+  "/admin/posts/failed": "Failed Posts",
+  "/admin/affiliates": "Affiliates",
+  "/admin/affiliates/commissions": "Commissions",
+  "/admin/settings/flags": "Feature Flags",
+  "/admin/settings/announcements": "Announcements",
+  "/admin/settings/email": "Email Broadcasts",
+  "/admin/settings/coupons": "Coupons / Promo",
+  "/admin/logs": "API Logs",
+  "/admin/logs/security": "Security Events",
+  "/admin/health": "System Health",
+};
+
 interface NavItem {
   label: string;
   href: string;
@@ -101,7 +126,13 @@ const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
-export function AdminShell({ children }: { children: React.ReactNode }) {
+// Fix #6 — prop for unread notification count (passed from server)
+interface AdminShellProps {
+  children: React.ReactNode;
+  unreadNotifications?: number;
+}
+
+export function AdminShell({ children, unreadNotifications = 0 }: AdminShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const auth = useAuth();
@@ -121,9 +152,16 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     router.push("/login");
   };
 
-  // Derive breadcrumbs from current path
-  const pathSegments = pathname.split("/").filter(Boolean);
-  const pageTitle = pathSegments.length <= 1 ? "Dashboard" : pathSegments[pathSegments.length - 1].replace(/-/g, " ");
+  // Fix #7 — use BREADCRUMB_MAP; fall back to humanising the last segment
+  const pageTitle =
+    BREADCRUMB_MAP[pathname] ??
+    (pathname
+      .split("/")
+      .filter(Boolean)
+      .pop()
+      ?.replace(/-/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase()) ||
+      "Dashboard");
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-gray-900 text-gray-300">
@@ -198,9 +236,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
+    // Fix #2 — w-65 → w-[260px], pl-65 → pl-[260px]
     <div className="min-h-screen flex bg-gray-50 font-sans text-gray-900">
       {/* Desktop Sidebar (260px wide) */}
-      <aside className="hidden md:block w-65 shrink-0 fixed inset-y-0 left-0 z-30">
+      <aside className="hidden md:block w-[260px] shrink-0 fixed inset-y-0 left-0 z-30">
         <SidebarContent />
       </aside>
 
@@ -218,7 +257,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col md:pl-65 min-w-0">
+      <div className="flex-1 flex flex-col md:pl-[260px] min-w-0">
         {/* Top Header */}
         <header className="h-16 bg-white border-b border-gray-200 px-4 md:px-8 flex items-center justify-between sticky top-0 z-20 shadow-xs">
           <div className="flex items-center gap-4">
@@ -251,11 +290,13 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               />
             </form>
 
-            {/* Notification Bell */}
+            {/* Fix #6 — Notification Bell reads live unread count */}
             <div className="relative">
               <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full relative">
                 <Bell className="size-5" />
-                <span className="absolute top-1 right-1 size-2 bg-rose-500 rounded-full ring-2 ring-white" />
+                {unreadNotifications > 0 && (
+                  <span className="absolute top-1 right-1 size-2 bg-rose-500 rounded-full ring-2 ring-white" />
+                )}
               </button>
             </div>
 
