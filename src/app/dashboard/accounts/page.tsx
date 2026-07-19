@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   RefreshCw,
   BookOpen,
@@ -275,6 +276,7 @@ interface Toast {
 }
 
 export default function AccountsPage() {
+  const t = useTranslations("dashboard");
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
   const [profiles, setProfiles] = useState<ProfileMeta[]>([]);
   const [loading, setLoading] = useState(true);
@@ -290,7 +292,7 @@ export default function AccountsPage() {
     const handleAuthMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === "TRUSTIIFY_AUTH_COMPLETE") {
-        showToast("Social account connected successfully!", "success");
+        showToast(t("accounts.toast_connected"), "success");
         fetchAccounts();
         if (activePopup && !activePopup.closed) {
           try { activePopup.close(); } catch {}
@@ -348,7 +350,7 @@ export default function AccountsPage() {
     const next = new Set(connectedIntegrations);
     next.add(k);
     persistIntegrations(next);
-    showToast(`${INTEGRATIONS.find((i) => i.key === k)?.name ?? k} marked as connected.`, "success");
+    showToast(t("accounts.toast_marked_connected", { name: INTEGRATIONS.find((i) => i.key === k)?.name ?? k }), "success");
     setSetupIntegration(null);
   }
 
@@ -356,7 +358,7 @@ export default function AccountsPage() {
     const next = new Set(connectedIntegrations);
     next.delete(k);
     persistIntegrations(next);
-    showToast(`${INTEGRATIONS.find((i) => i.key === k)?.name ?? k} disconnected.`, "info");
+    showToast(t("accounts.toast_disconnected", { name: INTEGRATIONS.find((i) => i.key === k)?.name ?? k }), "info");
   }
 
   const showToast = (message: string, type: Toast["type"] = "success") => {
@@ -405,7 +407,7 @@ export default function AccountsPage() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("connected") === "1") {
-      showToast("Accounts updated. Reloading connections...", "success");
+      showToast(t("accounts.toast_reloading"), "success");
       // Refresh the account list to pick up newly linked profiles.
       fetchAccounts();
       // Clean the URL so a refresh doesn't re-toast.
@@ -413,7 +415,7 @@ export default function AccountsPage() {
       url.searchParams.delete("connected");
       window.history.replaceState({}, "", url.toString());
     } else if (params.get("error")) {
-      showToast(`Connection failed: ${params.get("error")}`, "error");
+      showToast(t("accounts.toast_connection_failed", { error: params.get("error") ?? "" }), "error");
       const url = new URL(window.location.href);
       url.searchParams.delete("error");
       window.history.replaceState({}, "", url.toString());
@@ -467,7 +469,7 @@ export default function AccountsPage() {
       );
 
       if (!popup || popup.closed || typeof popup.closed === "undefined") {
-        showToast("Popup was blocked. Please allow popups for this site.", "error");
+        showToast(t("accounts.toast_popup_blocked"), "error");
         return;
       }
 
@@ -475,8 +477,8 @@ export default function AccountsPage() {
 
       showToast(
         platformKey
-          ? `Opening secure connection for ${platformKey}...`
-          : "Opening secure connection...",
+          ? t("accounts.toast_opening", { platform: platformKey })
+          : t("accounts.toast_opening_generic"),
         "info"
       );
     } catch (err) {
@@ -489,11 +491,11 @@ export default function AccountsPage() {
 
   const handleRefreshAll = async () => {
     setRefreshingAll(true);
-    showToast("Refreshing accounts from upload-post.com...", "info");
+    showToast(t("accounts.toast_refreshing"), "info");
     await fetchAccounts();
     setRefreshingAll(false);
     if (!error) {
-      showToast("Accounts refreshed successfully", "success");
+      showToast(t("accounts.toast_refreshed"), "success");
     }
   };
 
@@ -517,11 +519,11 @@ export default function AccountsPage() {
       // hosted connect page. We still update local state for instant feedback.
       setAccounts((prev) => prev.filter((a) => a.id !== id));
       showToast(
-        "Account removed from view. To revoke at source, open the connect page and unlink it.",
+        t("accounts.toast_removed"),
         "info"
       );
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to remove account";
+      const msg = err instanceof Error ? err.message : t("accounts.toast_remove_failed");
       showToast(msg, "error");
     } finally {
       setDeletingId(null);
@@ -535,7 +537,7 @@ export default function AccountsPage() {
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-3">
-              <h2 className="text-3xl font-bold tracking-tight">Social Accounts</h2>
+              <h2 className="text-3xl font-bold tracking-tight">{t("accounts.page_title")}</h2>
               {(() => {
                 const cfg = getHelpConfig("accounts");
                 if (!cfg) return null;
@@ -543,7 +545,7 @@ export default function AccountsPage() {
               })()}
             </div>
             <p className="text-muted-foreground">
-              Connect and manage your social media accounts
+              {t("accounts.page_subtitle")}
             </p>
           </div>
           <button
@@ -557,7 +559,7 @@ export default function AccountsPage() {
             ) : (
               <RefreshCw className="size-4" />
             )}
-            Refresh
+            {t("accounts.refresh")}
           </button>
           <button
             type="button"
@@ -570,7 +572,7 @@ export default function AccountsPage() {
             ) : (
               <ExternalLink className="size-4" />
             )}
-            Connect accounts
+            {t("accounts.connect_accounts")}
           </button>
         </div>
 
@@ -580,7 +582,7 @@ export default function AccountsPage() {
             <AlertTriangle className="size-5 text-rose-600 shrink-0 mt-0.5" />
             <div className="flex-1">
               <p className="text-sm font-medium text-rose-900">
-                Could not load accounts
+                {t("accounts.load_error")}
                 {errorStatus ? <span className="text-rose-500"> ({errorStatus})</span> : null}
               </p>
               <p className="text-xs text-rose-700 mt-0.5">{error}</p>
@@ -600,7 +602,7 @@ export default function AccountsPage() {
               onClick={handleRefreshAll}
               className="text-xs font-medium text-rose-700 hover:text-rose-900 underline"
             >
-              Retry
+              {t("accounts.retry")}
             </button>
           </div>
         )}
@@ -609,28 +611,28 @@ export default function AccountsPage() {
         <div className="rounded-xl border border-zinc-200 bg-white text-zinc-950 shadow-sm">
           <div className="flex flex-col space-y-1.5 p-6">
             <div className="font-semibold leading-none tracking-tight">
-              Connected Accounts
+              {t("accounts.connected_title")}
             </div>
             <div className="text-sm text-zinc-500">
               {profiles.length > 0
                 ? `${accounts.length} account${accounts.length === 1 ? "" : "s"} across ${profiles.length} profile${profiles.length === 1 ? "" : "s"} on upload-post.com`
-                : "Manage your connected social media accounts"}
+                : t("accounts.connected_subtitle")}
             </div>
           </div>
           <div className="p-6 pt-0">
             {loading ? (
               <div className="flex items-center justify-center py-12 gap-3 text-sm text-zinc-500">
                 <Loader2 className="size-5 animate-spin" />
-                Loading connected accounts from upload-post.com...
+                {t("accounts.loading_upload_post")}
               </div>
             ) : accounts.length === 0 && !error ? (
               <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
                 <div className="size-12 rounded-full bg-zinc-100 flex items-center justify-center">
                   <Info className="size-6 text-zinc-400" />
                 </div>
-                <p className="text-sm font-medium text-zinc-900">No accounts connected yet</p>
+                <p className="text-sm font-medium text-zinc-900">{t("accounts.no_connected")}</p>
                 <p className="text-xs text-zinc-500 max-w-sm">
-                  Use the &quot;Connect&quot; buttons below to link your social media accounts.
+                  {t("accounts.connect_hint")}
                 </p>
               </div>
             ) : (
@@ -657,16 +659,16 @@ export default function AccountsPage() {
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
               <div>
                 <div className="font-semibold leading-none tracking-tight">
-                  Available Platforms
+                  {t("accounts.available_title")}
                 </div>
                 <div className="text-sm text-zinc-500">
-                  Connect new social media accounts
+                  {t("accounts.available_subtitle")}
                 </div>
               </div>
               <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md text-xs">
                 <AlertCircle className="size-4 text-amber-600 shrink-0" />
                 <span className="text-amber-800">
-                  Connection works best on Chrome or Edge.
+                  {t("accounts.browser_hint")}
                 </span>
               </div>
             </div>
@@ -687,8 +689,7 @@ export default function AccountsPage() {
               <div className="p-3 rounded-lg bg-zinc-100 border border-zinc-200 flex items-start gap-2">
                 <Info className="size-3.5 mt-0.5 shrink-0 text-zinc-500" />
                 <p className="text-xs text-zinc-500">
-                  We only request permissions to schedule posts. Passwords are never
-                  stored. Disconnect anytime in settings.
+                  {t("accounts.privacy_note")}
                 </p>
               </div>
             </div>
@@ -699,10 +700,10 @@ export default function AccountsPage() {
         <div className="rounded-xl border border-zinc-200 bg-white text-zinc-950 shadow-sm">
           <div className="flex flex-col space-y-1.5 p-6">
             <div className="font-semibold leading-none tracking-tight">
-              Available Integrations
+              {t("accounts.integrations_title")}
             </div>
             <div className="text-sm text-zinc-500">
-              Connect cloud storage and design tools to import media directly into your posts.
+              {t("accounts.integrations_subtitle")}
             </div>
           </div>
           <div className="p-6 pt-0">
@@ -723,7 +724,7 @@ export default function AccountsPage() {
                         {isConnected ? (
                           <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700">
                             <CheckCircle2 className="size-3" />
-                            Connected
+                            {t("accounts.connected")}
                           </span>
                         ) : null}
                       </div>
@@ -736,14 +737,14 @@ export default function AccountsPage() {
                               onClick={() => setSetupIntegration(it.key)}
                               className="inline-flex items-center justify-center h-7 px-3 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-900 text-xs font-medium"
                             >
-                              Manage
+                              {t("accounts.manage")}
                             </button>
                             <button
                               type="button"
                               onClick={() => disconnect(it.key)}
                               className="inline-flex items-center justify-center h-7 px-3 rounded-md text-rose-600 hover:bg-rose-50 text-xs font-medium"
                             >
-                              Disconnect
+                              {t("accounts.disconnect")}
                             </button>
                           </>
                         ) : (
@@ -752,7 +753,7 @@ export default function AccountsPage() {
                             onClick={() => setSetupIntegration(it.key)}
                             className="inline-flex items-center justify-center h-8 px-4 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium"
                           >
-                            Connect
+                            {t("accounts.connect")}
                           </button>
                         )}
                       </div>
@@ -764,8 +765,7 @@ export default function AccountsPage() {
             <div className="mt-4 p-3 rounded-lg bg-zinc-100 border border-zinc-200 flex items-start gap-2">
               <Info className="size-3.5 mt-0.5 shrink-0 text-zinc-500" />
               <p className="text-xs text-zinc-500">
-                Integrations use your own provider credentials and are stored encrypted. They only get
-                used to import media for your posts — never to send messages, post, or access private data.
+                {t("accounts.integrations_privacy")}
               </p>
             </div>
           </div>
@@ -825,6 +825,7 @@ function ConnectedAccountCard({
   onDelete: () => void;
   onReconnect: () => void;
 }) {
+  const t = useTranslations("dashboard");
   return (
     <div className={`group flex items-center justify-between p-4 rounded-lg border border-zinc-200 hover:border-zinc-300 transition-colors bg-white ${isDeleting ? "opacity-50 pointer-events-none" : ""}`}>
       <div className="flex items-center gap-4 min-w-0">
@@ -853,12 +854,12 @@ function ConnectedAccountCard({
             {account.reauthRequired ? (
               <span className="inline-flex items-center gap-1 text-xs text-amber-700">
                 <AlertCircle className="size-3" />
-                Re-auth required
+                {t("accounts.reauth_required")}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
                 <CheckCircle2 className="size-3" />
-                Connected
+                {t("accounts.connected")}
               </span>
             )}
           </div>
@@ -877,7 +878,7 @@ function ConnectedAccountCard({
             className="inline-flex items-center gap-1.5 rounded-md bg-amber-500 hover:bg-amber-600 px-3 h-8 text-xs font-medium text-white"
           >
             <RefreshCw className="size-3.5" />
-            Reconnect
+            {t("accounts.reconnect")}
           </button>
         ) : (
           <button
@@ -887,14 +888,14 @@ function ConnectedAccountCard({
             className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 h-8 text-xs font-medium hover:bg-zinc-50"
           >
             <RefreshCw className="size-3.5" />
-            Refresh
+            {t("accounts.refresh")}
           </button>
         )}
         <button
           type="button"
           onClick={onDelete}
           disabled={isDeleting}
-          aria-label="Remove account from view"
+          aria-label={t("accounts.remove_account")}
           className="inline-flex items-center justify-center size-8 rounded-md bg-rose-500 hover:bg-rose-600 disabled:opacity-50 disabled:cursor-not-allowed text-white"
         >
           {isDeleting ? (
@@ -919,6 +920,7 @@ function PlatformCard({
   onConnect: () => void;
   isComingSoon?: boolean;
 }) {
+  const t = useTranslations("dashboard");
   return (
     <div className="p-4 rounded-lg border border-zinc-200 bg-white flex items-center justify-between hover:border-zinc-300 transition-colors">
       <div className="flex items-center gap-2">
@@ -926,7 +928,7 @@ function PlatformCard({
         <span className="text-sm font-medium text-zinc-900">{name}</span>
         {isComingSoon && (
           <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
-            Coming Soon
+            {t("accounts.coming_soon")}
           </span>
         )}
       </div>
@@ -936,7 +938,7 @@ function PlatformCard({
           disabled
           className="inline-flex items-center justify-center h-8 px-6 rounded-md bg-zinc-100 border border-zinc-200 text-zinc-400 text-xs font-medium whitespace-nowrap min-w-[100px] cursor-not-allowed"
         >
-          Unavailable
+          {t("accounts.unavailable")}
         </button>
       ) : (
         <button
@@ -944,7 +946,7 @@ function PlatformCard({
           onClick={onConnect}
           className="inline-flex items-center justify-center h-8 px-6 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium whitespace-nowrap min-w-[100px]"
         >
-          Connect
+          {t("accounts.connect")}
           <ExternalLink className="size-3 ml-1.5" />
         </button>
       )}
@@ -961,6 +963,7 @@ function ConfirmDeleteModal({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const t = useTranslations("dashboard");
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onCancel}>
       <div
@@ -972,11 +975,9 @@ function ConfirmDeleteModal({
             <Trash2 className="size-5 text-rose-600" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-zinc-900">Remove account?</h3>
+            <h3 className="text-lg font-semibold text-zinc-900">{t("accounts.remove_title")}</h3>
             <p className="text-sm text-zinc-500 mt-1">
-              This hides <span className="font-semibold text-zinc-900">{account.handle}</span>{" "}
-              from this view. To fully revoke at source, disconnect it from your
-              upload-post.com dashboard.
+              {t("accounts.remove_body", { handle: account.handle })}
             </p>
           </div>
         </div>
@@ -986,14 +987,14 @@ function ConfirmDeleteModal({
             onClick={onCancel}
             className="inline-flex items-center justify-center h-9 px-4 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 text-sm font-medium"
           >
-            Cancel
+            {t("accounts.remove_cancel")}
           </button>
           <button
             type="button"
             onClick={onConfirm}
             className="inline-flex items-center justify-center h-9 px-4 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium"
           >
-            Remove
+            {t("accounts.remove_confirm")}
           </button>
         </div>
       </div>
@@ -1014,6 +1015,7 @@ function IntegrationSetupModal({
   onMarkConnected: () => void;
   onDisconnect: () => void;
 }) {
+  const t = useTranslations("dashboard");
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
@@ -1029,11 +1031,11 @@ function IntegrationSetupModal({
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-lg font-semibold text-zinc-900 flex items-center gap-2">
-              {isConnected ? `Manage ${meta.name}` : `Connect ${meta.name}`}
+              {isConnected ? t("accounts.integration_manage", { name: meta.name }) : t("accounts.integration_connect", { name: meta.name })}
               {isConnected ? (
                 <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
                   <CheckCircle2 className="size-3.5" />
-                  Connected
+                  {t("accounts.connected")}
                 </span>
               ) : null}
             </h3>
@@ -1052,7 +1054,7 @@ function IntegrationSetupModal({
         <div className="p-6 space-y-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
-              Setup steps
+              {t("accounts.integration_steps")}
             </p>
             <ol className="space-y-2">
               {meta.steps.map((s, i) => (
@@ -1075,7 +1077,7 @@ function IntegrationSetupModal({
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-900 text-sm font-medium w-full"
           >
-            Open {meta.name} developer console
+            {t("accounts.integration_console", { name: meta.name })}
             <ExternalLink className="size-3.5" />
           </a>
 
@@ -1083,8 +1085,8 @@ function IntegrationSetupModal({
             <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
             <p>
               {isConnected
-                ? "You can revoke access anytime from here or from your provider account."
-                : "After adding credentials in Settings, come back and click below to enable importing."}
+                ? t("accounts.integration_revoke_note")
+                : t("accounts.integration_after_credentials")}
             </p>
           </div>
         </div>
@@ -1103,7 +1105,7 @@ function IntegrationSetupModal({
               onClick={onDisconnect}
               className="inline-flex items-center justify-center h-9 px-4 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium"
             >
-              Disconnect
+              {t("accounts.disconnect")}
             </button>
           ) : (
             <button
@@ -1111,7 +1113,7 @@ function IntegrationSetupModal({
               onClick={onMarkConnected}
               className="inline-flex items-center justify-center h-9 px-4 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium"
             >
-              Mark as connected
+              {t("accounts.integration_mark_connected")}
             </button>
           )}
         </div>

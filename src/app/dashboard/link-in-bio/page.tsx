@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import { Trash2 } from "lucide-react";
 import { ClaimScreen } from "@/components/dashboard/link-in-bio/claim-screen";
 import { BioRenderer } from "@/components/dashboard/link-in-bio/bio-renderer";
@@ -84,6 +85,7 @@ export default function LinkInBioPage() {
   const [analytics, setAnalytics] = useState(getAnalytics(""));
   const [range, setRange] = useState<Range>("7d");
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const t = useTranslations("dashboard");
 
   // Hydrate: prefer API, fall back to localStorage.
   useEffect(() => {
@@ -212,9 +214,9 @@ export default function LinkInBioPage() {
       {/* Top bar */}
       <div className="flex items-start justify-between mb-4">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-900">Link in Bio</h1>
+          <h1 className="text-2xl font-bold text-zinc-900">{t("linkInBio.main.page_title")}</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Create a customizable landing page for your social media profiles
+            {t("linkInBio.main.page_subtitle")}
           </p>
         </div>
         <BioHeaderBar
@@ -245,10 +247,10 @@ export default function LinkInBioPage() {
           <div className="rounded-xl border border-red-200 bg-red-50/50 p-5 flex items-center justify-between">
             <div>
               <h2 className="text-sm font-semibold text-red-900">
-                Delete Bio Page
+                {t("linkInBio.main.delete_section")}
               </h2>
               <p className="text-xs text-red-700 mt-0.5">
-                Permanently remove your bio page and all analytics data.
+                {t("linkInBio.main.delete_desc")}
               </p>
             </div>
             <button
@@ -257,7 +259,7 @@ export default function LinkInBioPage() {
               className="inline-flex items-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 text-white px-3 h-8 text-xs font-semibold"
             >
               <Trash2 className="size-3.5" />
-              Delete
+              {t("linkInBio.main.delete")}
             </button>
           </div>
         </div>
@@ -266,7 +268,7 @@ export default function LinkInBioPage() {
         <div className="lg:sticky lg:top-4 self-start">
           <div className="rounded-2xl border border-zinc-200 bg-zinc-100 p-6">
             <p className="text-xs font-semibold text-zinc-500 mb-3 uppercase tracking-wide">
-              Preview
+              {t("linkInBio.main.preview")}
             </p>
             <div className="mx-auto max-w-[300px] rounded-[2.5rem] bg-white shadow-xl overflow-hidden border-[10px] border-zinc-900 relative">
               <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-5 bg-zinc-900 rounded-b-2xl z-10" />
@@ -281,8 +283,8 @@ export default function LinkInBioPage() {
       <Modal
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
-        title="Delete Bio Page?"
-        description="This will permanently remove your bio page and all analytics data."
+        title={t("linkInBio.main.delete_confirm_title")}
+        description={t("linkInBio.main.delete_confirm_body")}
         footer={
           <>
             <button
@@ -290,20 +292,20 @@ export default function LinkInBioPage() {
               onClick={() => setDeleteOpen(false)}
               className="px-3 h-8 rounded-md text-sm font-medium text-zinc-700 hover:bg-zinc-100"
             >
-              Cancel
+              {t("linkInBio.main.cancel")}
             </button>
             <button
               type="button"
               onClick={handleDelete}
               className="px-3 h-8 rounded-md text-sm font-medium bg-red-600 hover:bg-red-700 text-white"
             >
-              Delete Bio Page
+              {t("linkInBio.main.delete_confirm_btn")}
             </button>
           </>
         }
       >
         <p className="text-sm text-zinc-600">
-          Your bio page at <span className="font-mono font-semibold">postplanify.com/@{bio.username}</span> will be deleted. This action cannot be undone.
+          {t("linkInBio.main.delete_confirm_detail", { url: `postplanify.com/@${bio.username}` })}
         </p>
       </Modal>
     </div>

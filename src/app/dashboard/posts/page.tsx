@@ -15,6 +15,7 @@ import {
   Trash2,
   Download,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
 import { PageHelp } from "@/components/dashboard/help/page-help";
@@ -157,6 +158,7 @@ function monthGridStart(d: Date): Date {
 type ViewMode = "weekly" | "monthly" | "list";
 
 export default function PostsCalendarPage() {
+  const t = useTranslations("dashboard");
   const [view, setView] = useState<ViewMode>("monthly");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedPost, setSelectedPost] = useState<CalendarPost | null>(null);
@@ -303,15 +305,15 @@ export default function PostsCalendarPage() {
         <div className="flex flex-wrap items-center gap-2">
           {/* Type filter icons */}
           <div className="flex items-center gap-1">
-            <ToolIconBtn ariaLabel="Text posts"><TextIcon /></ToolIconBtn>
-            <ToolIconBtn ariaLabel="Image posts"><ImageIcon /></ToolIconBtn>
-            <ToolIconBtn ariaLabel="Video posts"><VideoIcon /></ToolIconBtn>
+            <ToolIconBtn ariaLabel={t("posts.calendar.filter_text")}><TextIcon /></ToolIconBtn>
+            <ToolIconBtn ariaLabel={t("posts.calendar.filter_image")}><ImageIcon /></ToolIconBtn>
+            <ToolIconBtn ariaLabel={t("posts.calendar.filter_video")}><VideoIcon /></ToolIconBtn>
           </div>
 
-          <FilterPill label="All Accounts" showCheck />
-          <FilterPill label="All Status" />
-          <FilterPill label="All Approvals" />
-          <FilterPill label="All Labels" />
+          <FilterPill label={t("posts.calendar.filter_all_accounts")} showCheck />
+          <FilterPill label={t("posts.calendar.filter_all_status")} />
+          <FilterPill label={t("posts.calendar.filter_all_approvals")} />
+          <FilterPill label={t("posts.calendar.filter_all_labels")} />
         </div>
 
         <div className="flex items-center gap-2">
@@ -321,7 +323,7 @@ export default function PostsCalendarPage() {
             className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-8 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
           >
             <Download className="size-3.5" />
-            Export CSV
+            {t("posts.calendar.export_csv")}
           </button>
           <TimezonePill />
           <ViewModeSwitch view={view} onChange={setView} />
@@ -335,7 +337,7 @@ export default function PostsCalendarPage() {
           className="inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground rounded-md text-xs h-9 px-3"
         >
           <FilterIcon className="size-3.5" />
-          Apply
+          {t("posts.calendar.apply")}
         </button>
         <button
           type="button"
@@ -382,13 +384,13 @@ export default function PostsCalendarPage() {
               onClick={goToday}
               className="inline-flex items-center justify-center rounded-md border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground text-xs h-8 px-3 font-medium"
             >
-              Today
+              {t("posts.calendar.today")}
             </button>
             <button
               type="button"
               onClick={goPrev}
               className="inline-flex items-center justify-center size-8 rounded-md border border-input bg-background shadow-sm hover:bg-accent"
-              aria-label="Previous"
+              aria-label={t("posts.calendar.previous")}
             >
               <ChevronLeft className="size-4" />
             </button>
@@ -396,7 +398,7 @@ export default function PostsCalendarPage() {
               type="button"
               onClick={goNext}
               className="inline-flex items-center justify-center size-8 rounded-md border border-input bg-background shadow-sm hover:bg-accent"
-              aria-label="Next"
+              aria-label={t("posts.calendar.next")}
             >
               <ChevronRight className="size-4" />
             </button>
@@ -423,6 +425,7 @@ export default function PostsCalendarPage() {
 
 // ===== POST DETAILS MODAL =====
 function PostDetailsModal({ post, onClose }: { post: CalendarPost; onClose: () => void }) {
+  const t = useTranslations("dashboard");
   const status = STATUS_META[post.status];
   const primaryPlatform = post.platforms[0];
   const platformLabel = PLATFORM_LABELS[primaryPlatform] ?? primaryPlatform;
@@ -442,14 +445,14 @@ function PostDetailsModal({ post, onClose }: { post: CalendarPost; onClose: () =
               <span className="mr-2 inline-flex items-center justify-center size-5 rounded-full bg-green-500/15">
                 <Check className="size-3 text-green-600" />
               </span>
-              <span>Post Details</span>
+              <span>{t("posts.calendar.post_details")}</span>
             </h2>
-            <p className="text-sm text-muted-foreground">View and manage your social media post</p>
+            <p className="text-sm text-muted-foreground">{t("posts.calendar.post_details_subtitle")}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("posts.calendar.close")}
             className="absolute right-4 top-4 inline-flex items-center justify-center size-6 rounded hover:bg-zinc-100 text-zinc-500"
           >
             <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2">
@@ -481,24 +484,24 @@ function PostDetailsModal({ post, onClose }: { post: CalendarPost; onClose: () =
               <div className="space-y-6 mt-6">
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <h3 className="text-sm font-medium text-muted-foreground">Scheduled For</h3>
-                    <p className="text-sm mt-1">Not scheduled yet</p>
+                    <h3 className="text-sm font-medium text-muted-foreground">{t("posts.calendar.scheduled_for")}</h3>
+                    <p className="text-sm mt-1">{t("posts.calendar.not_scheduled")}</p>
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium text-muted-foreground">Published At</h3>
+                    <h3 className="text-sm font-medium text-muted-foreground">{t("posts.calendar.published_at")}</h3>
                     <p className="text-sm mt-1">Jun 23, 2026, 10:44 AM</p>
                   </div>
                 </div>
 
                 <div>
-                  <h3 className="text-sm font-medium text-muted-foreground">Caption</h3>
+                  <h3 className="text-sm font-medium text-muted-foreground">{t("posts.calendar.caption")}</h3>
                   <p className="text-sm whitespace-pre-wrap mt-1">{post.caption}</p>
                 </div>
 
                 {post.thumbnail && (
                   <div>
                     <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-medium text-muted-foreground">Media (1)</h3>
+                      <h3 className="text-sm font-medium text-muted-foreground">{t("posts.calendar.media")} (1)</h3>
                     </div>
                     <div className="grid grid-cols-2 gap-2 mt-2">
                       <div className="relative rounded-md overflow-hidden border bg-muted">
@@ -511,13 +514,13 @@ function PostDetailsModal({ post, onClose }: { post: CalendarPost; onClose: () =
                 )}
 
                 <div className="text-xs border rounded-md divide-y">
-                  <DetailRow label="Privacy Level" value="PUBLIC_TO_EVERYONE" />
-                  <DetailRow label="Disable Duet" value="❌" />
-                  <DetailRow label="Disable Comment" value="❌" />
-                  <DetailRow label="Disable Stitch" value="❌" />
-                  <DetailRow label="Draft Post" value="❌" />
-                  <DetailRow label="Auto Add Music" value="❌" />
-                  <DetailRow label="Title" value="my cute cat" />
+                  <DetailRow label={t("posts.calendar.privacy_level")} value="PUBLIC_TO_EVERYONE" />
+                  <DetailRow label={t("posts.calendar.disable_duet")} value="❌" />
+                  <DetailRow label={t("posts.calendar.disable_comment")} value="❌" />
+                  <DetailRow label={t("posts.calendar.disable_stitch")} value="❌" />
+                  <DetailRow label={t("posts.calendar.draft_post")} value="❌" />
+                  <DetailRow label={t("posts.calendar.auto_add_music")} value="❌" />
+                  <DetailRow label={t("posts.calendar.title")} value="my cute cat" />
                 </div>
               </div>
             </div>
@@ -528,7 +531,7 @@ function PostDetailsModal({ post, onClose }: { post: CalendarPost; onClose: () =
             <div className="px-4 pt-4 pb-3 border-b border-zinc-200">
               <h3 className="text-sm font-semibold flex items-center gap-2">
                 <ChatIcon />
-                Discussion
+                {t("posts.calendar.discussion")}
               </h3>
             </div>
             <div className="flex-1 flex items-center justify-center p-6">
@@ -536,10 +539,10 @@ function PostDetailsModal({ post, onClose }: { post: CalendarPost; onClose: () =
                 <div className="mx-auto size-12 rounded-full bg-zinc-100 flex items-center justify-center mb-3">
                   <ChatIcon className="size-6 text-zinc-400" />
                 </div>
-                <p className="text-sm font-semibold">Premium feature</p>
-                <p className="text-xs text-muted-foreground mt-1">Comment on any post and @mention teammates</p>
+                <p className="text-sm font-semibold">{t("posts.calendar.premium_feature")}</p>
+                <p className="text-xs text-muted-foreground mt-1">{t("posts.calendar.discussion_desc")}</p>
                 <button className="mt-3 inline-flex items-center rounded-md bg-zinc-900 text-white px-3 h-8 text-xs font-medium hover:bg-zinc-800">
-                  Upgrade to Premium
+                  {t("posts.calendar.upgrade_premium")}
                 </button>
                 <p className="text-[11px] text-muted-foreground mt-3 flex items-center justify-center gap-1">
                   <RedirectIcon /> Redirects to Stripe
@@ -550,9 +553,9 @@ function PostDetailsModal({ post, onClose }: { post: CalendarPost; onClose: () =
               <div className="flex items-center gap-2">
                 <input
                   className="flex-1 rounded-md border border-zinc-200 bg-background px-3 h-9 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
-                  placeholder="Comment... @ to mention"
+                  placeholder={t("posts.calendar.comment_placeholder")}
                 />
-                <button className="size-9 rounded-md bg-zinc-100 hover:bg-zinc-200 inline-flex items-center justify-center text-zinc-500" aria-label="Send">
+                <button className="size-9 rounded-md bg-zinc-100 hover:bg-zinc-200 inline-flex items-center justify-center text-zinc-500" aria-label={t("posts.calendar.send")}>
                   <SendIcon />
                 </button>
               </div>
@@ -640,10 +643,11 @@ function TimezonePill() {
 }
 
 function ViewModeSwitch({ view, onChange }: { view: ViewMode; onChange: (v: ViewMode) => void }) {
+  const t = useTranslations("dashboard");
   const buttons: { mode: ViewMode; aria: string; icon: React.ReactNode }[] = [
-    { mode: "weekly", aria: "Weekly view", icon: <WeekIcon /> },
-    { mode: "monthly", aria: "Monthly view", icon: <MonthIcon /> },
-    { mode: "list", aria: "List view", icon: <ListIcon /> },
+    { mode: "weekly", aria: t("posts.calendar.weekly_view"), icon: <WeekIcon /> },
+    { mode: "monthly", aria: t("posts.calendar.monthly_view"), icon: <MonthIcon /> },
+    { mode: "list", aria: t("posts.calendar.list_view"), icon: <ListIcon /> },
   ];
   return (
     <div className="flex items-center gap-0.5 p-0.5 bg-muted rounded-lg">
@@ -663,7 +667,7 @@ function ViewModeSwitch({ view, onChange }: { view: ViewMode; onChange: (v: View
             )}
           >
             {b.icon}
-            {b.mode === "monthly" && <span>Monthly</span>}
+            {b.mode === "monthly" && <span>{t("posts.calendar.monthly")}</span>}
           </button>
         );
       })}
@@ -712,6 +716,7 @@ function MonthView({ currentDate, today, posts, onPostClick }: { currentDate: Da
 }
 
 function DayCell({ day, isCurrentMonth, isToday, posts, onPostClick }: { day: Date; isCurrentMonth: boolean; isToday: boolean; posts: CalendarPost[]; onPostClick?: (p: CalendarPost) => void }) {
+  const t = useTranslations("dashboard");
   const iso = fmtISO(day);
   const dayPosts = posts.filter((p) => p.date === iso);
   return (
@@ -731,7 +736,7 @@ function DayCell({ day, isCurrentMonth, isToday, posts, onPostClick }: { day: Da
           <div className="flex-1 flex flex-wrap items-center gap-0.5 min-w-0 overflow-hidden">
             <button
               className="w-4 h-4 ml-0.5 flex items-center justify-center rounded-full text-muted-foreground/60 hover:text-foreground hover:bg-primary/10 hover:scale-110 transition-all flex-shrink-0"
-              aria-label="Add label"
+              aria-label={t("posts.calendar.add_label")}
             >
               <TagIcon className="w-2.5 h-2.5" />
             </button>
@@ -759,7 +764,7 @@ function DayCell({ day, isCurrentMonth, isToday, posts, onPostClick }: { day: Da
         <button
           type="button"
           className="absolute bottom-1.5 right-1.5 inline-flex items-center justify-center size-6 rounded-full bg-blue-600 hover:bg-blue-700 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-          aria-label="Create post"
+          aria-label={t("posts.calendar.create_post")}
         >
           <Plus className="size-3.5" />
         </button>
@@ -954,6 +959,7 @@ function WeekEventCard({ post, onClick }: { post: CalendarPost; onClick?: () => 
 
 // ===== LIST VIEW =====
 function ListView({ currentDate, posts, onPostClick, onBulkDelete }: { currentDate: Date; posts: CalendarPost[]; onPostClick: (p: CalendarPost) => void; onBulkDelete: (ids: string[]) => Promise<void> }) {
+  const t = useTranslations("dashboard");
   const monthName = currentDate.toLocaleString("en-US", { month: "long", year: "numeric" });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -1005,7 +1011,7 @@ function ListView({ currentDate, posts, onPostClick, onBulkDelete }: { currentDa
           <input
             type="checkbox"
             className="size-4 rounded border-zinc-300"
-            aria-label="Select all"
+            aria-label={t("posts.calendar.select_all")}
             checked={allSelected}
             ref={(el) => {
               if (el) el.indeterminate = someSelected;
@@ -1022,15 +1028,15 @@ function ListView({ currentDate, posts, onPostClick, onBulkDelete }: { currentDa
               className="ml-2 inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
             >
               <Trash2 className="size-3.5" />
-              {busy ? "Deleting…" : `Delete ${selected.size}`}
+              {busy ? t("posts.calendar.deleting") : `Delete ${selected.size}`}
             </button>
           )}
         </div>
         <div className="flex items-center gap-1">
-          <button className="size-8 rounded-md hover:bg-zinc-100 inline-flex items-center justify-center" aria-label="Previous">
+          <button className="size-8 rounded-md hover:bg-zinc-100 inline-flex items-center justify-center" aria-label={t("posts.calendar.previous")}>
             <ChevronLeft className="size-4" />
           </button>
-          <button className="size-8 rounded-md hover:bg-zinc-100 inline-flex items-center justify-center" aria-label="Next">
+          <button className="size-8 rounded-md hover:bg-zinc-100 inline-flex items-center justify-center" aria-label={t("posts.calendar.next")}>
             <ChevronRight className="size-4" />
           </button>
         </div>
@@ -1039,10 +1045,10 @@ function ListView({ currentDate, posts, onPostClick, onBulkDelete }: { currentDa
         <thead className="sticky top-[57px] bg-card z-20">
           <tr className="border-b border-zinc-200 text-xs text-muted-foreground">
             <th className="w-10 px-3 py-2" />
-            <th className="text-left px-3 py-2 font-medium">Caption</th>
+            <th className="text-left px-3 py-2 font-medium">{t("posts.calendar.caption")}</th>
             <th className="text-left px-3 py-2 font-medium">Account</th>
-            <th className="text-left px-3 py-2 font-medium">Status</th>
-            <th className="text-left px-3 py-2 font-medium">Date</th>
+            <th className="text-left px-3 py-2 font-medium">{t("posts.calendar.status")}</th>
+            <th className="text-left px-3 py-2 font-medium">{t("posts.calendar.date")}</th>
           </tr>
         </thead>
         <tbody>

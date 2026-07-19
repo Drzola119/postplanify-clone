@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import { Copy, Plus, Eye, EyeOff, Trash2, Check } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Dialog } from "@/components/ui/dialog";
@@ -32,6 +33,7 @@ export default function ApiKeysPage() {
   const [generatedKey, setGeneratedKey] = useState("");
   const [generatedPrefix, setGeneratedPrefix] = useState("");
   const [dialogError, setDialogError] = useState<string | null>(null);
+  const t = useTranslations("dashboard");
 
   useEffect(() => {
     let cancelled = false;
@@ -39,7 +41,7 @@ export default function ApiKeysPage() {
       try {
         const res = await fetch("/api/api-keys", { credentials: "include" });
         if (!res.ok) {
-          setError(`Failed to load keys (${res.status})`);
+          setError(t("apiKeys.load_error", { status: res.status }));
           return;
         }
         const data = await res.json();
@@ -49,7 +51,7 @@ export default function ApiKeysPage() {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Network error");
+          setError(err instanceof Error ? err.message : t("apiKeys.network_error"));
           setLoading(false);
         }
       }
@@ -60,7 +62,7 @@ export default function ApiKeysPage() {
   }, []);
 
   async function handleDelete(id: string) {
-    if (!confirm("Revoke this API key? This cannot be undone.")) return;
+    if (!confirm(t("apiKeys.revoke_confirm"))) return;
     const res = await fetch(`/api/api-keys/${id}`, {
       method: "DELETE",
       credentials: "include",
@@ -68,7 +70,7 @@ export default function ApiKeysPage() {
     if (res.ok) {
       setKeys((prev) => prev.filter((k) => k.id !== id));
     } else {
-      alert("Failed to revoke key");
+      alert(t("apiKeys.revoke_error"));
     }
   }
 
@@ -85,7 +87,7 @@ export default function ApiKeysPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setDialogError(data?.error?.message ?? "Failed to generate key");
+        setDialogError(data?.error?.message ?? t("apiKeys.generate_error"));
         setStep("form");
         return;
       }
@@ -102,7 +104,7 @@ export default function ApiKeysPage() {
       ]);
       setStep("success");
     } catch {
-      setDialogError("Network error");
+      setDialogError(t("apiKeys.network_error"));
       setStep("form");
     }
   }
@@ -126,29 +128,29 @@ export default function ApiKeysPage() {
   const onClose = useCallback(() => resetDialog(), []);
 
   function fmtDate(iso?: string) {
-    if (!iso) return "Never";
+    if (!iso) return t("apiKeys.never");
     const d = new Date(iso);
     return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
   }
 
   function fmtRelative(iso?: string) {
-    if (!iso) return "Never";
+    if (!iso) return t("apiKeys.never");
     const diff = Date.now() - new Date(iso).getTime();
     const m = Math.floor(diff / 60_000);
-    if (m < 1) return "Just now";
-    if (m < 60) return `${m}m ago`;
+    if (m < 1) return t("apiKeys.just_now");
+    if (m < 60) return t("apiKeys.min_ago", { n: m });
     const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
+    if (h < 24) return t("apiKeys.hour_ago", { n: h });
     const d = Math.floor(h / 24);
-    if (d < 30) return `${d}d ago`;
+    if (d < 30) return t("apiKeys.day_ago", { n: d });
     return fmtDate(iso);
   }
 
   return (
     <div className="p-6 max-w-5xl">
       <PageHeader
-        title="API Keys"
-        subtitle="Connect PostPlanify to your own tools with our REST API."
+        title={t("apiKeys.page_title")}
+        subtitle={t("apiKeys.page_subtitle")}
         cta={
           <button
             type="button"
@@ -156,7 +158,7 @@ export default function ApiKeysPage() {
             onClick={() => setShowDialog(true)}
           >
             <Plus className="size-4" />
-            Generate Key
+            {t("apiKeys.generate_key")}
           </button>
         }
       />
@@ -164,26 +166,26 @@ export default function ApiKeysPage() {
       <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 p-4 flex items-start gap-3">
         <span className="text-xl">📘</span>
         <div className="flex-1">
-          <p className="text-sm font-semibold text-blue-900">Read the API docs</p>
-          <p className="text-xs text-blue-800 mt-1">Full reference, code samples, and webhook events at postplanify.com/docs/api.</p>
+          <p className="text-sm font-semibold text-blue-900">{t("apiKeys.read_docs")}</p>
+          <p className="text-xs text-blue-800 mt-1">{t("apiKeys.docs_banner")}</p>
         </div>
       </div>
 
       {loading ? (
-        <div className="rounded-xl border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-500">Loading keys…</div>
+        <div className="rounded-xl border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-500">{t("apiKeys.loading")}</div>
       ) : error ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
       ) : keys.length === 0 ? (
         <div className="rounded-xl border border-dashed border-zinc-300 bg-white p-8 text-center">
-          <p className="text-sm text-zinc-600">No API keys yet. Generate your first key to get started.</p>
+          <p className="text-sm text-zinc-600">{t("apiKeys.empty_title")}</p>
         </div>
       ) : (
         <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden">
           <div className="grid grid-cols-[2fr_1fr_1fr_120px] gap-2 px-5 py-3 border-b border-zinc-200 bg-zinc-50 text-xs font-semibold text-zinc-500 uppercase tracking-wide">
-            <div>Name</div>
-            <div>Created</div>
-            <div>Last used</div>
-            <div className="text-right">Actions</div>
+            <div>{t("apiKeys.col_name")}</div>
+            <div>{t("apiKeys.col_created")}</div>
+            <div>{t("apiKeys.col_last_used")}</div>
+            <div className="text-right">{t("apiKeys.col_actions")}</div>
           </div>
           {keys.map((k) => (
             <div key={k.id} className="grid grid-cols-[2fr_1fr_1fr_120px] gap-2 px-5 py-4 border-b border-zinc-100 items-center">
@@ -191,7 +193,7 @@ export default function ApiKeysPage() {
                 <p className="text-sm font-semibold">
                   {k.name}
                   {k.revokedAt && (
-                    <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">Revoked</span>
+                    <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">{t("apiKeys.revoked_badge")}</span>
                   )}
                 </p>
                 <div className="mt-1 inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1">
@@ -229,14 +231,14 @@ export default function ApiKeysPage() {
         </div>
       )}
 
-      <Dialog open={showDialog} onClose={onClose} title="Generate API Key" description="Create a new API key for programmatic access." maxWidth="sm:max-w-[440px]">
+      <Dialog open={showDialog} onClose={onClose} title={t("apiKeys.dialog_title")} description={t("apiKeys.dialog_subtitle")} maxWidth="sm:max-w-[440px]">
         {step === "success" ? (
           <div className="space-y-4">
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-              Your API key has been generated. Copy it now — you won&apos;t be able to see it again.
+              {t("apiKeys.dialog_copy_hint")}
             </div>
             <div className="space-y-1.5">
-              <p className="text-xs font-semibold text-zinc-500">Your API Key</p>
+              <p className="text-xs font-semibold text-zinc-500">{t("apiKeys.your_key")}</p>
               <div className="flex items-center gap-2">
                 <code className="flex-1 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm font-mono text-zinc-900 break-all select-all">
                   {generatedKey}
@@ -253,7 +255,7 @@ export default function ApiKeysPage() {
             </div>
             <div className="flex justify-end">
               <PPButton variant="primary" onClick={onClose}>
-                Done
+                {t("apiKeys.done")}
               </PPButton>
             </div>
           </div>
@@ -266,8 +268,8 @@ export default function ApiKeysPage() {
             className="space-y-4"
           >
             <PPInput
-              label="Name"
-              placeholder="e.g. Production CI, Staging"
+              label={t("apiKeys.name_label")}
+              placeholder={t("apiKeys.name_placeholder")}
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={step === "loading"}
@@ -275,17 +277,17 @@ export default function ApiKeysPage() {
               autoFocus
             />
             <div className="w-full">
-              <label className="block text-xs font-semibold text-zinc-500 mb-1.5">Expiration</label>
+              <label className="block text-xs font-semibold text-zinc-500 mb-1.5">{t("apiKeys.expiration")}</label>
               <select
                 value={expiration}
                 onChange={(e) => setExpiration(e.target.value)}
                 disabled={step === "loading"}
                 className="w-full rounded-md border border-zinc-200 bg-white px-3 h-9 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-300 disabled:opacity-50"
               >
-                <option value="30d">30 days</option>
-                <option value="90d">90 days</option>
-                <option value="1y">1 year</option>
-                <option value="never">Never</option>
+                <option value="30d">{t("apiKeys.exp_30")}</option>
+                <option value="90d">{t("apiKeys.exp_90")}</option>
+                <option value="1y">{t("apiKeys.exp_1y")}</option>
+                <option value="never">{t("apiKeys.exp_never")}</option>
               </select>
             </div>
             {dialogError && (
@@ -293,10 +295,10 @@ export default function ApiKeysPage() {
             )}
             <div className="flex justify-end gap-2 pt-1">
               <PPButton variant="outline" onClick={onClose} disabled={step === "loading"} type="button">
-                Cancel
+                {t("apiKeys.cancel")}
               </PPButton>
               <PPButton variant="primary" type="submit" disabled={!name.trim() || step === "loading"}>
-                {step === "loading" ? "Generating…" : "Generate Key"}
+                {step === "loading" ? t("apiKeys.generating") : t("apiKeys.generate")}
               </PPButton>
             </div>
           </form>

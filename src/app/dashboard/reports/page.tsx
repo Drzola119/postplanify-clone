@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import {
   Clock,
   Plus,
@@ -48,12 +49,12 @@ interface Report {
   status: "pending" | "ready" | "failed";
 }
 
-const REPORT_TEMPLATES: { value: string; label: string }[] = [
-  { value: "performance", label: "Performance" },
-  { value: "engagement", label: "Engagement" },
-  { value: "audience", label: "Audience Growth" },
-  { value: "competitor", label: "Competitor" },
-  { value: "custom", label: "Custom" },
+const REPORT_TEMPLATES: { value: string; labelKey: string }[] = [
+  { value: "performance", labelKey: "template_performance" },
+  { value: "engagement", labelKey: "template_engagement" },
+  { value: "audience", labelKey: "template_audience" },
+  { value: "competitor", labelKey: "template_competitor" },
+  { value: "custom", labelKey: "template_custom" },
 ];
 
 interface Schedule {
@@ -91,12 +92,12 @@ const PLATFORM_ICONS: Record<string, ReactNode> = {
   twitter: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("twitter")!} />,
 };
 
-const COMPARE_OPTIONS: { id: CompareMode; label: string }[] = [
-  { id: "none", label: "No comparison" },
-  { id: "previous_period", label: "Previous period" },
-  { id: "previous_year", label: "Same period last year" },
-  { id: "week_over_week", label: "Week over week" },
-  { id: "custom_range", label: "Custom range" },
+const COMPARE_OPTIONS: { id: CompareMode; labelKey: string }[] = [
+  { id: "none", labelKey: "compare_none" },
+  { id: "previous_period", labelKey: "compare_previous" },
+  { id: "previous_year", labelKey: "compare_same_last_year" },
+  { id: "week_over_week", labelKey: "compare_wow" },
+  { id: "custom_range", labelKey: "compare_custom" },
 ];
 
 const SAMPLE_REPORTS: Report[] = [
@@ -160,15 +161,16 @@ function presetRange(preset: RangePreset): { from: string; to: string } {
   return { from: fmtDate(from), to: fmtDate(today) };
 }
 
-const RANGE_PRESETS: { value: RangePreset; label: string }[] = [
-  { value: "7d", label: "Last 7 days" },
-  { value: "30d", label: "Last 30 days" },
-  { value: "90d", label: "Last 90 days" },
-  { value: "this_month", label: "This month" },
-  { value: "last_month", label: "Last month" },
+const RANGE_PRESETS: { value: RangePreset; labelKey: string }[] = [
+  { value: "7d", labelKey: "last_7_days" },
+  { value: "30d", labelKey: "last_30_days" },
+  { value: "90d", labelKey: "last_90_days" },
+  { value: "this_month", labelKey: "this_month" },
+  { value: "last_month", labelKey: "last_month" },
 ];
 
 export default function ReportsPage() {
+  const t = useTranslations("dashboard");
   const [title, setTitle] = useState("");
   const [template, setTemplate] = useState<string>("performance");
   const [from, setFrom] = useState(defaultFrom());
@@ -342,7 +344,7 @@ export default function ReportsPage() {
       });
       if (!res.ok) {
         const errText = await res.text().catch(() => "");
-        showToast(`Could not create report (${res.status}). ${errText}`, "error");
+        showToast(t("reports.toast_create_error", { status: res.status, text: errText }), "error");
         return;
       }
       const { id } = (await res.json()) as { id: string };
@@ -373,7 +375,7 @@ export default function ReportsPage() {
         setReports((prev) => prev.map((r) => (r.id === id ? { ...r, status: "ready" } : r)));
       }, 2000);
 
-      showToast("Report generated");
+      showToast(t("reports.toast_generated"));
     } catch (err) {
       showToast(
         `Network error: ${err instanceof Error ? err.message : "unknown"}`,
@@ -392,21 +394,21 @@ export default function ReportsPage() {
 
   const deleteReport = (id: string) => {
     setReports((prev) => prev.filter((r) => r.id !== id));
-    showToast("Report deleted");
+    showToast(t("reports.toast_deleted"));
   };
 
   const copyLink = (id: string) => {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       navigator.clipboard.writeText(`https://postplanify.com/reports/${id}`);
     }
-    showToast("Link copied to clipboard");
+    showToast(t("reports.toast_link_copied"));
   };
 
   const handleCreateSchedule = async () => {
     const name = scheduleName.trim();
-    if (!name) { showToast("Schedule name is required", "error"); return; }
+    if (!name) { showToast(t("reports.toast_name_required"), "error"); return; }
     const recipients = scheduleRecipients.split(",").map((r) => r.trim()).filter(Boolean);
-    if (recipients.length === 0) { showToast("At least one recipient is required", "error"); return; }
+    if (recipients.length === 0) { showToast(t("reports.toast_recipient_required"), "error"); return; }
     setCreating(true);
     try {
       let cron: string;
@@ -425,7 +427,7 @@ export default function ReportsPage() {
       });
       if (!res.ok) {
         const errBody = await res.text().catch(() => "");
-        showToast(`Could not create schedule (${res.status}). ${errBody}`, "error");
+        showToast(t("reports.toast_schedule_error", { status: res.status, text: errBody }), "error");
         return;
       }
       const { id } = (await res.json()) as { id: string };
@@ -442,10 +444,10 @@ export default function ReportsPage() {
       setScheduleRecipients("");
       setScheduleTime("09:00");
       setNewScheduleOpen(false);
-      showToast("Schedule created");
+      showToast(t("reports.toast_schedule_created"));
     } catch (err) {
       showToast(
-        `Network error: ${err instanceof Error ? err.message : "unknown"}`,
+        t("reports.toast_network_error", { message: err instanceof Error ? err.message : "unknown" }),
         "error"
       );
     } finally {
@@ -458,8 +460,8 @@ export default function ReportsPage() {
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold leading-[32px] tracking-tight">Reports</h1>
-          <p className="mt-1 text-sm text-zinc-500">Generate branded PDF reports of your analytics performance.</p>
+          <h1 className="text-2xl font-bold leading-[32px] tracking-tight">{t("reports.page_title")}</h1>
+          <p className="mt-1 text-sm text-zinc-500">{t("reports.page_subtitle")}</p>
         </div>
         <button
           type="button"
@@ -467,16 +469,16 @@ export default function ReportsPage() {
           className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white h-9 px-3 text-sm font-medium hover:bg-zinc-50"
         >
           <Clock className="size-4" />
-          Scheduled Reports
+          {t("reports.scheduled_reports")}
         </button>
       </div>
 
       {/* Generate New Report */}
       <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow">
         <div className="p-6">
-          <h2 className="text-base font-semibold mb-4">Generate New Report</h2>
+          <h2 className="text-base font-semibold mb-4">{t("reports.generate_title")}</h2>
           <div className="flex flex-wrap items-center gap-2 mb-4">
-            <span className="text-xs text-zinc-500 mr-1">Quick range:</span>
+            <span className="text-xs text-zinc-500 mr-1">{t("reports.quick_range")}</span>
             {RANGE_PRESETS.map((p) => (
               <button
                 key={p.value}
@@ -489,7 +491,7 @@ export default function ReportsPage() {
                     : "bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50"
                 )}
               >
-                {p.label}
+                {t(`reports.${p.labelKey}`)}
               </button>
             ))}
           </div>
@@ -497,28 +499,28 @@ export default function ReportsPage() {
             {/* Title */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">
-                Title <span className="text-zinc-400 font-normal">(optional)</span>
+                {t("reports.title")} <span className="text-zinc-400 font-normal">{t("reports.optional")}</span>
               </label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Monthly Performance Report"
+                placeholder={t("reports.title_placeholder")}
                 className="w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
               />
             </div>
 
             {/* Template */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Template</label>
+              <label className="text-sm font-medium">{t("reports.template")}</label>
               <div className="relative">
                 <select
                   value={template}
                   onChange={(e) => setTemplate(e.target.value)}
                   className="w-full h-9 px-3 pr-9 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10 appearance-none"
                 >
-                  {REPORT_TEMPLATES.map((t) => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
+                  {REPORT_TEMPLATES.map((tmpl) => (
+                    <option key={tmpl.value} value={tmpl.value}>{t(`reports.${tmpl.labelKey}`)}</option>
                   ))}
                 </select>
                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-zinc-400 pointer-events-none" />
@@ -527,7 +529,7 @@ export default function ReportsPage() {
 
             {/* From */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">From</label>
+              <label className="text-sm font-medium">{t("reports.from")}</label>
               <div className="relative">
                 <input
                   ref={fromInputRef}
@@ -549,7 +551,7 @@ export default function ReportsPage() {
 
             {/* To */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">To</label>
+              <label className="text-sm font-medium">{t("reports.to")}</label>
               <div className="relative">
                 <input
                   ref={toInputRef}
@@ -572,7 +574,7 @@ export default function ReportsPage() {
             {/* Compare */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium flex items-center gap-1">
-                Compare <CircleHelp className="size-3.5 text-zinc-400" />
+                {t("reports.compare")} <CircleHelp className="size-3.5 text-zinc-400" />
               </label>
               <div className="relative">
                 <button
@@ -580,7 +582,7 @@ export default function ReportsPage() {
                   onClick={() => setCompareOpen(!compareOpen)}
                   className="w-full inline-flex items-center justify-between gap-1.5 rounded-md border border-zinc-200 bg-white h-9 px-3 text-sm font-medium hover:bg-zinc-50 whitespace-nowrap"
                 >
-                  <span className="truncate">{COMPARE_OPTIONS.find((o) => o.id === compare)?.label}</span>
+                  <span className="truncate">{COMPARE_OPTIONS.find((o) => o.id === compare) && t(`reports.${COMPARE_OPTIONS.find((o) => o.id === compare)!.labelKey}`)}</span>
                   <ChevronDown className="size-3.5 text-zinc-400 shrink-0" />
                 </button>
                 {compareOpen && (
@@ -600,7 +602,7 @@ export default function ReportsPage() {
                           <span className="size-4 inline-flex items-center justify-center">
                             {compare === o.id && <span className="size-1.5 rounded-full bg-zinc-900" />}
                           </span>
-                          {o.label}
+                          {t(`reports.${o.labelKey}`)}
                         </button>
                       ))}
                     </div>
@@ -611,7 +613,7 @@ export default function ReportsPage() {
 
             {/* Accounts */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">&nbsp;</label>
+              <label className="text-sm font-medium">{t("reports.accounts")}</label>
               <div className="relative">
                 <button
                   type="button"
@@ -620,10 +622,10 @@ export default function ReportsPage() {
                 >
                   <span>
                     {selectedAccounts.size === SAMPLE_ACCOUNTS.length
-                      ? "All Accounts"
+                      ? t("reports.all_accounts")
                       : selectedAccounts.size === 0
-                        ? "Accounts"
-                        : `${selectedAccounts.size} accounts`}
+                        ? t("reports.accounts")
+                        : t("reports.accounts_count", { n: selectedAccounts.size })}
                   </span>
                   <ChevronDown className="size-3.5 text-zinc-400" />
                 </button>
@@ -639,7 +641,7 @@ export default function ReportsPage() {
                         <span className="size-4 inline-flex items-center justify-center">
                           {selectedAccounts.size === SAMPLE_ACCOUNTS.length && <Check className="size-3.5" />}
                         </span>
-                        All Accounts
+                        {t("reports.all_accounts")}
                       </button>
                       <div className="my-1 border-t border-zinc-100" />
                       <div className="max-h-64 overflow-y-auto">
@@ -668,7 +670,7 @@ export default function ReportsPage() {
 
             {/* Generate */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium invisible">Generate</label>
+              <label className="text-sm font-medium invisible">{t("reports.generate")}</label>
               <button
                 type="button"
                 onClick={handleGenerate}
@@ -681,12 +683,12 @@ export default function ReportsPage() {
                 {generating ? (
                   <>
                     <Loader2 className="size-4 animate-spin" />
-                    Generating...
+                    {t("reports.generating")}
                   </>
                 ) : (
                   <>
                     <Plus className="size-4" />
-                    Generate
+                    {t("reports.generate")}
                   </>
                 )}
               </button>
@@ -708,10 +710,10 @@ export default function ReportsPage() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-semibold">Report Branding</h2>
-                <span className="text-xs text-zinc-400">(Optional)</span>
+                <h2 className="text-base font-semibold">{t("reports.branding_title")}</h2>
+                <span className="text-xs text-zinc-400">{t("reports.optional")}</span>
               </div>
-              <p className="text-sm text-zinc-500 mt-0.5">Customize how your PDF reports and shared report pages look.</p>
+              <p className="text-sm text-zinc-500 mt-0.5">{t("reports.branding_subtitle")}</p>
             </div>
           </div>
           {brandingOpen ? <ChevronUp className="size-5 text-zinc-400 shrink-0" /> : <ChevronDown className="size-5 text-zinc-400 shrink-0" />}
@@ -722,7 +724,7 @@ export default function ReportsPage() {
             {/* Accent Color */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium flex items-center gap-1">
-                Accent Color <CircleHelp className="size-3.5 text-zinc-400" />
+                {t("reports.accent_color")} <CircleHelp className="size-3.5 text-zinc-400" />
               </label>
               <div className="flex items-center gap-2 max-w-sm">
                 <input
@@ -743,13 +745,13 @@ export default function ReportsPage() {
             {/* Footer Text */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium flex items-center gap-1">
-                Footer Text <span className="text-zinc-400 font-normal">(optional)</span> <CircleHelp className="size-3.5 text-zinc-400" />
+                {t("reports.footer_text")} <span className="text-zinc-400 font-normal">{t("reports.optional")}</span> <CircleHelp className="size-3.5 text-zinc-400" />
               </label>
               <input
                 type="text"
                 value={footerText}
                 onChange={(e) => setFooterText(e.target.value)}
-                placeholder="Prepared by Acme Agency • hello@acme.com"
+                  placeholder={t("reports.footer_placeholder")}
                 className="w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
               />
             </div>
@@ -759,7 +761,7 @@ export default function ReportsPage() {
                 type="button"
                 className="inline-flex items-center justify-center h-9 px-4 rounded-md bg-zinc-300 text-white text-sm font-medium hover:bg-zinc-400"
               >
-                Save Branding
+                {t("reports.save_branding")}
               </button>
             </div>
           </div>
@@ -770,7 +772,7 @@ export default function ReportsPage() {
       <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow">
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold">Your Reports</h2>
+            <h2 className="text-base font-semibold">{t("reports.your_reports")}</h2>
             {reports.length > 0 ? (
               <button
                 type="button"
@@ -778,7 +780,7 @@ export default function ReportsPage() {
                 className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white h-8 px-2.5 text-xs font-medium hover:bg-zinc-50"
               >
                 <Download className="size-3.5" />
-                Export CSV
+                {t("reports.export_csv")}
               </button>
             ) : null}
           </div>
@@ -806,12 +808,12 @@ export default function ReportsPage() {
               <div>
                 <h2 className="text-base font-semibold flex items-center gap-2">
                   <Clock className="size-4" />
-                  Scheduled Reports
+                  {t("reports.scheduled_title")}
                 </h2>
-                <p className="text-sm text-zinc-500 mt-0.5">Send recurring branded reports to your team and clients on autopilot.</p>
+                <p className="text-sm text-zinc-500 mt-0.5">{t("reports.scheduled_subtitle")}</p>
               </div>
-              <button type="button" onClick={() => setScheduledOpen(false)} className="text-zinc-400 hover:text-zinc-700" aria-label="Close">
-                <X className="size-5" />
+                 <button type="button" onClick={() => setScheduledOpen(false)} className="text-zinc-400 hover:text-zinc-700" aria-label={t("reports.close")}>
+                 <X className="size-5" />
               </button>
             </div>
             <div className="px-5 py-3 border-b border-zinc-100 flex justify-end gap-2">
@@ -822,7 +824,7 @@ export default function ReportsPage() {
                   className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white h-9 px-3 text-sm font-medium hover:bg-zinc-50"
                 >
                   <Download className="size-4" />
-                  Export CSV
+                  {t("reports.export_csv")}
                 </button>
               ) : null}
               <button
@@ -831,7 +833,7 @@ export default function ReportsPage() {
                 className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 text-white h-9 px-3 text-sm font-medium hover:bg-zinc-800"
               >
                 <Plus className="size-4" />
-                New schedule
+                {t("reports.new_schedule")}
               </button>
             </div>
             <div className="flex-1 overflow-y-auto">
@@ -854,46 +856,46 @@ export default function ReportsPage() {
         <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4 animate-in fade-in-0" onClick={() => setNewScheduleOpen(false)}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-lg animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between p-5 pb-3">
-              <h2 className="text-lg font-semibold">New Schedule</h2>
-              <button type="button" onClick={() => setNewScheduleOpen(false)} className="text-zinc-400 hover:text-zinc-700" aria-label="Close">
-                <X className="size-5" />
+              <h2 className="text-lg font-semibold">{t("reports.new_schedule_title")}</h2>
+              <button type="button" onClick={() => setNewScheduleOpen(false)} className="text-zinc-400 hover:text-zinc-700" aria-label={t("reports.close")}>
+                 <X className="size-5" />
               </button>
             </div>
             <div className="px-5 pb-5 space-y-4">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Schedule name</label>
+                <label className="text-sm font-medium">{t("reports.schedule_name")}</label>
                 <input
                   type="text"
                   value={scheduleName}
                   onChange={(e) => setScheduleName(e.target.value)}
-                  placeholder="Weekly client report"
+                  placeholder={t("reports.schedule_name_placeholder")}
                   className="w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Frequency</label>
+                <label className="text-sm font-medium">{t("reports.frequency")}</label>
                 <select
                   value={scheduleFreq}
                   onChange={(e) => setScheduleFreq(e.target.value as "daily" | "weekly" | "monthly")}
                   className="w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
                 >
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
+                  <option value="daily">{t("reports.freq_daily")}</option>
+                  <option value="weekly">{t("reports.freq_weekly")}</option>
+                  <option value="monthly">{t("reports.freq_monthly")}</option>
                 </select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Recipients</label>
+                <label className="text-sm font-medium">{t("reports.recipients")}</label>
                 <input
                   type="text"
                   value={scheduleRecipients}
                   onChange={(e) => setScheduleRecipients(e.target.value)}
-                  placeholder="email@example.com, email2@example.com"
+                  placeholder={t("reports.recipients_placeholder")}
                   className="w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Time</label>
+                <label className="text-sm font-medium">{t("reports.schedule_time")}</label>
                 <input
                   type="time"
                   value={scheduleTime}
@@ -903,7 +905,7 @@ export default function ReportsPage() {
               </div>
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setNewScheduleOpen(false)} className="inline-flex items-center justify-center h-9 px-4 rounded-md border border-zinc-200 bg-white text-sm font-medium hover:bg-zinc-50" disabled={creating}>
-                  Cancel
+                  {t("reports.cancel")}
                 </button>
                 <button
                   type="button"
@@ -914,10 +916,10 @@ export default function ReportsPage() {
                   {creating ? (
                     <>
                       <Loader2 className="size-3.5 animate-spin" />
-                      Creating...
+                      {t("reports.creating")}
                     </>
                   ) : (
-                    "Create schedule"
+                    t("reports.create_schedule")
                   )}
                 </button>
               </div>
@@ -944,10 +946,11 @@ export default function ReportsPage() {
 }
 
 function ReportRow({ report, onCopyLink, onDelete, onDownloadPdf }: { report: Report; onCopyLink: () => void; onDelete: () => void; onDownloadPdf: () => void }) {
+  const t = useTranslations("dashboard");
   const statusBadge = report.status === "pending"
-    ? <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-700 px-2 py-0.5 text-[10px] font-medium border border-amber-200"><Loader2 className="size-2.5 animate-spin" />Generating</span>
+    ? <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-700 px-2 py-0.5 text-[10px] font-medium border border-amber-200"><Loader2 className="size-2.5 animate-spin" />{t("reports.status_generating")}</span>
     : report.status === "failed"
-    ? <span className="inline-flex items-center rounded-full bg-rose-50 text-rose-700 px-2 py-0.5 text-[10px] font-medium border border-rose-200">Failed</span>
+    ? <span className="inline-flex items-center rounded-full bg-rose-50 text-rose-700 px-2 py-0.5 text-[10px] font-medium border border-rose-200">{t("reports.status_failed")}</span>
     : null;
   return (
     <div className="flex items-center gap-4 rounded-lg border border-zinc-200 p-4 hover:bg-zinc-50/50 transition-colors">
@@ -967,23 +970,23 @@ function ReportRow({ report, onCopyLink, onDelete, onDownloadPdf }: { report: Re
           <span className="text-zinc-300">•</span>
           <span className="capitalize">{report.template}</span>
           <span className="text-zinc-300">•</span>
-          <span>Created {report.createdAt}</span>
+           <span>{t("reports.created_date", { date: report.createdAt })}</span>
         </div>
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
         <button type="button" className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-zinc-200 bg-white text-xs font-medium hover:bg-zinc-50">
           <Eye className="size-3.5" />
-          View
+          {t("reports.view")}
         </button>
         <button type="button" onClick={onCopyLink} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-zinc-200 bg-white text-xs font-medium hover:bg-zinc-50">
           <CopyIcon className="size-3.5" />
-          Copy Link
+          {t("reports.copy_link")}
         </button>
         <button type="button" onClick={onDownloadPdf} disabled={report.status === "pending"} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-zinc-200 bg-white text-xs font-medium hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed">
           <Download className="size-3.5" />
-          PDF
+          {t("reports.pdf")}
         </button>
-        <button type="button" onClick={onDelete} className="inline-flex items-center justify-center size-8 rounded-md border border-rose-200 bg-white text-rose-600 hover:bg-rose-50" aria-label="Delete">
+        <button type="button" onClick={onDelete} className="inline-flex items-center justify-center size-8 rounded-md border border-rose-200 bg-white text-rose-600 hover:bg-rose-50" aria-label={t("reports.delete")}>
           <Trash2 className="size-3.5" />
         </button>
       </div>
@@ -992,47 +995,50 @@ function ReportRow({ report, onCopyLink, onDelete, onDownloadPdf }: { report: Re
 }
 
 function EmptyReports() {
+  const t = useTranslations("dashboard");
   return (
     <div className="flex flex-col items-center justify-center text-center py-12">
       <div className="size-12 rounded-full bg-zinc-100 flex items-center justify-center mb-3">
         <FileText className="size-6 text-zinc-400" />
       </div>
-      <p className="text-sm font-medium text-zinc-900">No reports yet</p>
-      <p className="text-xs text-zinc-500 mt-1 max-w-xs">Generate your first report to see it here.</p>
+      <p className="text-sm font-medium text-zinc-900">{t("reports.empty_title")}</p>
+      <p className="text-xs text-zinc-500 mt-1 max-w-xs">{t("reports.empty_subtitle")}</p>
     </div>
   );
 }
 
 function EmptySchedules() {
+  const t = useTranslations("dashboard");
   return (
     <div className="flex flex-col items-center justify-center text-center py-16 px-6">
       <Clock className="size-10 text-zinc-300 mb-3" />
-      <p className="text-sm font-semibold text-zinc-900">No schedules yet</p>
-      <p className="text-xs text-zinc-500 mt-1 max-w-xs">Click New schedule to set one up.</p>
+      <p className="text-sm font-semibold text-zinc-900">{t("reports.schedules_empty")}</p>
+      <p className="text-xs text-zinc-500 mt-1 max-w-xs">{t("reports.schedules_empty_sub")}</p>
     </div>
   );
 }
 
 function ScheduleRow({ schedule }: { schedule: Schedule }) {
-  const freqLabel = schedule.frequency === "daily" ? "Daily" : schedule.frequency === "weekly" ? "Weekly" : "Monthly";
+  const t = useTranslations("dashboard");
+  const freqLabel = schedule.frequency === "daily" ? t("reports.freq_daily") : schedule.frequency === "weekly" ? t("reports.freq_weekly") : t("reports.freq_monthly");
   return (
     <div className="rounded-lg border border-zinc-200 p-4 space-y-2">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold">{schedule.name}</p>
         <div className="flex items-center gap-1">
-          <button type="button" className="size-7 inline-flex items-center justify-center rounded-md hover:bg-zinc-100" aria-label="Edit">
+          <button type="button" className="size-7 inline-flex items-center justify-center rounded-md hover:bg-zinc-100" aria-label={t("reports.schedule_edit")}>
             <Pencil className="size-3.5 text-zinc-600" />
           </button>
-          <button type="button" className="size-7 inline-flex items-center justify-center rounded-md hover:bg-zinc-100" aria-label="Toggle">
+          <button type="button" className="size-7 inline-flex items-center justify-center rounded-md hover:bg-zinc-100" aria-label={t("reports.schedule_toggle")}>
             {schedule.active ? <Pause className="size-3.5 text-zinc-600" /> : <Play className="size-3.5 text-zinc-600" />}
           </button>
-          <button type="button" className="size-7 inline-flex items-center justify-center rounded-md hover:bg-zinc-100 text-rose-600" aria-label="Delete">
+          <button type="button" className="size-7 inline-flex items-center justify-center rounded-md hover:bg-zinc-100 text-rose-600" aria-label={t("reports.schedule_delete")}>
             <Trash2 className="size-3.5" />
           </button>
         </div>
       </div>
-      <p className="text-xs text-zinc-500">{freqLabel} at {schedule.time}</p>
-      <p className="text-xs text-zinc-500">{schedule.recipients.length} recipient{schedule.recipients.length !== 1 ? "s" : ""}</p>
+      <p className="text-xs text-zinc-500">{t("reports.schedule_freq", { freqLabel, time: schedule.time })}</p>
+      <p className="text-xs text-zinc-500">{t("reports.schedule_recipients", { n: schedule.recipients.length })}</p>
     </div>
   );
 }

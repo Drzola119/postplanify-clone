@@ -9,68 +9,67 @@ import {
   Image as ImageIcon,
   KeyRound,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { PageHeader } from "@/components/dashboard/page-header";
 
-const TOOLS = [
-  {
-    title: "Instant Infographics",
-    href: "/dashboard/infographics/instant",
-    icon: Wand2,
-    accent: "from-sky-500/10 to-sky-500/0",
-    iconCls: "bg-sky-50 text-sky-700",
-    summary:
-      "Type a topic and pick a layout. We render a finished, on-brand social infographic in one pass.",
-    bullets: [
-      "30 viral layouts — roadmap, decision tree, mistakes, myth-vs-truth, before/after, and more",
-      "Hook-first composition: bold headline, strong middle, save/share footer",
-      "Three colour schemes — light, dark, brand",
-    ],
-  },
-  {
-    title: "Instant Infographic Ads",
-    href: "/dashboard/infographics/ads",
-    icon: Globe,
-    accent: "from-amber-500/10 to-amber-500/0",
-    iconCls: "bg-amber-50 text-amber-700",
-    summary:
-      "Paste a landing-page URL and we pull the offer copy for you, then render a scroll-stopping ad.",
-    bullets: [
-      "Server-side URL fetch — no extra browser extension required",
-      "20 ad layouts — offer snapshot, value stack, transformation path, audience fit, and more",
-      "Footer CTA + offer title carry straight through to the image",
-    ],
-  },
-];
-
 export default function InfographicsLandingPage() {
+  const t = useTranslations("dashboard");
+  const TOOLS = [
+    {
+      title: t("infographics.landing.instant_title"),
+      href: "/dashboard/infographics/instant",
+      icon: Wand2,
+      accent: "from-sky-500/10 to-sky-500/0",
+      iconCls: "bg-sky-50 text-sky-700",
+      summary: t("infographics.landing.instant_summary"),
+      bullets: [
+        t("infographics.landing.instant_bullet1"),
+        t("infographics.landing.instant_bullet2"),
+        t("infographics.landing.instant_bullet3"),
+      ],
+    },
+    {
+      title: t("infographics.landing.ads_title"),
+      href: "/dashboard/infographics/ads",
+      icon: Globe,
+      accent: "from-amber-500/10 to-amber-500/0",
+      iconCls: "bg-amber-50 text-amber-700",
+      summary: t("infographics.landing.ads_summary"),
+      bullets: [
+        t("infographics.landing.ads_bullet1"),
+        t("infographics.landing.ads_bullet2"),
+        t("infographics.landing.ads_bullet3"),
+      ],
+    },
+  ];
   return (
     <div className="p-6 max-w-5xl">
       <PageHeader
-        title="AI Infographic Generator"
-        subtitle="Render on-brand social infographics and offer ads in one pass — choose a tool to get started."
+        title={t("infographics.landing.page_title")}
+        subtitle={t("infographics.landing.page_subtitle")}
       />
 
       <div className="grid gap-5 md:grid-cols-2">
-        {TOOLS.map((t) => {
-          const Icon = t.icon;
+        {TOOLS.map((tool) => {
+          const Icon = tool.icon;
           return (
             <Link
-              key={t.href}
-              href={t.href}
+              key={tool.href}
+              href={tool.href}
               className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-white p-6 transition-all hover:border-zinc-300 hover:shadow-sm"
             >
               <div
-                className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${t.accent}`}
+                className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${tool.accent}`}
                 aria-hidden
               />
               <div className="relative">
-                <div className={`inline-flex size-10 items-center justify-center rounded-xl ${t.iconCls}`}>
+                <div className={`inline-flex size-10 items-center justify-center rounded-xl ${tool.iconCls}`}>
                   <Icon className="size-5" />
                 </div>
-                <h3 className="mt-4 text-lg font-semibold tracking-tight">{t.title}</h3>
-                <p className="mt-1.5 text-sm text-zinc-600">{t.summary}</p>
+                <h3 className="mt-4 text-lg font-semibold tracking-tight">{tool.title}</h3>
+                <p className="mt-1.5 text-sm text-zinc-600">{tool.summary}</p>
                 <ul className="mt-4 space-y-1.5">
-                  {t.bullets.map((b) => (
+                  {tool.bullets.map((b) => (
                     <li key={b} className="flex items-start gap-2 text-xs text-zinc-600">
                       <span className="mt-1.5 inline-block size-1 rounded-full bg-zinc-400" />
                       {b}
@@ -78,7 +77,7 @@ export default function InfographicsLandingPage() {
                   ))}
                 </ul>
                 <div className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-900">
-                  Open wizard
+                  {t("infographics.landing.instant_cta")}
                   <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
                 </div>
               </div>
@@ -90,18 +89,18 @@ export default function InfographicsLandingPage() {
       <div className="mt-8 grid gap-4 md:grid-cols-3">
         <Hint
           icon={ImageIcon}
-          title="Saved to Media Library"
-          body="Every render is uploaded to Bunny CDN and indexed under your workspace with the right tags."
+          title={t("infographics.landing.hint_media_title")}
+          body={t("infographics.landing.hint_media_desc")}
         />
         <Hint
           icon={Sparkles}
-          title="Multi-provider fallback"
-          body="Gemini Flash Lite Image (default) → GPT Image 2 → Ideogram 4 → Gemini Flash Image. Walks the chain on retryable failure."
+          title={t("infographics.landing.hint_provider_title")}
+          body={t("infographics.landing.hint_provider_desc")}
         />
         <Hint
           icon={KeyRound}
-          title="BYOK supported"
-          body="Drop your own OpenRouter, OpenAI, or Ideogram keys under Settings → API Keys to bill generations to your own account."
+          title={t("infographics.landing.hint_byok_title")}
+          body={t("infographics.landing.hint_byok_desc")}
         />
       </div>
     </div>

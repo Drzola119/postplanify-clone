@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Loader2, Save } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
@@ -20,13 +21,14 @@ const PLATFORM_OPTIONS: { id: Platform; label: string }[] = [
   { id: "bluesky", label: "Bluesky" },
 ];
 
-const TRIGGER_OPTIONS: { value: "comment-keyword" | "first-comment" | "follow"; label: string; description: string }[] = [
-  { value: "comment-keyword", label: "Comment contains a keyword", description: "Reply when someone comments with a specific word/phrase." },
-  { value: "first-comment", label: "First comment ever", description: "Reply to anyone who comments on your post for the first time." },
-  { value: "follow", label: "New follower", description: "Welcome new followers with a DM." },
+const TRIGGER_OPTIONS = (t: (k: string) => string): { value: "comment-keyword" | "first-comment" | "follow"; label: string; description: string }[] => [
+  { value: "comment-keyword", label: t("automations.new.trigger_keyword"), description: t("automations.new.trigger_keyword_desc") },
+  { value: "first-comment", label: t("automations.new.trigger_first_comment"), description: t("automations.new.trigger_first_comment_desc") },
+  { value: "follow", label: t("automations.new.trigger_new_follower"), description: t("automations.new.trigger_new_follower_desc") },
 ];
 
 export default function NewAutoDmCampaignPage() {
+  const t = useTranslations("dashboard");
   const router = useRouter();
   const [name, setName] = useState("");
   const [triggerKind, setTriggerKind] = useState<"comment-keyword" | "first-comment" | "follow">("comment-keyword");
@@ -39,6 +41,13 @@ export default function NewAutoDmCampaignPage() {
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const ERRORS = {
+    name: t("automations.new.error_name"),
+    platform: t("automations.new.error_platform"),
+    template: t("automations.new.error_template"),
+    keyword: t("automations.new.error_keyword"),
+  };
+
   function togglePlatform(p: Platform) {
     setPlatforms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
   }
@@ -46,15 +55,15 @@ export default function NewAutoDmCampaignPage() {
   async function save() {
     if (saving) return;
     if (!name.trim()) {
-      setErrorMsg("Name is required");
+      setErrorMsg(ERRORS.name);
       return;
     }
     if (platforms.length === 0) {
-      setErrorMsg("Pick at least one platform");
+      setErrorMsg(ERRORS.platform);
       return;
     }
     if (!template.trim()) {
-      setErrorMsg("Template is required");
+      setErrorMsg(ERRORS.template);
       return;
     }
     const trigger =
@@ -64,7 +73,7 @@ export default function NewAutoDmCampaignPage() {
         ? { kind: "first-comment" as const, postId: postId.trim() || undefined }
         : { kind: "follow" as const, postId: postId.trim() || undefined };
     if (triggerKind === "comment-keyword" && !trigger.keyword) {
-      setErrorMsg("Keyword is required");
+      setErrorMsg(ERRORS.keyword);
       return;
     }
     setSaving(true);
@@ -98,24 +107,24 @@ export default function NewAutoDmCampaignPage() {
   return (
     <div className="px-3 lg:px-6 pt-5 lg:pt-8 pb-3 lg:pb-6 max-w-3xl">
       <PageHeader
-        title="New AutoDM campaign"
-        subtitle="Set up the trigger, message template, and platforms."
+        title={t("automations.new.page_title")}
+        subtitle={t("automations.new.page_subtitle")}
       />
 
       <div className="rounded-xl border border-zinc-200 bg-white p-5 space-y-5">
-        <Field label="Campaign name" required>
+        <Field label={t("automations.new.campaign_name")} required>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Welcome new followers"
+            placeholder={t("automations.new.name_placeholder")}
             className="w-full h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
           />
         </Field>
 
-        <Field label="Trigger">
+        <Field label={t("automations.new.trigger")}>
           <div className="space-y-2">
-            {TRIGGER_OPTIONS.map((o) => (
+            {TRIGGER_OPTIONS(t).map((o) => (
               <label
                 key={o.value}
                 className={`flex items-start gap-3 rounded-md border p-3 cursor-pointer ${
@@ -139,40 +148,40 @@ export default function NewAutoDmCampaignPage() {
 
         {triggerKind === "comment-keyword" ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="Keyword" required>
-              <input
-                type="text"
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                placeholder="e.g. PRICE"
-                className="w-full h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
-              />
-            </Field>
-            <Field label="Match type">
-              <select
-                value={match}
-                onChange={(e) => setMatch(e.target.value as "contains" | "exact" | "starts-with")}
-                className="w-full h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
-              >
-                <option value="contains">contains</option>
-                <option value="starts-with">starts with</option>
-                <option value="exact">exact match</option>
-              </select>
-            </Field>
+        <Field label={t("automations.new.keyword")} required>
+          <input
+            type="text"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            placeholder={t("automations.new.keyword_placeholder")}
+            className="w-full h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+          />
+        </Field>
+        <Field label={t("automations.new.match_type")}>
+          <select
+            value={match}
+            onChange={(e) => setMatch(e.target.value as "contains" | "exact" | "starts-with")}
+            className="w-full h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+          >
+            <option value="contains">{t("automations.new.match_contains")}</option>
+            <option value="starts-with">{t("automations.new.match_starts")}</option>
+            <option value="exact">{t("automations.new.match_exact")}</option>
+          </select>
+        </Field>
           </div>
         ) : (
-          <Field label="Restrict to post (optional)">
+          <Field label={t("automations.new.restrict_post")}>
             <input
               type="text"
               value={postId}
               onChange={(e) => setPostId(e.target.value)}
-              placeholder="leave blank for any"
+              placeholder={t("automations.new.post_placeholder")}
               className="w-full h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
             />
           </Field>
         )}
 
-        <Field label="Platforms" required>
+        <Field label={t("automations.new.platforms")} required>
           <div className="flex flex-wrap gap-2">
             {PLATFORM_OPTIONS.map((p) => {
               const active = platforms.includes(p.id);
@@ -192,24 +201,24 @@ export default function NewAutoDmCampaignPage() {
           </div>
         </Field>
 
-        <Field label="Message template" required hint="Use {{handle}} and {{comment}} as placeholders.">
+        <Field label={t("automations.new.template_label")} required hint={t("automations.new.template_hint")}>
           <textarea
             value={template}
             onChange={(e) => setTemplate(e.target.value)}
-            placeholder="Hey {{handle}}! Thanks for the comment — here's the link you asked for: https://…"
+            placeholder={t("automations.new.template_placeholder")}
             rows={5}
             className="w-full rounded-md border border-zinc-200 bg-white p-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10 resize-none"
           />
         </Field>
 
-        <Field label="Per-author daily cap" hint="Limits sends to the same author in a 24h window to avoid spam.">
+        <Field label={t("automations.new.daily_cap")} hint={t("automations.new.cap_hint")}>
           <input
             type="number"
             value={cap}
             min={1}
             max={10}
             onChange={(e) => setCap(e.target.value ? Number(e.target.value) : "")}
-            placeholder="1"
+            placeholder={t("automations.new.cap_placeholder")}
             className="w-32 h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
           />
         </Field>
@@ -226,7 +235,7 @@ export default function NewAutoDmCampaignPage() {
             onClick={() => router.push("/dashboard/automations/dm")}
             className="inline-flex items-center rounded-md border border-zinc-200 bg-white px-3 h-9 text-sm font-medium hover:bg-zinc-50"
           >
-            Cancel
+            {t("automations.new.cancel")}
           </button>
           <button
             type="button"
@@ -235,7 +244,7 @@ export default function NewAutoDmCampaignPage() {
             className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-white px-3 h-9 text-sm font-medium"
           >
             {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-            {saving ? "Creating…" : "Create campaign"}
+            {saving ? t("automations.new.creating") : t("automations.new.create")}
           </button>
         </div>
       </div>

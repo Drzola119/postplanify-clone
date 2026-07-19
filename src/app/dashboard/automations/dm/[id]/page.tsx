@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Loader2, Save, Trash2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
 
@@ -20,10 +21,10 @@ const PLATFORM_OPTIONS: { id: Platform; label: string }[] = [
   { id: "bluesky", label: "Bluesky" },
 ];
 
-const TRIGGER_OPTIONS: { value: "comment-keyword" | "first-comment" | "follow"; label: string; description: string }[] = [
-  { value: "comment-keyword", label: "Comment contains a keyword", description: "Reply when someone comments with a specific word/phrase." },
-  { value: "first-comment", label: "First comment ever", description: "Reply to anyone who comments on your post for the first time." },
-  { value: "follow", label: "New follower", description: "Welcome new followers with a DM." },
+const TRIGGER_OPTIONS: { value: "comment-keyword" | "first-comment" | "follow"; key: string }[] = [
+  { value: "comment-keyword", key: "trigger_keyword" },
+  { value: "first-comment", key: "trigger_first_comment" },
+  { value: "follow", key: "trigger_new_follower" },
 ];
 
 interface CampaignDetail {
@@ -40,6 +41,7 @@ interface CampaignDetail {
 }
 
 export default function EditAutoDmCampaignPage() {
+  const t = useTranslations("dashboard");
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [campaign, setCampaign] = useState<CampaignDetail | null>(null);
@@ -96,11 +98,11 @@ export default function EditAutoDmCampaignPage() {
   async function save() {
     if (saving || !campaign) return;
     if (platforms.length === 0) {
-      setErrorMsg("Pick at least one platform");
+      setErrorMsg(t("automations.edit.pick_platform"));
       return;
     }
     if (!template.trim()) {
-      setErrorMsg("Template is required");
+      setErrorMsg(t("automations.edit.template_required"));
       return;
     }
     const trigger =
@@ -110,7 +112,7 @@ export default function EditAutoDmCampaignPage() {
         ? { kind: "first-comment" as const, postId: postId.trim() || undefined }
         : { kind: "follow" as const, postId: postId.trim() || undefined };
     if (triggerKind === "comment-keyword" && !trigger.keyword) {
-      setErrorMsg("Keyword is required");
+      setErrorMsg(t("automations.edit.keyword_required"));
       return;
     }
     setSaving(true);
@@ -140,7 +142,7 @@ export default function EditAutoDmCampaignPage() {
   }
 
   async function remove() {
-    if (!window.confirm("Delete this AutoDM campaign?")) return;
+    if (!window.confirm(t("automations.edit.confirm_delete"))) return;
     const res = await fetch(`/api/automations/dm/${id}`, {
       method: "DELETE",
       credentials: "include",
@@ -159,7 +161,7 @@ export default function EditAutoDmCampaignPage() {
             onClick={() => router.push("/dashboard/automations/dm")}
             className="mt-4 inline-flex items-center justify-center rounded-md border border-zinc-200 bg-white px-3 h-9 text-sm font-medium hover:bg-zinc-50"
           >
-            Back
+            {t("automations.edit.back")}
           </button>
         </div>
       </div>
@@ -169,7 +171,7 @@ export default function EditAutoDmCampaignPage() {
   if (!campaign) {
     return (
       <div className="px-3 lg:px-6 pt-5 lg:pt-8 flex items-center justify-center py-16 text-sm text-zinc-500">
-        <Loader2 className="size-4 animate-spin mr-2" /> Loading…
+        <Loader2 className="size-4 animate-spin mr-2" /> {t("automations.edit.loading")}
       </div>
     );
   }
@@ -182,7 +184,7 @@ export default function EditAutoDmCampaignPage() {
       />
       <div className="rounded-xl border border-zinc-200 bg-white p-5 space-y-5">
         <div>
-          <label className="block text-sm font-medium text-zinc-700 mb-1.5">Status</label>
+          <label className="block text-sm font-medium text-zinc-700 mb-1.5">{t("automations.edit.status")}</label>
           <div className="inline-flex rounded-full bg-zinc-100 p-1">
             {(["paused", "active"] as const).map((s) => (
               <button
@@ -200,7 +202,7 @@ export default function EditAutoDmCampaignPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-zinc-700 mb-1.5">Trigger</label>
+          <label className="block text-sm font-medium text-zinc-700 mb-1.5">{t("automations.edit.trigger")}</label>
           <div className="space-y-2">
             {TRIGGER_OPTIONS.map((o) => (
               <label
@@ -216,8 +218,8 @@ export default function EditAutoDmCampaignPage() {
                   className="mt-1 size-4 accent-zinc-900"
                 />
                 <div>
-                  <p className="text-sm font-medium text-zinc-900">{o.label}</p>
-                  <p className="text-xs text-zinc-500">{o.description}</p>
+                  <p className="text-sm font-medium text-zinc-900">{t(`automations.edit.${o.key}`)}</p>
+                  <p className="text-xs text-zinc-500">{t(`automations.edit.${o.key}_desc`)}</p>
                 </div>
               </label>
             ))}
@@ -227,43 +229,43 @@ export default function EditAutoDmCampaignPage() {
         {triggerKind === "comment-keyword" ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1.5">Keyword</label>
+              <label className="block text-sm font-medium text-zinc-700 mb-1.5">{t("automations.edit.keyword")}</label>
               <input
                 type="text"
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
-                placeholder="e.g. PRICE"
+                placeholder={t("automations.edit.keyword_placeholder")}
                 className="w-full h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1.5">Match type</label>
+              <label className="block text-sm font-medium text-zinc-700 mb-1.5">{t("automations.edit.match_type")}</label>
               <select
                 value={match}
                 onChange={(e) => setMatch(e.target.value as "contains" | "exact" | "starts-with")}
                 className="w-full h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
               >
-                <option value="contains">contains</option>
-                <option value="starts-with">starts with</option>
-                <option value="exact">exact match</option>
+                <option value="contains">{t("automations.edit.match_contains")}</option>
+                <option value="starts-with">{t("automations.edit.match_starts")}</option>
+                <option value="exact">{t("automations.edit.match_exact")}</option>
               </select>
             </div>
           </div>
         ) : (
           <div>
-            <label className="block text-sm font-medium text-zinc-700 mb-1.5">Restrict to post (optional)</label>
+            <label className="block text-sm font-medium text-zinc-700 mb-1.5">{t("automations.edit.restrict_post")}</label>
             <input
               type="text"
               value={postId}
               onChange={(e) => setPostId(e.target.value)}
-              placeholder="leave blank for any"
+              placeholder={t("automations.edit.restrict_post_placeholder")}
               className="w-full h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
             />
           </div>
         )}
 
         <div>
-          <label className="block text-sm font-medium text-zinc-700 mb-1.5">Platforms</label>
+          <label className="block text-sm font-medium text-zinc-700 mb-1.5">{t("automations.edit.platforms")}</label>
           <div className="flex flex-wrap gap-2">
             {PLATFORM_OPTIONS.map((p) => {
               const active = platforms.includes(p.id);
@@ -284,7 +286,7 @@ export default function EditAutoDmCampaignPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-zinc-700 mb-1.5">Per-author daily cap</label>
+          <label className="block text-sm font-medium text-zinc-700 mb-1.5">{t("automations.edit.daily_cap")}</label>
           <input
             type="number"
             value={cap}
@@ -294,18 +296,18 @@ export default function EditAutoDmCampaignPage() {
             placeholder="1"
             className="w-32 h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
           />
-          <p className="mt-1 text-xs text-zinc-500">Limits sends to the same author in a 24h window to avoid spam.</p>
+          <p className="mt-1 text-xs text-zinc-500">{t("automations.edit.daily_cap_desc")}</p>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-zinc-700 mb-1.5">Template</label>
+          <label className="block text-sm font-medium text-zinc-700 mb-1.5">{t("automations.edit.template")}</label>
           <textarea
             value={template}
             onChange={(e) => setTemplate(e.target.value)}
             rows={6}
             className="w-full rounded-md border border-zinc-200 bg-white p-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10 resize-none"
           />
-          <p className="mt-1 text-xs text-zinc-500">Use {"{{handle}}"} and {"{{comment}}"} placeholders.</p>
+          <p className="mt-1 text-xs text-zinc-500">{t("automations.edit.template_desc")}</p>
         </div>
 
         {errorMsg ? (
@@ -318,7 +320,7 @@ export default function EditAutoDmCampaignPage() {
             onClick={remove}
             className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-white text-red-600 hover:bg-red-50 px-3 h-9 text-sm font-medium"
           >
-            <Trash2 className="size-3.5" /> Delete
+            <Trash2 className="size-3.5" /> {t("automations.edit.delete")}
           </button>
           <div className="flex items-center gap-2">
             <button
@@ -326,7 +328,7 @@ export default function EditAutoDmCampaignPage() {
               onClick={() => router.push("/dashboard/automations/dm")}
               className="inline-flex items-center rounded-md border border-zinc-200 bg-white px-3 h-9 text-sm font-medium hover:bg-zinc-50"
             >
-              Cancel
+              {t("automations.edit.cancel")}
             </button>
             <button
               type="button"
@@ -335,7 +337,7 @@ export default function EditAutoDmCampaignPage() {
               className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-white px-3 h-9 text-sm font-medium"
             >
               {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-              Save
+              {t("automations.edit.save")}
             </button>
           </div>
         </div>

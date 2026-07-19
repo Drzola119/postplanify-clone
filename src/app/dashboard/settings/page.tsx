@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useTranslations } from "next-intl";
 import {
   Eye,
   EyeOff,
@@ -220,6 +221,7 @@ function ChangePasswordModalBody({
   onClose: () => void;
   onSubmit: () => void;
 }) {
+  const t = useTranslations("dashboard");
   const { toast } = useToast();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -270,7 +272,7 @@ function ChangePasswordModalBody({
       >
         <div className="flex items-center justify-between p-6 pb-2">
           <h2 id="cp-title" className="text-lg font-semibold text-zinc-900">
-            Change password
+            {t("settings.main.password_title")}
           </h2>
           <button
             type="button"
@@ -283,19 +285,19 @@ function ChangePasswordModalBody({
         </div>
         <div className="px-6 pb-6 space-y-4">
           <p className="text-sm text-zinc-500">
-            Choose a new password. Use at least 8 characters with a mix of letters, numbers, and symbols.
+            {t("settings.main.password_desc")}
           </p>
 
           <div>
             <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
-              Current password
+              {t("settings.main.password_current")}
             </label>
             <div className="relative">
               <input
                 type={showCurrent ? "text" : "password"}
                 value={current}
                 onChange={(e) => setCurrent(e.target.value)}
-                placeholder="Enter current password"
+                placeholder={t("settings.main.password_current_placeholder")}
                 className="h-9 w-full rounded-md border border-zinc-200 bg-white px-3 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
               />
               <button
@@ -310,13 +312,13 @@ function ChangePasswordModalBody({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-zinc-700 mb-1.5">New password</label>
+            <label className="block text-xs font-semibold text-zinc-700 mb-1.5">{t("settings.main.password_new")}</label>
             <div className="relative">
               <input
                 type={showNext ? "text" : "password"}
                 value={next}
                 onChange={(e) => setNext(e.target.value)}
-                placeholder="Enter new password"
+                placeholder={t("settings.main.password_new_placeholder")}
                 className="h-9 w-full rounded-md border border-zinc-200 bg-white px-3 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
               />
               <button
@@ -342,7 +344,17 @@ function ChangePasswordModalBody({
                   ))}
                 </div>
                 <p className="text-xs text-zinc-500">
-                  {tooShort ? "Use at least 8 characters" : strength.label}
+                  {tooShort
+                    ? t("settings.main.password_hint")
+                    : t(
+                        [
+                          "settings.main.password_too_weak",
+                          "settings.main.password_weak",
+                          "settings.main.password_fair",
+                          "settings.main.password_good",
+                          "settings.main.password_strong",
+                        ][strength.score]
+                      )}
                 </p>
               </div>
             )}
@@ -350,14 +362,14 @@ function ChangePasswordModalBody({
 
           <div>
             <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
-              Confirm new password
+              {t("settings.main.password_confirm")}
             </label>
             <div className="relative">
               <input
                 type={showConfirm ? "text" : "password"}
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
-                placeholder="Re-enter new password"
+                placeholder={t("settings.main.password_confirm_placeholder")}
                 className={cn(
                   "h-9 w-full rounded-md border bg-white px-3 pr-9 text-sm focus:outline-none focus:ring-2",
                   mismatch
@@ -375,7 +387,7 @@ function ChangePasswordModalBody({
               </button>
             </div>
             {mismatch && (
-              <p className="text-xs text-red-600 mt-1">Passwords do not match</p>
+              <p className="text-xs text-red-600 mt-1">{t("settings.main.password_mismatch")}</p>
             )}
           </div>
 
@@ -385,7 +397,7 @@ function ChangePasswordModalBody({
               onClick={onClose}
               className="inline-flex items-center justify-center h-9 px-4 rounded-md border border-zinc-200 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50"
             >
-              Cancel
+              {t("settings.main.password_cancel")}
             </button>
             <button
               type="button"
@@ -394,7 +406,7 @@ function ChangePasswordModalBody({
               className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-md bg-zinc-900 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {busy && <Loader2 className="size-3.5 animate-spin" />}
-              {busy ? "Updating…" : "Update password"}
+              {busy ? t("settings.main.password_updating") : t("settings.main.password_update")}
             </button>
           </div>
         </div>
@@ -422,6 +434,7 @@ function IntegrationRow({
   connected: boolean;
   onToggleConnect: () => void;
 }) {
+  const t = useTranslations("dashboard");
   const helpKey = integrationId === "canva" ? "settings/canva" : "settings/google-drive";
   return (
     <div className="w-full md:w-1/2">
@@ -444,7 +457,7 @@ function IntegrationRow({
         {connected ? (
           <span className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-emerald-50 text-emerald-700 text-sm font-medium border border-emerald-200">
             <span className="size-1.5 rounded-full bg-emerald-500" />
-            Connected
+            {t("settings.main.connected")}
           </span>
         ) : (
           <button
@@ -457,7 +470,7 @@ function IntegrationRow({
             ) : (
               <Cloud className="size-3.5" />
             )}
-            Connect {integrationId === "canva" ? "Canva" : "Google Drive"}
+            {integrationId === "canva" ? t("settings.main.connect_canva") : t("settings.main.connect_gdrive")}
           </button>
         )}
       </div>
@@ -480,12 +493,13 @@ function ProfilePicture({
   onUpload: (file: File) => void;
   onRemove: () => void;
 }) {
+  const t = useTranslations("dashboard");
   const inputRef = useRef<HTMLInputElement>(null);
   const [hover, setHover] = useState(false);
 
   return (
     <div className="md:w-[220px] flex-shrink-0">
-      <p className="text-xs font-semibold text-zinc-700 mb-2">Profile Picture</p>
+      <p className="text-xs font-semibold text-zinc-700 mb-2">{t("settings.main.profile_picture")}</p>
       <div className="relative w-[220px] h-[220px]">
         <div
           className="relative w-full h-full rounded-md overflow-hidden flex items-center justify-center text-white font-bold cursor-pointer"
@@ -514,7 +528,7 @@ function ProfilePicture({
             )}
           >
             <Upload className="size-6 text-white" />
-            <span className="text-xs font-medium text-white">Upload photo</span>
+            <span className="text-xs font-medium text-white">{t("settings.main.upload_photo")}</span>
           </div>
           <input
             ref={inputRef}
@@ -535,7 +549,7 @@ function ProfilePicture({
             onRemove();
           }}
           className="absolute top-2 right-2 size-8 rounded-md bg-red-500 hover:bg-red-600 text-white flex items-center justify-center shadow-md transition-colors"
-          aria-label="Remove photo"
+          aria-label={t("settings.main.photo_remove")}
         >
           <Trash2 className="size-4" />
         </button>
@@ -551,6 +565,7 @@ function ProfilePicture({
 type TabId = "account" | "notifications" | "subscription";
 
 export default function SettingsPage() {
+  const t = useTranslations("dashboard");
   const [tab, setTab] = useState<TabId>("account");
   const { toast } = useToast();
 
@@ -700,25 +715,25 @@ export default function SettingsPage() {
     setOriginalOverrides(overrides);
 
     setSaving(false);
-    toast({ tone: "success", title: "Account settings updated" });
+    toast({ tone: "success", title: t("settings.main.toast_saved") });
   };
 
   const handleUpload = (file: File) => {
     const url = URL.createObjectURL(file);
     setProfileImage(url);
     setProfileFile(file);
-    toast({ tone: "info", title: "Photo selected. Click Save to apply." });
+    toast({ tone: "info", title: t("settings.main.toast_photo_selected") });
   };
 
   const handleRemovePhoto = () => {
     setProfileImage(null);
     setProfileFile(null);
-    toast({ tone: "info", title: "Photo removed. Click Save to apply." });
+    toast({ tone: "info", title: t("settings.main.toast_photo_removed") });
   };
 
   const handleCancelSubscription = () => {
     setAutoRenew(false);
-    toast({ tone: "success", title: "Subscription cancelled. Access ends on Jul 27, 2026." });
+    toast({ tone: "success", title: t("settings.main.toast_sub_cancelled", { date: "Jul 27, 2026" }) });
   };
 
   const handleSaveNotifications = async () => {
@@ -731,12 +746,12 @@ export default function SettingsPage() {
         body: JSON.stringify(notif),
       });
       if (!res.ok) {
-        toast({ tone: "error", title: "Could not save notification preferences." });
+        toast({ tone: "error", title: t("settings.main.toast_notif_save_error") });
       } else {
-        toast({ tone: "success", title: "Notification preferences saved." });
+        toast({ tone: "success", title: t("settings.main.toast_notif_saved") });
       }
     } catch {
-      toast({ tone: "error", title: "Network error saving notification preferences." });
+      toast({ tone: "error", title: t("settings.main.toast_notif_network_error") });
     } finally {
       setSavingNotif(false);
     }
@@ -748,9 +763,9 @@ export default function SettingsPage() {
 
       {/* Header */}
       <div className="flex flex-col gap-2">
-        <h2 className="text-3xl font-bold tracking-tight">Settings</h2>
+        <h2 className="text-3xl font-bold tracking-tight">{t("settings.main.page_title")}</h2>
         <p className="text-sm text-zinc-500">
-          Manage your account settings and preferences
+          {t("settings.main.page_subtitle")}
         </p>
       </div>
 
@@ -774,7 +789,7 @@ export default function SettingsPage() {
             )}
           >
             <User className="size-4" />
-            Account
+            {t("settings.main.tab_account")}
           </button>
           <button
             type="button"
@@ -789,7 +804,7 @@ export default function SettingsPage() {
             )}
           >
             <Bell className="size-4" />
-            Notifications
+            {t("settings.main.tab_notifications")}
           </button>
           <button
             type="button"
@@ -804,7 +819,7 @@ export default function SettingsPage() {
             )}
           >
             <Gem className="size-4" />
-            Subscription
+            {t("settings.main.tab_subscription")}
           </button>
         </div>
 
@@ -815,10 +830,10 @@ export default function SettingsPage() {
               {/* Card header */}
               <div className="flex flex-col space-y-1.5 p-6">
                 <h3 className="font-semibold leading-none tracking-tight text-zinc-900">
-                  Account Information
+                  {t("settings.main.account_title")}
                 </h3>
                 <p className="text-sm text-zinc-500">
-                  Update your account information and profile settings
+                  {t("settings.main.account_subtitle")}
                 </p>
               </div>
 
@@ -834,21 +849,21 @@ export default function SettingsPage() {
                   />
                   <div className="flex-1 space-y-4 min-w-0">
                     <Field
-                      label="Full Name"
+                      label={t("settings.main.full_name")}
                       value={name}
                       onChange={setName}
-                      placeholder="Your full name"
+                      placeholder={t("settings.main.name_placeholder")}
                     />
                     <Field
-                      label="Email"
+                      label={t("settings.main.email")}
                       value={email}
                       onChange={() => undefined}
-                      placeholder="you@example.com"
+                      placeholder={t("settings.main.email_placeholder")}
                       disabled
                     />
                     <div>
                       <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
-                        Security
+                        {t("settings.main.security")}
                       </label>
                       <button
                         type="button"
@@ -856,7 +871,7 @@ export default function SettingsPage() {
                         className="inline-flex items-center gap-2 h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50 transition-colors"
                       >
                         <ShieldCheck className="size-3.5" />
-                        Change Password
+                        {t("settings.main.change_password")}
                       </button>
                     </div>
                   </div>
@@ -869,8 +884,8 @@ export default function SettingsPage() {
                 <div className="flex flex-col md:flex-row gap-8">
                   <IntegrationRow
                     logo={<CanvaLogo className="w-12 h-12 flex-shrink-0" />}
-                    brand="Canva Integration"
-                    description="Connect your Canva account to import your designs directly in PostPlanify when you are creating a new post."
+                    brand={t("settings.main.canva_integration")}
+                    description={t("settings.main.canva_desc")}
                     integrationId="canva"
                     connected={canvaConnected}
                     onToggleConnect={() => {
@@ -880,13 +895,13 @@ export default function SettingsPage() {
                       if (canvaConnected) { next.delete("canva"); } else { next.add("canva"); }
                       persistIntegrations(next);
                       setCanvaConnected(!canvaConnected);
-                      toast({ tone: "info", title: !canvaConnected ? "Canva connected. Add your API credentials on the Accounts page for full setup." : "Canva disconnected" });
+                      toast({ tone: "info", title: !canvaConnected ? t("settings.main.toast_canva_connected") : t("settings.main.toast_canva_disconnected") });
                     }}
                   />
                   <IntegrationRow
                     logo={<GoogleDriveLogo className="w-12 h-12 flex-shrink-0" />}
-                    brand="Google Drive Integration"
-                    description="Connect your Google Drive account to access and import files when you are creating a new post."
+                    brand={t("settings.main.gdrive_integration")}
+                    description={t("settings.main.gdrive_desc")}
                     integrationId="gdrive"
                     connected={gdriveConnected}
                     onToggleConnect={() => {
@@ -896,7 +911,7 @@ export default function SettingsPage() {
                       if (gdriveConnected) { next.delete("google-drive"); } else { next.add("google-drive"); }
                       persistIntegrations(next);
                       setGdriveConnected(!gdriveConnected);
-                      toast({ tone: "info", title: !gdriveConnected ? "Google Drive connected. Add your API credentials on the Accounts page for full setup." : "Google Drive disconnected" });
+                      toast({ tone: "info", title: !gdriveConnected ? t("settings.main.toast_gdrive_connected") : t("settings.main.toast_gdrive_disconnected") });
                     }}
                   />
                 </div>
@@ -907,53 +922,51 @@ export default function SettingsPage() {
                 {/* API & VPS Integration Overrides */}
                 <div className="space-y-4">
                   <div>
-                    <h4 className="text-sm font-semibold text-zinc-900">API & VPS Integration Overrides</h4>
+                    <h4 className="text-sm font-semibold text-zinc-900">{t("settings.main.api_overrides")}</h4>
                     <p className="text-xs text-zinc-500 mt-1">
-                      Local-only dev overrides. In production, configure secrets via environment variables
-                      (GROQ_API_KEY, N8N_WEBHOOK_URL, UPLOAD_POST_API_KEY, BUNNY_STORAGE_ZONE, BUNNY_STORAGE_PASSWORD).
+                      {t("settings.main.api_overrides_hint")}
                     </p>
                   </div>
                   {!clientOverridesAllowed() && (
                     <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
                       <ShieldCheck className="size-4 flex-shrink-0 mt-0.5" />
                       <div>
-                        <p className="font-medium">Production build — overrides are not used.</p>
+                        <p className="font-medium">{t("settings.main.api_overrides_prod")}</p>
                         <p className="mt-1 text-amber-800">
-                          Values you enter below are stored in this browser only and never sent to the server
-                          in this build. Update the server env vars instead, then redeploy.
+                          {t("settings.main.api_overrides_warning")}
                         </p>
                       </div>
                     </div>
                   )}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Field
-                      label="upload-post.com API Key"
+                      label={t("settings.main.upload_post_key")}
                       value={uploadPostKey}
                       onChange={setUploadPostKey}
-                      placeholder="gsk_..."
-                      hint="API key to fetch your connected social profiles"
+                      placeholder={t("settings.main.upload_post_placeholder")}
+                      hint={t("settings.main.upload_post_hint")}
                       secret
                     />
                     <Field
-                      label="n8n Webhook URL"
+                      label={t("settings.main.n8n_webhook")}
                       value={n8nWebhookUrl}
                       onChange={setN8nWebhookUrl}
-                      placeholder="https://n8n.yourvps.com/webhook/..."
-                      hint="Webhook endpoint triggered when you publish posts"
+                      placeholder={t("settings.main.n8n_placeholder")}
+                      hint={t("settings.main.n8n_hint")}
                     />
                     <Field
-                      label="Bunny.net Storage Zone"
+                      label={t("settings.main.bunny_zone")}
                       value={bunnyZone}
                       onChange={setBunnyZone}
-                      placeholder="bunny-storage-zone-name"
-                      hint="Zone name for media uploads"
+                      placeholder={t("settings.main.bunny_zone_placeholder")}
+                      hint={t("settings.main.bunny_zone_hint")}
                     />
                     <Field
-                      label="Bunny.net Storage Password"
+                      label={t("settings.main.bunny_password")}
                       value={bunnyPassword}
                       onChange={setBunnyPassword}
-                      placeholder="Storage API key/password"
-                      hint="Access key for your Bunny storage container"
+                      placeholder={t("settings.main.bunny_password_placeholder")}
+                      hint={t("settings.main.bunny_password_hint")}
                       secret
                     />
                   </div>
@@ -972,7 +985,7 @@ export default function SettingsPage() {
                     ) : (
                       <Save className="size-3.5" />
                     )}
-                    {saving ? "Saving…" : "Save Changes"}
+                    {saving ? t("settings.main.saving") : t("settings.main.save_changes")}
                   </button>
                 </div>
               </div>
@@ -983,21 +996,21 @@ export default function SettingsPage() {
             <div className="rounded-xl border border-zinc-200 bg-white shadow-sm">
               <div className="flex flex-col space-y-1.5 p-6">
                 <h3 className="font-semibold leading-none tracking-tight text-zinc-900">
-                  Notification Preferences
+                  {t("settings.main.notif_title")}
                 </h3>
                 <p className="text-sm text-zinc-500">
-                  Choose which alerts you want to receive and how often
+                  {t("settings.main.notif_subtitle")}
                 </p>
               </div>
               <div className="p-6 pt-0 space-y-5">
                 <ToggleRow
-                  label="Email digest"
-                  description="Get a summary of activity at the cadence below."
+                  label={t("settings.main.notif_email_digest")}
+                  description={t("settings.main.notif_email_desc")}
                   checked={notif.emailDigest}
                   onChange={(v) => setNotif((n) => ({ ...n, emailDigest: v }))}
                 />
                 <div className="ml-7 pl-3 border-l border-zinc-200 space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-700">Digest frequency</label>
+                  <label className="text-xs font-semibold text-zinc-700">{t("settings.main.notif_digest_freq")}</label>
                   <select
                     value={notif.emailDigestFrequency}
                     onChange={(e) =>
@@ -1008,48 +1021,48 @@ export default function SettingsPage() {
                     }
                     className="h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
                   >
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
+                    <option value="daily">{t("settings.main.notif_daily")}</option>
+                    <option value="weekly">{t("settings.main.notif_weekly")}</option>
+                    <option value="monthly">{t("settings.main.notif_monthly")}</option>
                   </select>
                 </div>
                 <ToggleRow
-                  label="Browser push"
-                  description="Receive browser push notifications for important alerts."
+                  label={t("settings.main.notif_browser_push")}
+                  description={t("settings.main.notif_browser_desc")}
                   checked={notif.pushEnabled}
                   onChange={(v) => setNotif((n) => ({ ...n, pushEnabled: v }))}
                 />
                 <div className="border-t border-zinc-200 pt-4 space-y-4">
                   <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                    Activity alerts
+                    {t("settings.main.notif_activity")}
                   </p>
                   <ToggleRow
-                    label="Post published"
-                    description="Notify when a scheduled post goes live."
+                    label={t("settings.main.notif_post_published")}
+                    description={t("settings.main.notif_post_published_desc")}
                     checked={notif.postPublished}
                     onChange={(v) => setNotif((n) => ({ ...n, postPublished: v }))}
                   />
                   <ToggleRow
-                    label="Post failed"
-                    description="Notify when a post fails to publish so you can retry."
+                    label={t("settings.main.notif_post_failed")}
+                    description={t("settings.main.notif_post_failed_desc")}
                     checked={notif.postFailed}
                     onChange={(v) => setNotif((n) => ({ ...n, postFailed: v }))}
                   />
                   <ToggleRow
-                    label="New comment"
-                    description="Notify when a new comment arrives in your social inbox."
+                    label={t("settings.main.notif_new_comment")}
+                    description={t("settings.main.notif_new_comment_desc")}
                     checked={notif.inboxComment}
                     onChange={(v) => setNotif((n) => ({ ...n, inboxComment: v }))}
                   />
                   <ToggleRow
-                    label="New direct message"
-                    description="Notify when a new DM arrives in your social inbox."
+                    label={t("settings.main.notif_new_dm")}
+                    description={t("settings.main.notif_new_dm_desc")}
                     checked={notif.inboxMessage}
                     onChange={(v) => setNotif((n) => ({ ...n, inboxMessage: v }))}
                   />
                   <ToggleRow
-                    label="Weekly report"
-                    description="Send a recap of performance every Monday morning."
+                    label={t("settings.main.notif_weekly_report")}
+                    description={t("settings.main.notif_weekly_report_desc")}
                     checked={notif.weeklyReport}
                     onChange={(v) => setNotif((n) => ({ ...n, weeklyReport: v }))}
                   />
@@ -1065,12 +1078,12 @@ export default function SettingsPage() {
                   {savingNotif ? (
                     <>
                       <Loader2 className="size-3.5 animate-spin" />
-                      Saving…
+                      {t("settings.main.notif_saving")}
                     </>
                   ) : (
                     <>
                       <Save className="size-3.5" />
-                      Save preferences
+                      {t("settings.main.notif_save")}
                     </>
                   )}
                 </button>
@@ -1082,10 +1095,10 @@ export default function SettingsPage() {
             <div className="rounded-xl border border-zinc-200 bg-white shadow-sm">
               <div className="flex flex-col space-y-1.5 p-6">
                 <h3 className="font-semibold leading-none tracking-tight text-zinc-900">
-                  Subscription Plan
+                  {t("settings.main.sub_title")}
                 </h3>
                 <p className="text-sm text-zinc-500">
-                  Manage your subscription and billing information
+                  {t("settings.main.sub_subtitle")}
                 </p>
               </div>
 
@@ -1094,8 +1107,8 @@ export default function SettingsPage() {
                   <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
                     <Info className="size-4 flex-shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-medium">Stripe billing is not configured.</p>
-                      <p className="mt-1 text-amber-800">Stripe billing requires STRIPE_SECRET_KEY env var.</p>
+                      <p className="font-medium">{t("settings.main.sub_not_configured")}</p>
+                      <p className="mt-1 text-amber-800">{t("settings.main.sub_missing_env")}</p>
                     </div>
                   </div>
                 )}
@@ -1105,8 +1118,8 @@ export default function SettingsPage() {
                   <div className="flex items-start justify-between gap-4 p-5 flex-wrap">
                     <div className="min-w-0">
                       <p className="text-2xl font-bold text-zinc-900">
-                        $79.00
-                        <span className="text-sm font-medium text-zinc-500">/monthly</span>
+                        {t("settings.main.sub_price")}
+                        <span className="text-sm font-medium text-zinc-500">{t("settings.main.sub_monthly")}</span>
                       </p>
                     </div>
                     <button
@@ -1129,7 +1142,7 @@ export default function SettingsPage() {
                           )}
                         />
                       </span>
-                      <span className="text-sm text-zinc-700">Auto-renew</span>
+                      <span className="text-sm text-zinc-700">{t("settings.main.sub_auto_renew")}</span>
                     </button>
                   </div>
 
@@ -1137,21 +1150,21 @@ export default function SettingsPage() {
 
                   {/* Current period */}
                   <div className="flex items-center justify-between p-5">
-                    <p className="text-sm text-zinc-700">Current period</p>
-                    <p className="text-sm text-zinc-700">N/A</p>
+                    <p className="text-sm text-zinc-700">{t("settings.main.sub_current_period")}</p>
+                    <p className="text-sm text-zinc-700">{t("settings.main.sub_na")}</p>
                   </div>
 
                   <div className="border-t border-zinc-200" />
 
                   {/* Manage */}
                   <div className="flex items-center justify-between p-5">
-                    <p className="text-sm font-semibold text-zinc-900">Manage Your Subscription</p>
+                    <p className="text-sm font-semibold text-zinc-900">{t("settings.main.sub_manage")}</p>
                     <button
                       type="button"
                       className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm font-medium text-zinc-900 hover:bg-zinc-50 transition-colors"
                     >
                       <CreditCard className="size-3.5" />
-                      Customer Portal
+                      {t("settings.main.sub_portal")}
                     </button>
                   </div>
 
@@ -1159,14 +1172,14 @@ export default function SettingsPage() {
 
                   {/* Cancel */}
                   <div className="flex items-center justify-between p-5">
-                    <p className="text-sm font-medium text-red-600">Cancel Subscription</p>
+                    <p className="text-sm font-medium text-red-600">{t("settings.main.sub_cancel")}</p>
                     <button
                       type="button"
                       onClick={() => setShowCancel(true)}
                       className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-red-200 bg-white text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
                     >
                       <Trash2 className="size-3.5" />
-                      Cancel
+                      {t("settings.main.sub_cancel_btn")}
                     </button>
                   </div>
                 </div>
@@ -1189,10 +1202,10 @@ export default function SettingsPage() {
         open={showRemovePhoto}
         onClose={() => setShowRemovePhoto(false)}
         onConfirm={handleRemovePhoto}
-        title="Remove profile photo?"
-        description="This will permanently remove your profile photo. You can upload a new one anytime."
-        confirmText="Remove"
-        cancelText="Keep photo"
+        title={t("settings.main.photo_remove_title")}
+        description={t("settings.main.photo_remove_body")}
+        confirmText={t("settings.main.photo_remove")}
+        cancelText={t("settings.main.photo_keep")}
         destructive
       />
 
@@ -1200,10 +1213,10 @@ export default function SettingsPage() {
         open={showCancel}
         onClose={() => setShowCancel(false)}
         onConfirm={handleCancelSubscription}
-        title="Cancel subscription?"
-        description="Your subscription will remain active until the end of the current billing period. After that, your account will switch to the Free plan and you'll lose access to premium features."
-        confirmText="Cancel subscription"
-        cancelText="Keep subscription"
+        title={t("settings.main.cancel_sub_title")}
+        description={t("settings.main.cancel_sub_body")}
+        confirmText={t("settings.main.cancel_sub_confirm")}
+        cancelText={t("settings.main.cancel_sub_keep")}
         destructive
       />
     </div>

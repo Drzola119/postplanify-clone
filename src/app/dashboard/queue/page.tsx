@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
@@ -76,6 +77,7 @@ function statusBadgeTone(status: string): "blue" | "amber" | "green" | "red" | "
 }
 
 export default function PostingQueuePage() {
+  const t = useTranslations("dashboard");
   const { toast } = useToast();
   const [rows, setRows] = useState<QueueRow[]>([]);
   const [dueRows, setDueRows] = useState<QueueRow[]>([]);
@@ -162,7 +164,7 @@ export default function PostingQueuePage() {
     });
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      toast({ title: "Update failed", description: data.error ?? `HTTP ${res.status}`, tone: "error" });
+      toast({ title: t("queue.update_failed"), description: data.error ?? `HTTP ${res.status}`, tone: "error" });
       return false;
     }
     return true;
@@ -175,7 +177,7 @@ export default function PostingQueuePage() {
     });
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      toast({ title: "Cancel failed", description: data.error ?? `HTTP ${res.status}`, tone: "error" });
+      toast({ title: t("queue.cancel_failed"), description: data.error ?? `HTTP ${res.status}`, tone: "error" });
       return false;
     }
     return true;
@@ -188,7 +190,7 @@ export default function PostingQueuePage() {
     });
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      toast({ title: "Duplicate failed", description: data.error ?? `HTTP ${res.status}`, tone: "error" });
+      toast({ title: t("queue.duplicate_failed"), description: data.error ?? `HTTP ${res.status}`, tone: "error" });
       return null;
     }
     const data = (await res.json().catch(() => ({}))) as { id?: string };
@@ -200,8 +202,8 @@ export default function PostingQueuePage() {
     const ok = await patchRow(row.id, { status: action === "pause" ? "paused" : "scheduled" });
     if (ok) {
       toast({
-        title: action === "pause" ? "Post paused" : "Post resumed",
-        description: action === "pause" ? "It will not publish until you resume it." : "It will publish at the scheduled time.",
+        title: action === "pause" ? t("queue.post_paused") : t("queue.post_resumed"),
+        description: action === "pause" ? t("queue.post_paused_desc") : t("queue.post_resumed_desc"),
         tone: "success",
       });
       void reload();
@@ -214,8 +216,8 @@ export default function PostingQueuePage() {
     const ok = await patchRow(row.id, { scheduledAt: date.toISOString() });
     if (ok) {
       toast({
-        title: "Post rescheduled",
-        description: `Now ${date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`,
+        title: t("queue.post_rescheduled"),
+        description: t("queue.post_rescheduled_desc", { date: date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) }),
         tone: "success",
       });
       void reload();
@@ -226,7 +228,7 @@ export default function PostingQueuePage() {
     setCancelTarget(null);
     const ok = await deleteRow(row.id);
     if (ok) {
-      toast({ title: "Post cancelled", description: "Removed from queue.", tone: "success" });
+      toast({ title: t("queue.post_cancelled"), description: t("queue.post_cancelled_desc"), tone: "success" });
       void reload();
     }
   }
@@ -235,8 +237,8 @@ export default function PostingQueuePage() {
     const newId = await duplicateRow(row.id);
     if (newId) {
       toast({
-        title: "Post duplicated",
-        description: "Open the draft to schedule it.",
+        title: t("queue.post_duplicated"),
+        description: t("queue.post_duplicated_desc"),
         tone: "success",
       });
       void reload();
@@ -244,18 +246,18 @@ export default function PostingQueuePage() {
   }
 
   const summaryCards = [
-    { label: "Due now", value: stats.dueNow, icon: Send, color: "text-emerald-600 bg-emerald-50" },
-    { label: "Today", value: stats.today, icon: Clock, color: "text-blue-600 bg-blue-50" },
-    { label: "Tomorrow", value: stats.tomorrow, icon: Calendar, color: "text-violet-600 bg-violet-50" },
-    { label: "Paused", value: stats.paused, icon: Pause, color: "text-amber-600 bg-amber-50" },
+    { label: "Due now", tKey: "due_now", value: stats.dueNow, icon: Send, color: "text-emerald-600 bg-emerald-50" },
+    { label: "Today", tKey: "today", value: stats.today, icon: Clock, color: "text-blue-600 bg-blue-50" },
+    { label: "Tomorrow", tKey: "tomorrow", value: stats.tomorrow, icon: Calendar, color: "text-violet-600 bg-violet-50" },
+    { label: "Paused", tKey: "paused", value: stats.paused, icon: Pause, color: "text-amber-600 bg-amber-50" },
   ];
 
   return (
     <div className="p-6 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <PageHeader
-          title="Posting Queue"
-          subtitle="Posts queued and waiting to publish, in the order they'll go live."
+          title={t("queue.page_title")}
+          subtitle={t("queue.page_subtitle")}
         />
         <div className="flex items-center gap-2">
           <button
@@ -264,7 +266,7 @@ export default function PostingQueuePage() {
             className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50"
           >
             <RotateCcw className="size-3" />
-            Refresh
+            {t("queue.refresh")}
           </button>
           <HealthPill
             status={
@@ -280,14 +282,14 @@ export default function PostingQueuePage() {
             }
             label={
               health == null
-                ? "Loading…"
+                ? t("queue.health_loading")
                 : health.lastResult?.error
-                  ? "Worker error"
+                  ? t("queue.health_worker_error")
                   : stats.dueNow > 0
-                    ? "Publishing now"
+                    ? t("queue.health_publishing")
                     : stats.today > 0
-                      ? "On track"
-                      : "All clear"
+                      ? t("queue.health_on_track")
+                      : t("queue.health_all_clear")
             }
           />
         </div>
@@ -297,31 +299,31 @@ export default function PostingQueuePage() {
       {health && (
         <div className="rounded-lg border border-zinc-200 bg-zinc-50/50 px-4 py-2 mb-4 text-xs text-zinc-600 flex flex-wrap items-center gap-x-4 gap-y-1">
           <span>
-            <span className="font-semibold text-zinc-900">Worker:</span>{" "}
-            {health.running ? "running" : "idle"}{" "}
-            <span className="text-zinc-400">(every {Math.round(health.intervalMs / 1000)}s)</span>
+            <span className="font-semibold text-zinc-900">{t("queue.worker_label")}</span>{" "}
+            {health.running ? t("queue.running") : t("queue.idle")}{" "}
+            <span className="text-zinc-400">{t("queue.interval", { n: Math.round(health.intervalMs / 1000) })}</span>
           </span>
           <span>
-            <span className="font-semibold text-zinc-900">Last tick:</span>{" "}
+            <span className="font-semibold text-zinc-900">{t("queue.last_tick")}</span>{" "}
             {health.lastTickAt
               ? new Date(health.lastTickAt).toLocaleTimeString()
-              : "—"}
+              : t("queue.na")}
           </span>
           {health.lastResult ? (
             <span>
-              <span className="font-semibold text-zinc-900">Last result:</span>{" "}
-              {health.lastResult.scanned} scanned ·{" "}
-              <span className="text-emerald-700">{health.lastResult.published} published</span> ·{" "}
+              <span className="font-semibold text-zinc-900">{t("queue.last_result")}</span>{" "}
+              {health.lastResult.scanned} {t("queue.scanned")} ·{" "}
+              <span className="text-emerald-700">{health.lastResult.published} {t("queue.published")}</span> ·{" "}
               {health.lastResult.failed > 0
-                ? <span className="text-red-700">{health.lastResult.failed} failed</span>
-                : "0 failed"}{" "}
-              · {health.lastResult.reaped} reaped
+                ? <span className="text-red-700">{health.lastResult.failed} {t("queue.failed")}</span>
+                : `0 ${t("queue.failed")}`}{" "}
+              · {health.lastResult.reaped} {t("queue.reaped")}
             </span>
           ) : null}
           {!health.n8nConfigured ? (
             <span className="inline-flex items-center gap-1 text-red-700">
               <AlertCircle className="size-3" />
-              n8n webhook not configured — worker can't publish.
+              {t("queue.n8n_warning")}
             </span>
           ) : null}
         </div>
@@ -336,7 +338,7 @@ export default function PostingQueuePage() {
                 <span className={`inline-flex items-center justify-center size-7 rounded-lg ${s.color}`}>
                   <Icon className="size-3.5" />
                 </span>
-                <p className="text-xs font-semibold text-zinc-500">{s.label}</p>
+                <p className="text-xs font-semibold text-zinc-500">{t(`queue.${s.tKey}`)}</p>
               </div>
               <p className="text-2xl font-bold">{loading ? "—" : s.value}</p>
             </div>
@@ -350,7 +352,7 @@ export default function PostingQueuePage() {
           <Search className="size-3.5 text-zinc-400 absolute left-2.5 top-2.5" />
           <input
             type="search"
-            placeholder="Search captions or platforms…"
+            placeholder={t("queue.search_placeholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-8 pr-3 h-9 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950/10 focus:border-zinc-300"
@@ -369,7 +371,7 @@ export default function PostingQueuePage() {
                 filter === f ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-900"
               )}
             >
-              {f === "all" ? "All" : f === "scheduled" ? "Scheduled" : "Paused"}
+              {f === "all" ? t("queue.filter_all") : f === "scheduled" ? t("queue.filter_scheduled") : t("queue.filter_paused")}
             </button>
           ))}
         </div>
@@ -377,9 +379,9 @@ export default function PostingQueuePage() {
 
       <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden">
         <div className="px-5 py-3 border-b border-zinc-200 flex items-center justify-between bg-zinc-50">
-          <p className="text-sm font-semibold">Up next</p>
+          <p className="text-sm font-semibold">{t("queue.up_next")}</p>
           <p className="text-xs text-zinc-500">
-            {loading ? "Loading…" : `${rows.length} post${rows.length === 1 ? "" : "s"} in queue`}
+            {loading ? t("queue.loading") : t("queue.count_posts", { n: rows.length })}
           </p>
         </div>
 
@@ -388,7 +390,7 @@ export default function PostingQueuePage() {
           <div className="border-b border-zinc-200 bg-emerald-50/40">
             <div className="px-5 py-2 flex items-center gap-2 text-xs font-semibold text-emerald-700">
               <Send className="size-3.5" />
-              Publishing now ({dueRows.length})
+              {t("queue.publishing_now", { n: dueRows.length })}
             </div>
             <ul className="divide-y divide-zinc-100">
               {dueRows.map((q) => (
@@ -408,19 +410,19 @@ export default function PostingQueuePage() {
 
         {/* Grouped upcoming */}
         {loading ? (
-          <div className="px-5 py-8 text-center text-sm text-zinc-500">Loading queue…</div>
+          <div className="px-5 py-8 text-center text-sm text-zinc-500">{t("queue.loading_queue")}</div>
         ) : rows.length === 0 ? (
           <div className="p-6">
             <EmptyState
-              title="No posts queued"
-              description="Schedule a post from the composer and it will appear here, ready to publish at its scheduled time."
+              title={t("queue.empty_title")}
+              description={t("queue.empty_subtitle")}
               icon={<ListChecks className="size-5" />}
               action={
                 <Link
                   href="/dashboard/posts/create"
                   className="inline-flex items-center justify-center rounded-md bg-zinc-950 hover:bg-zinc-800 text-white px-4 h-9 text-sm font-medium"
                 >
-                  Create a post
+                  {t("queue.create_post")}
                 </Link>
               }
             />
@@ -430,7 +432,7 @@ export default function PostingQueuePage() {
             {(["today", "tomorrow", "this-week", "later", "paused", "unscheduled", "past"] as ScheduleBucket[]).map((bucket) => {
               const items = grouped[bucket];
               if (!items || items.length === 0) return null;
-              const displayLabel = bucket === "past" ? "Past due (waiting on worker)" : bucketLabel(bucket);
+              const displayLabel = bucket === "past" ? t("queue.past_due") : bucketLabel(bucket);
               return (
                 <div key={bucket}>
                   <div className={cn(
@@ -466,17 +468,17 @@ export default function PostingQueuePage() {
         open={cancelTarget != null}
         onClose={() => setCancelTarget(null)}
         onConfirm={() => cancelTarget && handleCancel(cancelTarget)}
-        title="Cancel scheduled post?"
-        description={`This will permanently remove the post "${cancelTarget?.caption?.slice(0, 80) ?? "(no caption)"}" from your queue. You can re-create it from a draft if needed.`}
-        confirmLabel="Cancel post"
+        title={t("queue.cancel_title")}
+        description={t("queue.cancel_desc", { caption: cancelTarget?.caption?.slice(0, 80) ?? t("queue.no_caption") })}
+        confirmLabel={t("queue.cancel_post")}
         tone="destructive"
       />
 
       <Modal
         open={rescheduleTarget != null}
         onClose={() => setRescheduleTarget(null)}
-        title="Reschedule post"
-        description="Pick a new time for this post. It will resume from paused if needed."
+        title={t("queue.reschedule_title")}
+        description={t("queue.reschedule_desc")}
         size="lg"
       >
         <div className="h-[520px]">
@@ -510,6 +512,7 @@ function QueueRowView({
   onDuplicate: (r: QueueRow) => void;
   pendingAction: null | "pause" | "resume";
 }) {
+  const t = useTranslations("dashboard");
   const { label, rel } = fmtScheduled(row.scheduledAt);
   const tone = statusBadgeTone(row.status);
   const isPaused = row.status === "paused";
@@ -535,11 +538,11 @@ function QueueRowView({
             {isPast ? (
               <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-red-50 text-red-700">
                 <AlertCircle className="size-3" />
-                Worker may be down
+                {t("queue.worker_down")}
               </span>
             ) : null}
           </div>
-          <p className="text-sm text-zinc-900 line-clamp-2 mb-1.5">{row.caption || <span className="text-zinc-400 italic">(no caption)</span>}</p>
+          <p className="text-sm text-zinc-900 line-clamp-2 mb-1.5">{row.caption || <span className="text-zinc-400 italic">{t("queue.no_caption")}</span>}</p>
           <p className="text-xs text-zinc-500 inline-flex items-center gap-1.5">
             <Clock className="size-3" />
             {label}
@@ -551,48 +554,48 @@ function QueueRowView({
               type="button"
               disabled={pendingAction !== null}
               onClick={() => onResume?.(row)}
-              title="Resume"
+              title={t("queue.resume")}
               className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 h-7 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
             >
               <Play className="size-3" />
-              Resume
+              {t("queue.resume")}
             </button>
           ) : (
             <button
               type="button"
               disabled={pendingAction !== null}
               onClick={() => onPause?.(row)}
-              title="Pause"
+              title={t("queue.pause")}
               className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 h-7 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
             >
               <Pause className="size-3" />
-              Pause
+              {t("queue.pause")}
             </button>
           )}
           <button
             type="button"
             onClick={() => onReschedule(row)}
-            title="Reschedule"
+            title={t("queue.reschedule")}
             className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 h-7 text-xs font-medium hover:bg-zinc-50"
           >
             <Calendar className="size-3" />
-            Reschedule
+            {t("queue.reschedule")}
           </button>
           <button
             type="button"
             onClick={() => onDuplicate(row)}
-            title="Duplicate as draft"
+            title={t("queue.duplicate")}
             className="inline-flex items-center justify-center size-7 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50"
-            aria-label="Duplicate"
+            aria-label={t("queue.duplicate")}
           >
             <Copy className="size-3" />
           </button>
           <button
             type="button"
             onClick={() => onCancel(row)}
-            title="Cancel"
+            title={t("queue.cancel")}
             className="inline-flex items-center justify-center size-7 rounded-md border border-red-200 bg-white text-red-600 hover:bg-red-50"
-            aria-label="Cancel"
+            aria-label={t("queue.cancel")}
           >
             <Trash2 className="size-3" />
           </button>

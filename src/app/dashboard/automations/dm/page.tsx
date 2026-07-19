@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   Send,
   Plus,
@@ -77,6 +78,7 @@ function describeTrigger(t: Trigger): string {
 }
 
 export default function AutoDmCampaignsPage() {
+  const t = useTranslations("dashboard");
   const [items, setItems] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused">("all");
@@ -142,47 +144,47 @@ export default function AutoDmCampaignsPage() {
   return (
     <div className="px-3 lg:px-6 pt-5 lg:pt-8 pb-3 lg:pb-6">
       <PageHeader
-        title="AutoDM campaigns"
-        subtitle="Reply automatically when someone comments with a keyword, follows you, or posts their first comment."
+        title={t("automations.list.page_title")}
+        subtitle={t("automations.list.page_subtitle")}
         cta={
           <Link
             href="/dashboard/automations/dm/new"
             className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 text-white px-3 h-9 text-sm font-medium hover:bg-zinc-800"
           >
             <Plus className="size-4" />
-            New campaign
+            {t("automations.list.new_campaign")}
           </Link>
         }
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-5">
         <StatCard
-          label="Active"
+          label={t("automations.list.active")}
           value={totals.activeCount}
           icon={<Play className="size-4" />}
           iconClassName="bg-emerald-50 text-emerald-700"
-          footer={`${totals.totalCount} total`}
+          footer={t("automations.list.total", { total: totals.totalCount })}
         />
         <StatCard
-          label="Triggered"
+          label={t("automations.list.triggered")}
           value={totals.triggered}
           icon={<Zap className="size-4" />}
           iconClassName="bg-blue-50 text-blue-700"
-          footer="All time"
+          footer={t("automations.list.all_time")}
         />
         <StatCard
-          label="Sent"
+          label={t("automations.list.sent")}
           value={totals.sent}
           icon={<Send className="size-4" />}
           iconClassName="bg-violet-50 text-violet-700"
-          footer="Confirmed deliveries"
+          footer={t("automations.list.confirmed_deliveries")}
         />
         <StatCard
-          label="Skipped"
+          label={t("automations.list.skipped")}
           value={totals.skipped}
           icon={<SkipForward className="size-4" />}
           iconClassName="bg-zinc-100 text-zinc-700"
-          footer="Caps, no webhook, errors"
+          footer={t("automations.list.caps_info")}
         />
       </div>
 
@@ -199,7 +201,7 @@ export default function AutoDmCampaignsPage() {
                 statusFilter === s ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-900",
               )}
             >
-              {s === "all" ? "All" : s === "active" ? "Active" : "Paused"}
+              {s === "all" ? t("automations.list.filter_all") : s === "active" ? t("automations.list.filter_active") : t("automations.list.filter_paused")}
             </button>
           ))}
         </div>
@@ -207,7 +209,7 @@ export default function AutoDmCampaignsPage() {
 
       {loading ? (
         <div className="rounded-xl border border-zinc-200 bg-white py-12 flex items-center justify-center gap-2 text-sm text-zinc-500">
-          <Loader2 className="size-4 animate-spin" /> Loading campaigns…
+          <Loader2 className="size-4 animate-spin" /> {t("automations.list.loading")}
         </div>
       ) : items.length === 0 ? (
         <EmptyState />
@@ -238,6 +240,7 @@ function CampaignRow({
   onToggle: () => void;
   onDelete: () => void;
 }) {
+  const t = useTranslations("dashboard");
   const isActive = campaign.status === "active";
   return (
     <div className="px-4 py-4 hover:bg-zinc-50/50 transition-colors">
@@ -251,9 +254,9 @@ function CampaignRow({
               {campaign.name}
             </Link>
             {isActive ? (
-              <StatusBadge tone="green" icon={<Play className="size-3" />}>active</StatusBadge>
+              <StatusBadge tone="green" icon={<Play className="size-3" />}>{t("automations.list.active_badge")}</StatusBadge>
             ) : (
-              <StatusBadge tone="amber" icon={<Pause className="size-3" />}>paused</StatusBadge>
+              <StatusBadge tone="amber" icon={<Pause className="size-3" />}>{t("automations.list.paused_badge")}</StatusBadge>
             )}
             <span className="inline-flex items-center gap-1.5 flex-wrap">
               {campaign.platforms.map((p) => (
@@ -267,7 +270,7 @@ function CampaignRow({
             <Wand2 className="size-3" />
             {describeTrigger(campaign.trigger)}
             {campaign.perAuthorPerDayCap ? (
-              <span className="ml-2">· cap {campaign.perAuthorPerDayCap}/author/day</span>
+              <span className="ml-2">· {t("automations.list.cap_badge", { n: campaign.perAuthorPerDayCap })}</span>
             ) : null}
           </p>
           <p className="mt-2 text-sm text-zinc-700 line-clamp-2 max-w-[720px]">
@@ -291,13 +294,13 @@ function CampaignRow({
             title={isActive ? "Pause campaign" : "Activate campaign"}
           >
             {isActive ? <Pause className="size-3" /> : <Play className="size-3" />}
-            {isActive ? "Pause" : "Activate"}
+            {isActive ? t("automations.list.pause") : t("automations.list.activate")}
           </button>
           <Link
             href={`/dashboard/automations/dm/${campaign.id}`}
             className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-zinc-200 bg-white text-xs font-medium hover:bg-zinc-50"
           >
-            Edit
+            {t("automations.list.edit")}
             <ChevronRight className="size-3" />
           </Link>
           <button

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Save, Loader2, AlertCircle, Globe, Palette } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
@@ -26,6 +27,7 @@ const DEFAULTS: Branding = {
 };
 
 export default function WhiteLabelBrandingPage() {
+  const t = useTranslations("dashboard");
   const [b, setB] = useState<Branding | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -81,8 +83,8 @@ export default function WhiteLabelBrandingPage() {
   return (
     <div className="px-3 lg:px-6 pt-5 lg:pt-8 pb-3 lg:pb-6 max-w-3xl">
       <PageHeader
-        title="White-label branding"
-        subtitle="Customize the client portal with your brand name, logo, color, and domain."
+        title={t("settings.branding.page_title")}
+        subtitle={t("settings.branding.page_subtitle")}
       />
 
       {!b ? (
@@ -91,40 +93,40 @@ export default function WhiteLabelBrandingPage() {
             <span className="text-red-600">{errorMsg}</span>
           ) : (
             <>
-              <Loader2 className="size-4 animate-spin mr-2" /> Loading…
+              <Loader2 className="size-4 animate-spin mr-2" /> {t("settings.branding.loading")}
             </>
           )}
         </div>
       ) : (
         <div className="rounded-xl border border-zinc-200 bg-white p-5 space-y-5">
-          <Field label="Brand name">
+          <Field label={t("settings.branding.brand_name")}>
             <input
               type="text"
               value={b.brandName}
               onChange={(e) => set("brandName", e.target.value)}
-              placeholder="Acme Marketing"
+              placeholder={t("settings.branding.brand_placeholder")}
               className="w-full h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
             />
           </Field>
-          <Field label="Logo URL">
+          <Field label={t("settings.branding.logo_url")}>
             <input
               type="url"
               value={b.logoUrl}
               onChange={(e) => set("logoUrl", e.target.value)}
-              placeholder="https://cdn.example.com/logo.png"
+              placeholder={t("settings.branding.logo_placeholder")}
               className="w-full h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
             />
           </Field>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Primary color">
+            <Field label={t("settings.branding.primary_color")}>
               <div className="flex items-center gap-2">
                 <input
                   type="color"
                   value={b.primaryColor}
                   onChange={(e) => set("primaryColor", e.target.value)}
                   className="size-9 rounded-md border border-zinc-200 cursor-pointer p-0"
-                  aria-label="Primary color picker"
+                  aria-label={t("settings.branding.primary_color")}
                 />
                 <input
                   type="text"
@@ -135,8 +137,8 @@ export default function WhiteLabelBrandingPage() {
               </div>
             </Field>
             <Field
-              label="Custom domain"
-              hint="CNAME this to portal.trustiify.agency to enable."
+              label={t("settings.branding.custom_domain")}
+              hint={t("settings.branding.domain_hint")}
             >
               <div className="flex items-center gap-2">
                 <Globe className="size-4 text-zinc-400" />
@@ -144,32 +146,32 @@ export default function WhiteLabelBrandingPage() {
                   type="text"
                   value={b.customDomain}
                   onChange={(e) => set("customDomain", e.target.value)}
-                  placeholder="portal.example.com"
+                  placeholder={t("settings.branding.domain_placeholder")}
                   className="flex-1 h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
                 />
               </div>
             </Field>
           </div>
 
-          <Field label="Footer text">
+          <Field label={t("settings.branding.footer_text")}>
             <input
               type="text"
               value={b.footerText}
               onChange={(e) => set("footerText", e.target.value)}
-              placeholder="© 2026 Acme Marketing"
+              placeholder={t("settings.branding.footer_placeholder")}
               className="w-full h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
             />
           </Field>
 
           <ToggleRow
-            label="White-label the portal"
-            description="Hide Trustiify branding on the client-facing portal and reports."
+            label={t("settings.branding.white_label")}
+            description={t("settings.branding.white_label_desc")}
             checked={b.whiteLabelEnabled}
             onChange={(v) => set("whiteLabelEnabled", v)}
           />
           <ToggleRow
-            label="Hide 'Powered by' badge"
-            description="Removes the 'Powered by Trustiify' footer credit on exports."
+            label={t("settings.branding.hide_badge")}
+            description={t("settings.branding.hide_badge_desc")}
             checked={b.hidePoweredBy}
             onChange={(v) => set("hidePoweredBy", v)}
           />
@@ -183,7 +185,7 @@ export default function WhiteLabelBrandingPage() {
             </div>
           ) : null}
           {savedAt ? (
-            <p className="text-xs text-emerald-600">Saved at {savedAt}.</p>
+            <p className="text-xs text-emerald-600">{t("settings.branding.saved_at", { time: savedAt })}</p>
           ) : null}
 
           <div className="flex items-center justify-end gap-2 pt-2">

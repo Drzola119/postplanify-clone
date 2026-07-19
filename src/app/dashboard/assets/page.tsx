@@ -28,6 +28,7 @@ import {
   Play,
   Sparkles,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 
@@ -138,6 +139,7 @@ function formatDate(iso: string): string {
 }
 
 export default function AssetsPage() {
+  const t = useTranslations("dashboard");
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("all");
   const [view, setView] = useState<ViewMode>("list");
@@ -372,9 +374,9 @@ export default function AssetsPage() {
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-[30px] font-bold leading-[36px] tracking-tight">Media Library</h1>
+          <h1 className="text-[30px] font-bold leading-[36px] tracking-tight">{t("assets.page_title")}</h1>
           <p className="mt-1 text-sm text-zinc-500 max-w-2xl">
-            Manage all your media assets and content library. Upload, organize, and reuse your visual content across all your social media platforms.
+            {t("assets.page_subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -384,7 +386,7 @@ export default function AssetsPage() {
             className="inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-white h-9 px-4 text-sm font-medium hover:bg-zinc-50"
           >
             <TagIcon className="size-4" />
-            Tags
+            {t("assets.tags")}
           </button>
           <button
             type="button"
@@ -392,7 +394,7 @@ export default function AssetsPage() {
             className="inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-white h-9 px-4 text-sm font-medium hover:bg-zinc-50"
           >
             <FolderPlus className="size-4" />
-            New Folder
+            {t("assets.new_folder")}
           </button>
           <button
             type="button"
@@ -400,7 +402,7 @@ export default function AssetsPage() {
             className="inline-flex items-center gap-2 rounded-md bg-zinc-900 text-white h-9 px-4 text-sm font-medium hover:bg-zinc-800"
           >
             <Upload className="size-4" />
-            Upload
+            {t("assets.upload")}
           </button>
         </div>
       </div>
@@ -410,25 +412,25 @@ export default function AssetsPage() {
         <div className="flex items-center gap-2">
           <div className="inline-flex items-center gap-1 rounded-md bg-zinc-100 p-0.5">
             {([
-              { id: "all", label: "All" },
-              { id: "images", label: "Images", Icon: ImageIcon },
-              { id: "videos", label: "Videos", Icon: FileVideo },
-            ] as { id: Tab; label: string; Icon?: typeof ImageIcon }[]).map((t) => (
+              { id: "all", label: t("assets.all") },
+              { id: "images", label: t("assets.images"), Icon: ImageIcon },
+              { id: "videos", label: t("assets.videos"), Icon: FileVideo },
+            ] as { id: Tab; label: string; Icon?: typeof ImageIcon }[]).map((tabItem) => (
               <button
-                key={t.id}
+                key={tabItem.id}
                 type="button"
-                onClick={() => setTab(t.id)}
+                onClick={() => setTab(tabItem.id)}
                 className={cn(
                   "inline-flex items-center gap-1.5 px-3 h-8 rounded text-xs font-medium transition-colors",
-                  tab === t.id ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-900"
+                  tab === tabItem.id ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-900"
                 )}
               >
-                {t.Icon && <t.Icon className="size-3.5" />}
-                {t.label}
+                {tabItem.Icon && <tabItem.Icon className="size-3.5" />}
+                {tabItem.label}
               </button>
             ))}
           </div>
-          <span className="text-sm text-zinc-500">{filtered.length} assets</span>
+          <span className="text-sm text-zinc-500">{t("assets.count_assets", { n: filtered.length })}</span>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -443,7 +445,7 @@ export default function AssetsPage() {
             )}
           >
             {selectMode ? <CheckCircle2 className="size-4" /> : <Sparkles className="size-4" />}
-            Select
+            {t("assets.select")}
           </button>
           <div className="relative">
             <button
@@ -452,7 +454,7 @@ export default function AssetsPage() {
               className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white h-8 px-3 text-sm font-medium hover:bg-zinc-50 min-w-[120px]"
             >
               <ArrowUpDown className="size-4" />
-              {sortLabel(sort)}
+              {t("assets." + sortLabels[sort])}
               <ChevronDown className="size-3.5 ml-auto text-zinc-400" />
             </button>
             {sortOpen && (
@@ -460,11 +462,11 @@ export default function AssetsPage() {
                 <div className="fixed inset-0 z-30" onClick={() => setSortOpen(false)} />
                 <div className="absolute right-0 top-full mt-1 w-44 rounded-md border border-zinc-200 bg-white shadow-lg z-40 py-1">
                   {([
-                    { id: "newest", label: "Newest first" },
-                    { id: "oldest", label: "Oldest first" },
-                    { id: "name", label: "Name (A-Z)" },
-                    { id: "size", label: "Size (largest)" },
-                    { id: "type", label: "Type" },
+                    { id: "newest", label: t("assets.sort_newest") },
+                    { id: "oldest", label: t("assets.sort_oldest") },
+                    { id: "name", label: t("assets.sort_name") },
+                    { id: "size", label: t("assets.sort_size") },
+                    { id: "type", label: t("assets.sort_type") },
                   ] as { id: Sort; label: string }[]).map((s) => (
                     <button
                       key={s.id}
@@ -491,10 +493,10 @@ export default function AssetsPage() {
                 "inline-flex items-center gap-1.5 h-8 px-2.5 rounded text-xs font-medium transition-colors",
                 view === "grid" ? "bg-zinc-100 text-zinc-900" : "text-zinc-500 hover:text-zinc-900"
               )}
-              aria-label="Grid view"
+              aria-label={t("assets.grid_view")}
             >
               <Grid3x3 className="size-3.5" />
-              Grid
+              {t("assets.grid")}
             </button>
             <button
               type="button"
@@ -503,10 +505,10 @@ export default function AssetsPage() {
                 "inline-flex items-center gap-1.5 h-8 px-2.5 rounded text-xs font-medium transition-colors",
                 view === "list" ? "bg-zinc-100 text-zinc-900" : "text-zinc-500 hover:text-zinc-900"
               )}
-              aria-label="List view"
+              aria-label={t("assets.list_view")}
             >
               <List className="size-3.5" />
-              List
+              {t("assets.list")}
             </button>
           </div>
         </div>
@@ -515,23 +517,23 @@ export default function AssetsPage() {
       {/* Bulk action bar */}
       {selectMode && selected.size > 0 && (
         <div className="flex items-center gap-2 rounded-md border border-zinc-900 bg-zinc-900 text-white px-3 py-2">
-          <span className="text-sm font-medium">{selected.size} selected</span>
+          <span className="text-sm font-medium">{t("assets.n_selected", { n: selected.size })}</span>
           <div className="flex-1" />
           <button type="button" className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium hover:bg-zinc-800">
             <Move className="size-3.5" />
-            Move
+            {t("assets.move")}
           </button>
           <button type="button" className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium hover:bg-zinc-800">
             <TagIcon className="size-3.5" />
-            Tag
+            {t("assets.tag")}
           </button>
           <button type="button" className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium hover:bg-zinc-800">
             <Download className="size-3.5" />
-            Download
+            {t("assets.download")}
           </button>
           <button type="button" className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium text-rose-300 hover:bg-zinc-800">
             <Trash2 className="size-3.5" />
-            Delete
+            {t("assets.delete")}
           </button>
         </div>
       )}
@@ -542,7 +544,7 @@ export default function AssetsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-400" />
           <input
             type="text"
-            placeholder="Search assets..."
+            placeholder={t("assets.search_placeholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 h-8 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
@@ -615,9 +617,13 @@ export default function AssetsPage() {
   );
 }
 
-function sortLabel(s: Sort): string {
-  return { newest: "Newest", oldest: "Oldest", name: "Name", size: "Size", type: "Type" }[s];
-}
+const sortLabels: Record<Sort, string> = {
+  newest: "sort_newest",
+  oldest: "sort_oldest",
+  name: "sort_name",
+  size: "sort_size",
+  type: "sort_type",
+};
 
 /* ============================== LIST VIEW ============================== */
 
@@ -633,6 +639,7 @@ function ListView({
   onContextMenu: (a: MediaAsset, x: number, y: number) => void;
   usageMap: Record<string, number>;
 }) {
+  const t = useTranslations("dashboard");
   return (
     <div>
       <div className="grid grid-cols-[auto_1fr_120px_120px_80px_80px_80px_100px_40px] gap-3 px-3 py-2 border-b border-zinc-200 text-xs font-medium text-zinc-500 tracking-wide">
@@ -647,13 +654,13 @@ function ListView({
             />
           )}
         </div>
-        <div>Name</div>
-        <div>Folder</div>
-        <div>Tags</div>
-        <div>Type</div>
-        <div>Size</div>
-        <div>Date</div>
-        <div>Used in</div>
+        <div>{t("assets.col_name")}</div>
+        <div>{t("assets.col_folder")}</div>
+        <div>{t("assets.col_tags")}</div>
+        <div>{t("assets.col_type")}</div>
+        <div>{t("assets.col_size")}</div>
+        <div>{t("assets.col_date")}</div>
+        <div>{t("assets.col_used_in")}</div>
         <div></div>
       </div>
       {assets.map((a) => (
@@ -686,6 +693,7 @@ function ListRow({
   onContextMenu: (e: React.MouseEvent) => void;
   usageCount: number;
 }) {
+  const t = useTranslations("dashboard");
   return (
     <div className="grid grid-cols-[auto_1fr_120px_120px_80px_80px_80px_100px_40px] gap-3 items-center px-3 py-2 hover:bg-zinc-50 cursor-pointer border-b border-zinc-100 last:border-b-0 transition-colors" onClick={onPreview} onContextMenu={onContextMenu}>
       <div onClick={(e) => e.stopPropagation()}>
@@ -710,8 +718,8 @@ function ListRow({
         )}
       </div>
       <p className="text-sm font-medium truncate">{asset.name}</p>
-      <p className="text-sm text-zinc-400 truncate">{asset.folder || "—"}</p>
-      <p className="text-sm text-zinc-400 truncate">{asset.tags.length === 0 ? "—" : asset.tags.join(", ")}</p>
+      <p className="text-sm text-zinc-400 truncate">{asset.folder || t("assets.na")}</p>
+      <p className="text-sm text-zinc-400 truncate">{asset.tags.length === 0 ? t("assets.na") : asset.tags.join(", ")}</p>
       <span className={cn(
         "inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs font-medium w-fit",
         asset.type === "video" && "bg-zinc-100 text-zinc-700",
@@ -723,7 +731,7 @@ function ListRow({
       <p className="text-sm text-zinc-500">{formatSize(asset.size)}</p>
       <p className="text-sm text-zinc-500">{formatDate(asset.uploadedAt)}</p>
       <p className={cn("text-sm", usageCount > 0 ? "text-zinc-700 font-medium" : "text-zinc-400")}>
-        {usageCount === 0 ? "—" : `${usageCount} post${usageCount === 1 ? "" : "s"}`}
+        {usageCount === 0 ? t("assets.na") : t("assets.used_in_posts", { n: usageCount })}
       </p>
       <button type="button" onClick={(e) => { e.stopPropagation(); onPreview(); }} className="text-zinc-400 hover:text-zinc-700" aria-label="Open external">
         <ExternalLink className="size-3.5" />
@@ -844,16 +852,17 @@ function UploadModal({
   onUpload: () => void;
   inputRef: React.RefObject<HTMLInputElement | null>;
 }) {
+  const t = useTranslations("dashboard");
   const [dragging, setDragging] = useState(false);
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-in fade-in-0" onClick={onClose}>
       <div className="bg-white rounded-lg shadow-xl w-full max-w-xl animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between p-5 pb-3">
           <div>
-            <h2 className="text-lg font-semibold text-zinc-900">Upload Media</h2>
-            <p className="text-sm text-zinc-500 mt-1">Upload images, videos, or documents to your media library.</p>
+            <h2 className="text-lg font-semibold text-zinc-900">{t("assets.upload_title")}</h2>
+            <p className="text-sm text-zinc-500 mt-1">{t("assets.upload_subtitle")}</p>
           </div>
-          <button type="button" onClick={onClose} className="text-zinc-400 hover:text-zinc-700" aria-label="Close">
+          <button type="button" onClick={onClose} className="text-zinc-400 hover:text-zinc-700" aria-label={t("assets.close")}>
             <X className="size-5" />
           </button>
         </div>
@@ -880,9 +889,9 @@ function UploadModal({
               onChange={(e) => onAddFiles(e.target.files)}
             />
             <Upload className="size-8 text-zinc-400 mb-3" />
-            <p className="text-sm font-medium text-zinc-700">Drag & drop files here</p>
-            <p className="text-xs text-zinc-500 mt-1">or click to browse</p>
-            <p className="text-[11px] text-zinc-400 mt-3">JPEG, PNG, GIF, WebP, HEIC, MP4, MOV, PDF</p>
+            <p className="text-sm font-medium text-zinc-700">{t("assets.drag_drop")}</p>
+            <p className="text-xs text-zinc-500 mt-1">{t("assets.click_browse")}</p>
+            <p className="text-[11px] text-zinc-400 mt-3">{t("assets.supported_formats")}</p>
           </div>
 
           {pendingFiles.length > 0 && (

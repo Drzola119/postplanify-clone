@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -19,6 +19,7 @@ import {
   deleteDraft,
   type DraftRecord,
 } from "@/lib/drafts";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
 import { getPlatform } from "@/lib/platforms";
@@ -166,13 +167,13 @@ interface Toast {
 
 type SortKey = "recent" | "oldest" | "az";
 
-const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-  { value: "recent", label: "Newest first" },
-  { value: "oldest", label: "Oldest first" },
-  { value: "az", label: "Caption A→Z" },
-];
-
 export default function DraftsPage() {
+  const t = useTranslations("dashboard");
+  const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+    { value: "recent", label: t("posts.drafts.sort_newest") },
+    { value: "oldest", label: t("posts.drafts.sort_oldest") },
+    { value: "az", label: t("posts.drafts.sort_caption_az") },
+  ];
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -303,11 +304,10 @@ export default function DraftsPage() {
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-zinc-900 leading-[32px]">
-            Drafts
+            {t("posts.drafts.page_title")}
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
-            View and manage all your draft posts. Edit, schedule, or publish them
-            when you&apos;re ready.
+            {t("posts.drafts.page_subtitle")}
           </p>
         </div>
       </div>
@@ -323,9 +323,9 @@ export default function DraftsPage() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search captions or accounts…"
+                placeholder={t("posts.drafts.search_placeholder")}
                 className="w-full h-9 pl-9 pr-3 rounded-md border border-zinc-200 bg-white text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
-                aria-label="Search drafts"
+                aria-label={t("posts.drafts.search_placeholder")}
               />
             </div>
             <div className="relative">
@@ -379,19 +379,19 @@ export default function DraftsPage() {
             <thead className="bg-zinc-50 border-b border-zinc-200">
               <tr>
                 <th className="text-left px-6 py-2.5 text-sm font-medium text-zinc-500">
-                  Media
+                  {t("posts.drafts.col_media")}
                 </th>
                 <th className="text-left px-3 py-2.5 text-sm font-medium text-zinc-500">
-                  Caption
+                  {t("posts.drafts.col_caption")}
                 </th>
                 <th className="text-left px-6 py-2.5 text-sm font-medium text-zinc-500">
-                  Accounts
+                  {t("posts.drafts.col_accounts")}
                 </th>
                 <th className="text-left px-6 py-2.5 text-sm font-medium text-zinc-500">
-                  Created
+                  {t("posts.drafts.col_created")}
                 </th>
                 <th className="text-left px-6 py-2.5 text-sm font-medium text-zinc-500">
-                  Actions
+                  {t("posts.drafts.col_actions")}
                 </th>
               </tr>
             </thead>
@@ -399,7 +399,7 @@ export default function DraftsPage() {
               {filteredDrafts.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-6 py-10 text-center text-sm text-zinc-500">
-                    No drafts match “{search}”.
+                    {t("posts.drafts.no_results", { search })}
                   </td>
                 </tr>
               ) : null}
@@ -460,11 +460,11 @@ export default function DraftsPage() {
                         {loadingId === draft.id ? (
                           <>
                             <Loader2 className="size-3 animate-spin" />
-                            Loading...
+                            {t("posts.drafts.loading")}
                           </>
                         ) : (
                           <>
-                            Continue
+                            {t("posts.drafts.continue")}
                             <ArrowRight className="size-3" />
                           </>
                         )}
@@ -476,7 +476,7 @@ export default function DraftsPage() {
                         className="inline-flex items-center justify-center gap-1 h-8 w-full rounded-md bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold transition-colors"
                       >
                         <Trash2 className="size-3" />
-                        Delete
+                        {t("posts.drafts.delete")}
                       </button>
                     </div>
                   </td>
@@ -507,8 +507,8 @@ export default function DraftsPage() {
                   <AlertTriangle className="size-4.5 text-red-600" />
                 </span>
                 <div>
-                  <h2 className="text-base font-semibold text-zinc-900">Delete draft?</h2>
-                  <p className="text-xs text-zinc-500 mt-0.5">This cannot be undone.</p>
+                  <h2 className="text-base font-semibold text-zinc-900">{t("posts.drafts.delete_title")}</h2>
+                  <p className="text-xs text-zinc-500 mt-0.5">{t("posts.drafts.delete_subtitle")}</p>
                 </div>
               </div>
               <button
@@ -522,7 +522,7 @@ export default function DraftsPage() {
             </div>
             <div className="p-5">
               <p className="text-sm text-zinc-700">
-                Are you sure you want to delete this draft?
+                {t("posts.drafts.delete_body")}
                 {confirmDelete.caption ? (
                   <>
                     {" "}
@@ -539,7 +539,7 @@ export default function DraftsPage() {
                 onClick={() => setConfirmDelete(null)}
                 className="inline-flex items-center justify-center rounded-md border border-zinc-200 bg-white px-4 h-9 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
               >
-                Cancel
+                {t("posts.drafts.cancel")}
               </button>
               <button
                 type="button"
@@ -547,7 +547,7 @@ export default function DraftsPage() {
                 className="inline-flex items-center justify-center gap-1.5 rounded-md bg-red-500 hover:bg-red-600 px-4 h-9 text-sm font-medium text-white"
               >
                 <Trash2 className="size-3.5" />
-                Delete draft
+                {t("posts.drafts.delete_draft")}
               </button>
             </div>
           </div>
@@ -575,14 +575,15 @@ export default function DraftsPage() {
 }
 
 function EmptyDrafts() {
+  const t = useTranslations("dashboard");
   return (
     <div className="rounded-xl border border-zinc-200 bg-white py-20 flex flex-col items-center justify-center">
       <div className="size-12 rounded-full bg-zinc-100 flex items-center justify-center mb-4">
         <Inbox className="size-5 text-zinc-400" />
       </div>
-      <h3 className="text-sm font-semibold text-zinc-900">No drafts yet</h3>
+      <h3 className="text-sm font-semibold text-zinc-900">{t("posts.drafts.empty_title")}</h3>
       <p className="mt-1 text-sm text-zinc-500">
-        Start creating a post and save it as a draft to see it here.
+        {t("posts.drafts.empty_subtitle")}
       </p>
     </div>
   );

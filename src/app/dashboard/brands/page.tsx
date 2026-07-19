@@ -14,6 +14,7 @@ import {
   Info,
   RefreshCw,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { PageHelp } from "@/components/dashboard/help/page-help";
@@ -180,6 +181,7 @@ function WorkspaceFormModalBody({
   onClose: () => void;
   onSave: (data: { name: string; domain: string }) => Promise<void>;
 }) {
+  const t = useTranslations("dashboard");
   const [name, setName] = useState(workspace?.name ?? "");
   const [domain, setDomain] = useState(
     workspace?.domain && workspace.domain !== "Not set" ? workspace.domain : ""
@@ -213,10 +215,10 @@ function WorkspaceFormModalBody({
             id="dialog-title"
             className="text-lg font-semibold leading-none tracking-tight flex items-center gap-2"
           >
-            {isEdit ? "Edit Workspace" : "Create New Workspace"}
+            {isEdit ? t("brands.edit_title") : t("brands.create_title")}
           </h2>
           <p className="text-sm text-muted-foreground">
-            {isEdit ? "Update your workspace's information" : "Connect your social accounts under this workspace later."}
+            {isEdit ? t("brands.edit_subtitle") : t("brands.create_subtitle")}
           </p>
         </div>
 
@@ -233,7 +235,7 @@ function WorkspaceFormModalBody({
                   ) : (
                     <>
                       <CloudUploadIcon className="h-8 w-8 text-muted-foreground/50" />
-                      <p className="mt-1 text-xs text-muted-foreground">Upload Logo</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{t("brands.upload_logo")}</p>
                     </>
                   )}
                   <input
@@ -252,29 +254,29 @@ function WorkspaceFormModalBody({
             {/* Name + Domain */}
             <div className="flex-1 space-y-3">
               <div className="space-y-1">
-                <label className="text-sm font-medium leading-none" htmlFor="ws-name">
-                  Name
-                </label>
+                  <label className="text-sm font-medium leading-none" htmlFor="ws-name">
+                    {t("brands.name")}
+                  </label>
                 <input
                   id="ws-name"
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="My Brand"
+                  placeholder={t("brands.name_placeholder")}
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   autoFocus
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium leading-none" htmlFor="ws-domain">
-                  Domain <span className="text-muted-foreground">(optional)</span>
-                </label>
+                  <label className="text-sm font-medium leading-none" htmlFor="ws-domain">
+                    {t("brands.domain")} <span className="text-muted-foreground">(optional)</span>
+                  </label>
                 <input
                   id="ws-domain"
                   type="text"
                   value={domain}
                   onChange={(e) => setDomain(e.target.value)}
-                  placeholder="example.com"
+                  placeholder={t("brands.domain_placeholder")}
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 />
               </div>
@@ -289,7 +291,7 @@ function WorkspaceFormModalBody({
           >
             <span className="flex items-center gap-2">
               <Sparkles className="size-4 text-purple-500" />
-              <span className="text-sm font-medium">AI Assistant Settings</span>
+              <span className="text-sm font-medium">{t("brands.ai_settings")}</span>
               <span className="text-xs text-muted-foreground">(Optional)</span>
             </span>
             <ChevronDown className={cn("size-4 transition-transform", aiOpen && "rotate-180")} />
@@ -304,14 +306,14 @@ function WorkspaceFormModalBody({
             <span className="flex-1 min-w-0">
               <span className="flex items-center gap-2">
                 <BookText className="size-4 text-blue-500" />
-                <span className="text-sm font-medium">Knowledge Base</span>
+                <span className="text-sm font-medium">{t("brands.knowledge_base")}</span>
                 <span className="text-xs text-muted-foreground">(Optional)</span>
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold border border-amber-200">
-                  ✨ PREMIUM
+                  ✨ {t("brands.premium_badge")}
                 </span>
               </span>
               <span className="block text-xs text-muted-foreground mt-1 ml-6">
-                Extra context to help the AI write more accurate inbox replies.
+                {t("brands.knowledge_base_hint")}
               </span>
             </span>
             <ChevronDown className="size-4 transition-transform shrink-0 ml-2" />
@@ -325,7 +327,7 @@ function WorkspaceFormModalBody({
             onClick={onClose}
             className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 mt-2 sm:mt-0"
           >
-            Cancel
+            {t("brands.cancel")}
           </button>
           <button
             type="submit"
@@ -333,13 +335,13 @@ function WorkspaceFormModalBody({
             className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2"
           >
             {busy && <Loader2 className="size-3.5 animate-spin" />}
-            {busy ? "Saving…" : isEdit ? (
+            {busy ? t("brands.saving") : isEdit ? (
               <>
-                <Save className="w-4 h-4" /> Save Changes
+                <Save className="w-4 h-4" /> {t("brands.save_changes")}
               </>
             ) : (
               <>
-                <Save className="w-4 h-4" /> Create Workspace
+                <Save className="w-4 h-4" /> {t("brands.create_workspace_btn")}
               </>
             )}
           </button>
@@ -350,7 +352,7 @@ function WorkspaceFormModalBody({
           type="button"
           onClick={onClose}
           className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-          aria-label="Close"
+          aria-label={t("brands.close")}
         >
           <X className="h-4 w-4" />
         </button>
@@ -374,6 +376,7 @@ function DeleteWorkspaceModal({
   onConfirm: () => void;
   workspaceName: string;
 }) {
+  const t = useTranslations("dashboard");
   const [busy, setBusy] = useState(false);
   if (!open) return null;
   return (
@@ -384,11 +387,10 @@ function DeleteWorkspaceModal({
           className="text-lg font-semibold leading-none tracking-tight flex items-center gap-2 text-destructive mb-4"
         >
           <DeleteForeverIcon className="w-5 h-5" />
-          Delete {workspaceName}
+          {t("brands.delete_title", { name: workspaceName })}
         </h2>
         <p className="text-sm text-muted-foreground">
-          Are you sure you want to delete this brand? This action will remove all
-          associated social media accounts and cannot be undone.
+          {t("brands.delete_body")}
         </p>
       </div>
       <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 mt-4">
@@ -397,7 +399,7 @@ function DeleteWorkspaceModal({
           onClick={onClose}
           className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 mt-2 sm:mt-0"
         >
-          Cancel
+          {t("brands.cancel")}
         </button>
         <button
           type="button"
@@ -410,14 +412,14 @@ function DeleteWorkspaceModal({
           className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 h-9 px-4 py-2 gap-2"
         >
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <DeleteForeverIcon className="w-4 h-4" />}
-          Delete
+          {t("brands.delete_confirm")}
         </button>
       </div>
       <button
         type="button"
         onClick={onClose}
         className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-        aria-label="Close"
+        aria-label={t("brands.close")}
       >
         <X className="h-4 w-4" />
       </button>
@@ -455,6 +457,7 @@ function InviteMemberModalBody({
   workspace: Workspace;
   onClose: () => void;
 }) {
+  const t = useTranslations("dashboard");
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"Admin" | "Editor" | "Viewer">("Editor");
@@ -476,14 +479,14 @@ function InviteMemberModalBody({
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(data.error ?? "Failed to send invite");
+        setError(data.error ?? t("brands.invite_failed"));
         return;
       }
       setEmail("");
       setShowInviteForm(false);
       setRole("Editor");
     } catch {
-      setError("Network error. Please try again.");
+      setError(t("brands.invite_network_error"));
     } finally {
       setSending(false);
     }
@@ -493,11 +496,10 @@ function InviteMemberModalBody({
     <DialogShell open={true} onClose={onClose} maxWidth="max-w-2xl">
       <div className="flex flex-col space-y-1.5 text-center sm:text-left">
         <h2 id="dialog-title" className="text-lg font-semibold leading-none tracking-tight">
-          Team Members
+          {t("brands.team_title")}
         </h2>
         <p className="text-sm text-muted-foreground">
-          Manage team members and their roles for{" "}
-          <span className="font-semibold">{workspace.name}</span>
+          {t("brands.team_subtitle", { name: workspace.name })}
         </p>
       </div>
 
@@ -515,7 +517,7 @@ function InviteMemberModalBody({
               </div>
             </div>
             <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold border-transparent text-primary-foreground bg-primary">
-              OWNER
+              {t("brands.owner_badge")}
             </span>
           </div>
         </div>
@@ -524,9 +526,9 @@ function InviteMemberModalBody({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-medium text-muted-foreground">Team Members (0)</h3>
+              <h3 className="text-sm font-medium text-muted-foreground">{t("brands.team_count")}</h3>
               <span className="text-xs font-medium bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                0/3 seats used
+                {t("brands.seats_used", { used: 0, total: 3 })}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -543,7 +545,7 @@ function InviteMemberModalBody({
                 className="inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs"
               >
                 <Users className="size-3.5" />
-                Invite Member
+                {t("brands.invite_member")}
               </button>
             </div>
           </div>
@@ -556,7 +558,7 @@ function InviteMemberModalBody({
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="email@example.com"
+                  placeholder={t("brands.invite_placeholder")}
                   className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 />
                 <select
@@ -564,9 +566,9 @@ function InviteMemberModalBody({
                   onChange={(e) => setRole(e.target.value as "Admin" | "Editor" | "Viewer")}
                   className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
-                  <option value="Admin">Admin</option>
-                  <option value="Editor">Editor</option>
-                  <option value="Viewer">Viewer</option>
+                  <option value="Admin">{t("brands.role_admin")}</option>
+                  <option value="Editor">{t("brands.role_editor")}</option>
+                  <option value="Viewer">{t("brands.role_viewer")}</option>
                 </select>
                 <button
                   type="button"
@@ -574,7 +576,7 @@ function InviteMemberModalBody({
                   disabled={!validEmail || sending}
                   className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 h-9 px-3"
                 >
-                  {sending ? "Sending…" : "Send"}
+                  {sending ? t("brands.invite_sending") : t("brands.invite_send")}
                 </button>
                 <button
                   type="button"
@@ -594,9 +596,9 @@ function InviteMemberModalBody({
           {/* Empty state */}
           {!showInviteForm && (
             <div className="rounded-md border border-dashed py-10 flex flex-col items-center justify-center text-center">
-              <p className="text-sm font-medium">No team members yet</p>
+              <p className="text-sm font-medium">{t("brands.team_empty")}</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Invite team members to collaborate on this workspace
+                {t("brands.team_empty_sub")}
               </p>
             </div>
           )}
@@ -607,7 +609,7 @@ function InviteMemberModalBody({
         type="button"
         onClick={onClose}
         className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-        aria-label="Close"
+        aria-label={t("brands.close")}
       >
         <X className="h-4 w-4" />
       </button>
@@ -679,6 +681,7 @@ interface ApiWorkspace {
    ============================================================ */
 
 export default function WorkspacesPage() {
+  const t = useTranslations("dashboard");
   const [workspaces, setWorkspaces] = useState<Workspace[]>(SEED_WORKSPACES);
   const [loading, setLoading] = useState(true);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
@@ -822,7 +825,7 @@ export default function WorkspacesPage() {
       <div className="flex flex-col sm:flex-row items-center gap-2 justify-between">
         <div className="flex flex-col gap-2 w-full sm:w-auto">
           <div className="flex items-center gap-2">
-            <h2 className="text-[30px] font-bold leading-[36px] tracking-tight">Workspaces</h2>
+            <h2 className="text-[30px] font-bold leading-[36px] tracking-tight">{t("brands.page_title")}</h2>
             {(() => {
               const cfg = getHelpConfig("brands");
               if (!cfg) return null;
@@ -830,7 +833,7 @@ export default function WorkspacesPage() {
             })()}
           </div>
           <p className="text-sm text-muted-foreground">
-            Create workspaces to group your social media accounts &amp; posts.
+            {t("brands.page_subtitle")}
           </p>
         </div>
         <button
@@ -839,7 +842,7 @@ export default function WorkspacesPage() {
           className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2 w-full sm:w-auto"
         >
           <Plus className="w-4 h-4" />
-          Create Workspace
+          {t("brands.create_workspace")}
         </button>
       </div>
 
@@ -849,24 +852,24 @@ export default function WorkspacesPage() {
           <table className="w-full caption-bottom text-sm">
             <thead className="[&_tr]:border-b">
               <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
-                <th className="h-10 px-2 text-left align-middle font-medium text-muted-foreground">Workspace</th>
-                <th className="h-10 px-2 text-left align-middle font-medium text-muted-foreground">Domain</th>
-                <th className="h-10 px-2 text-left align-middle font-medium text-muted-foreground">Social Accounts</th>
-                <th className="h-10 px-2 text-left align-middle font-medium text-muted-foreground w-[180px]">Created</th>
-                <th className="h-10 px-2 text-left align-middle font-medium text-muted-foreground w-[130px]">Actions</th>
+                <th className="h-10 px-2 text-left align-middle font-medium text-muted-foreground">{t("brands.col_workspace")}</th>
+                <th className="h-10 px-2 text-left align-middle font-medium text-muted-foreground">{t("brands.col_domain")}</th>
+                <th className="h-10 px-2 text-left align-middle font-medium text-muted-foreground">{t("brands.col_accounts")}</th>
+                <th className="h-10 px-2 text-left align-middle font-medium text-muted-foreground w-[180px]">{t("brands.col_created")}</th>
+                <th className="h-10 px-2 text-left align-middle font-medium text-muted-foreground w-[130px]">{t("brands.col_actions")}</th>
               </tr>
             </thead>
             <tbody className="[&_tr:last-child]:border-0">
               {loading ? (
                 <tr>
                   <td colSpan={5} className="p-8 text-center text-sm text-muted-foreground">
-                    Loading workspaces…
+                    {t("brands.loading")}
                   </td>
                 </tr>
               ) : workspaces.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="p-8 text-center text-sm text-muted-foreground">
-                    No workspaces yet. Create your first one to get started.
+                    {t("brands.empty")}
                   </td>
                 </tr>
               ) : (
@@ -938,7 +941,7 @@ export default function WorkspacesPage() {
                         className="inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border bg-background shadow-sm rounded-md h-6 px-2 text-[10px] gap-1 text-green-600 border-green-600 hover:bg-green-50 hover:text-green-700"
                       >
                         <GroupsIcon className="css-q7mezt" style={{ fontSize: 14 }} />
-                        Invite People
+                        {t("brands.invite_people")}
                       </button>
                     </div>
                   </td>

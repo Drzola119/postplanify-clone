@@ -14,6 +14,7 @@ import {
   Calendar,
 } from "lucide-react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { StatCard } from "@/components/ui/stat-card";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -74,19 +75,6 @@ interface HistoryResponse {
 
 type DateRangePreset = "7d" | "30d" | "90d" | "all";
 
-const PRESETS: { value: DateRangePreset; label: string }[] = [
-  { value: "7d", label: "Last 7 days" },
-  { value: "30d", label: "Last 30 days" },
-  { value: "90d", label: "Last 90 days" },
-  { value: "all", label: "All time" },
-];
-
-const STATUS_FILTERS: { value: "all" | "published" | "failed"; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "published", label: "Published" },
-  { value: "failed", label: "Failed" },
-];
-
 function sinceIso(preset: DateRangePreset): string | undefined {
   if (preset === "all") return undefined;
   const days = preset === "7d" ? 7 : preset === "30d" ? 30 : 90;
@@ -113,6 +101,18 @@ function truncate(s: string, n: number): string {
 }
 
 export default function PublishHistoryPage() {
+  const t = useTranslations("dashboard");
+  const PRESETS: { value: DateRangePreset; label: string }[] = [
+    { value: "7d", label: t("posts.history.last_7_days") },
+    { value: "30d", label: t("posts.history.last_30_days") },
+    { value: "90d", label: t("posts.history.last_90_days") },
+    { value: "all", label: t("posts.history.all_time") },
+  ];
+  const STATUS_FILTERS: { value: "all" | "published" | "failed"; label: string }[] = [
+    { value: "all", label: t("posts.history.filter_all") },
+    { value: "published", label: t("posts.history.filter_published") },
+    { value: "failed", label: t("posts.history.filter_failed") },
+  ];
   const [rangePreset, setRangePreset] = useState<DateRangePreset>("30d");
   const [statusFilter, setStatusFilter] = useState<"all" | "published" | "failed">("all");
   const [platformFilter, setPlatformFilter] = useState<Platform | "all">("all");
@@ -146,7 +146,7 @@ export default function PublishHistoryPage() {
           headers: getOverrideHeaders(),
         });
         if (!res.ok) {
-          if (!cancelled) setErrorMsg(`Failed to load history (${res.status})`);
+          if (!cancelled) setErrorMsg(t("posts.history.load_error", { status: res.status }));
           return;
         }
         const data = (await res.json()) as HistoryResponse;
@@ -154,7 +154,7 @@ export default function PublishHistoryPage() {
         setPosts(data.posts ?? []);
         setStats(data.stats ?? { published: 0, failed: 0, total: 0, successRate: null, byPlatform: {} });
       } catch (err) {
-        if (!cancelled) setErrorMsg("Network error. Please try again.");
+        if (!cancelled) setErrorMsg(t("posts.history.network_error"));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -232,8 +232,8 @@ export default function PublishHistoryPage() {
   return (
     <div className="px-3 lg:px-6 pt-5 lg:pt-8 pb-3 lg:pb-6">
       <PageHeader
-        title="Publish history"
-        subtitle="See what got published and what failed. Audit outcomes, retry failures, and export the log."
+        title={t("posts.history.page_title")}
+        subtitle={t("posts.history.page_subtitle")}
       />
 
       {retryError ? (
@@ -254,30 +254,30 @@ export default function PublishHistoryPage() {
       {/* Stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard
-          label="Published"
+          label={t("posts.history.published")}
           value={stats.published}
           icon={<CheckCircle2 className="size-4" />}
           iconClassName="bg-emerald-50 text-emerald-700"
         />
         <StatCard
-          label="Failed"
+          label={t("posts.history.failed")}
           value={stats.failed}
           icon={<XCircle className="size-4" />}
           iconClassName="bg-red-50 text-red-600"
         />
         <StatCard
-          label="Success rate"
-          value={stats.successRate === null ? "—" : `${stats.successRate}%`}
+          label={t("posts.history.success_rate")}
+          value={stats.successRate === null ? t("posts.history.na") : `${stats.successRate}%`}
           icon={<RefreshCcw className="size-4" />}
           iconClassName="bg-blue-50 text-blue-700"
-          footer={stats.total > 0 ? `${stats.total} total attempts` : "No attempts yet"}
+          footer={stats.total > 0 ? t("posts.history.total_attempts", { count: stats.total }) : t("posts.history.no_attempts")}
         />
         <StatCard
-          label="Date range"
+          label={t("posts.history.date_range")}
           value={PRESETS.find((p) => p.value === rangePreset)?.label ?? "Custom"}
           icon={<Calendar className="size-4" />}
           iconClassName="bg-violet-50 text-violet-700"
-          footer={stats.total > 0 ? `${filteredPosts.length} showing` : null}
+          footer={stats.total > 0 ? t("posts.history.showing", { count: filteredPosts.length }) : null}
         />
       </div>
 
@@ -290,9 +290,9 @@ export default function PublishHistoryPage() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search captions…"
+              placeholder={t("posts.history.search_placeholder")}
               className="w-full h-9 pl-9 pr-3 rounded-md border border-zinc-200 bg-white text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
-              aria-label="Search captions"
+              aria-label={t("posts.history.search_placeholder")}
             />
           </div>
           <div className="flex items-center gap-2">
@@ -327,7 +327,7 @@ export default function PublishHistoryPage() {
               className="h-9 rounded-md border border-zinc-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
               aria-label="Platform filter"
             >
-              <option value="all">All platforms</option>
+              <option value="all">{t("posts.history.all_platforms")}</option>
               {(Object.keys(PLATFORM_LABELS) as Platform[]).map((p) => (
                 <option key={p} value={p}>
                   {PLATFORM_LABELS[p]}
@@ -343,7 +343,7 @@ export default function PublishHistoryPage() {
               className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm font-medium hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Download className="size-3.5" />
-              Export CSV
+              {t("posts.history.export_csv")}
             </button>
           </div>
         </div>
@@ -366,11 +366,11 @@ export default function PublishHistoryPage() {
             <table className="w-full min-w-[900px]">
               <thead className="bg-zinc-50 border-b border-zinc-200">
                 <tr>
-                  <th className="text-left px-5 py-2.5 text-xs font-semibold text-zinc-500 uppercase tracking-wide w-[100px]">Status</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Caption</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-zinc-500 uppercase tracking-wide w-[200px]">Platforms</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-zinc-500 uppercase tracking-wide w-[180px]">Published</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-zinc-500 uppercase tracking-wide w-[130px]">Actions</th>
+                  <th className="text-left px-5 py-2.5 text-xs font-semibold text-zinc-500 uppercase tracking-wide w-[100px]">{t("posts.history.col_status")}</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-zinc-500 uppercase tracking-wide">{t("posts.history.col_caption")}</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-zinc-500 uppercase tracking-wide w-[200px]">{t("posts.history.col_platforms")}</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-zinc-500 uppercase tracking-wide w-[180px]">{t("posts.history.col_date")}</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-zinc-500 uppercase tracking-wide w-[130px]">{t("posts.history.col_actions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -379,17 +379,17 @@ export default function PublishHistoryPage() {
                     <td className="px-5 py-3 align-middle">
                       {p.status === "published" ? (
                         <StatusBadge tone="green" icon={<CheckCircle2 className="size-3" />}>
-                          Published
+                          {t("posts.history.published")}
                         </StatusBadge>
                       ) : (
                         <StatusBadge tone="red" icon={<XCircle className="size-3" />}>
-                          Failed
+                          {t("posts.history.failed")}
                         </StatusBadge>
                       )}
                     </td>
                     <td className="px-3 py-3 align-middle">
                       <p className="text-sm text-zinc-900 line-clamp-2 max-w-[480px]" title={p.caption}>
-                        {truncate(p.caption || "(no caption)", 140)}
+                        {truncate(p.caption || t("posts.history.no_caption"), 140)}
                       </p>
                       {p.failureReason ? (
                         <p className="mt-1 text-xs text-red-600 line-clamp-1" title={p.failureReason}>
@@ -415,9 +415,9 @@ export default function PublishHistoryPage() {
                         <Link
                           href={`/dashboard/posts/drafts`}
                           className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-zinc-200 bg-white text-xs font-medium hover:bg-zinc-50"
-                          title="View related posts"
+                          title={t("posts.history.view")}
                         >
-                          View
+                          {t("posts.history.view")}
                           <ArrowRight className="size-3" />
                         </Link>
                         {p.status === "failed" ? (
@@ -426,10 +426,10 @@ export default function PublishHistoryPage() {
                             onClick={() => handleRetry(p)}
                             disabled={retryingId === p.id}
                             className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md bg-red-500 hover:bg-red-600 text-white text-xs font-medium disabled:opacity-50"
-                            title="Retry publishing"
+                            title={t("posts.history.retry")}
                           >
                             {retryingId === p.id ? <Loader2 className="size-3 animate-spin" /> : null}
-                            Retry
+                            {t("posts.history.retry")}
                           </button>
                         ) : null}
                       </div>
@@ -446,23 +446,25 @@ export default function PublishHistoryPage() {
 }
 
 function LoadingState() {
+  const t = useTranslations("dashboard");
   return (
     <div className="rounded-xl border border-zinc-200 bg-white py-16 flex flex-col items-center justify-center">
       <Loader2 className="size-5 animate-spin text-zinc-400" />
-      <p className="mt-3 text-sm text-zinc-500">Loading publish history…</p>
+      <p className="mt-3 text-sm text-zinc-500">{t("posts.history.loading")}</p>
     </div>
   );
 }
 
 function EmptyState() {
+  const t = useTranslations("dashboard");
   return (
     <div className="rounded-xl border border-zinc-200 bg-white py-16 flex flex-col items-center justify-center">
       <div className="size-12 rounded-full bg-zinc-100 flex items-center justify-center mb-3">
         <HistoryIcon className="size-5 text-zinc-400" />
       </div>
-      <h3 className="text-sm font-semibold text-zinc-900">No publish history yet</h3>
+      <h3 className="text-sm font-semibold text-zinc-900">{t("posts.history.empty_title")}</h3>
       <p className="mt-1 text-sm text-zinc-500 max-w-sm text-center">
-        Publish or schedule a post to start the log. Past attempts show here with status, platform, and timestamp.
+        {t("posts.history.empty_subtitle")}
       </p>
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import { Hash, Plus, Copy, TrendingUp, Trash2, X, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 
@@ -30,6 +31,7 @@ export default function HashtagsPage() {
   const [formHashtags, setFormHashtags] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const t = useTranslations("dashboard");
 
   const loadData = useCallback(async () => {
     setError(null);
@@ -66,7 +68,7 @@ export default function HashtagsPage() {
       .map((t) => t.trim())
       .filter((t) => t.length > 0);
     if (tags.length === 0) {
-      setSaveError("Enter at least one hashtag.");
+      setSaveError(t("hashtags.error_required"));
       return;
     }
     setSaving(true);
@@ -93,7 +95,7 @@ export default function HashtagsPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this hashtag set?")) return;
+    if (!confirm(t("hashtags.delete_confirm"))) return;
     const res = await fetch(`/api/hashtag-sets/${id}`, {
       method: "DELETE",
       credentials: "include",
@@ -101,7 +103,7 @@ export default function HashtagsPage() {
     if (res.ok) {
       setSets((prev) => prev.filter((s) => s.id !== id));
     } else {
-      alert("Failed to delete set");
+      alert(t("hashtags.delete_failed"));
     }
   }
 
@@ -112,8 +114,8 @@ export default function HashtagsPage() {
   return (
     <div className="p-6 max-w-5xl">
       <PageHeader
-        title="Hashtags"
-        subtitle="Save hashtag sets so you never have to retype them."
+        title={t("hashtags.page_title")}
+        subtitle={t("hashtags.page_subtitle")}
         cta={
           <button
             type="button"
@@ -121,19 +123,19 @@ export default function HashtagsPage() {
             className="inline-flex items-center gap-2 h-10 px-4 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium"
           >
             <Plus className="size-4" />
-            New set
+            {t("hashtags.new_set")}
           </button>
         }
       />
 
       <div className="space-y-4">
         {loading ? (
-          <div className="rounded-xl border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-500">Loading…</div>
+          <div className="rounded-xl border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-500">{t("hashtags.loading")}</div>
         ) : error ? (
           <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
         ) : sets.length === 0 ? (
           <div className="rounded-xl border border-dashed border-zinc-300 bg-white p-8 text-center">
-            <p className="text-sm text-zinc-600">No hashtag sets yet. Create one to speed up your posts.</p>
+            <p className="text-sm text-zinc-600">{t("hashtags.empty")}</p>
           </div>
         ) : (
           sets.map((s) => (
@@ -153,7 +155,7 @@ export default function HashtagsPage() {
                     className="text-xs text-blue-600 hover:underline flex items-center gap-1"
                   >
                     <Copy className="size-3" />
-                    Copy all
+                    {t("hashtags.copy_all")}
                   </button>
                   <button
                     type="button"
@@ -182,10 +184,10 @@ export default function HashtagsPage() {
         <div className="rounded-xl border border-zinc-200 bg-white p-5">
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp className="size-4 text-emerald-600" />
-            <p className="text-sm font-semibold">Trending now</p>
+            <p className="text-sm font-semibold">{t("hashtags.trending")}</p>
           </div>
           {trending.length === 0 ? (
-            <p className="text-sm text-zinc-500">No trending data yet. Analytics will populate this as posts are published.</p>
+            <p className="text-sm text-zinc-500">{t("hashtags.trending_empty")}</p>
           ) : (
             <div className="divide-y divide-zinc-100">
               {trending.map((t) => (
@@ -206,14 +208,14 @@ export default function HashtagsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold">New hashtag set</h2>
+              <h2 className="text-base font-semibold">{t("hashtags.dialog_title")}</h2>
               <button type="button" onClick={() => setShowModal(false)} className="size-7 inline-flex items-center justify-center rounded-md hover:bg-zinc-100">
                 <X className="size-4" />
               </button>
             </div>
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
-                <label htmlFor="set-name" className="block text-sm font-medium text-zinc-700 mb-1">Name</label>
+                <label htmlFor="set-name" className="block text-sm font-medium text-zinc-700 mb-1">{t("hashtags.name_label")}</label>
                 <input
                   id="set-name"
                   type="text"
@@ -222,11 +224,11 @@ export default function HashtagsPage() {
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   className="w-full h-10 rounded-md border border-zinc-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
-                  placeholder="e.g. Travel posts"
+                  placeholder={t("hashtags.name_placeholder")}
                 />
               </div>
               <div>
-                <label htmlFor="set-hashtags" className="block text-sm font-medium text-zinc-700 mb-1">Hashtags</label>
+                <label htmlFor="set-hashtags" className="block text-sm font-medium text-zinc-700 mb-1">{t("hashtags.hashtags_label")}</label>
                 <textarea
                   id="set-hashtags"
                   required
@@ -234,9 +236,9 @@ export default function HashtagsPage() {
                   value={formHashtags}
                   onChange={(e) => setFormHashtags(e.target.value)}
                   className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 resize-none"
-                  placeholder="travel, nature, photography #wanderlust"
+                  placeholder={t("hashtags.hashtags_placeholder")}
                 />
-                <p className="mt-1 text-xs text-zinc-500">Separate tags with commas or spaces.</p>
+                <p className="mt-1 text-xs text-zinc-500">{t("hashtags.separator_hint")}</p>
               </div>
 
               {saveError && (
@@ -250,7 +252,7 @@ export default function HashtagsPage() {
                   className="inline-flex items-center h-10 px-4 rounded-md border border-zinc-300 text-sm font-medium hover:bg-zinc-50"
                   disabled={saving}
                 >
-                  Cancel
+                  {t("hashtags.cancel")}
                 </button>
                 <button
                   type="submit"
@@ -258,7 +260,7 @@ export default function HashtagsPage() {
                   className="inline-flex items-center gap-2 h-10 px-4 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium disabled:opacity-50"
                 >
                   {saving && <Loader2 className="size-4 animate-spin" />}
-                  {saving ? "Saving…" : "Create set"}
+                  {saving ? t("hashtags.creating") : t("hashtags.create")}
                 </button>
               </div>
             </form>

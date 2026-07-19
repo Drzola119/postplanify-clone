@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
@@ -144,6 +145,7 @@ function PlatformIcon({ platform, className = "" }: { platform: Platform; classN
 // Content Types donut (Threads/Instagram only)
 // ============================================================
 function ContentTypesDonut({ data }: { data: { images: number; videos: number; text: number; imageViews?: number } }) {
+  const t = useTranslations("dashboard");
   const total = data.images + data.videos + data.text;
   if (total === 0) return null;
   const size = 80;
@@ -184,13 +186,13 @@ function ContentTypesDonut({ data }: { data: { images: number; videos: number; t
       </div>
       <div className="space-y-1 text-[11px]">
         <div className="flex items-center gap-1.5">
-          <span className="size-2 rounded-full bg-pink-500" /> Images {data.images}%{data.imageViews !== undefined && <span className="text-zinc-400 ml-1">{data.imageViews} views</span>}
+          <span className="size-2 rounded-full bg-pink-500" /> {t("analytics.images_pct", { n: data.images })}{data.imageViews !== undefined && <span className="text-zinc-400 ml-1">{data.imageViews} {t("analytics.views_label")}</span>}
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="size-2 rounded-full bg-violet-500" /> Videos {data.videos}%
+          <span className="size-2 rounded-full bg-violet-500" /> {t("analytics.videos_pct", { n: data.videos })}
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="size-2 rounded-full bg-cyan-500" /> Text {data.text}%
+          <span className="size-2 rounded-full bg-cyan-500" /> {t("analytics.text_pct", { n: data.text })}
         </div>
       </div>
     </div>
@@ -203,10 +205,11 @@ function ContentTypesDonut({ data }: { data: { images: number; videos: number; t
 function MiniTrend({ data, color, yMax, change, collecting }: {
   data: number[]; color: string; yMax?: number; change?: string; collecting?: boolean;
 }) {
+  const t = useTranslations("dashboard");
   if (collecting || !data || data.length === 0 || data.every(v => v === 0)) {
     return (
       <div className="h-14 flex items-center justify-center text-[11px] text-zinc-400 italic">
-        Collecting data...
+        {t("analytics.collecting_data")}
       </div>
     );
   }
@@ -367,6 +370,7 @@ function AccountAvatar({ account, size = 32 }: { account: AccountSummary; size?:
 // Overview dropdown
 // ============================================================
 function OverviewDropdown({ currentId, accounts }: { currentId?: string; accounts: AccountSummary[] }) {
+  const t = useTranslations("dashboard");
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -384,7 +388,7 @@ function OverviewDropdown({ currentId, accounts }: { currentId?: string; account
         aria-expanded={open}
         className="inline-flex items-center gap-1.5 rounded-full bg-zinc-900 px-3.5 h-8 text-[13px] font-medium text-white hover:bg-zinc-800"
       >
-        Overview (All)
+        {t("analytics.overview_all")}
         <ChevronDown className="size-3.5" />
       </button>
       {open && (
@@ -396,8 +400,8 @@ function OverviewDropdown({ currentId, accounts }: { currentId?: string; account
               onClick={() => go(undefined)}
               className="block w-full text-left px-4 py-3 border-b border-zinc-100 hover:bg-zinc-50"
             >
-              <p className="text-xs text-zinc-500 mb-0.5">All accounts</p>
-              <p className="text-sm font-semibold text-zinc-900">Overview (All)</p>
+              <p className="text-xs text-zinc-500 mb-0.5">{t("analytics.all_accounts")}</p>
+              <p className="text-sm font-semibold text-zinc-900">{t("analytics.overview_all")}</p>
             </button>
             {accounts.map((a) => (
               <button
@@ -491,18 +495,19 @@ function AvatarRow({ currentId, onSelect, accounts }: { currentId: string; onSel
 // LinkedIn error state
 // ============================================================
 function AnalyticsErrorState({ message }: { message: string }) {
+  const t = useTranslations("dashboard");
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-12 flex flex-col items-center justify-center text-center">
       <div className="size-16 rounded-full bg-pink-100 flex items-center justify-center mb-4">
         <TrendingUp className="size-7 text-pink-600" />
       </div>
-      <h2 className="text-xl font-bold text-rose-700 mb-2">Unable to Load Analytics</h2>
+      <h2 className="text-xl font-bold text-rose-700 mb-2">{t("analytics.unable_load")}</h2>
       <p className="text-[13px] text-rose-700/80 max-w-md mb-6">{message}</p>
       <a
         href="/dashboard/accounts"
         className="inline-flex items-center justify-center rounded-md bg-zinc-900 px-5 h-10 text-[13px] font-medium text-white hover:bg-zinc-800"
       >
-        Go to Accounts
+        {t("analytics.go_accounts")}
       </a>
     </div>
   );
@@ -548,6 +553,7 @@ function fmtDateShort(iso: string): string {
 }
 
 function PerAccountView({ accountId, accounts }: { accountId: string; accounts: AccountSummary[] }) {
+  const t = useTranslations("dashboard");
   const router = useRouter();
   const pathname = usePathname();
   const [period, setPeriod] = useState<Period>("7d");
@@ -658,7 +664,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
   if (!account) {
     return (
       <div className="p-6">
-        <p className="text-zinc-500">Account not found.</p>
+        <p className="text-zinc-500">{t("analytics.account_not_found")}</p>
       </div>
     );
   }
@@ -686,19 +692,19 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
   const data = {
     headerMetrics: totals
       ? [
-          { value: fmt(totals.followers), label: "Followers", color: accent.color, icon: <Users className="size-4 text-white" /> },
-          { value: fmt(totals.postsPublished), label: "Posts", color: "#3b82f6", icon: <MessageCircle className="size-4 text-white" /> },
-          { value: fmt(totals.impressions), label: "Impressions", color: "#a855f7", icon: <Eye className="size-4 text-white" /> },
+          { value: fmt(totals.followers), label: t("analytics.followers_label"), color: accent.color, icon: <Users className="size-4 text-white" /> },
+          { value: fmt(totals.postsPublished), label: t("analytics.posts_label"), color: "#3b82f6", icon: <MessageCircle className="size-4 text-white" /> },
+          { value: fmt(totals.impressions), label: t("analytics.impressions_label"), color: "#a855f7", icon: <Eye className="size-4 text-white" /> },
         ]
       : [],
     metrics: totals
       ? [
-          { label: "VIEWS", value: fmt(totals.impressions), sub: "Total impressions", color: "indigo" as MetricColor, icon: "eye" as MetricIcon },
-          { label: "LIKES", value: fmt(totals.likes), sub: "Total likes", color: "red" as MetricColor, icon: "heart" as MetricIcon },
-          { label: "COMMENTS", value: fmt(totals.comments), sub: "Total comments", color: "purple" as MetricColor, icon: "message" as MetricIcon },
-          { label: "SHARES", value: fmt(totals.shares), sub: "Total shares", color: "green" as MetricColor, icon: "share" as MetricIcon },
-          { label: "CLICKS", value: fmt(totals.clicks), sub: "Total clicks", color: "amber" as MetricColor, icon: "click" as MetricIcon },
-          { label: "ENGAGEMENT", value: fmtPct(totals.engagementRate), sub: "Avg rate", color: "orange" as MetricColor, icon: "trending" as MetricIcon },
+          { label: t("analytics.views"), value: fmt(totals.impressions), sub: t("analytics.views_sub"), color: "indigo" as MetricColor, icon: "eye" as MetricIcon },
+          { label: t("analytics.likes"), value: fmt(totals.likes), sub: t("analytics.likes_sub2"), color: "red" as MetricColor, icon: "heart" as MetricIcon },
+          { label: t("analytics.comments"), value: fmt(totals.comments), sub: t("analytics.comments_sub2"), color: "purple" as MetricColor, icon: "message" as MetricIcon },
+          { label: t("analytics.shares"), value: fmt(totals.shares), sub: t("analytics.shares_sub2"), color: "green" as MetricColor, icon: "share" as MetricIcon },
+          { label: t("analytics.clicks"), value: fmt(totals.clicks), sub: t("analytics.clicks_sub2"), color: "amber" as MetricColor, icon: "click" as MetricIcon },
+          { label: t("analytics.engagement"), value: fmtPct(totals.engagementRate), sub: t("analytics.engagement_sub2"), color: "orange" as MetricColor, icon: "trending" as MetricIcon },
         ]
       : [],
     trends: {
@@ -738,7 +744,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
             className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 px-3 h-8 text-[12px] font-medium text-zinc-700 hover:bg-zinc-50"
           >
             <Download className="size-3.5" />
-            Export CSV
+            {t("analytics.export_csv")}
           </button>
         }
       />
@@ -746,14 +752,14 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
       {error ? (
         <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-900">
           <span className="size-1.5 mt-1.5 rounded-full bg-rose-500 shrink-0" />
-          <span>Failed to load analytics: {error}</span>
+          <span>{t("analytics.load_error", { error })}</span>
         </div>
       ) : null}
 
       {isEmpty && !error ? (
         <div className="rounded-xl border border-zinc-200 bg-white p-8 text-center text-zinc-500 text-sm">
-          <p className="font-medium text-zinc-700 mb-1">No analytics data yet for this account.</p>
-          <p>Once posts are published, daily metrics will appear here within 24 hours.</p>
+          <p className="font-medium text-zinc-700 mb-1">{t("analytics.no_data")}</p>
+          <p>{t("analytics.no_data_sub")}</p>
         </div>
       ) : null}
 
@@ -783,7 +789,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
             </div>
             {(account.platform === "threads" || account.platform === "instagram") && account.contentTypes ? (
               <div className="space-y-2">
-                <p className="text-sm font-semibold text-zinc-700">Content Types</p>
+                <p className="text-sm font-semibold text-zinc-700">{t("analytics.content_types")}</p>
                 <ContentTypesDonut data={account.contentTypes} />
               </div>
             ) : null}
@@ -795,7 +801,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
       <div className="flex flex-wrap items-center justify-between text-[13px]">
         <div className="inline-flex items-center gap-1.5 text-zinc-500">
           <Calendar className="size-3.5" />
-          Range: {fmtDateShort(range.from.toISOString())} – {fmtDateShort(range.to.toISOString())} <span className="text-zinc-400">({dayCount} days)</span>
+          {t("analytics.range", { from: fmtDateShort(range.from.toISOString()), to: fmtDateShort(range.to.toISOString()), n: dayCount })}
         </div>
         <TimezoneDropdown />
       </div>
@@ -811,7 +817,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
       <div className="rounded-xl border border-zinc-200/70 bg-white p-4">
         <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
           <h3 className="text-sm font-semibold text-zinc-900 inline-flex items-center gap-1.5">
-            <TrendingUp className="size-4" /> Trends
+            <TrendingUp className="size-4" /> {t("analytics.trends")}
           </h3>
           <div className="flex items-center gap-2">
             <button
@@ -821,40 +827,40 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
               className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 h-7 text-[12px] font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
             >
               <Download className="size-3" />
-              {exporting ? "Exporting…" : "Export CSV"}
+              {exporting ? t("analytics.exporting") : t("analytics.export_csv")}
             </button>
             <TimeFilter value={period} onChange={setPeriod} />
           </div>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
-            <p className="text-[12px] text-zinc-500 mb-1">Followers</p>
+            <p className="text-[12px] text-zinc-500 mb-1">{t("analytics.trend_followers")}</p>
             <MiniTrend data={data.trends.followers.data} color={data.trends.followers.color} collecting={data.trends.followers.collecting} />
             <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
               {tickDates.map((d, i) => <span key={i}>{d}</span>)}
             </div>
           </div>
           <div>
-            <p className="text-[12px] text-zinc-500 mb-1">Impressions</p>
+            <p className="text-[12px] text-zinc-500 mb-1">{t("analytics.trend_impressions")}</p>
             <MiniTrend data={data.trends.views.data} color={data.trends.views.color} collecting={data.trends.views.collecting} />
             <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
               {tickDates.map((d, i) => <span key={i}>{d}</span>)}
             </div>
           </div>
           <div>
-            <p className="text-[12px] text-zinc-500 mb-1">Engagement Rate</p>
+            <p className="text-[12px] text-zinc-500 mb-1">{t("analytics.trend_engagement")}</p>
             <MiniTrend data={data.trends.engagement.data} color={data.trends.engagement.color} collecting={data.trends.engagement.collecting} />
             <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
               {tickDates.map((d, i) => <span key={i}>{d}</span>)}
             </div>
           </div>
           <div>
-            <p className="text-[12px] text-zinc-500 mb-1">Interactions</p>
+            <p className="text-[12px] text-zinc-500 mb-1">{t("analytics.trend_interactions")}</p>
             <MiniTrend data={data.trends.interactions.data} color={data.trends.interactions.color} collecting={data.trends.interactions.collecting} />
             <div className="flex items-center justify-center gap-3 mt-1 text-[10px]">
-              <span className="text-orange-600">← Comments</span>
-              <span className="text-rose-600">← Likes</span>
-              <span className="text-emerald-600">← Shares</span>
+              <span className="text-orange-600">{t("analytics.legend_comments")}</span>
+              <span className="text-rose-600">{t("analytics.legend_likes")}</span>
+              <span className="text-emerald-600">{t("analytics.legend_shares")}</span>
             </div>
           </div>
         </div>
@@ -863,27 +869,27 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
       {/* ===== PUBLISHED POSTS TABLE ===== */}
       <div className="rounded-xl border border-zinc-200/70 bg-white overflow-hidden">
         <div className="px-4 py-3 border-b border-zinc-100 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-zinc-900">Published Posts</h3>
+          <h3 className="text-base font-semibold text-zinc-900">{t("analytics.published_posts")}</h3>
           <div className="text-[12px] text-zinc-500 inline-flex items-center gap-1.5">
             <BarChart3 className="size-3.5" />
-            {publishedPosts ? `${publishedPosts.length} posts` : "—"}
+            {publishedPosts ? t("analytics.count_posts", { n: publishedPosts.length }) : t("analytics.na")}
           </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-[12px] font-medium text-zinc-500 border-b border-zinc-100 bg-zinc-50/40">
               <tr>
-                <th className="px-3 py-2.5 text-left w-12">#</th>
-                <th className="px-3 py-2.5 text-left">Content</th>
-                <th className="px-3 py-2.5 text-left">Date</th>
-                <th className="px-3 py-2.5 text-left">Platforms</th>
+                <th className="px-3 py-2.5 text-left w-12">{t("analytics.col_hash")}</th>
+                <th className="px-3 py-2.5 text-left">{t("analytics.col_content")}</th>
+                <th className="px-3 py-2.5 text-left">{t("analytics.col_date")}</th>
+                <th className="px-3 py-2.5 text-left">{t("analytics.col_platforms")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
               {!publishedPosts || publishedPosts.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-3 py-8 text-center text-[12px] text-zinc-500">
-                    Post-level metrics will appear here once individual post data is ingested.
+                    {t("analytics.no_post_data")}
                   </td>
                 </tr>
               ) : (
@@ -891,7 +897,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
                   <tr key={post.id} className="hover:bg-zinc-50/50">
                     <td className="px-3 py-2 text-[12px] text-zinc-400 tabular-nums">{i + 1}</td>
                     <td className="px-3 py-2 max-w-xs">
-                      <p className="text-zinc-900 line-clamp-2 text-[13px]">{post.caption || "(no caption)"}</p>
+                      <p className="text-zinc-900 line-clamp-2 text-[13px]">{post.caption || t("analytics.no_caption")}</p>
                     </td>
                     <td className="px-3 py-2 text-[12px] text-zinc-500 whitespace-nowrap">
                       {post.publishedAt ? fmtDateShort(post.publishedAt) : "—"}
@@ -934,11 +940,12 @@ function PageHeader({
   onSync?: () => void;
   syncing?: boolean;
 }) {
+  const t = useTranslations("dashboard");
   return (
     <>
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <h1 className="text-[30px] font-bold leading-[36px] text-zinc-900">Analytics</h1>
+          <h1 className="text-[30px] font-bold leading-[36px] text-zinc-900">{t("analytics.page_title")}</h1>
           {onSync ? (
             <button
               type="button"
@@ -947,7 +954,7 @@ function PageHeader({
               className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 px-3 h-8 text-[12px] font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
             >
               <RefreshCw className={`size-3.5 ${syncing ? "animate-spin" : ""}`} />
-              {syncing ? "Syncing…" : "Sync Now"}
+              {syncing ? t("analytics.syncing") : t("analytics.sync_now")}
             </button>
           ) : null}
         </div>
@@ -957,7 +964,7 @@ function PageHeader({
           <AvatarRow currentId={currentId} onSelect={onSelect} accounts={accounts} />
         </div>
       </div>
-      <p className="text-sm text-zinc-500 -mt-3">Track your social media performance and insights</p>
+      <p className="text-sm text-zinc-500 -mt-3">{t("analytics.page_subtitle")}</p>
     </>
   );
 }
@@ -988,6 +995,7 @@ interface OverviewData {
 }
 
 function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
+  const t = useTranslations("dashboard");
   const router = useRouter();
   const pathname = usePathname();
   const [period, setPeriod] = useState<Period>("7d");
@@ -1035,7 +1043,7 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
 
   const range = periodToRange(period);
   const dayCount = Math.max(1, Math.round((range.to.getTime() - range.from.getTime()) / (24 * 60 * 60 * 1000)));
-  const t = overview?.totals;
+  const totals = overview?.totals;
 
   return (
     <div className="px-6 py-6 space-y-4">
@@ -1051,7 +1059,7 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
       <div className="flex flex-wrap items-center justify-between text-[13px]">
         <div className="inline-flex items-center gap-1.5 text-zinc-500">
           <Calendar className="size-3.5" />
-          Range: {fmtDateShort(range.from.toISOString())} – {fmtDateShort(range.to.toISOString())} <span className="text-zinc-400">({dayCount} days)</span>
+          {t("analytics.range", { from: fmtDateShort(range.from.toISOString()), to: fmtDateShort(range.to.toISOString()), n: dayCount })}
         </div>
         <div className="flex items-center gap-2">
           <TimezoneDropdown />
@@ -1061,7 +1069,7 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
 
       {loading && !overview ? (
         <div className="rounded-xl border border-zinc-200/70 bg-white p-8 text-center text-sm text-zinc-500">
-          Loading overview…
+          {t("analytics.loading_overview")}
         </div>
       ) : null}
 
@@ -1069,14 +1077,14 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
         <>
           {/* KPI Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            <MetricCard spec={{ label: "FOLLOWERS", value: fmt(t.followers), sub: "Total followers", color: "indigo", icon: "eye" }} />
-            <MetricCard spec={{ label: "IMPRESSIONS", value: fmt(t.impressions), sub: "Total impressions", color: "blue", icon: "eye" }} />
-            <MetricCard spec={{ label: "ENGAGEMENT", value: fmtPct(t.engagementRate), sub: "Avg rate", color: "orange", icon: "trending" }} />
-            <MetricCard spec={{ label: "POSTS", value: fmt(t.postsPublished), sub: "Published", color: "green", icon: "chart" }} />
-            <MetricCard spec={{ label: "LIKES", value: fmt(t.likes), sub: "Total likes", color: "red", icon: "heart" }} />
-            <MetricCard spec={{ label: "COMMENTS", value: fmt(t.comments), sub: "Total comments", color: "purple", icon: "message" }} />
-            <MetricCard spec={{ label: "SHARES", value: fmt(t.shares), sub: "Total shares", color: "teal", icon: "share" }} />
-            <MetricCard spec={{ label: "CLICKS", value: fmt(t.clicks), sub: "Total clicks", color: "amber", icon: "click" }} />
+            <MetricCard spec={{ label: t("analytics.followers"), value: fmt(totals?.followers ?? 0), sub: t("analytics.followers_sub"), color: "indigo", icon: "eye" }} />
+            <MetricCard spec={{ label: t("analytics.impressions"), value: fmt(totals?.impressions ?? 0), sub: t("analytics.impressions_sub"), color: "blue", icon: "eye" }} />
+            <MetricCard spec={{ label: t("analytics.engagement"), value: fmtPct(totals?.engagementRate ?? 0), sub: t("analytics.engagement_sub"), color: "orange", icon: "trending" }} />
+            <MetricCard spec={{ label: t("analytics.posts"), value: fmt(totals?.postsPublished ?? 0), sub: t("analytics.posts_sub"), color: "green", icon: "chart" }} />
+            <MetricCard spec={{ label: t("analytics.likes"), value: fmt(totals?.likes ?? 0), sub: t("analytics.likes_sub"), color: "red", icon: "heart" }} />
+            <MetricCard spec={{ label: t("analytics.comments"), value: fmt(totals?.comments ?? 0), sub: t("analytics.comments_sub"), color: "purple", icon: "message" }} />
+            <MetricCard spec={{ label: t("analytics.shares"), value: fmt(totals?.shares ?? 0), sub: t("analytics.shares_sub"), color: "teal", icon: "share" }} />
+            <MetricCard spec={{ label: t("analytics.clicks"), value: fmt(totals?.clicks ?? 0), sub: t("analytics.clicks_sub"), color: "amber", icon: "click" }} />
           </div>
 
           {/* Per-platform breakdown */}
@@ -1097,14 +1105,14 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {overview.byPlatform.length === 0 ? (
+                  {overview?.byPlatform?.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="px-3 py-8 text-center text-[12px] text-zinc-500">
                         No platform data available yet.
                       </td>
                     </tr>
                   ) : (
-                    overview.byPlatform
+                    (overview?.byPlatform ?? [])
                       .filter((p) => p.followers > 0 || p.impressions > 0)
                       .map((p, i) => (
                         <tr key={i} className="hover:bg-zinc-50/50">

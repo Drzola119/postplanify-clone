@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
@@ -95,6 +96,7 @@ function formatAgo(iso?: string | null): string {
 }
 
 export default function CommandCenterPage() {
+  const t = useTranslations("dashboard");
   const [inflight, setInflight] = useState<JobRow[]>([]);
   const [failed, setFailed] = useState<JobRow[]>([]);
   const [health, setHealth] = useState<WorkerHealth | null>(null);
@@ -186,8 +188,8 @@ export default function CommandCenterPage() {
   return (
     <div className="px-3 lg:px-6 pt-5 lg:pt-8 pb-3 lg:pb-6">
       <PageHeader
-        title="Command Center"
-        subtitle="Live view of what's publishing right now, what's stuck, and what's failing."
+        title={t("commandCenter.page_title")}
+        subtitle={t("commandCenter.page_subtitle")}
       />
 
       {/* Top status strip */}
@@ -208,14 +210,14 @@ export default function CommandCenterPage() {
             </div>
             <div>
               <p className="text-sm font-semibold text-zinc-900">
-                Worker {health?.running ? "running" : "idle"}
+                {health?.running ? t("commandCenter.worker_running") : t("commandCenter.worker_idle")}
                 {!health?.n8nConfigured ? (
-                  <span className="ml-2 text-red-600">· n8n not configured</span>
+                  <span className="ml-2 text-red-600">{t("commandCenter.n8n_not_configured")}</span>
                 ) : null}
               </p>
               <p className="text-xs text-zinc-500">
-                Last tick: {lastTick ? formatAgo(health?.lastTickAt ?? null) : "never"}
-                {health?.intervalMs ? ` (every ${Math.round(health.intervalMs / 1000)}s)` : ""}
+                {t("commandCenter.last_tick")} {lastTick ? formatAgo(health?.lastTickAt ?? null) : t("commandCenter.never")}
+                {health?.intervalMs ? t("commandCenter.interval", { n: Math.round(health.intervalMs / 1000) }) : ""}
               </p>
             </div>
           </div>
@@ -227,7 +229,7 @@ export default function CommandCenterPage() {
                 onChange={(e) => setAutoTick(e.target.checked)}
                 className="size-3.5 rounded border-zinc-300"
               />
-              Auto-refresh every 5s
+              {t("commandCenter.auto_refresh")}
             </label>
             <button
               type="button"
@@ -235,7 +237,7 @@ export default function CommandCenterPage() {
               className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50"
             >
               <RefreshCcw className="size-3" />
-              Refresh
+              {t("commandCenter.refresh")}
             </button>
             <button
               type="button"
@@ -248,7 +250,7 @@ export default function CommandCenterPage() {
               ) : (
                 <Zap className="size-3" />
               )}
-              {runningTick ? "Running…" : "Run tick now"}
+              {runningTick ? t("commandCenter.running") : t("commandCenter.run_tick")}
             </button>
           </div>
         </div>
@@ -256,13 +258,13 @@ export default function CommandCenterPage() {
         {lastForcedTick ? (
           <div className="mt-3 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700">
             <p>
-              <span className="font-semibold">Last forced tick:</span>{" "}
-              {lastForcedTick.scanned} scanned ·{" "}
-              <span className="text-emerald-700">{lastForcedTick.published} published</span> ·{" "}
-              <span className="text-red-700">{lastForcedTick.failed} failed</span> ·{" "}
-              {lastForcedTick.reaped} reaped
+              <span className="font-semibold">{t("commandCenter.forced_tick")}</span>{" "}
+              {lastForcedTick.scanned} {t("commandCenter.scanned")} ·{" "}
+              <span className="text-emerald-700">{lastForcedTick.published} {t("commandCenter.published")}</span> ·{" "}
+              <span className="text-red-700">{lastForcedTick.failed} {t("commandCenter.failed")}</span> ·{" "}
+              {lastForcedTick.reaped} {t("commandCenter.reaped")}
               {lastForcedTick.error ? (
-                <span className="text-red-700"> · error: {lastForcedTick.error}</span>
+                <span className="text-red-700"> {t("commandCenter.tick_error", { error: lastForcedTick.error })}</span>
               ) : null}
             </p>
           </div>
@@ -272,22 +274,22 @@ export default function CommandCenterPage() {
       {/* Stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
         <StatCard
-          label="In-flight"
+          label={t("commandCenter.inflight")}
           value={inflight.length}
           icon={<Send className="size-4" />}
           iconClassName="bg-violet-50 text-violet-700"
-          footer={stuckInflight.length > 0 ? `${stuckInflight.length} may be stuck` : null}
+          footer={stuckInflight.length > 0 ? t("commandCenter.may_be_stuck", { n: stuckInflight.length }) : null}
         />
         <StatCard
-          label="Failed (recent)"
+          label={t("commandCenter.failed_recent")}
           value={failed.length}
           icon={<XCircle className="size-4" />}
           iconClassName="bg-red-50 text-red-600"
-          footer="Eligible to retry"
+          footer={t("commandCenter.eligible_retry")}
         />
         <StatCard
-          label="Worker state"
-          value={health?.running ? "running" : workerStale ? "stale" : "idle"}
+          label={t("commandCenter.worker_state")}
+          value={health?.running ? "running" : workerStale ? t("commandCenter.stale") : "idle"}
           icon={<Activity className="size-4" />}
           iconClassName={
             health?.running
@@ -296,10 +298,10 @@ export default function CommandCenterPage() {
                 ? "bg-red-50 text-red-600"
                 : "bg-zinc-100 text-zinc-700"
           }
-          footer={lastTick ? formatAgo(health?.lastTickAt ?? null) : "Never ticked"}
+          footer={lastTick ? formatAgo(health?.lastTickAt ?? null) : t("commandCenter.never_ticked")}
         />
         <StatCard
-          label="Last published"
+          label={t("commandCenter.last_published")}
           value={
             health?.lastResult?.published
               ? `${health.lastResult.published}`
@@ -309,22 +311,22 @@ export default function CommandCenterPage() {
           iconClassName="bg-emerald-50 text-emerald-700"
           footer={
             health?.lastResult
-              ? `${health.lastResult.scanned} scanned in last tick`
-              : "No tick yet"
+              ? `${health.lastResult.scanned} ${t("commandCenter.scanned_last_tick")}`
+              : t("commandCenter.no_tick_yet")
           }
         />
       </div>
 
       {/* In-flight jobs */}
       <Section
-        title="In-flight (publishing now)"
+        title={t("commandCenter.inflight_section")}
         icon={<Send className="size-4" />}
-        emptyText="No posts are publishing right now. Things are quiet."
+        emptyText={t("commandCenter.inflight_empty")}
       >
         {loading ? (
-          <EmptyRow icon={<Loader2 className="size-4 animate-spin" />} text="Loading…" />
+          <EmptyRow icon={<Loader2 className="size-4 animate-spin" />} text={t("commandCenter.loading")} />
         ) : inflight.length === 0 ? (
-          <EmptyRow icon={<Clock className="size-4 text-zinc-400" />} text="Worker is idle — nothing being published." />
+          <EmptyRow icon={<Clock className="size-4 text-zinc-400" />} text={t("commandCenter.worker_idle_msg")} />
         ) : (
           <ul className="divide-y divide-zinc-100">
             {inflight.map((job) => (
@@ -344,17 +346,17 @@ export default function CommandCenterPage() {
                       </span>
                     ))}
                     {job.workerId ? (
-                      <span className="text-[10px] text-zinc-500">pid {job.workerId}</span>
+                      <span className="text-[10px] text-zinc-500">{t("commandCenter.pid_label", { workerId: job.workerId })}</span>
                     ) : null}
                     {stuckInflight.find((s) => s.id === job.id) ? (
                       <StatusBadge tone="amber" icon={<AlertTriangle className="size-3" />}>
-                        stuck
+                        {t("commandCenter.stuck_badge")}
                       </StatusBadge>
                     ) : null}
                   </div>
-                  <p className="text-sm text-zinc-900 line-clamp-2">{job.caption || "(no caption)"}</p>
+                  <p className="text-sm text-zinc-900 line-clamp-2">{job.caption || t("commandCenter.no_caption")}</p>
                   <p className="mt-1 text-xs text-zinc-500">
-                    Claimed {formatAgo(job.claimedAt ?? job.updatedAt)}
+                    {t("commandCenter.claimed_ago", { ago: formatAgo(job.claimedAt ?? job.updatedAt) })}
                   </p>
                 </div>
               </li>
@@ -365,15 +367,15 @@ export default function CommandCenterPage() {
 
       {/* Failed jobs */}
       <Section
-        title="Failed (eligible for retry)"
+        title={t("commandCenter.failed_section")}
         icon={<RotateCcw className="size-4" />}
-        emptyText="No failed posts. Everything published cleanly."
+        emptyText={t("commandCenter.failed_empty")}
         className="mt-5"
       >
         {loading ? (
-          <EmptyRow icon={<Loader2 className="size-4 animate-spin" />} text="Loading…" />
+          <EmptyRow icon={<Loader2 className="size-4 animate-spin" />} text={t("commandCenter.loading")} />
         ) : failed.length === 0 ? (
-          <EmptyRow icon={<CheckCircle2 className="size-4 text-emerald-500" />} text="No failures to retry." />
+          <EmptyRow icon={<CheckCircle2 className="size-4 text-emerald-500" />} text={t("commandCenter.no_failures")} />
         ) : (
           <ul className="divide-y divide-zinc-100">
             {failed.map((job) => (
@@ -381,7 +383,7 @@ export default function CommandCenterPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                     <StatusBadge tone="red" icon={<XCircle className="size-3" />}>
-                      failed
+                      {t("commandCenter.failed_badge")}
                     </StatusBadge>
                     {job.platforms.map((p) => (
                       <span
@@ -393,10 +395,10 @@ export default function CommandCenterPage() {
                       </span>
                     ))}
                   </div>
-                  <p className="text-sm text-zinc-900 line-clamp-2">{job.caption || "(no caption)"}</p>
+                  <p className="text-sm text-zinc-900 line-clamp-2">{job.caption || t("commandCenter.no_caption")}</p>
                   {job.failureReason ? (
                     <p className="mt-1 text-xs text-red-600 line-clamp-1">
-                      Reason: {job.failureReason}
+                      {t("commandCenter.failure_reason", { reason: job.failureReason })}
                     </p>
                   ) : null}
                 </div>
@@ -411,7 +413,7 @@ export default function CommandCenterPage() {
                   ) : (
                     <Play className="size-3" />
                   )}
-                  Retry now
+                  {t("commandCenter.retry_now")}
                 </button>
               </li>
             ))}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState, useRef, useEffect, useMemo } from "react";
 import {
   Upload,
@@ -180,6 +181,7 @@ function normalizeHashtags(raw: string): string[] {
 }
 
 export default function BulkSchedulePage() {
+  const t = useTranslations("dashboard");
   const [items, setItems] = useState<BulkItem[]>([]);
   const [startDate, setStartDate] = useState<string>(todayISO());
   const [startTime, setStartTime] = useState<string>(defaultTime());
@@ -239,7 +241,7 @@ export default function BulkSchedulePage() {
       const { headers, rows } = parseCsv(text);
       const errors: string[] = [];
       if (headers.length === 0 || rows.length === 0) {
-        window.alert("CSV is empty.");
+        window.alert(t("posts.bulkSchedule.csv_empty"));
         return;
       }
       const capIdx = headers.indexOf("caption");
@@ -248,7 +250,7 @@ export default function BulkSchedulePage() {
       const hashtagsIdx = headers.indexOf("hashtags");
       const mediaIdx = headers.indexOf("mediaurl");
       if (capIdx < 0) {
-        window.alert('CSV is missing the required "caption" column.');
+        window.alert(t("posts.bulkSchedule.csv_missing_column"));
         return;
       }
       const newItems: BulkItem[] = [];
@@ -297,12 +299,12 @@ export default function BulkSchedulePage() {
       });
       const inserted = Math.min(newItems.length, MAX_FILES);
       if (errors.length > 0) {
-        window.alert(`Imported ${inserted} post${inserted === 1 ? "" : "s"}. ${errors.length} skipped:\n\n${errors.slice(0, 5).join("\n")}${errors.length > 5 ? "\n…" : ""}`);
+        window.alert(t("posts.bulkSchedule.csv_imported_skipped", { n: inserted, m: errors.length }));
       } else if (inserted > 0) {
-        window.alert(`Imported ${inserted} post${inserted === 1 ? "" : "s"} from CSV.`);
+        window.alert(t("posts.bulkSchedule.csv_imported", { n: inserted }));
       }
     } catch (e) {
-      window.alert(`Could not read CSV: ${e instanceof Error ? e.message : String(e)}`);
+      window.alert(t("posts.bulkSchedule.csv_read_error", { error: e instanceof Error ? e.message : String(e) }));
     } finally {
       setCsvBusy(false);
     }
@@ -316,7 +318,7 @@ export default function BulkSchedulePage() {
         .filter((it) => Array.isArray(it.accountIds) && it.accountIds.length > 0 && it.caption.trim())
         .slice(0, 100);
       if (itemsToSend.length === 0) {
-        window.alert("None of the items are ready. Add captions and select at least one platform per item.");
+        window.alert(t("posts.bulkSchedule.none_ready"));
         return;
       }
       const payload = {
@@ -340,10 +342,10 @@ export default function BulkSchedulePage() {
         throw new Error(body.error ?? `Bulk schedule failed (${res.status})`);
       }
       const data = (await res.json()) as { count?: number; ids?: string[] };
-      window.alert(`Scheduled ${data.count ?? itemsToSend.length} post${(data.count ?? itemsToSend.length) === 1 ? "" : "s"}.`);
+      window.alert(t("posts.bulkSchedule.scheduled_n", { n: data.count ?? itemsToSend.length }));
       setItems([]);
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : "Bulk schedule failed.");
+      window.alert(e instanceof Error ? e.message : t("posts.bulkSchedule.bulk_failed"));
     } finally {
       setScheduleBusy(false);
     }
@@ -500,7 +502,7 @@ export default function BulkSchedulePage() {
       }
     }
     setGenerating(false);
-    window.alert(`AI captions generated for ${success} of ${itemsToProcess.length} items.`);
+    window.alert(t("posts.bulkSchedule.ai_generated", { n: success, m: itemsToProcess.length }));
   }
 
   function clearAll() {
@@ -517,7 +519,7 @@ export default function BulkSchedulePage() {
       <div className="flex flex-wrap items-start justify-between gap-4 mb-3">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-[30px] font-bold leading-[36px] tracking-tight">Bulk Schedule Posts</h1>
+            <h1 className="text-[30px] font-bold leading-[36px] tracking-tight">{t("posts.bulkSchedule.page_title")}</h1>
             {(() => {
               const cfg = getHelpConfig("posts/bulk-schedule");
               if (!cfg) return null;
@@ -525,13 +527,13 @@ export default function BulkSchedulePage() {
             })()}
           </div>
           <p className="text-sm text-zinc-500 mt-1">
-            Upload multiple images and videos to schedule them all at once with individual settings.
+            {t("posts.bulkSchedule.page_subtitle")}
           </p>
         </div>
 
         {/* Date Scheduler bar */}
         <div className="flex flex-wrap items-end gap-2 rounded-lg border border-zinc-200 bg-white/60 p-2 backdrop-blur-sm">
-          <SchedulerField label="START DATE">
+          <SchedulerField label={t("posts.bulkSchedule.start_date")}>
             <input
               type="date"
               value={startDate}
@@ -539,7 +541,7 @@ export default function BulkSchedulePage() {
               className="h-7 w-full rounded-md border border-zinc-200 bg-white/50 px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
             />
           </SchedulerField>
-          <SchedulerField label="TIME">
+          <SchedulerField label={t("posts.bulkSchedule.time")}>
             <input
               type="time"
               value={startTime}
@@ -547,7 +549,7 @@ export default function BulkSchedulePage() {
               className="h-7 w-full rounded-md border border-zinc-200 bg-white/50 px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
             />
           </SchedulerField>
-          <SchedulerField label="POSTS/DAY">
+          <SchedulerField label={t("posts.bulkSchedule.posts_per_day")}>
             <select
               value={postsPerDay}
               onChange={(e) => setPostsPerDay(parseInt(e.target.value, 10))}
@@ -558,18 +560,18 @@ export default function BulkSchedulePage() {
               ))}
             </select>
           </SchedulerField>
-          <SchedulerField label="INTERVAL">
+          <SchedulerField label={t("posts.bulkSchedule.interval")}>
             <select
               value={interval}
               onChange={(e) => setInterval(e.target.value)}
               className="h-7 w-full rounded-md border border-zinc-200 bg-white/50 px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
             >
               {INTERVALS.map((i) => (
-                <option key={i.id} value={i.id}>{i.id}</option>
+                <option key={i.id} value={i.id}>{t(`posts.bulkSchedule.interval_${i.id === "1d" ? "daily" : i.id === "3d" ? "3days" : i.id === "7d" ? "weekly" : i.id === "14d" ? "2weeks" : "monthly"}`)}</option>
               ))}
             </select>
           </SchedulerField>
-          <SchedulerField label="TIMEZONE">
+          <SchedulerField label={t("posts.bulkSchedule.timezone")}>
             <div className="relative">
               <button
                 type="button"
@@ -614,7 +616,7 @@ export default function BulkSchedulePage() {
             className="inline-flex items-center justify-center gap-2 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white px-3 h-7 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Calendar className="size-3.5" />
-            Apply
+            {t("posts.bulkSchedule.apply")}
           </button>
         </div>
       </div>
@@ -629,7 +631,7 @@ export default function BulkSchedulePage() {
             className="inline-flex items-center gap-2 rounded-md bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 h-10 text-sm font-medium"
           >
             <Sparkles className="size-4" />
-            {generating ? "Generating…" : `Generate AI Captions for ${items.length} Post${items.length === 1 ? "" : "s"}`}
+            {generating ? t("posts.bulkSchedule.generating") : t("posts.bulkSchedule.generate_ai_captions", { n: items.length })}
           </button>
         </div>
       ) : null}
@@ -643,7 +645,7 @@ export default function BulkSchedulePage() {
             <div className="p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <span className="size-6 inline-flex items-center justify-center rounded-full bg-zinc-900 text-white text-xs font-semibold">1</span>
-                <h3 className="text-base font-semibold leading-none">Accounts</h3>
+                <h3 className="text-base font-semibold leading-none">{t("posts.bulkSchedule.accounts_title")}</h3>
               </div>
               <div className="max-h-72 overflow-y-auto -mx-1 px-1 space-y-1">
                 {PLATFORMS.map((p) => {
@@ -677,7 +679,7 @@ export default function BulkSchedulePage() {
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-2">
                   <span className="size-6 inline-flex items-center justify-center rounded-full bg-zinc-900 text-white text-xs font-semibold">2</span>
-                  <h3 className="text-base font-semibold leading-none">Media Files</h3>
+                  <h3 className="text-base font-semibold leading-none">{t("posts.bulkSchedule.media_files_title")}</h3>
                   <span className="text-xs text-zinc-500">
                     {items.length}/{MAX_FILES}
                   </span>
@@ -690,14 +692,14 @@ export default function BulkSchedulePage() {
                       className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 h-7 text-xs font-medium hover:bg-zinc-50"
                     >
                       <Plus className="size-3" />
-                      Add More
+                      {t("posts.bulkSchedule.add_more")}
                     </button>
                     <button
                       type="button"
                       onClick={clearAll}
                       className="inline-flex items-center gap-1 px-2 h-7 text-xs font-medium text-red-600 hover:bg-red-50 rounded-md"
                     >
-                      Clear All
+                      {t("posts.bulkSchedule.clear_all")}
                     </button>
                   </div>
                 ) : null}
@@ -705,7 +707,7 @@ export default function BulkSchedulePage() {
 
               {items.length === 0 ? (
                 <>
-                  <div className="text-sm font-medium">Upload your media files</div>
+                  <div className="text-sm font-medium">{t("posts.bulkSchedule.drop_zone")}</div>
                   <div
                     onDragOver={(e) => {
                       e.preventDefault();
@@ -723,15 +725,15 @@ export default function BulkSchedulePage() {
                   >
                     <UploadCloud className="size-7 mx-auto text-zinc-400" />
                     <p className="mt-2 text-xs font-medium text-zinc-700">
-                      Drag and drop up to {MAX_FILES} image or video files, or click to browse
+                      {t("posts.bulkSchedule.drop_zone_desc", { max: MAX_FILES })}
                     </p>
                     <p className="mt-1 text-[11px] text-zinc-500">
-                      Supports MP4, MOV, JPG, PNG • Max {Math.round(MAX_FILE_BYTES / 1024 / 1024)}MB per file
+                      {t("posts.bulkSchedule.drop_zone_footnote", { maxSize: Math.round(MAX_FILE_BYTES / 1024 / 1024) })}
                     </p>
                   </div>
                   <div className="mt-3 flex items-center justify-between rounded-md border border-zinc-200 bg-zinc-50/50 px-3 py-2">
                     <p className="text-xs text-zinc-600">
-                      <span className="font-medium">Have a CSV?</span> Upload captions + schedules in bulk (no media).
+                      <span className="font-medium">{t("posts.bulkSchedule.csv_hint")}</span>
                     </p>
                     <button
                       type="button"
@@ -740,7 +742,7 @@ export default function BulkSchedulePage() {
                       className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 h-7 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
                     >
                       <Upload className="size-3.5" />
-                      {csvBusy ? "Reading…" : "Upload CSV"}
+                      {csvBusy ? t("posts.bulkSchedule.reading") : t("posts.bulkSchedule.upload_csv")}
                     </button>
                     <input
                       ref={csvInputRef}
@@ -758,8 +760,8 @@ export default function BulkSchedulePage() {
               ) : (
                 <>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-medium text-zinc-700">Selected Media Files</span>
-                    <span className="text-zinc-500">Manage your uploads</span>
+                    <span className="font-medium text-zinc-700">{t("posts.bulkSchedule.selected_media")}</span>
+                    <span className="text-zinc-500">{t("posts.bulkSchedule.manage_uploads")}</span>
                   </div>
                   <div className="max-h-72 overflow-y-auto -mx-1 px-1 space-y-1">
                     {items.map((item, idx) => (
@@ -875,7 +877,7 @@ export default function BulkSchedulePage() {
         <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-zinc-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
           <div className="mx-auto max-w-[1600px] px-6 h-16 flex items-center justify-between gap-4">
             <span className="text-sm font-medium">
-              {items.length} post{items.length === 1 ? "" : "s"} ready
+              {t("posts.bulkSchedule.posts_ready", { n: items.length })}
             </span>
             <button
               type="button"
@@ -884,7 +886,7 @@ export default function BulkSchedulePage() {
               className="inline-flex items-center gap-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-4 h-10 text-sm font-medium disabled:opacity-50"
             >
               <Calendar className="size-4" />
-              {scheduleBusy ? "Scheduling…" : "Schedule All Posts"}
+              {scheduleBusy ? t("posts.bulkSchedule.scheduling") : t("posts.bulkSchedule.schedule_all")}
             </button>
           </div>
         </div>
@@ -903,6 +905,7 @@ function SchedulerField({ label, children }: { label: string; children: React.Re
 }
 
 function EmptyState() {
+  const t = useTranslations("dashboard");
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm">
@@ -910,9 +913,9 @@ function EmptyState() {
           <div className="size-12 rounded-full bg-zinc-100 inline-flex items-center justify-center mx-auto">
             <Upload className="size-6 text-zinc-500" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold">Ready to Schedule Multiple Posts?</h3>
+          <h3 className="mt-4 text-lg font-semibold">{t("posts.bulkSchedule.empty_title")}</h3>
           <p className="mt-2 text-sm text-zinc-500 max-w-md mx-auto">
-            Upload your media files to get started. Each file will become a customizable post with individual settings.
+            {t("posts.bulkSchedule.empty_subtitle")}
           </p>
         </div>
       </div>
@@ -920,31 +923,31 @@ function EmptyState() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StepCard
           n={1}
-          title="Select Workspace & Accounts"
-          desc="Choose your brand and default social platforms on the left"
+          title={t("posts.bulkSchedule.empty_step1_title")}
+          desc={t("posts.bulkSchedule.empty_step1_desc")}
         />
         <StepCard
           n={2}
-          title="Upload Media Files"
-          desc="Drag & drop up to 20 images or videos at once"
+          title={t("posts.bulkSchedule.empty_step2_title")}
+          desc={t("posts.bulkSchedule.empty_step2_desc", { max: 20 })}
         />
         <StepCard
           n={3}
-          title="Customize & Schedule"
-          desc="Set captions, times, and schedule all posts together"
+          title={t("posts.bulkSchedule.empty_step3_title")}
+          desc={t("posts.bulkSchedule.empty_step3_desc")}
         />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <TipCard
           icon={<Calendar className="size-4 text-blue-600" />}
-          title="Use the Date Scheduler"
-          desc='Set start date, posts per day, and intervals. Then click "Apply" to automatically assign date & time to all your posts at once.'
+          title={t("posts.bulkSchedule.tip_scheduler_title")}
+          desc={t("posts.bulkSchedule.tip_scheduler_desc")}
         />
         <TipCard
           icon={<Sparkles className="size-4 text-violet-600" />}
-          title="AI Caption Generation"
-          desc="Generate captions for all posts using AI after uploading your media files."
+          title={t("posts.bulkSchedule.tip_ai_title")}
+          desc={t("posts.bulkSchedule.tip_ai_desc")}
         />
       </div>
     </div>
@@ -1002,13 +1005,14 @@ function PostsList({
   onRemove,
   onApplyAccountsToAll,
 }: PostsListProps) {
+  const t = useTranslations("dashboard");
   return (
     <div className="space-y-3">
       <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm">
         <div className="p-4 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h3 className="text-base font-semibold leading-none">{items.length} post{items.length > 1 ? "s" : ""} ready</h3>
-            <p className="text-xs text-zinc-500 mt-1">Customize captions, accounts, and times for each.</p>
+            <h3 className="text-base font-semibold leading-none">{t("posts.bulkSchedule.posts_ready", { n: items.length })}</h3>
+            <p className="text-xs text-zinc-500 mt-1">{t("posts.bulkSchedule.customize_subtitle")}</p>
           </div>
           <button
             type="button"
@@ -1016,7 +1020,7 @@ function PostsList({
             disabled={accountsCount === 0}
             className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
           >
-            Apply accounts to all
+            {t("posts.bulkSchedule.apply_accounts_all")}
           </button>
         </div>
       </div>
@@ -1048,6 +1052,7 @@ function PostRow({
   onUpdate: (patch: Partial<BulkItem>) => void;
   onRemove: () => void;
 }) {
+  const t = useTranslations("dashboard");
   const hasYouTube = item.accountIds.includes("youtube");
   const hasPinterest = item.accountIds.includes("pinterest");
   const hasInstagram = item.accountIds.includes("instagram");
@@ -1088,7 +1093,7 @@ function PostRow({
         {/* Column 2: Platforms */}
         <div className="p-3 min-w-0">
           <h4 className="text-xs font-semibold tracking-wide text-zinc-700 mb-2">
-            Platforms ({item.accountIds.length} selected)
+            {t("posts.bulkSchedule.platforms_selected", { n: item.accountIds.length })}
           </h4>
           <div className="space-y-0.5">
             {PLATFORMS.map((p) => {
@@ -1117,10 +1122,10 @@ function PostRow({
 
         {/* Column 3: Schedule */}
         <div className="p-3 min-w-0">
-          <h4 className="text-xs font-semibold tracking-wide text-zinc-700 mb-2">Schedule</h4>
+          <h4 className="text-xs font-semibold tracking-wide text-zinc-700 mb-2">{t("posts.bulkSchedule.schedule_header")}</h4>
           <div className="space-y-2">
             <div>
-              <label className="text-[10px] text-zinc-500">Date</label>
+              <label className="text-[10px] text-zinc-500">{t("posts.bulkSchedule.date_label")}</label>
               <input
                 type="date"
                 value={item.scheduledDate}
@@ -1129,7 +1134,7 @@ function PostRow({
               />
             </div>
             <div>
-              <label className="text-[10px] text-zinc-500">Time</label>
+              <label className="text-[10px] text-zinc-500">{t("posts.bulkSchedule.time_label")}</label>
               <input
                 type="time"
                 value={item.scheduledTime}
@@ -1144,13 +1149,13 @@ function PostRow({
         <div className="p-3 space-y-2 min-w-0">
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-semibold tracking-wide text-zinc-700">Caption</label>
-              <span className="text-[10px] text-zinc-500">{captionLen}/280</span>
+              <label className="text-xs font-semibold tracking-wide text-zinc-700">{t("posts.bulkSchedule.caption_label")}</label>
+              <span className="text-[10px] text-zinc-500">{t("posts.bulkSchedule.char_count", { max: 280 })}</span>
             </div>
             <textarea
               value={item.caption}
               onChange={(e) => onUpdate({ caption: e.target.value })}
-              placeholder="Write your caption for this post..."
+              placeholder={t("posts.bulkSchedule.caption_placeholder")}
               rows={3}
               maxLength={2000}
               className="w-full rounded-md border border-zinc-200 bg-white p-2 text-xs placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 focus:border-zinc-300 resize-none"
@@ -1159,7 +1164,7 @@ function PostRow({
 
           {/* Post in: Feed/Story */}
           <div>
-            <label className="text-[10px] font-medium text-zinc-700">Post in:</label>
+            <label className="text-[10px] font-medium text-zinc-700">{t("posts.bulkSchedule.post_in")}</label>
             <div className="mt-1 flex items-center gap-3">
               <label className="flex items-center gap-1.5 cursor-pointer">
                 <input
@@ -1169,7 +1174,7 @@ function PostRow({
                   onChange={() => onUpdate({ postIn: "feed" })}
                   className="size-3.5 text-emerald-600 focus:ring-emerald-500"
                 />
-                <span className="text-xs">Feed</span>
+                <span className="text-xs">{t("posts.bulkSchedule.feed")}</span>
               </label>
               <label className={cn(
                 "flex items-center gap-1.5",
@@ -1183,11 +1188,11 @@ function PostRow({
                   disabled={!(hasInstagram || hasFacebook)}
                   className="size-3.5 text-emerald-600 focus:ring-emerald-500"
                 />
-                <span className="text-xs">Story</span>
+                <span className="text-xs">{t("posts.bulkSchedule.story")}</span>
               </label>
             </div>
             {!(hasInstagram || hasFacebook) ? (
-              <p className="mt-0.5 text-[10px] text-zinc-500">Stories are only available for FB and IG.</p>
+              <p className="mt-0.5 text-[10px] text-zinc-500">{t("posts.bulkSchedule.stories_note")}</p>
             ) : null}
           </div>
 
@@ -1196,7 +1201,7 @@ function PostRow({
             <div>
               <div className="flex items-center justify-between mb-0.5">
                 <label className="text-[10px] font-medium text-zinc-700">
-                  YouTube Video Title <span className="text-red-500">*</span>
+                  {t("posts.bulkSchedule.youtube_title")} <span className="text-red-500">{t("posts.bulkSchedule.required")}</span>
                 </label>
                 <span className="text-[10px] text-zinc-500">{ytTitleLen} / 100</span>
               </div>
@@ -1214,7 +1219,7 @@ function PostRow({
           {hasYouTube ? (
             <div>
               <div className="flex items-center justify-between mb-0.5">
-                <label className="text-[10px] font-medium text-zinc-700">YouTube Tags</label>
+                <label className="text-[10px] font-medium text-zinc-700">{t("posts.bulkSchedule.youtube_tags")}</label>
                 <span className="text-[10px] text-zinc-500">{ytTagsLen} / 500</span>
               </div>
               <input
@@ -1230,15 +1235,15 @@ function PostRow({
           {/* Pinterest Board */}
           {hasPinterest ? (
             <div>
-              <label className="text-[10px] font-medium text-zinc-700 mb-0.5 block">
-                Pinterest Board <span className="text-red-500">*</span>
-              </label>
+                <label className="text-[10px] font-medium text-zinc-700 mb-0.5 block">
+                  {t("posts.bulkSchedule.pinterest_board")} <span className="text-red-500">{t("posts.bulkSchedule.required")}</span>
+                </label>
               <select
                 value={item.pinterestBoard}
                 onChange={(e) => onUpdate({ pinterestBoard: e.target.value })}
                 className="h-8 w-full rounded-md border border-zinc-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
               >
-                <option value="">Select a Pinterest board...</option>
+                <option value="">{t("posts.bulkSchedule.select_board")}</option>
                 <option value="default">Default Board</option>
                 <option value="inspiration">Inspiration</option>
                 <option value="products">Products</option>
@@ -1254,7 +1259,7 @@ function PostRow({
               onChange={(e) => onUpdate({ autoAddMusic: e.target.checked })}
               className="size-3.5 rounded-sm border-zinc-300 text-emerald-600 focus:ring-emerald-500"
             />
-            <span className="text-xs">Auto add music</span>
+            <span className="text-xs">{t("posts.bulkSchedule.auto_music")}</span>
           </label>
 
           {/* X Community */}
@@ -1266,14 +1271,14 @@ function PostRow({
                 onChange={(e) => onUpdate({ community: e.target.checked })}
                 className="size-3.5 rounded-sm border-zinc-300 text-emerald-600 focus:ring-emerald-500"
               />
-              <span className="text-xs">Community</span>
-              <span className="text-[10px] text-zinc-500">(optional)</span>
+              <span className="text-xs">{t("posts.bulkSchedule.community")}</span>
+              <span className="text-[10px] text-zinc-500">{t("posts.bulkSchedule.optional")}</span>
             </label>
           ) : null}
 
           {/* Profile */}
           <div>
-            <label className="text-[10px] font-medium text-zinc-700 mb-0.5 block">Your Profile</label>
+            <label className="text-[10px] font-medium text-zinc-700 mb-0.5 block">{t("posts.bulkSchedule.profile")}</label>
             <select
               value={item.profile}
               onChange={(e) => onUpdate({ profile: e.target.value })}
@@ -1289,7 +1294,7 @@ function PostRow({
 
       {item.accountIds.length === 0 ? (
         <div className="border-t border-zinc-200 bg-amber-50 px-4 py-2 text-xs text-amber-700">
-          No accounts selected — this post won&apos;t publish anywhere.
+          {t("posts.bulkSchedule.no_accounts_warning")}
         </div>
       ) : null}
     </div>

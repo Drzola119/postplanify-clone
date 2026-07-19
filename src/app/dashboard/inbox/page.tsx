@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { FilterBar } from "@/components/dashboard/filter-bar";
 import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
 import {
@@ -127,6 +128,7 @@ const COMMENTS: Comment[] = [
 const CONVERSATIONS: Conversation[] = [];
 
 export default function InboxPage() {
+  const t = useTranslations("dashboard");
   const [tab, setTab] = useState<Tab>("comments");
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
@@ -303,29 +305,29 @@ export default function InboxPage() {
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-[30px] font-bold leading-[36px] tracking-tight">Inbox</h1>
-          <p className="mt-1 text-sm text-zinc-500">Manage comments and DMs across all your accounts</p>
+          <h1 className="text-[30px] font-bold leading-[36px] tracking-tight">{t("inbox.page_title")}</h1>
+          <p className="mt-1 text-sm text-zinc-500">{t("inbox.page_subtitle")}</p>
         </div>
         <FilterBar
           chips={[
             {
               key: "platform",
-              label: "Platform",
+              label: t("inbox.platform"),
               value: platformFilter,
               options: [
-                { value: "all", label: "All platforms" },
+                { value: "all", label: t("inbox.all_platforms") },
                 ...SUPPORTED_PLATFORMS.map((p) => ({ value: p, label: PLATFORM_LABEL[p] })),
               ],
               onChange: setPlatformFilter,
             },
             {
               key: "status",
-              label: "Status",
+              label: t("inbox.status"),
               value: filter,
               options: [
-                { value: "all", label: "All" },
-                { value: "unread", label: "Unread" },
-                { value: "open", label: "Open" },
+                { value: "all", label: t("inbox.all") },
+                { value: "unread", label: t("inbox.unread") },
+                { value: "open", label: t("inbox.open") },
               ],
               onChange: (v) => setFilter(v as Filter),
             },
@@ -337,7 +339,7 @@ export default function InboxPage() {
           className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 h-8 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
         >
           <Download className="size-3.5" />
-          Export CSV
+          {t("inbox.export_csv")}
         </button>
         <div className="flex items-center gap-1.5 text-xs text-zinc-500">
           <span>supported</span>
@@ -356,27 +358,27 @@ export default function InboxPage() {
 
       {/* Tabs */}
       <div className="flex items-center gap-1 border-b border-zinc-200">
-        {([
-          { id: "comments", label: "Comments" },
-          { id: "messages", label: "Messages" },
-          { id: "insights", label: "Insights", badge: "NEW" },
-        ] as { id: Tab; label: string; badge?: string }[]).map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={cn(
-              "inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px",
-              tab === t.id ? "border-zinc-900 text-zinc-900" : "border-transparent text-zinc-500 hover:text-zinc-900"
-            )}
-          >
-            {t.label}
-            {t.badge && (
-              <span className="inline-flex items-center rounded-full bg-purple-600 px-2 py-0.5 text-[9px] leading-[14px] font-semibold uppercase tracking-wide text-white">
-                {t.badge}
-              </span>
-            )}
-          </button>
+          {([
+            { id: "comments", label: t("inbox.tab_comments") },
+            { id: "messages", label: t("inbox.tab_messages") },
+            { id: "insights", label: t("inbox.tab_insights"), badge: t("inbox.tab_new") },
+           ] as { id: Tab; label: string; badge?: string }[]).map((tabItem) => (
+           <button
+             key={tabItem.id}
+             type="button"
+             onClick={() => setTab(tabItem.id)}
+             className={cn(
+               "inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px",
+               tab === tabItem.id ? "border-zinc-900 text-zinc-900" : "border-transparent text-zinc-500 hover:text-zinc-900"
+             )}
+           >
+             {tabItem.label}
+             {tabItem.badge && (
+               <span className="inline-flex items-center rounded-full bg-purple-600 px-2 py-0.5 text-[9px] leading-[14px] font-semibold uppercase tracking-wide text-white">
+                 {tabItem.badge}
+               </span>
+             )}
+           </button>
         ))}
       </div>
 
@@ -385,7 +387,7 @@ export default function InboxPage() {
         <div className="flex-1 flex items-center justify-center">
           <div className="flex flex-col items-center gap-3 text-zinc-400">
             <div className="size-8 rounded-full border-2 border-zinc-200 border-t-zinc-900 animate-spin" />
-            <p className="text-sm">Loading inbox…</p>
+            <p className="text-sm">{t("inbox.loading")}</p>
           </div>
         </div>
       ) : tab === "comments" ? (
@@ -438,6 +440,7 @@ function ReplyModal({
   onSubmit: (body: string) => Promise<void> | void;
   sending: boolean;
 }) {
+  const t = useTranslations("dashboard");
   const [body, setBody] = useState("");
   const max = 2200;
   const remaining = max - body.length;
@@ -452,7 +455,7 @@ function ReplyModal({
       >
         <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-200">
           <div>
-            <h2 className="text-sm font-semibold text-zinc-900">Reply to {comment.author}</h2>
+            <h2 className="text-sm font-semibold text-zinc-900">{t("inbox.reply_title", { author: comment.author })}</h2>
             <p className="text-xs text-zinc-500 mt-0.5 truncate max-w-[420px]">
               “{comment.text}”
             </p>
@@ -470,11 +473,11 @@ function ReplyModal({
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value.slice(0, max))}
-            placeholder="Write a reply…"
+            placeholder={t("inbox.reply_placeholder")}
             className="w-full h-32 rounded-md border border-zinc-200 bg-white p-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10 resize-none"
             autoFocus
           />
-          <div className="mt-1 text-right text-xs text-zinc-500">{remaining} left</div>
+          <div className="mt-1 text-right text-xs text-zinc-500">{t("inbox.chars_left", { remaining })}</div>
         </div>
         <div className="px-5 py-3 border-t border-zinc-200 flex items-center justify-end gap-2 bg-zinc-50 rounded-b-xl">
           <button
@@ -482,7 +485,7 @@ function ReplyModal({
             onClick={onClose}
             className="inline-flex items-center justify-center rounded-md border border-zinc-200 bg-white px-3 h-9 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
           >
-            Cancel
+            {t("inbox.cancel")}
           </button>
           <button
             type="button"
@@ -491,7 +494,7 @@ function ReplyModal({
             className="inline-flex items-center justify-center gap-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-3 h-9 text-sm font-medium"
           >
             <Reply className="size-3.5" />
-            {sending ? "Sending…" : "Send reply"}
+            {sending ? t("inbox.sending") : t("inbox.send_reply")}
           </button>
         </div>
       </div>
@@ -526,6 +529,7 @@ function CommentsTab({
   onOpenReply: (c: Comment) => void;
   onArchive: (c: Comment) => void;
 }) {
+  const t = useTranslations("dashboard");
   return (
     <div className="flex flex-col gap-3 flex-1 min-h-0">
       <FilterRow filter={filter} setFilter={setFilter} showSentiment />
@@ -542,7 +546,7 @@ function CommentsTab({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-400" />
             <input
               type="text"
-              placeholder="Search comments..."
+              placeholder={t("inbox.search_placeholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-9 pr-3 h-9 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
@@ -553,8 +557,8 @@ function CommentsTab({
           {comments.length === 0 ? (
             <EmptyState
               icon={<InboxIcon className="size-10" />}
-              title="No comments yet"
-              subtitle="When someone comments on your posts, they'll show up here."
+              title={t("inbox.comments_empty")}
+              subtitle={t("inbox.comments_empty_sub")}
             />
           ) : (
             comments.map((c) => (
@@ -593,6 +597,7 @@ function CommentRow({
   onOpenReply?: (c: Comment) => void;
   onArchive?: (c: Comment) => void;
 }) {
+  const t = useTranslations("dashboard");
   return (
     <div
       onClick={onClick}
@@ -630,7 +635,7 @@ function CommentRow({
               title={`Auto-replied by campaign ${comment.autoRepliedByCampaignId}`}
             >
               <Wand2 className="size-3" />
-              auto-replied
+              {t("inbox.auto_replied")}
             </span>
           ) : null}
         </div>
@@ -645,10 +650,10 @@ function CommentRow({
           }}
           disabled={analyzing}
           className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 h-7 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-          title="Re-run sentiment analysis"
+          title={t("inbox.analyze_sentiment")}
         >
           <Sparkles className="size-3" />
-          {analyzing ? "Analyzing…" : "Analyze"}
+          {analyzing ? t("inbox.analyzing") : t("inbox.analyze")}
         </button>
         <button
           type="button"
@@ -659,12 +664,12 @@ function CommentRow({
           className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 text-white px-3 h-7 text-xs font-medium hover:bg-zinc-800"
         >
           <Reply className="size-3" />
-          Reply
+          {t("inbox.reply")}
         </button>
-        <IconBtn aria-label="Assign label" onClick={(e) => e.stopPropagation()}><Tag className="size-3.5" /></IconBtn>
-        <IconBtn aria-label="Copy comment" onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(comment.text); }}><Copy className="size-3.5" /></IconBtn>
-        <IconBtn aria-label="Archive" onClick={(e) => { e.stopPropagation(); onArchive?.(comment); }}><InboxIcon className="size-3.5" /></IconBtn>
-        <IconBtn aria-label="More" onClick={(e) => e.stopPropagation()}><MoreVertical className="size-3.5" /></IconBtn>
+        <IconBtn aria-label={t("inbox.assign_label")} onClick={(e) => e.stopPropagation()}><Tag className="size-3.5" /></IconBtn>
+        <IconBtn aria-label={t("inbox.copy_comment")} onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(comment.text); }}><Copy className="size-3.5" /></IconBtn>
+        <IconBtn aria-label={t("inbox.archive")} onClick={(e) => { e.stopPropagation(); onArchive?.(comment); }}><InboxIcon className="size-3.5" /></IconBtn>
+        <IconBtn aria-label={t("inbox.more")} onClick={(e) => e.stopPropagation()}><MoreVertical className="size-3.5" /></IconBtn>
       </div>
     </div>
   );
@@ -685,6 +690,7 @@ function MessagesTab({
   activeId: string | null;
   setActiveId: (id: string | null) => void;
 }) {
+  const t = useTranslations("dashboard");
   const [thread, setThread] = useState<Array<{ id: string; fromHandle: string; body: string; sentAt: string; direction: "in" | "out" }>>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -773,8 +779,8 @@ function MessagesTab({
           {conversations.length === 0 ? (
             <EmptyState
               icon={<MessagesSquare className="size-10" />}
-              title="No conversations yet"
-              subtitle="New direct messages will appear here in real-time."
+              title={t("inbox.messages_empty")}
+              subtitle={t("inbox.messages_empty_sub")}
               full
             />
           ) : (
@@ -797,7 +803,7 @@ function MessagesTab({
                       <p className={cn("text-sm truncate", c.unread ? "font-bold" : "font-semibold")}>{c.name}</p>
                       <span className="text-[11px] text-zinc-500 shrink-0">{c.time}</span>
                     </div>
-                    <p className="text-xs text-zinc-500 truncate mt-0.5">{c.lastMessage || "(no message yet)"}</p>
+                    <p className="text-xs text-zinc-500 truncate mt-0.5">{c.lastMessage || t("inbox.no_message_yet")}</p>
                   </div>
                 </button>
               ))}
@@ -808,8 +814,8 @@ function MessagesTab({
           {activeId === null ? (
             <EmptyState
               icon={<MessagesSquare className="size-10" />}
-              title="Select a conversation"
-              subtitle="Choose a message from the list to view and reply."
+              title={t("inbox.select_conversation")}
+              subtitle={t("inbox.select_conversation_sub")}
               full
             />
           ) : (
@@ -822,9 +828,9 @@ function MessagesTab({
               ) : null}
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {loadingThread ? (
-                  <p className="text-sm text-zinc-500 text-center py-8">Loading…</p>
+                  <p className="text-sm text-zinc-500 text-center py-8">{t("inbox.loading")}</p>
                 ) : thread.length === 0 ? (
-                  <p className="text-sm text-zinc-500 text-center py-8">No messages yet. Say hello.</p>
+                  <p className="text-sm text-zinc-500 text-center py-8">{t("inbox.no_messages")}</p>
                 ) : (
                   thread.map((m) => (
                     <div
@@ -848,7 +854,7 @@ function MessagesTab({
                 <textarea
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
-                  placeholder="Type a message…"
+                  placeholder={t("inbox.message_placeholder")}
                   rows={2}
                   className="flex-1 resize-none rounded-md border border-zinc-200 bg-white p-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
                   onKeyDown={(e) => {
@@ -864,7 +870,7 @@ function MessagesTab({
                   disabled={!draft.trim() || sending}
                   className="inline-flex items-center justify-center rounded-md bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-white px-3 h-9 text-sm font-medium"
                 >
-                  {sending ? "Sending…" : "Send"}
+                  {sending ? t("inbox.sending") : t("inbox.send")}
                 </button>
               </div>
             </div>
@@ -878,6 +884,7 @@ function MessagesTab({
 /* ============================== INSIGHTS TAB ============================== */
 
 function InsightsTab({ range, setRange, comments }: { range: Range; setRange: (r: Range) => void; comments: Comment[] }) {
+  const t = useTranslations("dashboard");
   const ranges: Range[] = ["7d", "30d", "90d", "6m", "1y"];
   const totalReplied = comments.filter((c) => !c.unread).length;
   const responseRate = comments.length === 0 ? 0 : Math.round((totalReplied / comments.length) * 100);
@@ -887,13 +894,13 @@ function InsightsTab({ range, setRange, comments }: { range: Range; setRange: (r
   const negative = comments.filter((c) => c.sentiment === "negative").length;
   const pct = (n: number) => (comments.length === 0 ? "0%" : `${Math.round((n / comments.length) * 100)}%`);
   const metrics = [
-    { label: "Comments received", value: comments.length, sublabel: "total volume", Icon: MessageCircle, tone: "blue" },
-    { label: "DMs received", value: 0, sublabel: "private messages", Icon: MessagesSquare, tone: "purple" },
-    { label: "Response rate", value: `${responseRate}%`, sublabel: "of comments replied", Icon: Reply, tone: "green" },
-    { label: "Awaiting reply", value: awaiting, sublabel: "unanswered", Icon: Clock, tone: "amber" },
-    { label: "Positive", value: pct(positive), sublabel: "overall mood", Icon: Smile, tone: "emerald" },
-    { label: "Neutral", value: pct(neutral), sublabel: "neither way", Icon: Meh, tone: "zinc" },
-    { label: "Negative", value: pct(negative), sublabel: "complaint pressure", Icon: Frown, tone: "rose" },
+    { label: t("inbox.comments_received"), value: comments.length, sublabel: t("inbox.comments_received_sub"), Icon: MessageCircle, tone: "blue" },
+    { label: t("inbox.dms_received"), value: 0, sublabel: t("inbox.dms_received_sub"), Icon: MessagesSquare, tone: "purple" },
+    { label: t("inbox.response_rate"), value: `${responseRate}%`, sublabel: t("inbox.response_rate_sub"), Icon: Reply, tone: "green" },
+    { label: t("inbox.awaiting_reply"), value: awaiting, sublabel: t("inbox.awaiting_reply_sub"), Icon: Clock, tone: "amber" },
+    { label: t("inbox.positive"), value: pct(positive), sublabel: t("inbox.positive_sub"), Icon: Smile, tone: "emerald" },
+    { label: t("inbox.neutral"), value: pct(neutral), sublabel: t("inbox.neutral_sub"), Icon: Meh, tone: "zinc" },
+    { label: t("inbox.negative"), value: pct(negative), sublabel: t("inbox.negative_sub"), Icon: Frown, tone: "rose" },
   ];
 
   const toneColors: Record<string, string> = {
@@ -921,7 +928,7 @@ function InsightsTab({ range, setRange, comments }: { range: Range; setRange: (r
                 range === r ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-900"
               )}
             >
-              {r}
+              {t(`inbox.d${r}`)}
             </button>
           ))}
         </div>
@@ -948,10 +955,10 @@ function InsightsTab({ range, setRange, comments }: { range: Range; setRange: (r
         {/* Comment volume chart */}
         <div className="lg:col-span-2 rounded-xl border border-zinc-200 bg-white shadow-sm p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-zinc-900">Comment volume</h3>
+            <h3 className="text-sm font-semibold text-zinc-900">{t("inbox.comment_volume")}</h3>
             <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-xs font-medium">
               <span className="font-bold">1</span>
-              <span>total</span>
+              <span>{t("inbox.total_badge")}</span>
             </span>
           </div>
           <CommentVolumeChart />
@@ -959,7 +966,7 @@ function InsightsTab({ range, setRange, comments }: { range: Range; setRange: (r
 
         {/* Where comments come from */}
         <div className="rounded-xl border border-zinc-200 bg-white shadow-sm p-5">
-          <h3 className="text-sm font-semibold text-zinc-900 mb-4">Where comments come from</h3>
+          <h3 className="text-sm font-semibold text-zinc-900 mb-4">{t("inbox.where_comments")}</h3>
           <PlatformDonut />
           <div className="flex items-center justify-between mt-4 text-xs">
             <div className="flex items-center gap-1.5">
@@ -975,7 +982,7 @@ function InsightsTab({ range, setRange, comments }: { range: Range; setRange: (r
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* By platform */}
         <div className="rounded-xl border border-zinc-200 bg-white shadow-sm p-5">
-          <h3 className="text-sm font-semibold text-zinc-900 mb-4">By platform</h3>
+          <h3 className="text-sm font-semibold text-zinc-900 mb-4">{t("inbox.by_platform")}</h3>
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <PlatformAvatar
@@ -985,7 +992,7 @@ function InsightsTab({ range, setRange, comments }: { range: Range; setRange: (r
               />
               <span className="text-sm font-medium flex-1">Instagram</span>
               <span className="text-sm text-zinc-500">1</span>
-              <span className="inline-flex items-center rounded-full bg-emerald-50 text-emerald-700 px-2 py-0.5 text-[11px] font-medium">0% replied</span>
+              <span className="inline-flex items-center rounded-full bg-emerald-50 text-emerald-700 px-2 py-0.5 text-[11px] font-medium">{t("inbox.pct_replied", { pct: 0 })}</span>
             </div>
             <div className="h-1.5 rounded-full bg-zinc-100 overflow-hidden">
               <div className="h-full rounded-full bg-emerald-500" style={{ width: "0%" }} />
@@ -996,11 +1003,11 @@ function InsightsTab({ range, setRange, comments }: { range: Range; setRange: (r
         {/* Comment themes */}
         <div className="rounded-xl border border-zinc-200 bg-white shadow-sm p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-zinc-900">Comment themes</h3>
+            <h3 className="text-sm font-semibold text-zinc-900">{t("inbox.comment_themes")}</h3>
             <div className="flex items-center gap-2 text-[10px]">
-              <Legend dot="bg-emerald-500" label="Pos" />
-              <Legend dot="bg-amber-500" label="Neu" />
-              <Legend dot="bg-rose-500" label="Neg" />
+              <Legend dot="bg-emerald-500" label={t("inbox.pos_label")} />
+              <Legend dot="bg-amber-500" label={t("inbox.neu_label")} />
+              <Legend dot="bg-rose-500" label={t("inbox.neg_label")} />
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -1018,7 +1025,7 @@ function InsightsTab({ range, setRange, comments }: { range: Range; setRange: (r
 
         {/* Sentiment over time */}
         <div className="rounded-xl border border-zinc-200 bg-white shadow-sm p-5">
-          <h3 className="text-sm font-semibold text-zinc-900 mb-4">Sentiment over time</h3>
+          <h3 className="text-sm font-semibold text-zinc-900 mb-4">{t("inbox.sentiment_over_time")}</h3>
           <SentimentTimeChart />
         </div>
       </div>
@@ -1105,6 +1112,7 @@ function FilterRow({
   setFilter: (f: Filter) => void;
   showSentiment: boolean;
 }) {
+  const t = useTranslations("dashboard");
   const filters: Filter[] = ["all", "unread", "open"];
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -1126,13 +1134,13 @@ function FilterRow({
               filter === f ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-900"
             )}
           >
-            {f === "all" ? "All" : f === "unread" ? "Unread" : "Open"}
+            {f === "all" ? t("inbox.filter_all") : f === "unread" ? t("inbox.filter_unread") : t("inbox.filter_open")}
           </button>
         ))}
       </div>
-      <DropdownPill label="All accounts" />
-      <DropdownPill label="All labels" />
-      {showSentiment && <DropdownPill label="All sentiment" />}
+      <DropdownPill label={t("inbox.all_accounts")} />
+      <DropdownPill label={t("inbox.all_labels")} />
+      {showSentiment && <DropdownPill label={t("inbox.all_sentiment")} />}
     </div>
   );
 }
