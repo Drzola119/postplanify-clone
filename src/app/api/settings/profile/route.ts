@@ -19,11 +19,14 @@ export async function PATCH(request: NextRequest) {
   }
 
   try {
+    // Resolve effective photo URL (photoData takes precedence).
+    const effectivePhotoURL = parsed.data.photoData ?? parsed.data.photoURL;
+
     // Update Firebase Auth profile.
-    if (parsed.data.displayName || parsed.data.photoURL) {
+    if (parsed.data.displayName || effectivePhotoURL) {
       await adminAuth.updateUser(session.uid, {
         displayName: parsed.data.displayName,
-        photoURL: parsed.data.photoURL,
+        photoURL: effectivePhotoURL,
       });
     }
 
@@ -32,6 +35,7 @@ export async function PATCH(request: NextRequest) {
       const data: Record<string, unknown> = { updatedAt: { _methodName: "serverTimestamp" } };
       if (parsed.data.displayName !== undefined) data.displayName = parsed.data.displayName;
       if (parsed.data.photoURL !== undefined) data.photoURL = parsed.data.photoURL;
+      if (parsed.data.photoData !== undefined) data.photoURL = parsed.data.photoData;
       if (parsed.data.bio !== undefined) data.bio = parsed.data.bio;
       if (parsed.data.locale !== undefined) data.locale = parsed.data.locale;
       if (parsed.data.timezone !== undefined) data.timezone = parsed.data.timezone;

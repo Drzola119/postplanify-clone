@@ -189,6 +189,13 @@ export default function ReportsPage() {
   const [newScheduleOpen, setNewScheduleOpen] = useState(false);
   const [schedules, setSchedules] = useState<Schedule[]>(SAMPLE_SCHEDULES);
 
+  // New Schedule form state
+  const [scheduleName, setScheduleName] = useState("");
+  const [scheduleFreq, setScheduleFreq] = useState<"daily" | "weekly" | "monthly">("weekly");
+  const [scheduleRecipients, setScheduleRecipients] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("09:00");
+  const [creating, setCreating] = useState(false);
+
   const [reports, setReports] = useState<Report[]>(SAMPLE_REPORTS);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
@@ -393,6 +400,57 @@ export default function ReportsPage() {
       navigator.clipboard.writeText(`https://postplanify.com/reports/${id}`);
     }
     showToast("Link copied to clipboard");
+  };
+
+  const handleCreateSchedule = async () => {
+    const name = scheduleName.trim();
+    if (!name) { showToast("Schedule name is required", "error"); return; }
+    const recipients = scheduleRecipients.split(",").map((r) => r.trim()).filter(Boolean);
+    if (recipients.length === 0) { showToast("At least one recipient is required", "error"); return; }
+    setCreating(true);
+    try {
+      let cron: string;
+      if (scheduleFreq === "daily") {
+        cron = `${scheduleTime.split(":")[1]} ${scheduleTime.split(":")[0]} * * *`;
+      } else if (scheduleFreq === "weekly") {
+        cron = `${scheduleTime.split(":")[1]} ${scheduleTime.split(":")[0]} * * 1`;
+      } else {
+        cron = `${scheduleTime.split(":")[1]} ${scheduleTime.split(":")[0]} 1 * *`;
+      }
+      const res = await fetch("/api/reports/schedules", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, cron, recipients }),
+      });
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        showToast(`Could not create schedule (${res.status}). ${errBody}`, "error");
+        return;
+      }
+      const { id } = (await res.json()) as { id: string };
+      const newItem: Schedule = {
+        id,
+        name,
+        frequency: scheduleFreq,
+        time: scheduleTime,
+        recipients,
+        active: true,
+      };
+      setSchedules((prev) => [...prev, newItem]);
+      setScheduleName("");
+      setScheduleRecipients("");
+      setScheduleTime("09:00");
+      setNewScheduleOpen(false);
+      showToast("Schedule created");
+    } catch (err) {
+      showToast(
+        `Network error: ${err instanceof Error ? err.message : "unknown"}`,
+        "error"
+      );
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
@@ -804,30 +862,63 @@ export default function ReportsPage() {
             <div className="px-5 pb-5 space-y-4">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Schedule name</label>
-                <input type="text" placeholder="Weekly client report" className="w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10" />
+                <input
+                  type="text"
+                  value={scheduleName}
+                  onChange={(e) => setScheduleName(e.target.value)}
+                  placeholder="Weekly client report"
+                  className="w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Frequency</label>
-                <select className="w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10">
-                  <option>Daily</option>
-                  <option>Weekly</option>
-                  <option>Monthly</option>
+                <select
+                  value={scheduleFreq}
+                  onChange={(e) => setScheduleFreq(e.target.value as "daily" | "weekly" | "monthly")}
+                  className="w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                >
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
                 </select>
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Recipients</label>
-                <input type="text" placeholder="email@example.com, email2@example.com" className="w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10" />
+                <input
+                  type="text"
+                  value={scheduleRecipients}
+                  onChange={(e) => setScheduleRecipients(e.target.value)}
+                  placeholder="email@example.com, email2@example.com"
+                  className="w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Time</label>
-                <input type="time" defaultValue="09:00" className="w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10" />
+                <input
+                  type="time"
+                  value={scheduleTime}
+                  onChange={(e) => setScheduleTime(e.target.value)}
+                  className="w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                />
               </div>
               <div className="flex items-center justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setNewScheduleOpen(false)} className="inline-flex items-center justify-center h-9 px-4 rounded-md border border-zinc-200 bg-white text-sm font-medium hover:bg-zinc-50">
+                <button type="button" onClick={() => setNewScheduleOpen(false)} className="inline-flex items-center justify-center h-9 px-4 rounded-md border border-zinc-200 bg-white text-sm font-medium hover:bg-zinc-50" disabled={creating}>
                   Cancel
                 </button>
-                <button type="button" onClick={() => { setNewScheduleOpen(false); showToast("Schedule created"); }} className="inline-flex items-center justify-center h-9 px-4 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium">
-                  Create schedule
+                <button
+                  type="button"
+                  onClick={handleCreateSchedule}
+                  disabled={creating}
+                  className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {creating ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    "Create schedule"
+                  )}
                 </button>
               </div>
             </div>

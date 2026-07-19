@@ -17,6 +17,7 @@ import {
   createUserWithEmailAndPassword,
   updateProfile,
   sendPasswordResetEmail,
+  sendEmailVerification,
   EmailAuthProvider,
   reauthenticateWithCredential,
   type User,
@@ -38,6 +39,7 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
   getIdToken: () => Promise<string | null>;
   sendPasswordReset: (email: string) => Promise<void>;
+  sendVerificationEmail: () => Promise<void>;
   reauthenticate: (password: string) => Promise<void>;
 }
 
@@ -93,6 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (displayName) {
           await updateProfile(cred.user, { displayName });
         }
+        await sendEmailVerification(cred.user).catch(() => {});
       },
       async signInWithGoogle() {
         if (!auth) throw new Error("Firebase is not configured");
@@ -111,6 +114,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async sendPasswordReset(email) {
         if (!auth) throw new Error("Firebase is not configured");
         await sendPasswordResetEmail(auth, email);
+      },
+      async sendVerificationEmail() {
+        if (!auth || !auth.currentUser) throw new Error("No authenticated user");
+        await sendEmailVerification(auth.currentUser);
       },
       async reauthenticate(password) {
         if (!auth || !auth.currentUser || !auth.currentUser.email) {

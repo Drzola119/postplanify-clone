@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   Eye,
   EyeOff,
@@ -22,6 +22,7 @@ import {
   Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/toast";
 import { PageHelp } from "@/components/dashboard/help/page-help";
 import { getHelpConfig } from "@/lib/help/content";
 import { clientOverridesAllowed } from "@/lib/security/dev-only";
@@ -85,81 +86,7 @@ function GoogleDriveLogo({ className }: { className?: string }) {
     </svg>
   );
 }
-/* ============================================================
-   TOAST SYSTEM
-   ============================================================ */
 
-type ToastType = "success" | "error" | "info";
-type ToastItem = { id: number; type: ToastType; message: string };
-
-function ToastViewport({
-  toasts,
-  onDismiss,
-}: {
-  toasts: ToastItem[];
-  onDismiss: (id: number) => void;
-}) {
-  return (
-    <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
-      {toasts.map((t) => (
-        <div
-          key={t.id}
-          role="status"
-          className={cn(
-            "pointer-events-auto flex items-center gap-3 rounded-md border px-4 py-3 shadow-lg text-sm font-medium min-w-[280px] max-w-[420px] animate-in slide-in-from-right-5",
-            t.type === "success" && "bg-white border-emerald-200 text-emerald-900",
-            t.type === "error" && "bg-white border-red-200 text-red-900",
-            t.type === "info" && "bg-white border-zinc-200 text-zinc-900"
-          )}
-        >
-          {t.type === "success" && (
-            <div className="size-5 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
-              <Check className="size-3 text-white" strokeWidth={3} />
-            </div>
-          )}
-          {t.type === "error" && (
-            <div className="size-5 rounded-full bg-red-500 flex items-center justify-center flex-shrink-0">
-              <X className="size-3 text-white" strokeWidth={3} />
-            </div>
-          )}
-          {t.type === "info" && (
-            <div className="size-5 rounded-full bg-zinc-500 flex items-center justify-center flex-shrink-0">
-              <Info className="size-3 text-white" strokeWidth={3} />
-            </div>
-          )}
-          <span className="flex-1">{t.message}</span>
-          <button
-            type="button"
-            onClick={() => onDismiss(t.id)}
-            className="text-zinc-400 hover:text-zinc-700 flex-shrink-0"
-            aria-label="Dismiss"
-          >
-            <X className="size-3.5" />
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function useToasts() {
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const counter = useRef(0);
-
-  const push = useCallback((type: ToastType, message: string) => {
-    const id = ++counter.current;
-    setToasts((prev) => [...prev, { id, type, message }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 3000);
-  }, []);
-
-  const dismiss = useCallback((id: number) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
-
-  return { toasts, push, dismiss };
-}
 
 /* ============================================================
    CONFIRM MODAL
@@ -265,13 +192,12 @@ function ChangePasswordModal({
   open,
   onClose,
   onSubmit,
-  push,
 }: {
   open: boolean;
   onClose: () => void;
   onSubmit: () => void;
-  push: (level: "success" | "info" | "error", message: string) => void;
 }) {
+  const { toast } = useToast();
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -283,19 +209,18 @@ function ChangePasswordModal({
 
   if (!open) return null;
   return (
-    <ChangePasswordModalBody onClose={onClose} onSubmit={onSubmit} push={push} />
+    <ChangePasswordModalBody onClose={onClose} onSubmit={onSubmit} />
   );
 }
 
 function ChangePasswordModalBody({
   onClose,
   onSubmit,
-  push,
 }: {
   onClose: () => void;
   onSubmit: () => void;
-  push: (level: "success" | "info" | "error", message: string) => void;
 }) {
+  const { toast } = useToast();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -320,15 +245,12 @@ function ChangePasswordModalBody({
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        push("error", body.error ?? `Password change failed (${res.status})`);
+        toast({ tone: "error", title: body.error ?? `Password change failed (${res.status})` });
         return;
       }
       onSubmit();
     } catch (err) {
-      push(
-        "error",
-        err instanceof Error ? err.message : "Network error changing password"
-      );
+      toast({ tone: "error", title: err instanceof Error ? err.message : "Network error changing password" });
     } finally {
       setBusy(false);
     }
@@ -630,7 +552,7 @@ type TabId = "account" | "notifications" | "subscription";
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<TabId>("account");
-  const { toasts, push, dismiss } = useToasts();
+  const { toast } = useToast();
 
   // Account state
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -642,7 +564,8 @@ export default function SettingsPage() {
   const [showRemovePhoto, setShowRemovePhoto] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Integrations state
+  // Integrations state — persisted to localStorage (same key as Accounts page)
+  const INTEGRATIONS_LS_KEY = "postplanify.connectedIntegrations";
   const [canvaConnected, setCanvaConnected] = useState(false);
   const [gdriveConnected, setGdriveConnected] = useState(false);
 
@@ -657,6 +580,25 @@ export default function SettingsPage() {
     bunnyZone: "",
     bunnyPassword: "",
   });
+
+  // Load integration connection state from localStorage (shared with Accounts page)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(INTEGRATIONS_LS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as string[];
+        setCanvaConnected(parsed.includes("canva"));
+        setGdriveConnected(parsed.includes("google-drive"));
+      }
+    } catch {}
+  }, []);
+
+  function persistIntegrations(next: Set<string>) {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(INTEGRATIONS_LS_KEY, JSON.stringify(Array.from(next)));
+    }
+  }
 
   // Load overrides from localStorage on mount. Only meaningful when
   // `clientOverridesAllowed()` returns true (dev/preview); in production
@@ -704,7 +646,38 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 800));
+    try {
+      const body: Record<string, string> = {};
+      if (name !== originalName) body.displayName = name;
+      if (profileFile) {
+        body.photoData = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(new Error("Failed to read file"));
+          reader.readAsDataURL(profileFile!);
+        });
+      } else if (profileImage === null && profileFile === null) {
+        body.photoURL = "";
+      }
+
+      if (Object.keys(body).length > 0) {
+        const res = await fetch("/api/settings/profile", {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json", ...getOverrideHeaders() },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          toast({ tone: "error", title: err.error?.message ?? "Failed to save profile" });
+          return;
+        }
+        setProfileFile(null);
+      }
+    } catch (err) {
+      toast({ tone: "error", title: err instanceof Error ? err.message : "Failed to save profile" });
+      return;
+    }
 
     // Save overrides to the dev storage key. In production these never
     // leave the browser (server-config silently ignores client override
@@ -715,25 +688,25 @@ export default function SettingsPage() {
     setOriginalOverrides(overrides);
 
     setSaving(false);
-    push("success", "Account settings updated");
+    toast({ tone: "success", title: "Account settings updated" });
   };
 
   const handleUpload = (file: File) => {
     const url = URL.createObjectURL(file);
     setProfileImage(url);
     setProfileFile(file);
-    push("info", "Photo selected. Click Save to apply.");
+    toast({ tone: "info", title: "Photo selected. Click Save to apply." });
   };
 
   const handleRemovePhoto = () => {
     setProfileImage(null);
     setProfileFile(null);
-    push("info", "Photo removed. Click Save to apply.");
+    toast({ tone: "info", title: "Photo removed. Click Save to apply." });
   };
 
   const handleCancelSubscription = () => {
     setAutoRenew(false);
-    push("success", "Subscription cancelled. Access ends on Jul 27, 2026.");
+    toast({ tone: "success", title: "Subscription cancelled. Access ends on Jul 27, 2026." });
   };
 
   const handleSaveNotifications = async () => {
@@ -746,12 +719,12 @@ export default function SettingsPage() {
         body: JSON.stringify(notif),
       });
       if (!res.ok) {
-        push("error", "Could not save notification preferences.");
+        toast({ tone: "error", title: "Could not save notification preferences." });
       } else {
-        push("success", "Notification preferences saved.");
+        toast({ tone: "success", title: "Notification preferences saved." });
       }
     } catch {
-      push("error", "Network error saving notification preferences.");
+      toast({ tone: "error", title: "Network error saving notification preferences." });
     } finally {
       setSavingNotif(false);
     }
@@ -759,7 +732,7 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <ToastViewport toasts={toasts} onDismiss={dismiss} />
+
 
       {/* Header */}
       <div className="flex flex-col gap-2">
@@ -889,11 +862,13 @@ export default function SettingsPage() {
                     integrationId="canva"
                     connected={canvaConnected}
                     onToggleConnect={() => {
-                      setCanvaConnected((v) => !v);
-                      push(
-                        "success",
-                        !canvaConnected ? "Canva connected" : "Canva disconnected"
-                      );
+                      const next = new Set<string>();
+                      const raw = typeof window !== "undefined" ? window.localStorage.getItem(INTEGRATIONS_LS_KEY) : null;
+                      if (raw) { try { JSON.parse(raw).forEach((k: string) => next.add(k)); } catch {} }
+                      if (canvaConnected) { next.delete("canva"); } else { next.add("canva"); }
+                      persistIntegrations(next);
+                      setCanvaConnected(!canvaConnected);
+                      toast({ tone: "info", title: !canvaConnected ? "Canva connected. Add your API credentials on the Accounts page for full setup." : "Canva disconnected" });
                     }}
                   />
                   <IntegrationRow
@@ -903,11 +878,13 @@ export default function SettingsPage() {
                     integrationId="gdrive"
                     connected={gdriveConnected}
                     onToggleConnect={() => {
-                      setGdriveConnected((v) => !v);
-                      push(
-                        "success",
-                        !gdriveConnected ? "Google Drive connected" : "Google Drive disconnected"
-                      );
+                      const next = new Set<string>();
+                      const raw = typeof window !== "undefined" ? window.localStorage.getItem(INTEGRATIONS_LS_KEY) : null;
+                      if (raw) { try { JSON.parse(raw).forEach((k: string) => next.add(k)); } catch {} }
+                      if (gdriveConnected) { next.delete("google-drive"); } else { next.add("google-drive"); }
+                      persistIntegrations(next);
+                      setGdriveConnected(!gdriveConnected);
+                      toast({ tone: "info", title: !gdriveConnected ? "Google Drive connected. Add your API credentials on the Accounts page for full setup." : "Google Drive disconnected" });
                     }}
                   />
                 </div>
@@ -1184,9 +1161,7 @@ export default function SettingsPage() {
         onClose={() => setShowChangePassword(false)}
         onSubmit={() => {
           setShowChangePassword(false);
-          push("success", "Password updated successfully");
         }}
-        push={push}
       />
 
       <ConfirmModal

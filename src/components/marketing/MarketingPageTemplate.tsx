@@ -44,6 +44,14 @@ const WHY_CHOOSE_ICONS: { Icon: React.ComponentType<{ className?: string }>; bg:
   { Icon: LayoutGrid, bg: "bg-emerald-100", text: "text-emerald-600" },
 ];
 
+/*
+ * PLACEHOLDER METRICS NOTICE
+ * Stats like "180K+ accounts", "4.9/5 rating", "2,150+ users" are
+ * placeholder demo values. Override them via NEXT_PUBLIC_STATS_POSTS_PUBLISHED,
+ * NEXT_PUBLIC_STATS_ACCOUNTS_CONNECTED, NEXT_PUBLIC_STATS_RATING, or
+ * NEXT_PUBLIC_STATS_USERS_COUNT env vars.
+ */
+
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
 /* ------------------------------------------------------------------ */
@@ -374,7 +382,7 @@ function PageHero({ data }: { data: MarketingPageData }) {
                     <Star key={i} className="size-3.5 fill-current" />
                   ))}
                 </div>
-                <span className="ml-1">Trusted by 2150+ businesses</span>
+                <span className="ml-1">Trusted by {process.env.NEXT_PUBLIC_STATS_USERS_COUNT ?? "2,150+"} businesses</span>
               </div>
             </div>
           </div>
@@ -709,7 +717,7 @@ function LiveStatsSection() {
                 <ThreadsIcon className="w-4 h-4" />
               </div>
               <div>
-                <p className="text-4xl font-bold text-white tabular-nums">10</p>
+                <p className="text-4xl font-bold text-white tabular-nums">{process.env.NEXT_PUBLIC_STATS_PLATFORMS_SUPPORTED ?? "10"}</p>
                 <p className="text-white/80 text-sm mt-1">Platforms supported</p>
               </div>
             </div>
@@ -722,7 +730,7 @@ function LiveStatsSection() {
                 ))}
               </div>
               <div>
-                <p className="text-4xl font-bold text-white tabular-nums">1511+</p>
+                <p className="text-4xl font-bold text-white tabular-nums">{process.env.NEXT_PUBLIC_STATS_ACCOUNTS_CONNECTED ?? "180K+"}</p>
                 <p className="text-white/80 text-sm mt-1">Social accounts connected</p>
               </div>
             </div>
@@ -738,7 +746,7 @@ function LiveStatsSection() {
                   ))}
                 </div>
                 <p className="text-white font-medium text-base">
-                  Join 2150+ users <span className="text-gray-400 text-sm ml-1">who save time every week</span>
+                  Join {process.env.NEXT_PUBLIC_STATS_USERS_COUNT ?? "2,150+"} users <span className="text-gray-400 text-sm ml-1">who save time every week</span>
                 </p>
               </div>
               <div className="flex text-yellow-400">
@@ -1040,14 +1048,14 @@ function FAQSection({ items }: { items: NonNullable<MarketingPageData["faq"]> })
                   </div>
                 ))}
               </div>
-              <p className="font-semibold text-sm leading-tight">Trusted by 2150+ businesses</p>
+              <p className="font-semibold text-sm leading-tight">Trusted by {process.env.NEXT_PUBLIC_STATS_USERS_COUNT ?? "2,150+"} businesses</p>
               <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                 <div className="flex -space-x-1">
                   {[1, 2, 3, 4, 5].map((s) => (
                     <Star key={s} className="size-3.5 text-yellow-500 fill-current" />
                   ))}
                 </div>
-                <span>4.9/5 average rating</span>
+                <span>{process.env.NEXT_PUBLIC_STATS_RATING ?? "4.9/5"} average rating</span>
               </div>
             </Card>
           </div>
@@ -1091,7 +1099,7 @@ function BottomCtaSection({ data }: { data: MarketingPageData }) {
                       <Star key={s} className="h-5 w-5 text-yellow-300 fill-current" />
                     ))}
                   </div>
-                  <span className="text-sm font-medium text-blue-50/80">Trusted by 2,150+ businesses</span>
+                  <span className="text-sm font-medium text-blue-50/80">Trusted by {process.env.NEXT_PUBLIC_STATS_USERS_COUNT ?? "2,150+"} businesses</span>
                 </div>
               </div>
             </div>

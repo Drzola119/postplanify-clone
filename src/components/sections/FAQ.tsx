@@ -141,7 +141,7 @@ export function FAQ() {
                     </svg>
                   ))}
                 </div>
-                <span>4.9/5 average rating</span>
+                <span>{process.env.NEXT_PUBLIC_STATS_RATING ?? "4.9/5"} average rating</span>
               </div>
             </Card>
           </div>

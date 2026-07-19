@@ -4,6 +4,7 @@ import * as Sentry from "@sentry/nextjs";
 
 const dsn = process.env.SENTRY_DSN?.trim();
 if (dsn) {
+  console.info("[sentry] DSN configured — initialising Sentry SDK");
   Sentry.init({
     dsn,
     tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? 0.1),
@@ -22,4 +23,6 @@ if (dsn) {
       addBreadcrumb: (crumb) => Sentry.addBreadcrumb(crumb),
     });
   });
+} else {
+  console.warn("[sentry] SENTRY_DSN not set — Sentry SDK skipped");
 }

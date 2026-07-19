@@ -144,7 +144,7 @@ export function PricingToggle() {
                   <Star key={s} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
                 ))}
               </div>
-              <span className="text-sm font-medium text-foreground">Trusted by 2,150+ businesses</span>
+              <span className="text-sm font-medium text-foreground">Trusted by {process.env.NEXT_PUBLIC_STATS_USERS_COUNT ?? "2,150+"} businesses</span>
             </div>
           </div>
 

@@ -155,7 +155,7 @@ export function Pricing() {
               </div>
               <div className="flex items-center gap-2 text-sm text-amber-500">
                 <span className="text-amber-500">★★★★★</span>
-                <span className="text-foreground/80 font-medium">4.9/5 from 500+ happy customers</span>
+                <span className="text-foreground/80 font-medium">{process.env.NEXT_PUBLIC_STATS_RATING ?? "4.9/5"} from 500+ happy customers</span>
               </div>
             </div>
 

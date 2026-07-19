@@ -11,6 +11,7 @@ import { LabelsDrawer } from "@/components/dashboard/labels-drawer";
 import { HashtagsDrawer } from "@/components/dashboard/hashtags-drawer";
 import { PostingScheduleModal } from "@/components/dashboard/posting-schedule-modal";
 import { HelpSystemProvider } from "@/components/dashboard/help/help-system";
+import EmailVerificationBanner from "@/components/EmailVerificationBanner";
 import { getLocaleDir } from "@/lib/i18n/types";
 import type { UiLocale } from "@/lib/i18n/types";
 
@@ -60,7 +61,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="min-h-screen bg-zinc-50">
           <DashboardSidebar />
           <DashboardTopbar />
-          <main dir={dir} className="lg:pl-[240px] pt-14 min-h-screen">{children}</main>
+          <main dir={dir} className="lg:pl-[240px] pt-14 min-h-screen">
+            <EmailVerificationBanner />
+            {children}
+          </main>
           <DrawersHost />
         </div>
       </HelpSystemProvider>

@@ -964,29 +964,115 @@ function NewFolderModal({ onClose, onCreate }: { onClose: () => void; onCreate: 
 
 /* ============================== TAGS PANEL ============================== */
 
+const LOCAL_TAGS_KEY = "postplanify_local_tags";
+
+function loadLocalTags(): { name: string; assets: number }[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(LOCAL_TAGS_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalTags(tags: { name: string; assets: number }[]) {
+  localStorage.setItem(LOCAL_TAGS_KEY, JSON.stringify(tags));
+}
+
 function TagsPanel({ onClose }: { onClose: () => void }) {
+  const [tags, setTags] = useState<{ name: string; assets: number }[]>(loadLocalTags);
+  const [input, setInput] = useState("");
+
+  const filtered = useMemo(
+    () =>
+      input
+        ? tags.filter((t) => t.name.toLowerCase().includes(input.toLowerCase()))
+        : tags,
+    [tags, input]
+  );
+
+  function handleAdd() {
+    const name = input.trim();
+    if (!name) return;
+    if (tags.some((t) => t.name.toLowerCase() === name.toLowerCase())) return;
+    const next = [...tags, { name, assets: 0 }];
+    setTags(next);
+    saveLocalTags(next);
+    setInput("");
+  }
+
+  function handleRemove(name: string) {
+    const next = tags.filter((t) => t.name !== name);
+    setTags(next);
+    saveLocalTags(next);
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end animate-in fade-in-0" onClick={onClose}>
       <div className="absolute inset-0 bg-black/20" />
       <div className="relative w-full max-w-sm bg-white shadow-xl h-full flex flex-col animate-in slide-in-from-right" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-4 border-b border-zinc-200">
           <h2 className="text-base font-semibold text-zinc-900 flex items-center gap-2">
-            <Hash className="size-4" />
-            Hashtag Sets
+            <TagIcon className="size-4" />
+            Tags
           </h2>
           <button type="button" onClick={onClose} className="text-zinc-400 hover:text-zinc-700" aria-label="Close">
             <X className="size-5" />
           </button>
         </div>
-        <div className="p-4">
-          <button type="button" className="w-full inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium">
-            <Plus className="size-4" />
-            Create New Set
-          </button>
+
+        <div className="p-4 border-b border-zinc-100">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
+              placeholder="Search or create tag..."
+              className="flex-1 h-9 px-3 rounded-md border border-zinc-200 text-sm outline-none focus:border-zinc-400"
+            />
+            <button
+              type="button"
+              onClick={handleAdd}
+              disabled={!input.trim()}
+              className="inline-flex items-center justify-center h-9 px-3 rounded-md bg-zinc-900 text-white text-sm font-medium disabled:opacity-50"
+            >
+              <Plus className="size-4" />
+            </button>
+          </div>
         </div>
-        <div className="flex-1 flex flex-col items-center justify-center text-zinc-400 text-center px-6 pb-12">
-          <Hash className="size-10 text-zinc-300 mb-2" />
-          <p className="text-sm font-medium text-zinc-700">No hashtag sets yet</p>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-1">
+          {filtered.length === 0 && (
+            <div className="flex flex-col items-center justify-center text-zinc-400 text-center px-6 py-12">
+              <TagIcon className="size-10 text-zinc-300 mb-2" />
+              <p className="text-sm font-medium text-zinc-700">
+                {input ? "No matching tags" : "Tag management coming soon"}
+              </p>
+            </div>
+          )}
+          {filtered.map((tag) => (
+            <div
+              key={tag.name}
+              className="flex items-center justify-between px-3 py-2 rounded-md hover:bg-zinc-50 group"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <TagIcon className="size-3.5 text-zinc-400 shrink-0" />
+                <span className="text-sm text-zinc-800 truncate">{tag.name}</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-zinc-400 tabular-nums">{tag.assets} asset{tag.assets !== 1 ? "s" : ""}</span>
+                <button
+                  type="button"
+                  onClick={() => handleRemove(tag.name)}
+                  className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                  aria-label={`Remove ${tag.name}`}
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

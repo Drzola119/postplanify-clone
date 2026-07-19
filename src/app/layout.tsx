@@ -6,6 +6,7 @@ import { getMessages, getLocale } from "next-intl/server";
 import { getLocaleLang, getLocaleDir } from "@/lib/i18n/types";
 import { ToastProvider } from "@/components/ui/toast";
 import { AuthProvider } from "@/contexts/AuthContext";
+import CookieBanner from "@/components/CookieBanner";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -190,7 +191,10 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col">
         <NextIntlClientProvider locale={locale} messages={messages}>
           <AuthProvider>
-            <ToastProvider>{children}</ToastProvider>
+            <ToastProvider>
+              {children}
+              <CookieBanner />
+            </ToastProvider>
           </AuthProvider>
         </NextIntlClientProvider>
       </body>

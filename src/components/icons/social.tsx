@@ -1,3 +1,4 @@
+// TODO: Consolidate with src/data/platform-icons.tsx — these two files have overlapping icon sets.
 import { SVGProps } from "react";
 
 type IconProps = SVGProps<SVGSVGElement>;

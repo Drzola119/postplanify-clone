@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import {
   Plus,
   Users,
@@ -14,6 +14,7 @@ import {
   Info,
   RefreshCw,
 } from "lucide-react";
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { PageHelp } from "@/components/dashboard/help/page-help";
 import { getHelpConfig } from "@/lib/help/content";
@@ -95,81 +96,7 @@ function MenuBookIcon({ className }: { className?: string }) {
    LEARN DROPDOWN (legacy helpers removed; replaced by PageHelp)
    ============================================================ */
 
-/* ============================================================
-   TOAST SYSTEM
-   ============================================================ */
 
-type ToastType = "success" | "error" | "info";
-type ToastItem = { id: number; type: ToastType; message: string };
-
-function ToastViewport({
-  toasts,
-  onDismiss,
-}: {
-  toasts: ToastItem[];
-  onDismiss: (id: number) => void;
-}) {
-  return (
-    <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
-      {toasts.map((t) => (
-        <div
-          key={t.id}
-          role="status"
-          className={cn(
-            "pointer-events-auto flex items-center gap-3 rounded-md border px-4 py-3 shadow-lg text-sm font-medium min-w-[280px] max-w-[420px] animate-in slide-in-from-right-5",
-            t.type === "success" && "bg-white border-emerald-200 text-emerald-900",
-            t.type === "error" && "bg-white border-red-200 text-red-900",
-            t.type === "info" && "bg-white border-zinc-200 text-zinc-900"
-          )}
-        >
-          {t.type === "success" && (
-            <div className="size-5 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
-              <Check className="size-3 text-white" strokeWidth={3} />
-            </div>
-          )}
-          {t.type === "error" && (
-            <div className="size-5 rounded-full bg-red-500 flex items-center justify-center flex-shrink-0">
-              <X className="size-3 text-white" strokeWidth={3} />
-            </div>
-          )}
-          {t.type === "info" && (
-            <div className="size-5 rounded-full bg-zinc-500 flex items-center justify-center flex-shrink-0">
-              <Info className="size-3 text-white" strokeWidth={3} />
-            </div>
-          )}
-          <span className="flex-1">{t.message}</span>
-          <button
-            type="button"
-            onClick={() => onDismiss(t.id)}
-            className="text-zinc-400 hover:text-zinc-700 flex-shrink-0"
-            aria-label="Dismiss"
-          >
-            <X className="size-3.5" />
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function useToasts() {
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const counter = useRef(0);
-
-  const push = useCallback((type: ToastType, message: string) => {
-    const id = ++counter.current;
-    setToasts((prev) => [...prev, { id, type, message }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 3000);
-  }, []);
-
-  const dismiss = useCallback((id: number) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
-
-  return { toasts, push, dismiss };
-}
 
 /* ============================================================
    LEARN HELP (replaced by PageHelp component)
@@ -755,7 +682,7 @@ export default function WorkspacesPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>(SEED_WORKSPACES);
   const [loading, setLoading] = useState(true);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
-  const { toasts, push, dismiss } = useToasts();
+  const { toast } = useToast();
 
   const [editing, setEditing] = useState<Workspace | null>(null);
   const [deleting, setDeleting] = useState<Workspace | null>(null);
@@ -808,7 +735,7 @@ export default function WorkspacesPage() {
         body: JSON.stringify({ name: data.name, plan: "free" }),
       });
       if (!res.ok) {
-        push("error", "Failed to create workspace");
+        toast({ tone: "error", title: "Failed to create workspace" });
         return;
       }
       const payload = (await res.json()) as { id?: string };
@@ -823,16 +750,16 @@ export default function WorkspacesPage() {
       };
       setWorkspaces((prev) => [...prev, newWs]);
       setCreating(false);
-      push("success", `Workspace "${data.name}" created`);
+      toast({ tone: "success", title: `Workspace "${data.name}" created` });
     } catch {
-      push("error", "Network error creating workspace");
+      toast({ tone: "error", title: "Network error creating workspace" });
     }
   };
 
   const handleSaveEdit = async (data: { name: string; domain: string }) => {
     if (!editing) return;
     if (editing.id !== activeWorkspaceId) {
-      push("info", "Only the active workspace can be edited");
+      toast({ tone: "info", title: "Only the active workspace can be edited" });
       return;
     }
     try {
@@ -843,7 +770,7 @@ export default function WorkspacesPage() {
         body: JSON.stringify({ name: data.name }),
       });
       if (!res.ok) {
-        push("error", "Failed to update workspace");
+        toast({ tone: "error", title: "Failed to update workspace" });
         return;
       }
       setWorkspaces((prev) =>
@@ -854,16 +781,16 @@ export default function WorkspacesPage() {
         )
       );
       setEditing(null);
-      push("success", `Workspace "${data.name}" updated`);
+      toast({ tone: "success", title: `Workspace "${data.name}" updated` });
     } catch {
-      push("error", "Network error updating workspace");
+      toast({ tone: "error", title: "Network error updating workspace" });
     }
   };
 
   const handleConfirmDelete = async () => {
     if (!deleting) return;
     if (deleting.id !== activeWorkspaceId) {
-      push("info", "Only the active workspace can be deleted");
+      toast({ tone: "info", title: "Only the active workspace can be deleted" });
       setDeleting(null);
       return;
     }
@@ -880,19 +807,16 @@ export default function WorkspacesPage() {
       }
       setWorkspaces((prev) => prev.filter((w) => w.id !== deleting.id));
       setDeleting(null);
-      push("success", `Workspace "${name}" deleted`);
+      toast({ tone: "success", title: `Workspace "${name}" deleted` });
     } catch (err) {
       setDeleting(null);
-      push(
-        "error",
-        err instanceof Error ? err.message : `Workspace "${name}" deletion is not supported yet`
-      );
+      toast({ tone: "error", title: err instanceof Error ? err.message : `Workspace "${name}" deletion is not supported yet` });
     }
   };
 
   return (
     <div className="space-y-6">
-      <ToastViewport toasts={toasts} onDismiss={dismiss} />
+
 
       {/* Page header */}
       <div className="flex flex-col sm:flex-row items-center gap-2 justify-between">
