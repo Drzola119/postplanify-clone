@@ -85,14 +85,15 @@ export async function deleteBio(uid: string, username: string): Promise<void> {
 export async function getAnalytics(
   username: string,
   days: number = 30
-): Promise<{ total: number; byDay: Array<{ date: string; clicks: number }> }> {
+): Promise<{ clicks: number; views: number; byDay: Array<{ date: string; clicks: number; views: number }> }> {
   const snap = await analyticsCollection(username).orderBy("date", "desc").limit(days).get();
   const byDay = snap.docs.map((d) => {
-    const data = d.data() as { date: string; total: number };
-    return { date: data.date, clicks: data.total ?? 0 };
+    const data = d.data() as { date: string; clicks?: number; views?: number };
+    return { date: data.date, clicks: data.clicks ?? 0, views: data.views ?? 0 };
   });
-  const total = byDay.reduce((s, d) => s + d.clicks, 0);
-  return { total, byDay: byDay.reverse() };
+  const clicks = byDay.reduce((s, d) => s + d.clicks, 0);
+  const views = byDay.reduce((s, d) => s + d.views, 0);
+  return { clicks, views, byDay: byDay.reverse() };
 }
 
 export async function recordClick(username: string, blockId: string | null): Promise<void> {
@@ -101,8 +102,20 @@ export async function recordClick(username: string, blockId: string | null): Pro
   await ref.set(
     {
       date: today,
-      total: { _methodName: "increment", _operand: 1 },
+      clicks: { _methodName: "increment", _operand: 1 },
       ...(blockId ? { byBlockId: { [blockId]: { _methodName: "increment", _operand: 1 } } } : {}),
+    },
+    { merge: true }
+  );
+}
+
+export async function recordView(username: string): Promise<void> {
+  const today = new Date().toISOString().slice(0, 10);
+  const ref = analyticsCollection(username).doc(today);
+  await ref.set(
+    {
+      date: today,
+      views: { _methodName: "increment", _operand: 1 },
     },
     { merge: true }
   );

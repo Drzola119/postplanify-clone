@@ -58,6 +58,7 @@ describe("db/link-in-bio - save + public read", () => {
     await recordClick("alice", null);
     await recordClick("alice", "block-1");
     const a = await getAnalytics("alice", 1);
-    expect(a.total).toBe(3);
+    expect(a.clicks).toBe(3);
+    expect(a.views).toBe(0);
   });
 });

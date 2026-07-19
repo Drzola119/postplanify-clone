@@ -74,6 +74,11 @@ export default function LinkInBioPublicClient({ username }: Props) {
           if (data.bio) {
             setBio(apiBioToLocal(username, data.bio));
             trackView(username);
+            fetch(`/api/link-in-bio/analytics/${username}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ type: "view" }),
+            }).catch(() => {});
             setIsOwner(getCurrentUsername() === username);
             setHydrated(true);
             return;
@@ -89,6 +94,11 @@ export default function LinkInBioPublicClient({ username }: Props) {
       } else {
         setBio(b);
         trackView(username);
+        fetch(`/api/link-in-bio/analytics/${username}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "view" }),
+        }).catch(() => {});
       }
       setIsOwner(getCurrentUsername() === username);
       setHydrated(true);
@@ -164,7 +174,14 @@ function LinkInterceptor({
       const target = (e.target as HTMLElement)?.closest("a[data-link-id]") as HTMLAnchorElement | null;
       if (!target) return;
       const linkId = target.getAttribute("data-link-id");
-      if (linkId) trackLinkClick(bio.username, linkId);
+      if (linkId) {
+        trackLinkClick(bio.username, linkId);
+        fetch(`/api/link-in-bio/analytics/${bio.username}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "click", linkId }),
+        }).catch(() => {});
+      }
     };
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);

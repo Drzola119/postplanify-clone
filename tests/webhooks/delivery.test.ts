@@ -24,10 +24,10 @@ describe("webhooks/delivery - deliverWebhook", () => {
   it("returns empty when no webhooks match the event", async () => {
     const mockList = vi.fn(async () => []);
     vi.resetModules();
-    vi.doMock("@/lib/db/webhooks", () => ({
-      listWebhooks: mockList,
-      markDelivered: vi.fn(),
-      getWebhookSecret: vi.fn(),
+    vi.doMock("@/lib/db/destinations", () => ({
+      listDestinations: mockList,
+      markDestinationDelivered: vi.fn(),
+      getDestinationSecret: vi.fn(),
     }));
     const { deliverWebhook: deliver } = await import("@/lib/webhooks/delivery");
     const result = await deliver("ws1", { event: "post.published", workspaceId: "ws1", data: {} });
@@ -37,8 +37,8 @@ describe("webhooks/delivery - deliverWebhook", () => {
   it("signs payload and POSTs to subscribed active webhooks", async () => {
     const secret = "shared-secret";
     vi.resetModules();
-    vi.doMock("@/lib/db/webhooks", () => ({
-      listWebhooks: vi.fn(async () => [
+    vi.doMock("@/lib/db/destinations", () => ({
+      listDestinations: vi.fn(async () => [
         {
           id: "w1",
           url: "https://hook.example.com/h",
@@ -47,8 +47,8 @@ describe("webhooks/delivery - deliverWebhook", () => {
           createdAt: new Date().toISOString(),
         },
       ]),
-      markDelivered: vi.fn(async () => undefined),
-      getWebhookSecret: vi.fn(async () => secret),
+      markDestinationDelivered: vi.fn(async () => undefined),
+      getDestinationSecret: vi.fn(async () => secret),
     }));
 
     const fetchMock = vi.fn(async () => new Response("ok", { status: 200 }));
@@ -74,8 +74,8 @@ describe("webhooks/delivery - deliverWebhook", () => {
   it("retries up to 3 times on failure and reports success=false", async () => {
     const secret = "s";
     vi.resetModules();
-    vi.doMock("@/lib/db/webhooks", () => ({
-      listWebhooks: vi.fn(async () => [
+    vi.doMock("@/lib/db/destinations", () => ({
+      listDestinations: vi.fn(async () => [
         {
           id: "w1",
           url: "https://hook.example.com/h",
@@ -84,8 +84,8 @@ describe("webhooks/delivery - deliverWebhook", () => {
           createdAt: new Date().toISOString(),
         },
       ]),
-      markDelivered: vi.fn(),
-      getWebhookSecret: vi.fn(async () => secret),
+      markDestinationDelivered: vi.fn(),
+      getDestinationSecret: vi.fn(async () => secret),
     }));
 
     const fetchMock = vi.fn(async () => new Response("nope", { status: 503 }));

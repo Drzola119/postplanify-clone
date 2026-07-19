@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
-import { ChevronRight, ChevronLeft, Calendar, Mail, Heart, MessageCircle, ArrowRight } from "lucide-react";
+import { ChevronRight, ChevronLeft, Calendar, Mail, Heart, MessageCircle } from "lucide-react";
 import { Header } from "@/components/sections/Header";
+import { BlogNewsletterForm } from "@/components/sections/BlogNewsletterForm";
 import { Footer } from "@/components/sections/Footer";
 
 export const metadata: Metadata = {
@@ -261,25 +262,7 @@ export default function BlogPage() {
                     Practical social media tips, platform updates, and growth tactics — straight to your inbox.
                     Free, and we promise not to spam you.
                   </p>
-                  <form className="mt-6 flex w-full flex-col gap-3 sm:flex-row" noValidate>
-                    <div className="relative flex-1">
-                      <Mail className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-blue-400" />
-                      <input
-                        type="email"
-                        required
-                        placeholder="email@example.com"
-                        aria-label="Email address"
-                        className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3.5 pl-11 pr-4 text-base text-gray-900 outline-none ring-2 ring-transparent transition placeholder:text-gray-400 focus:border-blue-400 focus:bg-white focus:ring-blue-200 disabled:opacity-60"
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      className="group inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-[linear-gradient(135deg,#2563eb,#1d4ed8)] px-7 py-3.5 text-base font-semibold text-white shadow-lg shadow-blue-500/30 transition hover:shadow-xl hover:brightness-110 active:scale-[0.98] disabled:opacity-70"
-                    >
-                      Subscribe
-                      <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                    </button>
-                  </form>
+                   <BlogNewsletterForm />
                   <p className="mt-3.5 text-sm text-gray-400">No spam. Unsubscribe anytime.</p>
                 </div>
               </div>
