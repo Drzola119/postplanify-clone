@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { BookOpen, Bell, ShieldAlert } from "lucide-react";
+import { BookOpen, ShieldAlert } from "lucide-react";
 import { LocaleSwitcher } from "@/components/ui/locale-switcher";
 import { useHelpSystem } from "@/components/dashboard/help/help-system";
 import { useAuth } from "@/contexts/AuthContext";
 import { isAdminUser } from "@/lib/firebase/admin-auth";
+import { NotificationBell } from "@/app/dashboard/_components/NotificationBell";
 
 function usePageTitle(t: (key: string) => string): string {
   const path = usePathname();
@@ -29,6 +30,7 @@ function usePageTitle(t: (key: string) => string): string {
     "/dashboard/settings/branding": t("topbar.page_branding"),
     "/dashboard/settings": t("topbar.page_settings"),
     "/dashboard/api-keys": t("topbar.page_api_keys"),
+    "/dashboard/notifications": "Notifications",
   };
   if (PAGE_TITLES[path]) return PAGE_TITLES[path];
   for (const [prefix, label] of Object.entries(PAGE_TITLES)) {
@@ -66,14 +68,7 @@ export function DashboardTopbar() {
         >
           <BookOpen className="size-4 text-zinc-500" />
         </button>
-        <button
-          type="button"
-          className="relative inline-flex items-center justify-center size-8 rounded-md hover:bg-zinc-100"
-          aria-label={t("topbar.notifications")}
-        >
-          <Bell className="size-4 text-zinc-500" />
-          <span className="absolute top-1 right-1 size-1.5 rounded-full bg-red-500" />
-        </button>
+        <NotificationBell />
       </div>
     </header>
   );
