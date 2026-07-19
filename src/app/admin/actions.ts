@@ -305,19 +305,23 @@ export async function suspendUserAction(targetUid: string) {
   if (adminDb) {
     await adminDb.collection("users").doc(targetUid).set({ status: "suspended" }, { merge: true });
   }
-  await createNotification(targetUid, {
-    type: "account_disconnected",
-    category: "accounts",
-    title: "Account suspended",
-    message: "Your PostPlanify account has been suspended. Contact support if you believe this is a mistake.",
-    actionUrl: "/support",
-    actionLabel: "Contact support",
-    metadata: { reason: "admin_suspended" },
-  });
   if (adminAuth) {
     try {
       await adminAuth.revokeRefreshTokens(targetUid);
     } catch {}
+  }
+  try {
+    await createNotification(targetUid, {
+      type: "account_disconnected",
+      category: "accounts",
+      title: "Account suspended",
+      message: "Your PostPlanify account has been suspended. Contact support if you believe this is a mistake.",
+      actionUrl: "/support",
+      actionLabel: "Contact support",
+      metadata: { reason: "admin_suspended" },
+    });
+  } catch (notifErr) {
+    console.warn("[admin] Could not send suspension notification:", notifErr);
   }
   await logAdminAudit("suspend_user", targetUid);
   revalidatePath("/admin/users");
@@ -500,27 +504,29 @@ export async function getPostsData() {
 
 export async function retryPostAction(postId: string) {
   await requireAdmin();
-  let userId = "usr_1";
-  let caption = "";
   if (adminDb) {
-    const postRef = adminDb.collection("posts").doc(postId);
-    const postSnap = await postRef.get();
-    if (postSnap.exists) {
-      const postData = postSnap.data();
-      userId = postData?.userId || postData?.uid || postData?.userEmail || "usr_1";
-      caption = postData?.caption || postData?.content || "";
+    await adminDb.collection("posts").doc(postId).set({ status: "scheduled", errorMessage: null }, { merge: true });
+    // Fetch post data to build the notification message
+    try {
+      const postDoc = await adminDb.collection("posts").doc(postId).get();
+      const postData = postDoc.data();
+      const userId = postData?.userId || postData?.uid || postData?.userUid;
+      const caption = postData?.caption || postData?.content || "your post";
+      if (userId) {
+        await createNotification(userId, {
+          type: "post_rescheduled",
+          category: "publishing",
+          title: "Post rescheduled",
+          message: `Your post "${String(caption).slice(0, 60)}${String(caption).length > 60 ? "..." : ""}" has been rescheduled and will be retried shortly.`,
+          actionUrl: "/dashboard/posts?filter=scheduled",
+          actionLabel: "View queue",
+          metadata: { postId },
+        });
+      }
+    } catch (notifErr) {
+      console.warn("[admin] Could not send rescheduled notification:", notifErr);
     }
-    await postRef.set({ status: "scheduled", errorMessage: null }, { merge: true });
   }
-  await createNotification(userId, {
-    type: "post_rescheduled",
-    category: "publishing",
-    title: "Post rescheduled",
-    message: `Your post "${caption.slice(0, 60)}..." has been rescheduled and will be retried shortly.`,
-    actionUrl: "/dashboard/posts?filter=scheduled",
-    actionLabel: "View queue",
-    metadata: { postId },
-  });
   await logAdminAudit("retry_post", postId);
   revalidatePath("/admin/posts");
   return { success: true };

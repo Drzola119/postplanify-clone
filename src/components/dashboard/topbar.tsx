@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -39,15 +40,19 @@ function usePageTitle(t: (key: string) => string): string {
   return "";
 }
 
-export function DashboardTopbar() {
+interface DashboardTopbarProps {
+  notificationSlot?: React.ReactNode;
+}
+
+export function DashboardTopbar({ notificationSlot }: DashboardTopbarProps) {
   const t = useTranslations("shell");
   const pageTitle = usePageTitle(t);
   const { openLearn } = useHelpSystem();
   const auth = useAuth();
 
   return (
-    <header className="fixed top-0 left-0 right-0 lg:left-[240px] h-14 z-30 bg-white border-b border-zinc-200 flex items-center justify-between px-6">
-      <span className="text-sm font-semibold text-zinc-800">{pageTitle}</span>
+    <header className="fixed top-0 left-0 right-0 lg:left-[240px] h-14 z-30 bg-[var(--color-surface)] border-b border-[var(--color-border)] flex items-center justify-between px-6">
+      <span className="text-sm font-semibold text-[var(--color-text)]">{pageTitle}</span>
       <div className="flex items-center gap-2">
         {isAdminUser(auth.user) && (
           <Link
@@ -62,13 +67,13 @@ export function DashboardTopbar() {
         <button
           type="button"
           onClick={() => openLearn()}
-          className="inline-flex items-center justify-center size-8 rounded-md hover:bg-zinc-100"
+          className="inline-flex items-center justify-center size-8 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800"
           aria-label={t("topbar.learn")}
           title={t("topbar.learn")}
         >
           <BookOpen className="size-4 text-zinc-500" />
         </button>
-        <NotificationBell />
+        {notificationSlot ?? <NotificationBell />}
       </div>
     </header>
   );

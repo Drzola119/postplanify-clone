@@ -3,12 +3,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Bell } from "lucide-react";
-import { collection, query, where, limit, onSnapshot } from "firebase/firestore";
+import { collection, query, orderBy, limit, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Notification } from "@/lib/notifications";
 import { NotificationItem } from "./NotificationItem";
-import { getNotifications, markAllReadAction } from "@/app/dashboard/notifications/actions";
+import { markAllReadAction } from "@/app/dashboard/notifications/actions";
 
 interface NotificationBellProps {
   initialUnreadCount?: number;
@@ -23,49 +23,37 @@ export function NotificationBell({
   const [isOpen, setIsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
   const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
-  const [isLoading, setIsLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Fetch initial notifications if not passed or when user logs in
-  useEffect(() => {
-    if (initialNotifications.length > 0) {
-      setNotifications(initialNotifications);
-      setUnreadCount(initialUnreadCount);
-      return;
-    }
-    if (user?.uid) {
-      setIsLoading(true);
-      getNotifications()
-        .then((items) => {
-          setNotifications(items);
-          setUnreadCount(items.filter((i) => !i.read).length);
-        })
-        .catch((err) => {
-          console.warn("[NotificationBell] Could not load initial notifications:", err);
-        })
-        .finally(() => setIsLoading(false));
-    }
-  }, [user?.uid, initialNotifications, initialUnreadCount]);
-
-  // Firestore real-time listener for unread count
+  // Firestore real-time listener: maps docs directly into client state without server action re-fetches
   useEffect(() => {
     if (!user?.uid || !db) return;
 
     try {
-      const q = query(
-        collection(db, "users", user.uid, "notifications"),
-        where("read", "==", false),
-        limit(20)
-      );
+      const notifRef = collection(db, "users", user.uid, "notifications");
+      const q = query(notifRef, orderBy("createdAt", "desc"), limit(50));
 
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
-          setUnreadCount(snapshot.size);
-          // If snapshot has new items, re-fetch full list to sync
-          getNotifications()
-            .then((items) => setNotifications(items))
-            .catch(() => {});
+          const items: Notification[] = snapshot.docs.map((doc) => {
+            const data = doc.data(); // DocumentData from Firestore SDK
+            return {
+              id: doc.id,
+              uid: user.uid,
+              type: data.type,
+              category: data.category,
+              title: data.title,
+              message: data.message,
+              actionUrl: data.actionUrl,
+              actionLabel: data.actionLabel,
+              metadata: data.metadata,
+              read: Boolean(data.read),
+              createdAt: data.createdAt || new Date().toISOString(),
+            };
+          });
+          setNotifications(items);
+          setUnreadCount(items.filter((i) => !i.read).length);
         },
         (error) => {
           console.warn("[NotificationBell] Listener error:", error);
@@ -97,7 +85,7 @@ export function NotificationBell({
     try {
       await markAllReadAction();
     } catch (err) {
-      console.error("[NotificationBell] Failed to mark all read:", err);
+      console.warn("[NotificationBell] Failed to mark all read:", err);
     }
   };
 
@@ -124,7 +112,7 @@ export function NotificationBell({
         aria-label="Notifications"
         title="Notifications"
       >
-        <Bell className="w-5 h-5 text-zinc-500" />
+        <Bell className="w-5 h-5 text-zinc-500 dark:text-zinc-400" />
         {unreadCount > 0 && (
           <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
             {unreadCount > 9 ? "9+" : unreadCount}
@@ -151,11 +139,7 @@ export function NotificationBell({
 
           {/* List or Empty State */}
           <div className="flex-1 overflow-y-auto divide-y divide-[var(--color-border)]">
-            {isLoading ? (
-              <div className="p-8 text-center text-xs text-[var(--color-text-muted)]">
-                Loading notifications...
-              </div>
-            ) : notifications.length === 0 ? (
+            {notifications.length === 0 ? (
               <div className="px-6 py-8 text-center flex flex-col items-center justify-center">
                 <div className="w-12 h-12 rounded-full bg-[var(--color-surface-offset)] flex items-center justify-center mb-3">
                   <Bell className="w-6 h-6 text-[var(--color-text-faint)]" />
