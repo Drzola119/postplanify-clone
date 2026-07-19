@@ -6,11 +6,34 @@ import { Loader2, Save, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
 
+type Platform = "instagram" | "twitter" | "linkedin" | "facebook" | "tiktok" | "youtube" | "threads" | "pinterest" | "bluesky";
+
+const PLATFORM_OPTIONS: { id: Platform; label: string }[] = [
+  { id: "instagram", label: "Instagram" },
+  { id: "twitter", label: "X / Twitter" },
+  { id: "linkedin", label: "LinkedIn" },
+  { id: "facebook", label: "Facebook" },
+  { id: "tiktok", label: "TikTok" },
+  { id: "youtube", label: "YouTube" },
+  { id: "threads", label: "Threads" },
+  { id: "pinterest", label: "Pinterest" },
+  { id: "bluesky", label: "Bluesky" },
+];
+
+const TRIGGER_OPTIONS: { value: "comment-keyword" | "first-comment" | "follow"; label: string; description: string }[] = [
+  { value: "comment-keyword", label: "Comment contains a keyword", description: "Reply when someone comments with a specific word/phrase." },
+  { value: "first-comment", label: "First comment ever", description: "Reply to anyone who comments on your post for the first time." },
+  { value: "follow", label: "New follower", description: "Welcome new followers with a DM." },
+];
+
 interface CampaignDetail {
   id: string;
   name: string;
   status: "active" | "paused";
+  trigger: { kind: "comment-keyword" | "first-comment" | "follow"; keyword?: string; match?: "contains" | "exact" | "starts-with"; postId?: string };
+  platforms: Platform[];
   template: string;
+  perAuthorPerDayCap?: number;
   triggered: number;
   sent: number;
   lastTriggeredAt?: string;
@@ -21,7 +44,13 @@ export default function EditAutoDmCampaignPage() {
   const router = useRouter();
   const [campaign, setCampaign] = useState<CampaignDetail | null>(null);
   const [status, setStatus] = useState<"active" | "paused">("paused");
+  const [triggerKind, setTriggerKind] = useState<"comment-keyword" | "first-comment" | "follow">("comment-keyword");
+  const [keyword, setKeyword] = useState("");
+  const [match, setMatch] = useState<"contains" | "exact" | "starts-with">("contains");
+  const [postId, setPostId] = useState("");
+  const [platforms, setPlatforms] = useState<Platform[]>([]);
   const [template, setTemplate] = useState("");
+  const [cap, setCap] = useState<number | "">("");
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -42,6 +71,15 @@ export default function EditAutoDmCampaignPage() {
         setCampaign(data.campaign);
         setStatus(data.campaign.status);
         setTemplate(data.campaign.template);
+        setPlatforms(data.campaign.platforms ?? []);
+        setTriggerKind(data.campaign.trigger.kind);
+        if (data.campaign.trigger.kind === "comment-keyword") {
+          setKeyword(data.campaign.trigger.keyword ?? "");
+          setMatch(data.campaign.trigger.match ?? "contains");
+        } else {
+          setPostId(data.campaign.trigger.postId ?? "");
+        }
+        setCap(data.campaign.perAuthorPerDayCap ?? "");
       } catch (err) {
         if (!cancelled) setErrorMsg("Network error");
       }
@@ -51,8 +89,30 @@ export default function EditAutoDmCampaignPage() {
     };
   }, [id]);
 
+  function togglePlatform(p: Platform) {
+    setPlatforms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
+  }
+
   async function save() {
     if (saving || !campaign) return;
+    if (platforms.length === 0) {
+      setErrorMsg("Pick at least one platform");
+      return;
+    }
+    if (!template.trim()) {
+      setErrorMsg("Template is required");
+      return;
+    }
+    const trigger =
+      triggerKind === "comment-keyword"
+        ? { kind: "comment-keyword" as const, keyword: keyword.trim(), match }
+        : triggerKind === "first-comment"
+        ? { kind: "first-comment" as const, postId: postId.trim() || undefined }
+        : { kind: "follow" as const, postId: postId.trim() || undefined };
+    if (triggerKind === "comment-keyword" && !trigger.keyword) {
+      setErrorMsg("Keyword is required");
+      return;
+    }
     setSaving(true);
     setErrorMsg(null);
     try {
@@ -60,7 +120,13 @@ export default function EditAutoDmCampaignPage() {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json", ...getOverrideHeaders() },
-        body: JSON.stringify({ status, template }),
+        body: JSON.stringify({
+          status,
+          trigger,
+          platforms,
+          template: template.trim(),
+          perAuthorPerDayCap: typeof cap === "number" && cap > 0 ? cap : undefined,
+        }),
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -131,6 +197,104 @@ export default function EditAutoDmCampaignPage() {
               </button>
             ))}
           </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-zinc-700 mb-1.5">Trigger</label>
+          <div className="space-y-2">
+            {TRIGGER_OPTIONS.map((o) => (
+              <label
+                key={o.value}
+                className={`flex items-start gap-3 rounded-md border p-3 cursor-pointer ${
+                  triggerKind === o.value ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 bg-white"
+                }`}
+              >
+                <input
+                  type="radio"
+                  checked={triggerKind === o.value}
+                  onChange={() => setTriggerKind(o.value)}
+                  className="mt-1 size-4 accent-zinc-900"
+                />
+                <div>
+                  <p className="text-sm font-medium text-zinc-900">{o.label}</p>
+                  <p className="text-xs text-zinc-500">{o.description}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {triggerKind === "comment-keyword" ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1.5">Keyword</label>
+              <input
+                type="text"
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                placeholder="e.g. PRICE"
+                className="w-full h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1.5">Match type</label>
+              <select
+                value={match}
+                onChange={(e) => setMatch(e.target.value as "contains" | "exact" | "starts-with")}
+                className="w-full h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+              >
+                <option value="contains">contains</option>
+                <option value="starts-with">starts with</option>
+                <option value="exact">exact match</option>
+              </select>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <label className="block text-sm font-medium text-zinc-700 mb-1.5">Restrict to post (optional)</label>
+            <input
+              type="text"
+              value={postId}
+              onChange={(e) => setPostId(e.target.value)}
+              placeholder="leave blank for any"
+              className="w-full h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+            />
+          </div>
+        )}
+
+        <div>
+          <label className="block text-sm font-medium text-zinc-700 mb-1.5">Platforms</label>
+          <div className="flex flex-wrap gap-2">
+            {PLATFORM_OPTIONS.map((p) => {
+              const active = platforms.includes(p.id);
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => togglePlatform(p.id)}
+                  className={`inline-flex items-center gap-1 rounded-full border px-3 h-8 text-xs font-medium transition-colors ${
+                    active ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-zinc-700 mb-1.5">Per-author daily cap</label>
+          <input
+            type="number"
+            value={cap}
+            min={1}
+            max={10}
+            onChange={(e) => setCap(e.target.value ? Number(e.target.value) : "")}
+            placeholder="1"
+            className="w-32 h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+          />
+          <p className="mt-1 text-xs text-zinc-500">Limits sends to the same author in a 24h window to avoid spam.</p>
         </div>
 
         <div>

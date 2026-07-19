@@ -191,6 +191,8 @@ export async function GET(request: Request) {
     const profile = data.profile ?? null;
     const accounts = flatten(profile);
 
+    let plan: string | null = null;
+    let limit: number | null = null;
     try {
       if (adminDb) {
         // We still call the list endpoint in the background to capture plan/limit
@@ -209,6 +211,9 @@ export async function GET(request: Request) {
           }
         }
 
+        plan = listData?.plan ?? null;
+        limit = listData?.limit ?? null;
+
         await writeCache(session.workspaceId, {
           accounts: accounts.map((a) => ({
             id: a.id,
@@ -220,8 +225,8 @@ export async function GET(request: Request) {
             reauthRequired: a.reauthRequired,
           })),
           profiles: [profileMeta],
-          plan: listData?.plan ?? null,
-          limit: listData?.limit ?? null,
+          plan,
+          limit,
         });
       }
     } catch {
@@ -232,8 +237,8 @@ export async function GET(request: Request) {
       ok: true,
       accounts,
       profiles: [profileMeta],
-      plan: null,
-      limit: null,
+      plan,
+      limit,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "upload-post.com request failed";

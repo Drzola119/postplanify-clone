@@ -1,7 +1,10 @@
 import "server-only";
 import { createHmac } from "node:crypto";
 import type { PlatformId } from "@/lib/db/schema";
-import { listDestinations, getDestinationSecret, markDestinationDelivered } from "@/lib/db/destinations";
+import { listDestinations, getDestinationSecret, markDestinationDelivered, incrementConsecutiveFailures, resetConsecutiveFailures } from "@/lib/db/destinations";
+import { createLogger } from "@/lib/log";
+
+const log = createLogger("webhook-delivery");
 
 export interface DeliveryResult {
   url: string;
@@ -90,6 +93,7 @@ export async function deliverWebhook(
           });
           if (res.ok) {
             await markDestinationDelivered(workspaceId, d.id);
+            await resetConsecutiveFailures(workspaceId, d.id);
             return { url: d.url, success: true, attempts: attempt + 1, status: res.status };
           }
           lastStatus = res.status;
@@ -98,6 +102,16 @@ export async function deliverWebhook(
           lastError = err instanceof Error ? err.message : String(err);
         }
       }
+      log.warn("webhook delivery failed", {
+        destinationId: d.id,
+        url: d.url,
+        event: payload.event,
+        workspaceId,
+        error: lastError,
+        status: lastStatus,
+        attempts: retryDelays.length,
+      });
+      await incrementConsecutiveFailures(workspaceId, d.id);
       return {
         url: d.url,
         success: false,

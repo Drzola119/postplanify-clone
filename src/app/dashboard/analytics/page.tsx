@@ -436,8 +436,12 @@ function OverviewDropdown({ currentId, accounts }: { currentId?: string; account
 
 function TimezoneDropdown() {
   const [open, setOpen] = useState(false);
-  const [tz, setTz] = useState("Lagos (+01:00)");
-  const options = ["UTC (+00:00)", "Lagos (+01:00)", "Cairo (+02:00)", "Paris (+01:00)", "New York (-05:00)", "Los Angeles (-08:00)"];
+  const [tz, setTz] = useState("UTC");
+  const options = ["UTC", "Africa/Lagos", "Africa/Cairo", "Europe/Paris", "America/New_York", "America/Los_Angeles"];
+
+  useEffect(() => {
+    setTz(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  }, []);
   return (
     <div className="relative">
       <button

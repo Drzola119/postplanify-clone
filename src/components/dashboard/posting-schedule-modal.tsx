@@ -7,8 +7,6 @@ import { cn } from "@/lib/utils";
 
 const WORKSPACES = ["zack", "Personal", "Marketing", "Brand 2"];
 
-const TIMEZONE = "Lagos (+01:00)";
-
 const DAY_KEYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 type DayKey = typeof DAY_KEYS[number];
 
@@ -47,6 +45,11 @@ interface PostingScheduleModalProps {
 export function PostingScheduleModal({ open, onClose }: PostingScheduleModalProps) {
   const [workspace, setWorkspace] = useState("zack");
   const [times, setTimes] = useState<PostingTime[]>([]);
+  const [timezone, setTimezone] = useState("UTC");
+
+  useEffect(() => {
+    setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  }, []);
 
   function addTime() {
     setTimes((prev) => [
@@ -94,7 +97,7 @@ export function PostingScheduleModal({ open, onClose }: PostingScheduleModalProp
           <div className="space-y-2">
             <label className="text-sm font-medium">Your Timezone</label>
             <div className="h-9 px-3 py-1 border rounded-md bg-muted flex items-center text-sm">
-              {TIMEZONE}
+              {timezone}
             </div>
             <p className="text-xs text-muted-foreground">Times will be set in your timezone</p>
           </div>

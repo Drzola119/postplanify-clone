@@ -27,6 +27,12 @@ let lastResult: TickResult | null = null;
 // Per-workspace profile cache so we don't re-fetch from upload-post.com every
 // tick. Cache for the lifetime of the process; ensureProfile is itself
 // idempotent against our Firestore cache.
+//
+// NOTE: This is an in-memory cache stored in a module-level Map. It is lost on
+// every server restart (e.g., Vercel cold start, redeploy, process restart).
+// On a cold start every workspace will miss the cache and re-fetch from
+// upload-post.com once per workspace before the TTL kicks in. If this becomes
+// a bottleneck, migrate to a persistent cache (e.g., Redis or Firestore).
 const profileCache = new Map<string, { username: string; ts: number }>();
 const PROFILE_CACHE_TTL_MS = 5 * 60_000;
 

@@ -72,6 +72,27 @@ export async function markDestinationDelivered(workspaceId: string, id: string):
   await collection(workspaceId).doc(id).update({ lastDeliveryAt: SERVER_TIMESTAMP });
 }
 
+const MAX_CONSECUTIVE_FAILURES = 10;
+
+export async function incrementConsecutiveFailures(workspaceId: string, id: string): Promise<void> {
+  const ref = collection(workspaceId).doc(id);
+  await adminDb!.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const current = (snap.data() as DestinationDoc).consecutiveFailures ?? 0;
+    const next = current + 1;
+    if (next >= MAX_CONSECUTIVE_FAILURES) {
+      tx.update(ref, { consecutiveFailures: next, active: false });
+    } else {
+      tx.update(ref, { consecutiveFailures: next });
+    }
+  });
+}
+
+export async function resetConsecutiveFailures(workspaceId: string, id: string): Promise<void> {
+  await collection(workspaceId).doc(id).update({ consecutiveFailures: 0 });
+}
+
 function serialize(id: string, data: DestinationDoc): DestinationItem {
   return {
     id,

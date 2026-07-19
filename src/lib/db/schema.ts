@@ -261,6 +261,7 @@ export interface DestinationDoc {
   secret?: string;
   active: boolean;
   lastDeliveryAt?: Date;
+  consecutiveFailures?: number;
   createdAt: Date;
 }
 

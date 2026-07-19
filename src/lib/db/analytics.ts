@@ -135,30 +135,31 @@ export async function getPlatformSeries(
   if (!adminDb) return [];
   const db = adminDb;
   const dates = enumerateDays(from, to);
-  const docs = await Promise.all(
-    dates.map(async (d) => {
-      const key = isoDateKey(d);
-      const ref = db
-        .collection(`workspaces/${workspaceId}/analyticsDaily`)
-        .doc(key)
-        .collection("platforms")
-        .doc(platform);
-      const snap = await ref.get();
-      if (!snap.exists) return null;
-      const data = snap.data() as AnalyticsDailyPlatformDoc;
-      return {
-        date: key,
-        followers: data.followers ?? 0,
-        engagementRate: data.engagementRate ?? 0,
-        impressions: data.impressions ?? 0,
-        likes: data.likes ?? 0,
-        comments: data.comments ?? 0,
-        shares: data.shares ?? 0,
-        clicks: data.clicks ?? 0,
-      };
-    })
+  const refs = dates.map((d) =>
+    db
+      .collection(`workspaces/${workspaceId}/analyticsDaily`)
+      .doc(isoDateKey(d))
+      .collection("platforms")
+      .doc(platform)
   );
-  return docs.filter((d): d is PlatformSeriesPoint => d !== null);
+  const snapshots = await db.getAll(...refs);
+  const docs: PlatformSeriesPoint[] = [];
+  for (let i = 0; i < snapshots.length; i++) {
+    const snap = snapshots[i];
+    if (!snap.exists) continue;
+    const data = snap.data() as AnalyticsDailyPlatformDoc;
+    docs.push({
+      date: isoDateKey(dates[i]),
+      followers: data.followers ?? 0,
+      engagementRate: data.engagementRate ?? 0,
+      impressions: data.impressions ?? 0,
+      likes: data.likes ?? 0,
+      comments: data.comments ?? 0,
+      shares: data.shares ?? 0,
+      clicks: data.clicks ?? 0,
+    });
+  }
+  return docs;
 }
 
 export interface PostMetrics {

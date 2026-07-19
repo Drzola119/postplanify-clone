@@ -196,6 +196,10 @@ export default function BulkSchedulePage() {
   const addMoreInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  }, []);
+
   // Close dropdowns on Escape
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

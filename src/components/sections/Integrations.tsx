@@ -1,17 +1,29 @@
-import Image from "next/image";
 import { Container } from "@/components/ui/container";
+import {
+  Music2,
+  Camera,
+  Play,
+  MessageCircle,
+  ThumbsUp,
+
+  PinIcon,
+  MessageSquare,
+  Cloud,
+  Globe,
+  Briefcase,
+} from "lucide-react";
 
 const PLATFORMS = [
-  { name: "TikTok", logo: "/images/postplanify/llm-logos__claude.svg", color: "from-black to-pink-600" },
-  { name: "Instagram", logo: "/images/postplanify/llm-logos__claude.svg", color: "from-purple-500 via-pink-500 to-orange-400" },
-  { name: "YouTube", logo: "/images/postplanify/llm-logos__claude.svg", color: "from-red-500 to-red-700" },
-  { name: "X / Twitter", logo: "/images/postplanify/llm-logos__claude.svg", color: "from-black to-zinc-800" },
-  { name: "Facebook", logo: "/images/postplanify/llm-logos__claude.svg", color: "from-blue-500 to-blue-700" },
-  { name: "LinkedIn", logo: "/images/postplanify/llm-logos__claude.svg", color: "from-blue-600 to-blue-800" },
-  { name: "Pinterest", logo: "/images/postplanify/llm-logos__claude.svg", color: "from-red-500 to-red-700" },
-  { name: "Threads", logo: "/images/postplanify/llm-logos__claude.svg", color: "from-black to-zinc-900" },
-  { name: "Bluesky", logo: "/images/postplanify/llm-logos__claude.svg", color: "from-blue-400 to-blue-600" },
-  { name: "WordPress", logo: "/images/postplanify/llm-logos__claude.svg", color: "from-sky-600 to-blue-700" },
+  { name: "TikTok", icon: Music2, color: "from-black to-pink-600" },
+  { name: "Instagram", icon: Camera, color: "from-purple-500 via-pink-500 to-orange-400" },
+  { name: "YouTube", icon: Play, color: "from-red-500 to-red-700" },
+  { name: "X / Twitter", icon: MessageCircle, color: "from-black to-zinc-800" },
+  { name: "Facebook", icon: ThumbsUp, color: "from-blue-500 to-blue-700" },
+  { name: "LinkedIn", icon: Briefcase, color: "from-blue-600 to-blue-800" },
+  { name: "Pinterest", icon: PinIcon, color: "from-red-500 to-red-700" },
+  { name: "Threads", icon: MessageSquare, color: "from-black to-zinc-900" },
+  { name: "Bluesky", icon: Cloud, color: "from-blue-400 to-blue-600" },
+  { name: "WordPress", icon: Globe, color: "from-sky-600 to-blue-700" },
 ];
 
 export function Integrations() {
@@ -26,27 +38,24 @@ export function Integrations() {
         </h2>
 
         <div className="mt-8 grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-10 gap-4">
-          {PLATFORMS.map((p) => (
-            <div
-              key={p.name}
-              className="group flex flex-col items-center gap-2"
-            >
+          {PLATFORMS.map((p) => {
+            const Icon = p.icon;
+            return (
               <div
-                className={`relative size-14 rounded-2xl bg-gradient-to-br ${p.color} flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform`}
+                key={p.name}
+                className="group flex flex-col items-center gap-2"
               >
-                <Image
-                  src={p.logo}
-                  alt={p.name}
-                  width={28}
-                  height={28}
-                  className="invert opacity-90"
-                />
+                <div
+                  className={`relative size-14 rounded-2xl bg-gradient-to-br ${p.color} flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform`}
+                >
+                  <Icon className="size-6 text-white" />
+                </div>
+                <span className="text-xs text-muted-foreground text-center">
+                  {p.name}
+                </span>
               </div>
-              <span className="text-xs text-muted-foreground text-center">
-                {p.name}
-              </span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </Container>
     </section>
