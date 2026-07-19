@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Copy, Plus, Eye, EyeOff, Trash2 } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
+import { Copy, Plus, Eye, EyeOff, Trash2, Check } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { Dialog } from "@/components/ui/dialog";
+import { PPInput } from "@/components/ui/pp-input";
+import { PPButton } from "@/components/ui/pp-button";
 
 interface ApiKeyRow {
   id: string;
@@ -13,11 +16,22 @@ interface ApiKeyRow {
   revokedAt?: string;
 }
 
+type Step = "form" | "loading" | "success";
+
 export default function ApiKeysPage() {
   const [keys, setKeys] = useState<ApiKeyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reveal, setReveal] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const [showDialog, setShowDialog] = useState(false);
+  const [step, setStep] = useState<Step>("form");
+  const [name, setName] = useState("");
+  const [expiration, setExpiration] = useState("30d");
+  const [generatedKey, setGeneratedKey] = useState("");
+  const [generatedPrefix, setGeneratedPrefix] = useState("");
+  const [dialogError, setDialogError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,6 +72,59 @@ export default function ApiKeysPage() {
     }
   }
 
+  async function handleGenerate() {
+    if (!name.trim()) return;
+    setStep("loading");
+    setDialogError(null);
+    try {
+      const res = await fetch("/api/api-keys", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), scopes: ["all"] }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setDialogError(data?.error?.message ?? "Failed to generate key");
+        setStep("form");
+        return;
+      }
+      setGeneratedKey(data.token);
+      setGeneratedPrefix(data.prefix);
+      setKeys((prev) => [
+        {
+          id: data.id,
+          name: name.trim(),
+          prefix: data.prefix,
+          createdAt: new Date().toISOString(),
+        },
+        ...prev,
+      ]);
+      setStep("success");
+    } catch {
+      setDialogError("Network error");
+      setStep("form");
+    }
+  }
+
+  function handleCopy(text: string, id: string) {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  }
+
+  function resetDialog() {
+    setShowDialog(false);
+    setStep("form");
+    setName("");
+    setExpiration("30d");
+    setGeneratedKey("");
+    setGeneratedPrefix("");
+    setDialogError(null);
+  }
+
+  const onClose = useCallback(() => resetDialog(), []);
+
   function fmtDate(iso?: string) {
     if (!iso) return "Never";
     const d = new Date(iso);
@@ -86,7 +153,7 @@ export default function ApiKeysPage() {
           <button
             type="button"
             className="inline-flex items-center gap-2 h-10 px-4 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium"
-            onClick={() => alert("Generate Key flow not yet implemented in UI")}
+            onClick={() => setShowDialog(true)}
           >
             <Plus className="size-4" />
             Generate Key
@@ -134,8 +201,13 @@ export default function ApiKeysPage() {
                   <button type="button" onClick={() => setReveal(reveal === k.id ? null : k.id)} className="text-zinc-500 hover:text-zinc-900">
                     {reveal === k.id ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
                   </button>
-                  <button type="button" className="text-zinc-500 hover:text-zinc-900" aria-label="Copy">
-                    <Copy className="size-3" />
+                  <button
+                    type="button"
+                    className="text-zinc-500 hover:text-zinc-900"
+                    aria-label="Copy"
+                    onClick={() => handleCopy(k.prefix, k.id)}
+                  >
+                    {copiedId === k.id ? <Check className="size-3 text-green-600" /> : <Copy className="size-3" />}
                   </button>
                 </div>
               </div>
@@ -156,6 +228,80 @@ export default function ApiKeysPage() {
           ))}
         </div>
       )}
+
+      <Dialog open={showDialog} onClose={onClose} title="Generate API Key" description="Create a new API key for programmatic access." maxWidth="sm:max-w-[440px]">
+        {step === "success" ? (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+              Your API key has been generated. Copy it now — you won&apos;t be able to see it again.
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-zinc-500">Your API Key</p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm font-mono text-zinc-900 break-all select-all">
+                  {generatedKey}
+                </code>
+                <PPButton
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCopy(generatedKey, "__generated")}
+                  className="shrink-0"
+                >
+                  {copiedId === "__generated" ? <Check className="size-3.5 text-green-600" /> : <Copy className="size-3.5" />}
+                </PPButton>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <PPButton variant="primary" onClick={onClose}>
+                Done
+              </PPButton>
+            </div>
+          </div>
+        ) : (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleGenerate();
+            }}
+            className="space-y-4"
+          >
+            <PPInput
+              label="Name"
+              placeholder="e.g. Production CI, Staging"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={step === "loading"}
+              required
+              autoFocus
+            />
+            <div className="w-full">
+              <label className="block text-xs font-semibold text-zinc-500 mb-1.5">Expiration</label>
+              <select
+                value={expiration}
+                onChange={(e) => setExpiration(e.target.value)}
+                disabled={step === "loading"}
+                className="w-full rounded-md border border-zinc-200 bg-white px-3 h-9 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-300 disabled:opacity-50"
+              >
+                <option value="30d">30 days</option>
+                <option value="90d">90 days</option>
+                <option value="1y">1 year</option>
+                <option value="never">Never</option>
+              </select>
+            </div>
+            {dialogError && (
+              <p className="text-sm text-red-600">{dialogError}</p>
+            )}
+            <div className="flex justify-end gap-2 pt-1">
+              <PPButton variant="outline" onClick={onClose} disabled={step === "loading"} type="button">
+                Cancel
+              </PPButton>
+              <PPButton variant="primary" type="submit" disabled={!name.trim() || step === "loading"}>
+                {step === "loading" ? "Generating…" : "Generate Key"}
+              </PPButton>
+            </div>
+          </form>
+        )}
+      </Dialog>
     </div>
   );
 }

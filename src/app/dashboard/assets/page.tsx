@@ -579,7 +579,13 @@ export default function AssetsPage() {
         />
       )}
       {newFolderOpen && (
-        <NewFolderModal onClose={() => setNewFolderOpen(false)} onCreate={() => setNewFolderOpen(false)} />
+        <NewFolderModal
+          onClose={() => setNewFolderOpen(false)}
+          onCreate={(name) => {
+            setFolders((prev) => [...prev, name]);
+            setNewFolderOpen(false);
+          }}
+        />
       )}
       {tagsOpen && <TagsPanel onClose={() => setTagsOpen(false)} />}
       {preview && <PreviewModal asset={preview} onClose={() => setPreview(null)} />}
@@ -918,7 +924,7 @@ function UploadModal({
 
 /* ============================== NEW FOLDER MODAL ============================== */
 
-function NewFolderModal({ onClose, onCreate }: { onClose: () => void; onCreate: () => void }) {
+function NewFolderModal({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string) => void }) {
   const [name, setName] = useState("");
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-in fade-in-0" onClick={onClose}>
@@ -944,7 +950,7 @@ function NewFolderModal({ onClose, onCreate }: { onClose: () => void; onCreate: 
             </button>
             <button
               type="button"
-              onClick={onCreate}
+              onClick={() => onCreate(name.trim())}
               disabled={!name.trim()}
               className="inline-flex items-center justify-center h-9 px-4 rounded-md bg-zinc-300 text-white text-sm font-medium disabled:opacity-60"
             >

@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Tag, Plus, Trash2 } from "lucide-react";
+import { Tag, Plus, Trash2, Loader2, Check } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { Dialog } from "@/components/ui/dialog";
 
 interface LabelRow {
   id: string;
@@ -28,6 +29,14 @@ export default function LabelsPage() {
   const [labels, setLabels] = useState<LabelRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newColor, setNewColor] = useState("#6366f1");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const [colorUpdating, setColorUpdating] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,6 +64,53 @@ export default function LabelsPage() {
     };
   }, []);
 
+  async function handleCreate() {
+    setSubmitError(null);
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/labels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: newName, color: newColor }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setSubmitError(body?.error?.message ?? "Failed to create label");
+        return;
+      }
+      setModalOpen(false);
+      setNewName("");
+      setNewColor("#6366f1");
+      const refresh = await fetch("/api/labels", { credentials: "include" });
+      if (refresh.ok) {
+        const data = await refresh.json();
+        setLabels(data.labels ?? []);
+      }
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleColorUpdate(id: string, color: string) {
+    setColorUpdating(id);
+    try {
+      const res = await fetch(`/api/labels/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ color }),
+      });
+      if (res.ok) {
+        setLabels((prev) => prev.map((l) => (l.id === id ? { ...l, color } : l)));
+      }
+    } finally {
+      setColorUpdating(null);
+    }
+  }
+
   async function handleDelete(id: string) {
     if (!confirm("Delete this label?")) return;
     const res = await fetch(`/api/labels/${id}`, { method: "DELETE", credentials: "include" });
@@ -73,7 +129,7 @@ export default function LabelsPage() {
         cta={
           <button
             type="button"
-            onClick={() => alert("New label flow not yet implemented in UI")}
+            onClick={() => { setNewName(""); setNewColor("#6366f1"); setSubmitError(null); setModalOpen(true); }}
             className="inline-flex items-center gap-2 h-10 px-4 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium"
           >
             <Plus className="size-4" />
@@ -109,9 +165,11 @@ export default function LabelsPage() {
                     <button
                       key={c}
                       type="button"
-                      className="size-5 rounded-full hover:ring-2 hover:ring-zinc-300"
+                      onClick={() => handleColorUpdate(l.id, c)}
+                      disabled={colorUpdating === l.id}
+                      className="size-5 rounded-full hover:ring-2 hover:ring-zinc-300 disabled:opacity-50 disabled:cursor-wait"
                       style={{ backgroundColor: c }}
-                      aria-label={`Color ${c}`}
+                      aria-label={`Set color ${c}`}
                     />
                   ))}
                   <button
@@ -128,6 +186,75 @@ export default function LabelsPage() {
           </div>
         )}
       </div>
+
+      <Dialog open={modalOpen} onClose={() => setModalOpen(false)} title="New label" description="Create a label to organize your posts.">
+        <form
+          onSubmit={(e) => { e.preventDefault(); handleCreate(); }}
+          className="flex flex-col gap-4"
+        >
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="label-name" className="text-sm font-medium text-zinc-700">
+              Name
+            </label>
+            <input
+              id="label-name"
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="e.g. Campaign, Urgent, Client X"
+              maxLength={60}
+              required
+              autoFocus
+              className="h-10 px-3 rounded-md border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-zinc-700">Color</span>
+            <div className="flex gap-2 flex-wrap">
+              {COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setNewColor(c)}
+                  className={`size-8 rounded-full transition-all ${
+                    newColor === c ? "ring-2 ring-zinc-900 ring-offset-2 scale-110" : "hover:scale-110"
+                  }`}
+                  style={{ backgroundColor: c }}
+                  aria-label={`Color ${c}`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {submitError && (
+            <p className="text-sm text-red-600">{submitError}</p>
+          )}
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setModalOpen(false)}
+              disabled={submitting}
+              className="h-10 px-4 rounded-md border border-zinc-300 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || !newName.trim()}
+              className="inline-flex items-center gap-2 h-10 px-4 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium disabled:opacity-50"
+            >
+              {submitting ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Check className="size-4" />
+              )}
+              {submitting ? "Creating…" : "Create label"}
+            </button>
+          </div>
+        </form>
+      </Dialog>
     </div>
   );
 }
