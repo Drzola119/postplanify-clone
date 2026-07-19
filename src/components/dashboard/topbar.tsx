@@ -67,11 +67,11 @@ export function DashboardTopbar({ notificationSlot }: DashboardTopbarProps) {
         <button
           type="button"
           onClick={() => openLearn()}
-          className="inline-flex items-center justify-center size-8 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          className="inline-flex items-center justify-center size-8 rounded-md hover:bg-[var(--color-surface-offset)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
           aria-label={t("topbar.learn")}
           title={t("topbar.learn")}
         >
-          <BookOpen className="size-4 text-zinc-500" />
+          <BookOpen className="size-4" />
         </button>
         {notificationSlot ?? <NotificationBell />}
       </div>
