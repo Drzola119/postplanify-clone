@@ -381,7 +381,14 @@ export default function InboxPage() {
       </div>
 
       {/* Tab content */}
-      {tab === "comments" && (
+      {loading ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3 text-zinc-400">
+            <div className="size-8 rounded-full border-2 border-zinc-200 border-t-zinc-900 animate-spin" />
+            <p className="text-sm">Loading inbox…</p>
+          </div>
+        </div>
+      ) : tab === "comments" ? (
         <CommentsTab
           filter={filter}
           setFilter={setFilter}
@@ -395,8 +402,7 @@ export default function InboxPage() {
           onOpenReply={(c) => setReplyTarget(c)}
           onArchive={(c) => handleArchiveComment(c.id)}
         />
-      )}
-      {tab === "messages" && (
+      ) : tab === "messages" ? (
         <MessagesTab
           filter={filter}
           setFilter={setFilter}
@@ -404,8 +410,9 @@ export default function InboxPage() {
           activeId={activeConvo}
           setActiveId={setActiveConvo}
         />
+      ) : (
+        <InsightsTab range={range} setRange={setRange} comments={comments} />
       )}
-      {tab === "insights" && <InsightsTab range={range} setRange={setRange} comments={comments} />}
 
       {/* Reply modal */}
       {replyTarget ? (

@@ -191,6 +191,7 @@ export default function BulkSchedulePage() {
   const [dragging, setDragging] = useState(false);
   const [csvBusy, setCsvBusy] = useState(false);
   const [scheduleBusy, setScheduleBusy] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addMoreInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
@@ -440,23 +441,62 @@ export default function BulkSchedulePage() {
     setItems((prev) => prev.map((item) => ({ ...item, accountIds: Array.from(accounts) })));
   }
 
-  function aiGenerateForAll() {
-    const sample = [
-      "Behind the scenes ✨",
-      "Launch day is here 🚀",
-      "New product, who dis?",
-      "Friday motivation 💪",
-      "Stay tuned for more",
-      "Crafted with care.",
-      "Your daily dose of inspiration.",
-      "Tap the link in bio for more!",
-    ];
-    setItems((prev) =>
-      prev.map((item, idx) => ({
-        ...item,
-        caption: item.caption || sample[idx % sample.length],
-      }))
-    );
+  async function aiGenerateForAll() {
+    const itemsToProcess = items.filter((item) => !item.caption.trim());
+    if (itemsToProcess.length === 0) return;
+
+    setGenerating(true);
+    let success = 0;
+    for (const item of itemsToProcess) {
+      try {
+        let imageUrl: string | undefined;
+        let videoTitle: string | undefined;
+
+        if (item.kind === "image") {
+          const blob = await fetch(item.url).then((r) => r.blob());
+          imageUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        } else {
+          videoTitle = item.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+        }
+
+        const res = await fetch("/api/ai/caption", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tone: "default",
+            includeHashtags: true,
+            useEmojis: true,
+            extra: "",
+            imageUrl,
+            videoTitle,
+          }),
+        });
+
+        const data = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          caption?: string;
+          error?: string;
+        };
+
+        if (res.ok && data.ok && data.caption) {
+          setItems((prev) =>
+            prev.map((it) =>
+              it.id === item.id ? { ...it, caption: data.caption!.trim() } : it
+            )
+          );
+          success++;
+        }
+      } catch {
+        // skip failed items
+      }
+    }
+    setGenerating(false);
+    window.alert(`AI captions generated for ${success} of ${itemsToProcess.length} items.`);
   }
 
   function clearAll() {
@@ -581,10 +621,11 @@ export default function BulkSchedulePage() {
           <button
             type="button"
             onClick={aiGenerateForAll}
-            className="inline-flex items-center gap-2 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white px-4 h-10 text-sm font-medium"
+            disabled={generating}
+            className="inline-flex items-center gap-2 rounded-md bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 h-10 text-sm font-medium"
           >
             <Sparkles className="size-4" />
-            Generate AI Captions for {items.length} Post{items.length === 1 ? "" : "s"}
+            {generating ? "Generating…" : `Generate AI Captions for ${items.length} Post${items.length === 1 ? "" : "s"}`}
           </button>
         </div>
       ) : null}
