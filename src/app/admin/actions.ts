@@ -1708,6 +1708,287 @@ export async function setAiSpendCapAction(planTier: string, dailyCapUsd: number)
 }
 
 // ==========================================
+// FEATURE-AREA OVERSIGHT (Phase 4)
+// ==========================================
+
+export interface AdminWorkspaceRow {
+  workspaceId: string;
+  name: string;
+  ownerUid: string;
+  plan: string;
+  memberCount: number;
+  createdAt: number | null;
+  suspended: boolean;
+}
+
+export async function getWorkspacesOverview(): Promise<AdminWorkspaceRow[]> {
+  await requireAdmin();
+  if (!adminDb) return [];
+  const snap = await adminDb.collection("workspaces").get();
+  const rows = await Promise.all(
+    snap.docs.map(async (d) => {
+      const data = d.data() as any;
+      let memberCount = 0;
+      try {
+        const members = await adminDb!.collection("workspaces").doc(d.id).collection("members").get();
+        memberCount = members.size;
+      } catch {
+        memberCount = 0;
+      }
+      return {
+        workspaceId: d.id,
+        name: data.name ?? "(unnamed)",
+        ownerUid: data.ownerUid ?? "",
+        plan: data.plan ?? "free",
+        memberCount,
+        createdAt: data.createdAt?.toMillis?.() ?? null,
+        suspended: data.status === "suspended",
+      };
+    })
+  );
+  return rows.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+}
+
+export async function getWorkspaceMembersAction(workspaceId: string) {
+  await requireAdmin();
+  if (!adminDb) return [];
+  const snap = await adminDb.collection("workspaces").doc(workspaceId).collection("members").get();
+  return snap.docs.map((d) => ({ uid: d.id, ...(d.data() as any) }));
+}
+
+export async function suspendWorkspaceAction(workspaceId: string) {
+  await requirePermission("users.write");
+  if (!adminDb) throw new Error("DB unavailable");
+  await adminDb.collection("workspaces").doc(workspaceId).update({ status: "suspended" });
+  await logAdminAudit("suspend_workspace", workspaceId, {});
+  revalidatePath("/admin/workspaces");
+}
+
+export async function reactivateWorkspaceAction(workspaceId: string) {
+  await requirePermission("users.write");
+  if (!adminDb) throw new Error("DB unavailable");
+  await adminDb.collection("workspaces").doc(workspaceId).update({ status: "active" });
+  await logAdminAudit("reactivate_workspace", workspaceId, {});
+  revalidatePath("/admin/workspaces");
+}
+
+export async function transferWorkspaceOwnershipAction(workspaceId: string, newOwnerUid: string) {
+  await requirePermission("users.write");
+  if (!adminDb) throw new Error("DB unavailable");
+  await adminDb.collection("workspaces").doc(workspaceId).update({ ownerUid: newOwnerUid });
+  await logAdminAudit("transfer_workspace_ownership", workspaceId, { newOwnerUid });
+  revalidatePath("/admin/workspaces");
+}
+
+// --- Inbox moderation (cross-workspace comments) ---
+
+export interface AdminCommentRow {
+  workspaceId: string;
+  commentId: string;
+  platform: string;
+  authorHandle: string;
+  body: string;
+  sentAt: number | null;
+  sentiment?: string;
+  intent?: string;
+  flagged: boolean;
+  flaggedReason?: string;
+  replied: boolean;
+}
+
+export async function getInboxModeration(onlyFlagged = false): Promise<AdminCommentRow[]> {
+  await requireAdmin();
+  if (!adminDb) return [];
+  const comments: AdminCommentRow[] = [];
+  const cg = await adminDb.collectionGroup("comments").get();
+  for (const doc of cg.docs) {
+    const segments = doc.ref.path.split("/");
+    const workspaceId = segments[1];
+    const data = doc.data() as any;
+    if (onlyFlagged && !data.flagged) continue;
+    comments.push({
+      workspaceId,
+      commentId: doc.id,
+      platform: data.platform ?? "unknown",
+      authorHandle: data.authorHandle ?? "unknown",
+      body: typeof data.body === "string" ? data.body.slice(0, 500) : "",
+      sentAt: data.sentAt?.toMillis?.() ?? null,
+      sentiment: data.sentiment,
+      intent: data.intent,
+      flagged: !!data.flagged,
+      flaggedReason: data.flaggedReason,
+      replied: !!data.replied,
+    });
+  }
+  return comments.sort((a, b) => (b.sentAt ?? 0) - (a.sentAt ?? 0));
+}
+
+export async function flagCommentAction(workspaceId: string, commentId: string, reason: string) {
+  await requirePermission("content.moderate");
+  if (!adminDb) throw new Error("DB unavailable");
+  await adminDb
+    .collection("workspaces").doc(workspaceId).collection("comments").doc(commentId)
+    .update({ flagged: true, flaggedReason: reason });
+  await logAdminAudit("flag_comment", commentId, { workspaceId, reason });
+  revalidatePath("/admin/inbox");
+}
+
+export async function unflagCommentAction(workspaceId: string, commentId: string) {
+  await requirePermission("content.moderate");
+  if (!adminDb) throw new Error("DB unavailable");
+  await adminDb
+    .collection("workspaces").doc(workspaceId).collection("comments").doc(commentId)
+    .update({ flagged: false, flaggedReason: null });
+  await logAdminAudit("unflag_comment", commentId, { workspaceId });
+  revalidatePath("/admin/inbox");
+}
+
+export async function deleteCommentAction(workspaceId: string, commentId: string) {
+  await requirePermission("content.moderate");
+  if (!adminDb) throw new Error("DB unavailable");
+  await adminDb
+    .collection("workspaces").doc(workspaceId).collection("comments").doc(commentId)
+    .delete();
+  await logAdminAudit("delete_comment", commentId, { workspaceId });
+  revalidatePath("/admin/inbox");
+}
+
+// --- Automations oversight (cross-workspace DM campaigns) ---
+
+export interface AdminAutomationRow {
+  workspaceId: string;
+  campaignId: string;
+  name: string;
+  status: string;
+  triggerKind: string;
+  platforms: string[];
+  triggered: number;
+  sent: number;
+  lastTriggeredAt: number | null;
+}
+
+export async function getAutomationsOversight(): Promise<AdminAutomationRow[]> {
+  await requireAdmin();
+  if (!adminDb) return [];
+  const rows: AdminAutomationRow[] = [];
+  const cg = await adminDb.collectionGroup("autoDmCampaigns").get();
+  for (const doc of cg.docs) {
+    const segments = doc.ref.path.split("/");
+    const workspaceId = segments[1];
+    const data = doc.data() as any;
+    rows.push({
+      workspaceId,
+      campaignId: doc.id,
+      name: data.name ?? "(unnamed)",
+      status: data.status ?? "active",
+      triggerKind: data.trigger?.kind ?? "unknown",
+      platforms: data.platforms ?? [],
+      triggered: data.stats?.triggered ?? 0,
+      sent: data.stats?.sent ?? 0,
+      lastTriggeredAt: data.stats?.lastTriggeredAt?.toMillis?.() ?? null,
+    });
+  }
+  return rows.sort((a, b) => (b.lastTriggeredAt ?? 0) - (a.lastTriggeredAt ?? 0));
+}
+
+export async function disableAutomationAction(workspaceId: string, campaignId: string) {
+  await requirePermission("content.moderate");
+  if (!adminDb) throw new Error("DB unavailable");
+  await adminDb
+    .collection("workspaces").doc(workspaceId).collection("autoDmCampaigns").doc(campaignId)
+    .update({ status: "paused" });
+  await logAdminAudit("disable_automation", campaignId, { workspaceId });
+  revalidatePath("/admin/automations");
+}
+
+// --- Media & storage oversight (cross-workspace media assets) ---
+
+export interface AdminMediaRow {
+  workspaceId: string;
+  assetId: string;
+  name: string;
+  mime: string;
+  size: number;
+  folder: string;
+  uploadedBy: string;
+  uploadedAt: number | null;
+  referenced: boolean;
+}
+
+export interface AdminStorageTotals {
+  totalBytes: number;
+  totalAssets: number;
+  byWorkspace: { workspaceId: string; bytes: number; assets: number }[];
+}
+
+export async function getMediaStorageOverview(): Promise<{
+  rows: AdminMediaRow[];
+  totals: AdminStorageTotals;
+}> {
+  await requireAdmin();
+  if (!adminDb) return { rows: [], totals: { totalBytes: 0, totalAssets: 0, byWorkspace: [] } };
+  const rows: AdminMediaRow[] = [];
+  const workspaceAgg: Record<string, { bytes: number; assets: number }> = {};
+  let totalBytes = 0;
+  let totalAssets = 0;
+
+  const cg = await adminDb.collectionGroup("mediaAssets").get();
+  for (const doc of cg.docs) {
+    const segments = doc.ref.path.split("/");
+    const workspaceId = segments[1];
+    const data = doc.data() as any;
+    if (data.deletedAt) continue; // skip soft-deleted
+    const size = typeof data.size === "number" ? data.size : 0;
+    const name = (data.storedPath as string)?.split("/").pop() ?? doc.id;
+    rows.push({
+      workspaceId,
+      assetId: doc.id,
+      name,
+      mime: data.mime ?? "unknown",
+      size,
+      folder: data.folder ?? "assets",
+      uploadedBy: data.uploadedBy ?? "",
+      uploadedAt: data.uploadedAt?.toMillis?.() ?? null,
+      referenced: false,
+    });
+    workspaceAgg[workspaceId] = workspaceAgg[workspaceId] ?? { bytes: 0, assets: 0 };
+    workspaceAgg[workspaceId].bytes += size;
+    workspaceAgg[workspaceId].assets += 1;
+    totalBytes += size;
+    totalAssets += 1;
+  }
+
+  const byWorkspace = Object.entries(workspaceAgg)
+    .map(([workspaceId, v]) => ({ workspaceId, ...v }))
+    .sort((a, b) => b.bytes - a.bytes);
+
+  return { rows, totals: { totalBytes, totalAssets, byWorkspace } };
+}
+
+export async function orphanMediaAssetsAction(workspaceId: string) {
+  await requirePermission("content.moderate");
+  if (!adminDb) throw new Error("DB unavailable");
+  const snap = await adminDb.collection("workspaces").doc(workspaceId).collection("mediaAssets").get();
+  let orphaned = 0;
+  for (const d of snap.docs) {
+    const data = d.data() as any;
+    if (data.deletedAt) continue;
+    const refs = await adminDb!
+      .collection("workspaces").doc(workspaceId).collection("posts")
+      .where("mediaUrls", "array-contains", data.url)
+      .count()
+      .get();
+    if (refs.data().count === 0) {
+      await d.ref.update({ deletedAt: new Date() });
+      orphaned++;
+    }
+  }
+  await logAdminAudit("cleanup_orphan_media", workspaceId, { orphaned });
+  revalidatePath("/admin/media");
+  return { orphaned };
+}
+
+// ==========================================
 // ANALYTICS ACTIONS
 // ==========================================
 export async function getAnalyticsData() {
