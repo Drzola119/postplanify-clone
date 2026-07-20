@@ -8,9 +8,10 @@ export type NotificationType =
   | "queue_empty"
   | "token_expired"
   | "account_connected"
-  | "account_disconnected";
+  | "account_disconnected"
+  | "admin_message";
 
-export type NotificationCategory = "publishing" | "accounts";
+export type NotificationCategory = "publishing" | "accounts" | "system";
 
 export interface CreateNotificationInput {
   type: NotificationType;

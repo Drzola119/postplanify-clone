@@ -36,6 +36,9 @@ import {
   Shield,
   UserCog,
   History,
+  AlertTriangle,
+  BellRing,
+  Settings,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -61,6 +64,9 @@ const BREADCRUMB_MAP: Record<string, string> = {
   "/admin/settings/coupons": "Coupons / Promo",
   "/admin/settings/team": "Admin Team",
   "/admin/settings/security": "Security & Sessions",
+  "/admin/settings/status": "Platform Status",
+  "/admin/alerts": "Active Alerts",
+  "/admin/alerts/rules": "Alert Rules",
   "/admin/logs": "API Logs",
   "/admin/logs/security": "Security Events",
   "/admin/logs/audit": "Admin Activity Log",
@@ -85,6 +91,13 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
       { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
+    ],
+  },
+  {
+    title: "ALERTS",
+    items: [
+      { label: "Active Alerts", href: "/admin/alerts", icon: AlertTriangle },
+      { label: "Alert Rules", href: "/admin/alerts/rules", icon: BellRing },
     ],
   },
   {
@@ -134,6 +147,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Announcements", href: "/admin/settings/announcements", icon: Megaphone },
       { label: "Email Broadcasts", href: "/admin/settings/email", icon: Mail },
       { label: "Coupons / Promo", href: "/admin/settings/coupons", icon: Ticket },
+      { label: "Platform Status", href: "/admin/settings/status", icon: Settings },
       { label: "API Logs", href: "/admin/logs", icon: Terminal },
       { label: "Security Events", href: "/admin/logs/security", icon: ShieldAlert },
       { label: "System Health", href: "/admin/health", icon: Activity },
@@ -169,6 +183,9 @@ export function AdminShell({ children, unreadNotifications = 0, adminProfile }: 
   const auth = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifLoading, setNotifLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const profile = adminProfile ?? { uid: "", email: "edylabels@gmail.com", displayName: "Edy Labels", role: "owner" };
   const avatarLetter = profile.displayName?.[0]?.toUpperCase() ?? "A";
@@ -323,14 +340,61 @@ export function AdminShell({ children, unreadNotifications = 0, adminProfile }: 
               />
             </form>
 
-            {/* Fix #6 — Notification Bell reads live unread count */}
+            {/* Fix #6 — Notification Bell with dropdown panel */}
             <div className="relative">
-              <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full relative">
+              <button
+                onClick={() => {
+                  setNotifDropdownOpen((o) => !o);
+                  if (!notifDropdownOpen && notifications.length === 0) {
+                    setNotifLoading(true);
+                    import("@/app/admin/actions").then((mod) =>
+                      mod.getAdminNotifications().then((n) => { setNotifications(n); setNotifLoading(false); })
+                    );
+                  }
+                }}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full relative"
+              >
                 <Bell className="size-5" />
                 {unreadNotifications > 0 && (
                   <span className="absolute top-1 right-1 size-2 bg-rose-500 rounded-full ring-2 ring-white" />
                 )}
               </button>
+
+              {notifDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-lg z-50 animate-in fade-in slide-in-from-top-2">
+                  <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                    <p className="text-xs font-bold text-gray-900">Notifications</p>
+                    <Link href="/admin/alerts" onClick={() => setNotifDropdownOpen(false)} className="text-[10px] text-teal-600 hover:underline">View all</Link>
+                  </div>
+                  <div className="max-h-72 overflow-y-auto">
+                    {notifLoading ? (
+                      <div className="px-4 py-6 text-center text-xs text-gray-400">Loading...</div>
+                    ) : notifications.length === 0 ? (
+                      <div className="px-4 py-6 text-center text-xs text-gray-400">No notifications</div>
+                    ) : (
+                      notifications.slice(0, 10).map((n: any) => (
+                        <div key={n.id} className={`px-4 py-3 border-b border-gray-50 hover:bg-gray-50 cursor-pointer ${!n.read ? "bg-teal-50/30" : ""}`}>
+                          <div className="flex items-start gap-2">
+                            <div className={`mt-0.5 size-2 rounded-full shrink-0 ${n.severity === "critical" ? "bg-rose-500" : n.severity === "warning" ? "bg-amber-500" : "bg-teal-500"}`} />
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-gray-900 truncate">{n.title}</p>
+                              <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-2">{n.message}</p>
+                              <p className="text-[9px] text-gray-400 mt-1">{n.createdAt ? new Date(n.createdAt).toLocaleString() : ""}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <Link
+                    href="/admin/alerts"
+                    onClick={() => setNotifDropdownOpen(false)}
+                    className="block px-4 py-2.5 text-center text-xs font-semibold text-teal-600 hover:bg-gray-50 rounded-b-xl border-t border-gray-100"
+                  >
+                    View all alerts
+                  </Link>
+                </div>
+              )}
             </div>
 
             {/* Admin Avatar & Dropdown */}

@@ -1,5 +1,5 @@
 import React, { Suspense } from "react";
-import { getDashboardOverviewData } from "./actions";
+import { getDashboardOverviewData, getActiveAlertCounts } from "./actions";
 import { DashboardOverviewClient } from "./_components/DashboardOverviewClient";
 
 function OverviewSkeleton() {
@@ -21,8 +21,11 @@ function OverviewSkeleton() {
 }
 
 async function DashboardOverviewDataFetcher() {
-  const data = await getDashboardOverviewData();
-  return <DashboardOverviewClient data={data} />;
+  const [data, alertCounts] = await Promise.all([
+    getDashboardOverviewData(),
+    getActiveAlertCounts().catch(() => ({ critical: 0, warning: 0, info: 0, total: 0 })),
+  ]);
+  return <DashboardOverviewClient data={data} alertCounts={alertCounts} />;
 }
 
 export default function AdminDashboardPage() {

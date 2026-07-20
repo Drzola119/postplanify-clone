@@ -1266,6 +1266,250 @@ export async function getAdminAuditLog(filters?: {
 }
 
 // ==========================================
+// ALERTS & NOTIFICATIONS (Phase 2)
+// ==========================================
+
+export async function getPlatformAlerts() {
+  await requireAdmin();
+  let alerts: any[] = [];
+  if (adminDb) {
+    try {
+      const snap = await adminDb
+        .collection("platformAlerts")
+        .orderBy("createdAt", "desc")
+        .limit(100)
+        .get();
+      alerts = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    } catch (e) {
+      console.warn("[getPlatformAlerts] Failed:", e);
+    }
+  }
+  if (alerts.length === 0) {
+    alerts = [
+      { id: "alert_1", type: "failure_rate_pct", severity: "warning", title: "High Post Failure Rate", message: "Failure rate 25% exceeds threshold 20%", source: "posts", dedupeKey: "alert_1_0", acknowledged: false, createdAt: new Date().toISOString(), resolvedAt: null },
+      { id: "alert_2", type: "queue_depth", severity: "info", title: "Queue Backlog Cleared", message: "Queue depth is back to normal levels", source: "queue", dedupeKey: "alert_2_0", acknowledged: true, createdAt: new Date(Date.now() - 7200000).toISOString(), resolvedAt: new Date(Date.now() - 3600000).toISOString() },
+    ];
+  }
+  return alerts;
+}
+
+export async function getAlertRules() {
+  await requireAdmin();
+  let rules: any[] = [];
+  if (adminDb) {
+    try {
+      const snap = await adminDb.collection("alertRules").get();
+      rules = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      if (rules.length === 0) {
+        const { seedDefaultAlertRules } = await import("@/lib/alerts/evaluate");
+        await seedDefaultAlertRules();
+        const snap2 = await adminDb.collection("alertRules").get();
+        rules = snap2.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      }
+    } catch (e) {
+      console.warn("[getAlertRules] Failed:", e);
+    }
+  }
+  if (rules.length === 0) {
+    rules = [
+      { id: "rule_1", name: "High Post Failure Rate", metric: "failure_rate_pct", comparator: "gt", threshold: 20, windowMinutes: 60, severity: "warning", enabled: true, notifyChannels: ["in_app"] },
+      { id: "rule_2", name: "Queue Backlog", metric: "queue_depth", comparator: "gt", threshold: 100, windowMinutes: 30, severity: "warning", enabled: true, notifyChannels: ["in_app"] },
+    ];
+  }
+  return rules;
+}
+
+export async function acknowledgeAlertAction(alertId: string) {
+  await requirePermission("platform.settings");
+  if (adminDb) {
+    await adminDb.collection("platformAlerts").doc(alertId).set({
+      acknowledged: true,
+      acknowledgedBy: (await getCurrentUser())?.email || "unknown",
+      acknowledgedAt: new Date().toISOString(),
+    }, { merge: true });
+  }
+  await logAdminAudit("acknowledge_alert", alertId);
+  revalidatePath("/admin/alerts");
+  return { success: true };
+}
+
+export async function resolveAlertAction(alertId: string) {
+  await requirePermission("platform.settings");
+  if (adminDb) {
+    await adminDb.collection("platformAlerts").doc(alertId).set({
+      resolvedAt: new Date().toISOString(),
+      resolvedBy: (await getCurrentUser())?.email || "unknown",
+    }, { merge: true });
+  }
+  await logAdminAudit("resolve_alert", alertId);
+  revalidatePath("/admin/alerts");
+  return { success: true };
+}
+
+export async function muteAlertRuleAction(ruleId: string, hours: number = 24) {
+  await requirePermission("platform.settings");
+  if (adminDb) {
+    await adminDb.collection("alertRules").doc(ruleId).set({
+      enabled: false,
+      mutedUntil: new Date(Date.now() + hours * 3600000).toISOString(),
+    }, { merge: true });
+  }
+  await logAdminAudit("mute_alert_rule", ruleId, { hours });
+  revalidatePath("/admin/alerts/rules");
+  return { success: true };
+}
+
+export async function toggleAlertRuleAction(ruleId: string, enabled: boolean) {
+  await requirePermission("platform.settings");
+  if (adminDb) {
+    await adminDb.collection("alertRules").doc(ruleId).set({ enabled, mutedUntil: null }, { merge: true });
+  }
+  await logAdminAudit("toggle_alert_rule", ruleId, { enabled });
+  revalidatePath("/admin/alerts/rules");
+  return { success: true };
+}
+
+export async function createAlertRuleAction(data: {
+  name: string;
+  metric: string;
+  comparator: "gt" | "gte" | "lt" | "eq";
+  threshold: number;
+  windowMinutes: number;
+  severity: "info" | "warning" | "critical";
+}) {
+  await requirePermission("platform.settings");
+  if (adminDb) {
+    await adminDb.collection("alertRules").add({
+      ...data,
+      enabled: true,
+      notifyChannels: ["in_app"],
+      createdAt: new Date().toISOString(),
+    });
+  }
+  await logAdminAudit("create_alert_rule", data.name, data);
+  revalidatePath("/admin/alerts/rules");
+  return { success: true };
+}
+
+export async function getActiveAlertCounts() {
+  await requireAdmin();
+  let critical = 0;
+  let warning = 0;
+  let info = 0;
+  if (adminDb) {
+    try {
+      const snap = await adminDb.collection("platformAlerts")
+        .where("resolvedAt", "==", null)
+        .get();
+      snap.docs.forEach((doc) => {
+        const sev = doc.data().severity;
+        if (sev === "critical") critical++;
+        else if (sev === "warning") warning++;
+        else info++;
+      });
+    } catch {}
+  }
+  return { critical, warning, info, total: critical + warning + info };
+}
+
+/** Send an admin notification to one or more users */
+export async function sendAdminNotificationAction(data: {
+  target: "user" | "workspace" | "plan_segment" | "all";
+  targetId?: string;
+  planId?: string;
+  title: string;
+  message: string;
+  actionUrl?: string;
+}) {
+  await requirePermission("platform.settings");
+  let uids: string[] = [];
+  if (adminDb) {
+    try {
+      if (data.target === "user" && data.targetId) {
+        uids = [data.targetId];
+      } else if (data.target === "all") {
+        const snap = await adminDb.collection("users").get();
+        uids = snap.docs.map((doc) => doc.id);
+      } else if (data.target === "plan_segment" && data.planId) {
+        const snap = await adminDb.collection("users").where("plan", "==", data.planId).get();
+        uids = snap.docs.map((doc) => doc.id);
+      }
+    } catch (e) {
+      console.warn("[sendAdminNotification] Failed to fetch targets:", e);
+    }
+  }
+  for (const uid of uids) {
+    try {
+      await createNotification(uid, {
+        type: "admin_message",
+        category: "system",
+        title: data.title,
+        message: data.message,
+        actionUrl: data.actionUrl,
+        metadata: { sentBy: (await getCurrentUser())?.email || "admin" },
+      });
+    } catch (e) {
+      console.warn("[sendAdminNotification] Failed to notify user:", uid, e);
+    }
+  }
+  await logAdminAudit("send_admin_notification", data.title, {
+    target: data.target, targetId: data.targetId, recipientCount: uids.length,
+  });
+  revalidatePath("/admin/alerts");
+  return { success: true, recipientCount: uids.length };
+}
+
+/** Platform status (for the status banner) */
+export async function getPlatformStatus() {
+  await requireAdmin();
+  if (adminDb) {
+    try {
+      const snap = await adminDb.collection("platformStatus").doc("current").get();
+      if (snap.exists) return snap.data();
+    } catch {}
+  }
+  return { state: "operational" as const, message: "All systems operational." };
+}
+
+export async function setPlatformStatusAction(state: "operational" | "degraded" | "maintenance", message: string) {
+  await requirePermission("platform.settings");
+  if (adminDb) {
+    await adminDb.collection("platformStatus").doc("current").set({
+      state,
+      message,
+      updatedAt: new Date().toISOString(),
+      updatedBy: (await getCurrentUser())?.email || "unknown",
+    });
+  }
+  await logAdminAudit("set_platform_status", "current", { state, message });
+  revalidatePath("/admin/settings/status");
+  return { success: true };
+}
+
+export async function getAdminNotifications() {
+  await requireAdmin();
+  let notifs: any[] = [];
+  if (adminDb) {
+    try {
+      const snap = await adminDb.collection("adminNotifications")
+        .orderBy("createdAt", "desc")
+        .limit(20)
+        .get();
+      notifs = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    } catch {}
+  }
+  return notifs;
+}
+
+export async function markAdminNotificationReadAction(notifId: string) {
+  await requireAdmin();
+  if (adminDb) {
+    await adminDb.collection("adminNotifications").doc(notifId).set({ read: true }, { merge: true });
+  }
+  return { success: true };
+}
+
+// ==========================================
 // ANALYTICS ACTIONS
 // ==========================================
 export async function getAnalyticsData() {

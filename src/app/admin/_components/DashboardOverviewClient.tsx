@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import {
   Users,
   CreditCard,
@@ -53,7 +54,7 @@ interface DashboardData {
   recentStripeEvents: { id: string; type: string; created: string }[];
 }
 
-export function DashboardOverviewClient({ data }: { data: DashboardData }) {
+export function DashboardOverviewClient({ data, alertCounts }: { data: DashboardData; alertCounts?: { critical: number; warning: number; info: number; total: number } }) {
   const { stats, signupsChart, mrrChart, postsChart, planDistribution, recentSignups, recentStripeEvents } = data;
 
   const kpis = [
@@ -139,6 +140,36 @@ export function DashboardOverviewClient({ data }: { data: DashboardData }) {
           </span>
         </div>
       </div>
+
+      {/* Active Alerts Bar */}
+      {alertCounts && alertCounts.total > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1">
+              {alertCounts.critical > 0 && (
+                <span className="px-2.5 py-1 text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 rounded-full">
+                  {alertCounts.critical} Critical
+                </span>
+              )}
+              {alertCounts.warning > 0 && (
+                <span className="px-2.5 py-1 text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded-full">
+                  {alertCounts.warning} Warning
+                </span>
+              )}
+              {alertCounts.info > 0 && (
+                <span className="px-2.5 py-1 text-[11px] font-bold bg-teal-50 text-teal-700 border border-teal-200 rounded-full">
+                  {alertCounts.info} Info
+                </span>
+              )}
+            </div>
+            <span className="text-xs text-gray-600">{alertCounts.total} active alert{alertCounts.total !== 1 ? "s" : ""} require attention</span>
+          </div>
+          <Link href="/admin/alerts" className="flex items-center gap-1.5 px-4 py-2 bg-rose-50 text-rose-700 text-xs font-bold border border-rose-200 rounded-xl hover:bg-rose-100">
+            <AlertTriangle className="size-3.5" />
+            View Alerts
+          </Link>
+        </div>
+      )}
 
       {/* KPI Cards (4-column grid) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
