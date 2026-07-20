@@ -172,6 +172,12 @@ service cloud.firestore {
     match /platformStatus/{docId} {
       allow read, write: if false;
     }
+    match /stripeDisputes/{docId} {
+      allow read, write: if false;
+    }
+    match /billingAdjustments/{docId} {
+      allow read, write: if false;
+    }
     match /supportTickets/{docId} {
       allow read, write: if false;
       match /messages/{messageId} {

@@ -530,6 +530,99 @@ export async function grantFreeMonthAction(subId: string) {
 }
 
 // ==========================================
+// BILLING DEPTH (Phase 5)
+// ==========================================
+
+export async function getInvoicesData(): Promise<any[]> {
+  await requireAdmin();
+  try {
+    const stripe = getStripe();
+    const list = await stripe.invoices.list({ limit: 100, expand: ["data.customer"] });
+    return list.data.map((inv) => ({
+      id: inv.id,
+      number: inv.number,
+      customer: (inv.customer as any)?.email ?? (inv.customer as string),
+      customerName: (inv.customer as any)?.name ?? "",
+      amount: (inv.total ?? 0) / 100,
+      currency: inv.currency,
+      status: inv.status,
+      created: inv.created ? new Date(inv.created * 1000).toISOString() : null,
+      hostedUrl: inv.hosted_invoice_url ?? null,
+      pdfUrl: inv.invoice_pdf ?? null,
+      subscriptionId: (inv as any).subscription as string | null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function issueRefundAction(input: {
+  chargeId?: string;
+  paymentIntentId?: string;
+  amountUsd?: number;
+  reason: "duplicate" | "fraudulent" | "requested_by_customer";
+}): Promise<{ success: boolean; refundId?: string }> {
+  await requirePermission("billing.write");
+  let refundId: string | undefined;
+  try {
+    const stripe = getStripe();
+    const refund = await stripe.refunds.create({
+      charge: input.chargeId,
+      payment_intent: input.paymentIntentId,
+      amount: input.amountUsd ? Math.round(input.amountUsd * 100) : undefined,
+      reason: input.reason,
+    });
+    refundId = refund.id;
+  } catch (err: any) {
+    throw new Error(`Refund failed: ${err?.message ?? "unknown error"}`);
+  }
+  await logAdminAudit("issue_refund", refundId ?? "unknown", {
+    chargeId: input.chargeId,
+    paymentIntentId: input.paymentIntentId,
+    amountUsd: input.amountUsd,
+    reason: input.reason,
+  });
+  revalidatePath("/admin/subscriptions/refunds");
+  revalidatePath("/admin/subscriptions/invoices");
+  return { success: true, refundId };
+}
+
+export async function getDisputesData(): Promise<any[]> {
+  await requireAdmin();
+  if (!adminDb) return [];
+  const snap = await adminDb.collection("stripeDisputes").orderBy("createdAt", "desc").get();
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+}
+
+export async function applyBillingAdjustmentAction(input: {
+  workspaceId: string;
+  type: "credit" | "debit";
+  amountUsd: number;
+  reason: string;
+}): Promise<{ success: boolean }> {
+  await requirePermission("billing.write");
+  if (!input.reason.trim()) throw new Error("A reason is required for manual billing adjustments.");
+  // Stripe does not support arbitrary balance credits; this is an internal ledger entry.
+  if (adminDb) {
+    await adminDb.collection("billingAdjustments").add({
+      workspaceId: input.workspaceId,
+      type: input.type,
+      amountUsd: input.amountUsd,
+      reason: input.reason,
+      appliedBy: "admin",
+      createdAt: new Date(),
+    });
+  }
+  await logAdminAudit("billing_adjustment", input.workspaceId, {
+    type: input.type,
+    amountUsd: input.amountUsd,
+    reason: input.reason,
+  });
+  revalidatePath("/admin/subscriptions");
+  return { success: true };
+}
+
+// ==========================================
 // POSTS ACTIONS
 // ==========================================
 export async function getPostsData() {

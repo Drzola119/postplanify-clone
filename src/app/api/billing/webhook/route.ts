@@ -58,5 +58,33 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Phase 5 — surface Stripe disputes for admin review
+  if (event.type.startsWith("charge.dispute.")) {
+    const dispute = event.data.object as any;
+    if (adminDb) {
+      await adminDb
+        .collection("stripeDisputes")
+        .doc(dispute.id)
+        .set(
+          {
+            disputeId: dispute.id,
+            chargeId: dispute.charge,
+            paymentIntentId: dispute.payment_intent,
+            amount: (dispute.amount ?? 0) / 100,
+            currency: dispute.currency,
+            reason: dispute.reason,
+            status: dispute.status,
+            evidenceDueBy: dispute.evidence_details?.due_by
+              ? new Date(dispute.evidence_details.due_by * 1000).toISOString()
+              : null,
+            stripeDashboardUrl: `https://dashboard.stripe.com/disputes/${dispute.id}`,
+            updatedAt: new Date(),
+          },
+          { merge: true }
+        );
+      log.info(`dispute ${dispute.id} (${event.type}) recorded`);
+    }
+  }
+
   return NextResponse.json({ received: true });
 }
