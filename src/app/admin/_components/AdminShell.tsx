@@ -35,6 +35,7 @@ import {
   Sparkles,
   Shield,
   UserCog,
+  History,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -62,6 +63,7 @@ const BREADCRUMB_MAP: Record<string, string> = {
   "/admin/settings/security": "Security & Sessions",
   "/admin/logs": "API Logs",
   "/admin/logs/security": "Security Events",
+  "/admin/logs/audit": "Admin Activity Log",
 
   "/admin/health": "System Health",
 };
@@ -98,6 +100,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Admin Team", href: "/admin/settings/team", icon: UserCog },
       { label: "Security & Sessions", href: "/admin/settings/security", icon: Shield },
+      { label: "Admin Activity Log", href: "/admin/logs/audit", icon: History },
     ],
   },
   {
