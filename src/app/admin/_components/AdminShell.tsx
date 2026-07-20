@@ -18,6 +18,7 @@ import {
   LayoutTemplate,
   Scale,
   Languages,
+  LifeBuoy,
   Clock,
   AlertOctagon,
   Share2,
@@ -89,6 +90,7 @@ const BREADCRUMB_MAP: Record<string, string> = {
   "/admin/content/legal": "Legal Documents",
   "/admin/content/translations": "Translations",
   "/admin/compliance/data-requests": "Data Requests",
+  "/admin/support": "Tickets",
   "/admin/inbox": "Inbox Moderation",
   "/admin/automations": "Automations",
   "/admin/media": "Media & Storage",
@@ -153,6 +155,12 @@ const NAV_SECTIONS: NavSection[] = [
     title: "COMPLIANCE",
     items: [
       { label: "Data Requests", href: "/admin/compliance/data-requests", icon: ShieldCheck },
+    ],
+  },
+  {
+    title: "SUPPORT",
+    items: [
+      { label: "Tickets", href: "/admin/support", icon: LifeBuoy },
     ],
   },
   {

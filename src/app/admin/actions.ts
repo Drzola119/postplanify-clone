@@ -2312,3 +2312,90 @@ export async function fulfillDeleteAction(requestId: string, confirmText: string
   await logAdminAudit("data_deletion_fulfilled", uid, { requestId });
   revalidatePath("/admin/compliance/data-requests");
 }
+
+// ==========================================
+// SUPPORT / TICKETING (Phase 9)
+// ==========================================
+
+export interface TicketRow {
+  id: string;
+  uid: string;
+  subject: string;
+  status: "open" | "pending" | "closed";
+  priority: "low" | "normal" | "high" | "urgent";
+  createdAt: number | null;
+  updatedAt: number | null;
+  messageCount: number;
+}
+
+export async function getSupportTickets(): Promise<TicketRow[]> {
+  await requireAdmin();
+  if (!adminDb) return [];
+  const snap = await adminDb.collection("supportTickets").orderBy("updatedAt", "desc").get();
+  return snap.docs.map((d) => {
+    const data = d.data() as any;
+    return {
+      id: d.id,
+      uid: data.uid ?? "",
+      subject: data.subject ?? "(no subject)",
+      status: data.status ?? "open",
+      priority: data.priority ?? "normal",
+      createdAt: data.createdAt?.toMillis?.() ?? null,
+      updatedAt: data.updatedAt?.toMillis?.() ?? null,
+      messageCount: data.messageCount ?? 0,
+    };
+  });
+}
+
+export async function getSupportTicketDetail(ticketId: string) {
+  await requireAdmin();
+  if (!adminDb) return null;
+  const doc = await adminDb.collection("supportTickets").doc(ticketId).get();
+  if (!doc.exists) return null;
+  const data = doc.data() as any;
+  const messagesSnap = await adminDb
+    .collection("supportTickets").doc(ticketId).collection("messages")
+    .orderBy("createdAt", "asc").get();
+  return {
+    id: doc.id,
+    uid: data.uid ?? "",
+    subject: data.subject ?? "",
+    status: data.status ?? "open",
+    priority: data.priority ?? "normal",
+    createdAt: data.createdAt?.toMillis?.() ?? null,
+    updatedAt: data.updatedAt?.toMillis?.() ?? null,
+    messages: messagesSnap.docs.map((m) => {
+      const md = m.data() as any;
+      return {
+        id: m.id,
+        author: md.author ?? "user",
+        body: md.body ?? "",
+        createdAt: md.createdAt?.toMillis?.() ?? null,
+      };
+    }),
+  };
+}
+
+export async function replyToTicketAction(ticketId: string, body: string) {
+  await requirePermission("content.moderate");
+  if (!adminDb) throw new Error("DB unavailable");
+  await adminDb
+    .collection("supportTickets").doc(ticketId).collection("messages")
+    .add({ author: "admin", body, createdAt: new Date() });
+  await adminDb.collection("supportTickets").doc(ticketId).update({
+    updatedAt: new Date(),
+    messageCount: (await adminDb.collection("supportTickets").doc(ticketId).collection("messages").count().get()).data().count,
+  });
+  await logAdminAudit("ticket_reply", ticketId, {});
+  revalidatePath(`/admin/support/${ticketId}`);
+  revalidatePath("/admin/support");
+}
+
+export async function setTicketStatusAction(ticketId: string, status: "open" | "pending" | "closed") {
+  await requirePermission("content.moderate");
+  if (!adminDb) throw new Error("DB unavailable");
+  await adminDb.collection("supportTickets").doc(ticketId).update({ status, updatedAt: new Date() });
+  await logAdminAudit("ticket_status_change", ticketId, { status });
+  revalidatePath(`/admin/support/${ticketId}`);
+  revalidatePath("/admin/support");
+}

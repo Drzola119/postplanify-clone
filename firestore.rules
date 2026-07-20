@@ -187,6 +187,9 @@ service cloud.firestore {
         allow read, write: if false;
       }
     }
+    match /supportTickets/{docId} {
+      allow read, write: if false;
+    }
     match /dataRequests/{docId} {
       allow read, write: if false;
       match /messages/{messageId} {
