@@ -7,6 +7,7 @@ import { getStripe } from "@/lib/stripe";
 import { revalidatePath } from "next/cache";
 import { createNotification } from "@/lib/notifications";
 import { evaluateAlertRules } from "@/lib/alerts/evaluate";
+import type Stripe from "stripe";
 
 /**
  * Verify caller is admin and auto-seed the owner doc if missing.
@@ -63,10 +64,99 @@ async function requirePermission(permission: string) {
   return user;
 }
 
+// Type helpers for Firestore document snapshots
+type FirestoreData = Record<string, unknown>;
+
+interface RecentSignupRow {
+  id: string; email: string; displayName: string; plan: string; createdAt: string; photoURL: string | null;
+}
+interface StripeEventRow {
+  id: string; type: string; created: string;
+}
+interface UserRow {
+  id: string; uid: string; name: string; email: string; plan: string; status: string;
+  connectedAccounts: number; joined: string; lastActive: string; photoURL: string | null;
+  ipAddress: string; device: string;
+}
+interface SubscriptionRow {
+  id: string; user: string; email: string; plan: string; amount: string;
+  billingCycle: string; status: string; started: string; nextRenewal: string;
+}
+interface InvoiceRow {
+  id: string; number: string | null; customer: string; customerName: string;
+  amount: number; currency: string; status: string | null; created: string | null;
+  hostedUrl: string | null; pdfUrl: string | null; subscriptionId: string | null;
+}
+interface DisputeRow extends Record<string, unknown> {
+  id: string;
+}
+interface PostRow {
+  id: string; userEmail: string; platforms: string[]; status: string;
+  scheduledAt: string; publishedAt: string | null; caption: string; errorMessage: string | null;
+}
+interface AffiliateRow {
+  id: string; name: string; email: string; referralCode: string; totalReferrals: number;
+  activeSubs: number; earned: string; paidOut: string; pending: string; status: string;
+}
+interface FeatureFlagRow {
+  id: string; name: string; description: string; enabled: boolean; rollout: number;
+}
+interface AnnouncementRow {
+  id: string; title: string; message: string; type: string; target: string;
+  startDate?: string; endDate?: string;
+}
+interface CouponRow {
+  id: string; name: string; percentOff: number | null; amountOff: number | null;
+  duration: string; timesRedeemed: number; valid: boolean;
+}
+interface ApiLogRow {
+  id: string; timestamp: string; method: string; endpoint: string;
+  status: number; user: string; duration: number; ip: string;
+}
+interface SecurityEventRow {
+  id: string; timestamp: string; type: string; user: string; details: string; severity: string;
+}
+interface AdminUserRow {
+  uid: string; email: string; displayName: string; role: string;
+  status: string; createdAt: string; invitedBy: string; permissions: string[];
+}
+interface SocialAccountRow {
+  id: string; workspaceId: string; platform: string; accountName: string;
+  connectedAt: string | null; tokenExpiresAt: string | null; status: string;
+  lastError: string | null; lastPublishResult: string | null; userEmail: string;
+}
+interface WebhookRow {
+  id: string; workspaceId: string; url: string; events: string[];
+  status: string; createdAt: string | null; lastTriggeredAt: string | null; consecutiveFailures: number;
+}
+interface ApiKeyRow {
+  id: string; workspaceId: string; name: string; masked: string;
+  createdAt: string | null; lastUsedAt: string | null; status: string;
+}
+interface WorkspaceUsageRow {
+  workspaceId: string; name: string; lifetime: number;
+  thisMonth: number; lastCostUsd: number; month: string;
+}
+interface AlertRow {
+  id: string; type: string; severity: string; title: string; message: string;
+  source: string; dedupeKey: string; acknowledged: boolean;
+  createdAt: string; resolvedAt: string | null;
+}
+interface AlertRuleRow {
+  id: string; name: string; metric: string; comparator: string; threshold: number;
+  windowMinutes: number; severity: string; enabled: boolean; notifyChannels: string[];
+}
+interface NotificationRow {
+  id: string;
+}
+interface AuditLogRow {
+  id: string; adminEmail: string; action: string; targetId: string;
+  timestamp: string; metadata: Record<string, unknown>;
+}
 /**
  * Log admin action to `adminAuditLog` collection
  */
-export async function logAdminAudit(action: string, targetId: string, metadata: Record<string, any> = {}) {
+export async function logAdminAudit(action: string, targetId: string, metadata: Record<string, unknown> = {}) {
   const admin = await requireAdmin();
   if (!adminDb) return;
   try {
@@ -95,8 +185,8 @@ export async function getDashboardOverviewData() {
   let postsScheduled = 0;
   let failedPostsLast24h = 0;
   let activeAffiliates = 0;
-  let recentSignups: any[] = [];
-  let recentStripeEvents: any[] = [];
+  let recentSignups: RecentSignupRow[] = [];
+  let recentStripeEvents: StripeEventRow[] = [];
   let mrrCents = 0;
 
   // Fix #4 — real Firestore date-range queries for signups and posts charts
@@ -306,7 +396,7 @@ export async function getUnreadAdminNotificationsCount(): Promise<number> {
 // ==========================================
 export async function getUsersData() {
   await requireAdmin();
-  let usersList: any[] = [];
+  let usersList: UserRow[] = [];
 
   if (adminDb) {
     try {
@@ -462,7 +552,7 @@ export async function sendPasswordResetAction(email: string) {
 // ==========================================
 export async function getSubscriptionsData() {
   await requireAdmin();
-  let subs: any[] = [];
+  let subs: SubscriptionRow[] = [];
 
   try {
     const stripe = getStripe();
@@ -471,17 +561,21 @@ export async function getSubscriptionsData() {
       limit: 50,
       expand: ["data.customer"],
     });
-    subs = list.data.map((s) => ({
-      id: s.id,
-      user: (s.customer as any)?.name || (s.customer as any)?.email || (s.customer as string),
-      email: (s.customer as any)?.email ?? "user@stripe.com",
-      plan: s.items.data[0]?.price.nickname || "Pro Plan",
-      amount: `$${((s.items.data[0]?.price.unit_amount || 0) / 100).toFixed(2)}`,
-      billingCycle: s.items.data[0]?.price.recurring?.interval || "month",
-      status: s.status,
-      started: new Date(s.created * 1000).toISOString(),
-      nextRenewal: new Date(((s as any).current_period_end || s.created + 30 * 86400) * 1000).toISOString(),
-    }));
+    subs = list.data.map((s) => {
+      const customer = s.customer as Stripe.Customer | null;
+      const sub = s as Stripe.Subscription;
+      return {
+        id: s.id,
+        user: customer?.name || customer?.email || (s.customer as string),
+        email: customer?.email ?? "user@stripe.com",
+        plan: s.items.data[0]?.price.nickname || "Pro Plan",
+        amount: `$${((s.items.data[0]?.price.unit_amount || 0) / 100).toFixed(2)}`,
+        billingCycle: s.items.data[0]?.price.recurring?.interval || "month",
+        status: s.status,
+        started: new Date(s.created * 1000).toISOString(),
+        nextRenewal: new Date((sub.current_period_end || s.created + 30 * 86400) * 1000).toISOString(),
+      };
+    });
   } catch {
     subs = [
       {
@@ -534,24 +628,28 @@ export async function grantFreeMonthAction(subId: string) {
 // BILLING DEPTH (Phase 5)
 // ==========================================
 
-export async function getInvoicesData(): Promise<any[]> {
+export async function getInvoicesData(): Promise<InvoiceRow[]> {
   await requireAdmin();
   try {
     const stripe = getStripe();
     const list = await stripe.invoices.list({ limit: 100, expand: ["data.customer"] });
-    return list.data.map((inv) => ({
-      id: inv.id,
-      number: inv.number,
-      customer: (inv.customer as any)?.email ?? (inv.customer as string),
-      customerName: (inv.customer as any)?.name ?? "",
-      amount: (inv.total ?? 0) / 100,
-      currency: inv.currency,
-      status: inv.status,
-      created: inv.created ? new Date(inv.created * 1000).toISOString() : null,
-      hostedUrl: inv.hosted_invoice_url ?? null,
-      pdfUrl: inv.invoice_pdf ?? null,
-      subscriptionId: (inv as any).subscription as string | null,
-    }));
+    return list.data.map((inv) => {
+      const customer = inv.customer as Stripe.Customer | null;
+      const invoice = inv as Stripe.Invoice;
+      return {
+        id: inv.id,
+        number: inv.number,
+        customer: customer?.email ?? (inv.customer as string),
+        customerName: customer?.name ?? "",
+        amount: (inv.total ?? 0) / 100,
+        currency: inv.currency,
+        status: inv.status,
+        created: inv.created ? new Date(inv.created * 1000).toISOString() : null,
+        hostedUrl: inv.hosted_invoice_url ?? null,
+        pdfUrl: inv.invoice_pdf ?? null,
+        subscriptionId: invoice.subscription as string | null,
+      };
+    });
   } catch {
     return [];
   }
@@ -574,8 +672,8 @@ export async function issueRefundAction(input: {
       reason: input.reason,
     });
     refundId = refund.id;
-  } catch (err: any) {
-    throw new Error(`Refund failed: ${err?.message ?? "unknown error"}`);
+  } catch (err: unknown) {
+    throw new Error(`Refund failed: ${err instanceof Error ? err.message : "unknown error"}`);
   }
   await logAdminAudit("issue_refund", refundId ?? "unknown", {
     chargeId: input.chargeId,
@@ -588,11 +686,11 @@ export async function issueRefundAction(input: {
   return { success: true, refundId };
 }
 
-export async function getDisputesData(): Promise<any[]> {
+export async function getDisputesData(): Promise<DisputeRow[]> {
   await requireAdmin();
   if (!adminDb) return [];
   const snap = await adminDb.collection("stripeDisputes").orderBy("createdAt", "desc").get();
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as FirestoreData) }));
 }
 
 export async function applyBillingAdjustmentAction(input: {
@@ -628,7 +726,7 @@ export async function applyBillingAdjustmentAction(input: {
 // ==========================================
 export async function getPostsData() {
   await requireAdmin();
-  let posts: any[] = [];
+  let posts: PostRow[] = [];
 
   if (adminDb) {
     try {
@@ -741,7 +839,7 @@ export async function deletePostAction(postId: string) {
 // ==========================================
 export async function getAffiliatesData() {
   await requireAdmin();
-  let affiliates: any[] = [];
+  let affiliates: AffiliateRow[] = [];
 
   if (adminDb) {
     try {
@@ -820,7 +918,7 @@ export async function suspendAffiliateAction(affiliateId: string) {
 // ==========================================
 export async function getFeatureFlags() {
   await requireAdmin();
-  let flags: any[] = [];
+  let flags: FeatureFlagRow[] = [];
   if (adminDb) {
     try {
       const snap = await adminDb.collection("featureFlags").get();
@@ -865,7 +963,7 @@ export async function createFeatureFlag(data: { id: string; name: string; descri
 
 export async function getAnnouncements() {
   await requireAdmin();
-  let announcements: any[] = [];
+  let announcements: AnnouncementRow[] = [];
   if (adminDb) {
     try {
       const snap = await adminDb.collection("announcements").get();
@@ -888,7 +986,7 @@ export async function getAnnouncements() {
   return announcements;
 }
 
-export async function createAnnouncement(data: any) {
+export async function createAnnouncement(data: { title: string; message: string; type: string; target: string; startDate?: string; endDate?: string; [key: string]: unknown }) {
   await requireAdmin();
   if (adminDb) {
     await adminDb.collection("announcements").add({
@@ -974,7 +1072,7 @@ export async function sendEmailBroadcast(data: { subject: string; body: string; 
 
 export async function getCoupons() {
   await requireAdmin();
-  let coupons: any[] = [];
+  let coupons: CouponRow[] = [];
   try {
     const stripe = getStripe();
     const list = await stripe.coupons.list({ limit: 20 });
@@ -1021,7 +1119,7 @@ export async function createCoupon(data: { code: string; percentOff?: number; am
 // Fix #11 — real Firestore reads for API logs
 export async function getApiLogs() {
   await requireAdmin();
-  let logs: any[] = [];
+  let logs: ApiLogRow[] = [];
 
   if (adminDb) {
     try {
@@ -1030,7 +1128,7 @@ export async function getApiLogs() {
         .orderBy("timestamp", "desc")
         .limit(100)
         .get();
-      logs = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      logs = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() } as ApiLogRow));
     } catch (e) {
       console.warn("[getApiLogs] Firestore read failed:", e);
     }
@@ -1050,7 +1148,7 @@ export async function getApiLogs() {
 // Fix #11 — real Firestore reads for security events
 export async function getSecurityEvents() {
   await requireAdmin();
-  let events: any[] = [];
+  let events: SecurityEventRow[] = [];
 
   if (adminDb) {
     try {
@@ -1059,7 +1157,7 @@ export async function getSecurityEvents() {
         .orderBy("timestamp", "desc")
         .limit(100)
         .get();
-      events = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      events = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() } as SecurityEventRow));
     } catch (e) {
       console.warn("[getSecurityEvents] Firestore read failed:", e);
     }
@@ -1347,14 +1445,14 @@ export async function getCurrentAdminProfile() {
 
 export async function getAdminUsers() {
   await requirePermission("admin.manage");
-  let list: any[] = [];
+  let list: AdminUserRow[] = [];
   if (adminDb) {
     try {
       const snap = await adminDb.collection("adminUsers").get();
       list = snap.docs.map((doc) => ({
         uid: doc.id,
         ...doc.data(),
-      }));
+      } as AdminUserRow));
     } catch (e) {
       console.warn("[getAdminUsers] Failed to read:", e);
     }
@@ -1467,7 +1565,7 @@ export async function getAdminAuditLog(filters?: {
   limit?: number;
 }) {
   await requireAdmin();
-  let logs: any[] = [];
+  let logs: AuditLogRow[] = [];
   const maxLimit = filters?.limit ?? 100;
 
   if (adminDb) {
@@ -1500,7 +1598,7 @@ export async function getAdminAuditLog(filters?: {
       logs = snap.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
-      }));
+      } as AuditLogRow));
     } catch (e) {
       console.warn("[getAdminAuditLog] Firestore read failed:", e);
     }
@@ -1544,7 +1642,7 @@ export async function getAdminAuditLog(filters?: {
 
 export async function getPlatformAlerts() {
   await requireAdmin();
-  let alerts: any[] = [];
+  let alerts: AlertRow[] = [];
   if (adminDb) {
     try {
       const snap = await adminDb
@@ -1552,7 +1650,7 @@ export async function getPlatformAlerts() {
         .orderBy("createdAt", "desc")
         .limit(100)
         .get();
-      alerts = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      alerts = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() } as AlertRow));
     } catch (e) {
       console.warn("[getPlatformAlerts] Failed:", e);
     }
@@ -1568,16 +1666,16 @@ export async function getPlatformAlerts() {
 
 export async function getAlertRules() {
   await requireAdmin();
-  let rules: any[] = [];
+  let rules: AlertRuleRow[] = [];
   if (adminDb) {
     try {
       const snap = await adminDb.collection("alertRules").get();
-      rules = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      rules = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() } as AlertRuleRow));
       if (rules.length === 0) {
         const { seedDefaultAlertRules } = await import("@/lib/alerts/evaluate");
         await seedDefaultAlertRules();
         const snap2 = await adminDb.collection("alertRules").get();
-        rules = snap2.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        rules = snap2.docs.map((doc) => ({ id: doc.id, ...doc.data() } as AlertRuleRow));
       }
     } catch (e) {
       console.warn("[getAlertRules] Failed:", e);
@@ -1769,14 +1867,14 @@ export async function setPlatformStatusAction(state: "operational" | "degraded" 
 
 export async function getAdminNotifications() {
   await requireAdmin();
-  let notifs: any[] = [];
+  let notifs: NotificationRow[] = [];
   if (adminDb) {
     try {
       const snap = await adminDb.collection("adminNotifications")
         .orderBy("createdAt", "desc")
         .limit(20)
         .get();
-      notifs = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      notifs = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() } as NotificationRow));
     } catch {}
   }
   return notifs;
@@ -1796,7 +1894,7 @@ export async function markAdminNotificationReadAction(notifId: string) {
 
 export async function getIntegrationsSocialAccounts() {
   await requireAdmin();
-  let accounts: any[] = [];
+  let accounts: SocialAccountRow[] = [];
   if (adminDb) {
     try {
       const snap = await adminDb.collectionGroup("socialAccounts").get();
@@ -1847,7 +1945,7 @@ export async function disconnectSocialAccountAction(accountId: string, workspace
 
 export async function getIntegrationsWebhooks() {
   await requireAdmin();
-  let webhooks: any[] = [];
+  let webhooks: WebhookRow[] = [];
   if (adminDb) {
     try {
       const snap = await adminDb.collectionGroup("webhooks").get();
@@ -1891,7 +1989,7 @@ export async function disableWebhookAction(webhookId: string, workspaceId: strin
 
 export async function getIntegrationsApiKeys() {
   await requireAdmin();
-  let keys: any[] = [];
+  let keys: ApiKeyRow[] = [];
   if (adminDb) {
     try {
       const snap = await adminDb.collectionGroup("apiKeys").get();
@@ -1936,7 +2034,7 @@ export async function revokeApiKeyAction(keyId: string, workspaceId: string) {
 
 export async function getIntegrationsAiUsage() {
   await requireAdmin();
-  let workspaces: any[] = [];
+  let workspaces: WorkspaceUsageRow[] = [];
   let totalLifetime = 0;
   let totalThisMonth = 0;
   let totalCostUsd = 0;
@@ -2008,7 +2106,7 @@ export async function getWorkspacesOverview(): Promise<AdminWorkspaceRow[]> {
   const snap = await adminDb.collection("workspaces").get();
   const rows = await Promise.all(
     snap.docs.map(async (d) => {
-      const data = d.data() as any;
+      const data = d.data()!;
       let memberCount = 0;
       try {
         const members = await adminDb!.collection("workspaces").doc(d.id).collection("members").get();
@@ -2034,7 +2132,7 @@ export async function getWorkspaceMembersAction(workspaceId: string) {
   await requireAdmin();
   if (!adminDb) return [];
   const snap = await adminDb.collection("workspaces").doc(workspaceId).collection("members").get();
-  return snap.docs.map((d) => ({ uid: d.id, ...(d.data() as any) }));
+  return snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
 }
 
 export async function suspendWorkspaceAction(workspaceId: string) {
@@ -2085,7 +2183,7 @@ export async function getInboxModeration(onlyFlagged = false): Promise<AdminComm
   for (const doc of cg.docs) {
     const segments = doc.ref.path.split("/");
     const workspaceId = segments[1];
-    const data = doc.data() as any;
+    const data = doc.data()!;
     if (onlyFlagged && !data.flagged) continue;
     comments.push({
       workspaceId,
@@ -2156,7 +2254,7 @@ export async function getAutomationsOversight(): Promise<AdminAutomationRow[]> {
   for (const doc of cg.docs) {
     const segments = doc.ref.path.split("/");
     const workspaceId = segments[1];
-    const data = doc.data() as any;
+    const data = doc.data()!;
     rows.push({
       workspaceId,
       campaignId: doc.id,
@@ -2217,7 +2315,7 @@ export async function getMediaStorageOverview(): Promise<{
   for (const doc of cg.docs) {
     const segments = doc.ref.path.split("/");
     const workspaceId = segments[1];
-    const data = doc.data() as any;
+    const data = doc.data()!;
     if (data.deletedAt) continue; // skip soft-deleted
     const size = typeof data.size === "number" ? data.size : 0;
     const name = (data.storedPath as string)?.split("/").pop() ?? doc.id;
@@ -2257,7 +2355,7 @@ export async function orphanMediaAssetsAction(workspaceId: string) {
   const snap = await adminDb.collection("workspaces").doc(workspaceId).collection("mediaAssets").get();
   let orphaned = 0;
   for (const d of snap.docs) {
-    const data = d.data() as any;
+    const data = d.data()!;
     if (data.deletedAt) continue;
     const refs = await adminDb!
       .collection("workspaces").doc(workspaceId).collection("posts")
@@ -2337,11 +2435,11 @@ export interface ContentOverride {
 export async function getContentOverrides(type?: string): Promise<ContentOverride[]> {
   await requirePermission("platform.settings");
   if (!adminDb) return [];
-  let ref: any = adminDb.collection("contentOverrides");
+  let ref: FirebaseFirestore.Query<FirebaseFirestore.DocumentData> = adminDb.collection("contentOverrides");
   if (type) ref = ref.where("type", "==", type);
   const snap = await ref.get();
-  return snap.docs.map((d: any) => {
-    const data = d.data() as any;
+  return snap.docs.map((d: FirebaseFirestore.QueryDocumentSnapshot) => {
+    const data = d.data();
     return {
       key: d.id,
       type: data.type,
@@ -2408,7 +2506,7 @@ export async function getDataRequests(): Promise<DataRequestRow[]> {
   if (!adminDb) return [];
   const snap = await adminDb.collection("dataRequests").orderBy("requestedAt", "desc").get();
   return snap.docs.map((d) => {
-    const data = d.data() as any;
+    const data = d.data()!;
     return {
       id: d.id,
       uid: data.uid,
@@ -2442,16 +2540,17 @@ export async function fulfillExportAction(requestId: string) {
   const docRef = adminDb.collection("dataRequests").doc(requestId);
   const doc = await docRef.get();
   if (!doc.exists) throw new Error("Request not found");
-  const { uid } = doc.data() as any;
+  const data = doc.data();
+  const uid = (data && typeof data === "object" && "uid" in data ? (data as Record<string, unknown>).uid : "") as string;
 
-  const bundle: Record<string, any> = { user: null, workspaces: {} };
+  const bundle: { user: FirebaseFirestore.DocumentData | null; workspaces: Record<string, unknown> } = { user: null, workspaces: {} };
   const userSnap = await adminDb.collection("users").doc(uid).get();
   bundle.user = userSnap.exists ? userSnap.data() : null;
 
   const wsSnap = await adminDb.collection("workspaces").where("ownerUid", "==", uid).get();
   for (const ws of wsSnap.docs) {
     const subcols = ["members", "socialAccounts", "posts", "drafts", "mediaAssets", "labels", "comments", "conversations", "apiKeys", "webhooks"];
-    const wsData: Record<string, any[]> = {};
+    const wsData: Record<string, unknown[]> = {};
     for (const sc of subcols) {
       const s = await adminDb!.collection("workspaces").doc(ws.id).collection(sc).get();
       wsData[sc] = s.docs.map((d) => d.data());
@@ -2479,9 +2578,10 @@ export async function fulfillDeleteAction(requestId: string, confirmText: string
   const docRef = adminDb.collection("dataRequests").doc(requestId);
   const doc = await docRef.get();
   if (!doc.exists) throw new Error("Request not found");
-  const { uid } = doc.data() as any;
+  const deleteDoc = doc.data();
+  const deleteUid = (deleteDoc && typeof deleteDoc === "object" && "uid" in deleteDoc ? (deleteDoc as Record<string, unknown>).uid : "") as string;
 
-  const wsSnap = await adminDb.collection("workspaces").where("ownerUid", "==", uid).get();
+  const wsSnap = await adminDb.collection("workspaces").where("ownerUid", "==", deleteUid).get();
   for (const ws of wsSnap.docs) {
     const subcols = ["members", "socialAccounts", "posts", "drafts", "mediaAssets", "labels", "comments", "conversations", "apiKeys", "webhooks", "reports", "reportSchedules", "destinations", "hashtagSets", "hashtagsTrending", "analyticsDaily"];
     for (const sc of subcols) {
@@ -2490,14 +2590,14 @@ export async function fulfillDeleteAction(requestId: string, confirmText: string
     }
     await ws.ref.delete();
   }
-  await adminDb.collection("users").doc(uid).delete();
+  await adminDb.collection("users").doc(deleteUid).delete();
 
   await docRef.update({
     status: "fulfilled",
     fulfilledAt: new Date(),
     fulfilledBy: "admin",
   });
-  await logAdminAudit("data_deletion_fulfilled", uid, { requestId });
+  await logAdminAudit("data_deletion_fulfilled", deleteUid, { requestId });
   revalidatePath("/admin/compliance/data-requests");
 }
 
@@ -2521,7 +2621,7 @@ export async function getSupportTickets(): Promise<TicketRow[]> {
   if (!adminDb) return [];
   const snap = await adminDb.collection("supportTickets").orderBy("updatedAt", "desc").get();
   return snap.docs.map((d) => {
-    const data = d.data() as any;
+    const data = d.data()!;
     return {
       id: d.id,
       uid: data.uid ?? "",
@@ -2540,7 +2640,7 @@ export async function getSupportTicketDetail(ticketId: string) {
   if (!adminDb) return null;
   const doc = await adminDb.collection("supportTickets").doc(ticketId).get();
   if (!doc.exists) return null;
-  const data = doc.data() as any;
+  const data = doc.data()!;
   const messagesSnap = await adminDb
     .collection("supportTickets").doc(ticketId).collection("messages")
     .orderBy("createdAt", "asc").get();
@@ -2553,7 +2653,7 @@ export async function getSupportTicketDetail(ticketId: string) {
     createdAt: data.createdAt?.toMillis?.() ?? null,
     updatedAt: data.updatedAt?.toMillis?.() ?? null,
     messages: messagesSnap.docs.map((m) => {
-      const md = m.data() as any;
+      const md = m.data()!;
       return {
         id: m.id,
         author: md.author ?? "user",

@@ -3,8 +3,22 @@
 import React from "react";
 import { ExternalLink } from "lucide-react";
 
+interface InvoiceRow {
+  id: string;
+  number: string | null;
+  customer: string;
+  customerName: string;
+  amount: number;
+  currency: string;
+  status: string | null;
+  created: string | null;
+  hostedUrl: string | null;
+  pdfUrl: string | null;
+  subscriptionId: string | null;
+}
+
 interface Props {
-  invoices: any[];
+  invoices: InvoiceRow[];
 }
 
 function statusBadge(status: string) {

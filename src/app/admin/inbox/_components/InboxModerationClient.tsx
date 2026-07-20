@@ -6,11 +6,12 @@ import {
   flagCommentAction,
   unflagCommentAction,
   deleteCommentAction,
+  type AdminCommentRow,
 } from "@/app/admin/actions";
 import { useToast } from "@/components/ui/toast";
 
 interface Props {
-  comments: any[];
+  comments: AdminCommentRow[];
 }
 
 const SENTIMENT_COLOR: Record<string, string> = {
@@ -37,7 +38,7 @@ export function InboxModerationClient({ comments }: Props) {
     return list;
   }, [comments, onlyFlagged, search]);
 
-  const handleFlag = async (c: any) => {
+  const handleFlag = async (c: AdminCommentRow) => {
     const reason = prompt("Flag reason:");
     if (reason === null) return;
     await flagCommentAction(c.workspaceId, c.commentId, reason);
@@ -45,13 +46,13 @@ export function InboxModerationClient({ comments }: Props) {
     router.refresh();
   };
 
-  const handleUnflag = async (c: any) => {
+  const handleUnflag = async (c: AdminCommentRow) => {
     await unflagCommentAction(c.workspaceId, c.commentId);
     toast({ title: "Flag Cleared", tone: "info" });
     router.refresh();
   };
 
-  const handleDelete = async (c: any) => {
+  const handleDelete = async (c: AdminCommentRow) => {
     if (!confirm("Delete this comment? This cannot be undone.")) return;
     await deleteCommentAction(c.workspaceId, c.commentId);
     toast({ title: "Comment Deleted", tone: "error" });

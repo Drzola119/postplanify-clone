@@ -3,10 +3,11 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { upsertContentOverrideAction } from "@/app/admin/actions";
+import type { ContentOverride } from "@/app/admin/actions";
 import { useToast } from "@/components/ui/toast";
 
 interface Props {
-  overrides: any[];
+  overrides: ContentOverride[];
   legalDocs: { key: string; label: string }[];
 }
 
@@ -42,8 +43,8 @@ export function ContentLegalClient({ overrides, legalDocs }: Props) {
       });
       toast({ title: "Legal override saved", tone: "success" });
       router.refresh();
-    } catch (err: any) {
-      toast({ title: "Save failed", description: err?.message ?? "Unknown error", tone: "error" });
+    } catch (err: unknown) {
+      toast({ title: "Save failed", description: err instanceof Error ? err.message : "Unknown error", tone: "error" });
     } finally {
       setSaving(false);
     }

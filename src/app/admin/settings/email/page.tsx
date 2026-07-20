@@ -28,8 +28,8 @@ export default function EmailBroadcastsPage() {
       toast({ title: "Email Broadcast Sent", description: `Broadcast queued for ${segment} users.`, tone: "success" });
       setSubject("");
       setBody("");
-    } catch (err: any) {
-      toast({ title: "Failed to Send Email", description: err.message, tone: "error" });
+    } catch (err: unknown) {
+      toast({ title: "Failed to Send Email", description: err instanceof Error ? err.message : "Unknown error", tone: "error" });
     } finally {
       setLoading(false);
     }

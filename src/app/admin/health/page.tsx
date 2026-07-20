@@ -36,7 +36,14 @@ function iconFor(status: string | undefined) {
   return "text-gray-500 bg-gray-50";
 }
 
-function ServiceCard({ icon: Icon, name, status, latencyMs }: any) {
+interface ServiceCardProps {
+  icon: React.ElementType;
+  name: string;
+  status?: string;
+  latencyMs?: number;
+}
+
+function ServiceCard({ icon: Icon, name, status, latencyMs }: ServiceCardProps) {
   return (
     <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-xs space-y-3">
       <div className="flex items-center justify-between">
@@ -56,8 +63,28 @@ function ServiceCard({ icon: Icon, name, status, latencyMs }: any) {
   );
 }
 
+interface HealthService {
+  status: string;
+  latencyMs?: number;
+}
+
+interface SystemHealthData {
+  firebase: HealthService;
+  stripe: HealthService;
+  ai: HealthService;
+  imageProviders: { id: string; configured: boolean }[];
+  bunny: HealthService;
+  email: { status: string };
+  worker: HealthService & { lastCronRun?: string | null };
+  webhookSuccessRate: number | null;
+  queueDepth: number;
+  lastCronRun: string | null;
+  firestoreReadsToday: number;
+  firestoreWritesToday: number;
+}
+
 export default function SystemHealthPage() {
-  const [health, setHealth] = useState<any>(null);
+  const [health, setHealth] = useState<SystemHealthData | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
   const [loading, setLoading] = useState(false);
 
@@ -107,7 +134,7 @@ export default function SystemHealthPage() {
         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-xs space-y-3 lg:col-span-2">
           <span className="text-xs font-bold text-gray-500">Image-Gen Providers (API keys configured)</span>
           <div className="flex flex-wrap gap-2 pt-1">
-            {(health?.imageProviders ?? []).map((p: any) => (
+            {(health?.imageProviders ?? []).map((p: { id: string; configured: boolean }) => (
               <span
                 key={p.id}
                 className={`px-2.5 py-0.5 text-[11px] font-bold rounded-full border ${

@@ -6,11 +6,12 @@ import {
   createDataRequestAction,
   fulfillExportAction,
   fulfillDeleteAction,
+  type DataRequestRow,
 } from "@/app/admin/actions";
 import { useToast } from "@/components/ui/toast";
 
 interface Props {
-  requests: any[];
+  requests: DataRequestRow[];
 }
 
 function statusBadge(status: string) {
@@ -52,8 +53,8 @@ export function DataRequestsClient({ requests }: Props) {
       URL.revokeObjectURL(url);
       toast({ title: "Export ready", tone: "success" });
       router.refresh();
-    } catch (err: any) {
-      toast({ title: "Export failed", description: err?.message ?? "Unknown error", tone: "error" });
+    } catch (err: unknown) {
+      toast({ title: "Export failed", description: err instanceof Error ? err.message : "Unknown error", tone: "error" });
     } finally {
       setBusyId(null);
     }
@@ -69,8 +70,8 @@ export function DataRequestsClient({ requests }: Props) {
       setDelConfirm(null);
       setConfirmText("");
       router.refresh();
-    } catch (err: any) {
-      toast({ title: "Delete failed", description: err?.message ?? "Unknown error", tone: "error" });
+    } catch (err: unknown) {
+      toast({ title: "Delete failed", description: err instanceof Error ? err.message : "Unknown error", tone: "error" });
     } finally {
       setBusyId(null);
     }
@@ -85,7 +86,7 @@ export function DataRequestsClient({ requests }: Props) {
         </div>
         <div>
           <label className="text-[10px] font-bold text-gray-500 uppercase">Type</label>
-          <select value={type} onChange={(e: any) => setType(e.target.value)} className="w-full mt-1 p-2 text-xs bg-gray-50 border border-gray-200 rounded-xl">
+          <select value={type} onChange={(e) => setType(e.target.value as "export" | "delete")} className="w-full mt-1 p-2 text-xs bg-gray-50 border border-gray-200 rounded-xl">
             <option value="export">Export</option>
             <option value="delete">Delete</option>
           </select>

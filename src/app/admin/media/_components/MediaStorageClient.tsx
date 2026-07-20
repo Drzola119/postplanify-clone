@@ -2,13 +2,13 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { orphanMediaAssetsAction } from "@/app/admin/actions";
+import { orphanMediaAssetsAction, type AdminMediaRow, type AdminStorageTotals } from "@/app/admin/actions";
 import { useToast } from "@/components/ui/toast";
 
 interface Props {
   data: {
-    rows: any[];
-    totals: { totalBytes: number; totalAssets: number; byWorkspace: { workspaceId: string; bytes: number; assets: number }[] };
+    rows: AdminMediaRow[];
+    totals: AdminStorageTotals;
   };
 }
 
@@ -99,9 +99,9 @@ export function MediaStorageClient({ data }: Props) {
           <tbody className="divide-y divide-gray-100">
             {data.rows
               .slice()
-              .sort((a, b) => b.size - a.size)
+              .sort((a: AdminMediaRow, b: AdminMediaRow) => b.size - a.size)
               .slice(0, 50)
-              .map((a) => (
+              .map((a: AdminMediaRow) => (
                 <tr key={`${a.workspaceId}-${a.assetId}`} className="hover:bg-gray-50/80">
                   <td className="px-6 py-4 text-xs font-semibold text-gray-900 truncate max-w-[280px]">{a.name}</td>
                   <td className="px-6 py-4 text-xs text-gray-500 font-mono">{a.workspaceId}</td>

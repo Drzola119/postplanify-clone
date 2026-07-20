@@ -2,9 +2,10 @@
 
 import React from "react";
 import Link from "next/link";
+import type { TicketRow } from "@/app/admin/actions";
 
 interface Props {
-  tickets: any[];
+  tickets: TicketRow[];
 }
 
 function statusBadge(status: string) {

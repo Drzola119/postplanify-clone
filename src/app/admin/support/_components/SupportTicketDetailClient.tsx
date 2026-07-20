@@ -6,8 +6,26 @@ import Link from "next/link";
 import { replyToTicketAction, setTicketStatusAction } from "@/app/admin/actions";
 import { useToast } from "@/components/ui/toast";
 
+interface TicketMessage {
+  id: string;
+  author: string;
+  body: string;
+  createdAt: number | null;
+}
+
+interface TicketDetail {
+  id: string;
+  uid: string;
+  subject: string;
+  status: string;
+  priority: string;
+  createdAt: number | null;
+  updatedAt: number | null;
+  messages: TicketMessage[];
+}
+
 interface Props {
-  ticket: any;
+  ticket: TicketDetail | null;
   ticketId: string;
 }
 
@@ -34,8 +52,8 @@ export function SupportTicketDetailClient({ ticket, ticketId }: Props) {
       setReply("");
       toast({ title: "Reply sent", tone: "success" });
       router.refresh();
-    } catch (err: any) {
-      toast({ title: "Reply failed", description: err?.message ?? "Unknown error", tone: "error" });
+    } catch (err: unknown) {
+      toast({ title: "Reply failed", description: err instanceof Error ? err.message : "Unknown error", tone: "error" });
     } finally {
       setSending(false);
     }
@@ -66,7 +84,7 @@ export function SupportTicketDetailClient({ ticket, ticketId }: Props) {
         {ticket.messages.length === 0 ? (
           <p className="text-xs text-gray-400 text-center py-4">No messages yet.</p>
         ) : (
-          ticket.messages.map((m: any) => (
+          ticket.messages.map((m: TicketMessage) => (
             <div
               key={m.id}
               className={`max-w-[80%] p-3 rounded-2xl text-xs ${

@@ -38,8 +38,8 @@ export function RefundsClient() {
       setAdjWorkspace("");
       setAdjAmount("");
       setAdjReason("");
-    } catch (err: any) {
-      toast({ title: "Adjustment failed", description: err?.message ?? "Unknown error", tone: "error" });
+    } catch (err: unknown) {
+      toast({ title: "Adjustment failed", description: err instanceof Error ? err.message : "Unknown error", tone: "error" });
     } finally {
       setAdjSubmitting(false);
     }
@@ -63,8 +63,8 @@ export function RefundsClient() {
       setChargeId("");
       setPaymentIntentId("");
       setAmountUsd("");
-    } catch (err: any) {
-      toast({ title: "Refund failed", description: err?.message ?? "Unknown error", tone: "error" });
+    } catch (err: unknown) {
+      toast({ title: "Refund failed", description: err instanceof Error ? err.message : "Unknown error", tone: "error" });
     } finally {
       setSubmitting(false);
     }
@@ -113,7 +113,7 @@ export function RefundsClient() {
           <label className="font-bold text-gray-700">Reason</label>
           <select
             value={reason}
-            onChange={(e: any) => setReason(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setReason(e.target.value as "duplicate" | "fraudulent" | "requested_by_customer")}
             className="w-full mt-1 p-2 bg-gray-50 border border-gray-200 rounded-xl"
           >
             <option value="requested_by_customer">Requested by customer</option>
@@ -155,7 +155,7 @@ export function RefundsClient() {
             <label className="font-bold text-gray-700">Type</label>
             <select
               value={adjType}
-              onChange={(e: any) => setAdjType(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setAdjType(e.target.value as "credit" | "debit")}
               className="w-full mt-1 p-2 bg-gray-50 border border-gray-200 rounded-xl"
             >
               <option value="credit">Credit</option>

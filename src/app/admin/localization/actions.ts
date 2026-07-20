@@ -21,13 +21,15 @@ function localePath(locale: string) {
   return join(process.cwd(), "messages", `${locale}.json`);
 }
 
-function readLocale(locale: string): Record<string, any> {
+type JsonRecord = { [key: string]: string | JsonRecord };
+
+function readLocale(locale: string): JsonRecord {
   const file = localePath(locale);
   if (!existsSync(file)) return {};
   return JSON.parse(readFileSync(file, "utf8"));
 }
 
-function flatten(obj: any, prefix = ""): Record<string, string> {
+function flatten(obj: JsonRecord, prefix = ""): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(obj ?? {})) {
     const key = prefix ? `${prefix}.${k}` : k;
@@ -97,14 +99,14 @@ export async function updateTranslationAction(key: string, locale: string, value
   if (!LOCALES.includes(locale as Locale)) throw new Error("Invalid locale");
   const file = localePath(locale);
   if (!existsSync(file)) throw new Error(`Locale file ${locale} not found`);
-  const json = JSON.parse(readFileSync(file, "utf8"));
+  const json: JsonRecord = JSON.parse(readFileSync(file, "utf8"));
 
-  // Set nested key
   const parts = key.split(".");
-  let node = json;
+  let node: JsonRecord = json;
   for (let i = 0; i < parts.length - 1; i++) {
-    if (typeof node[parts[i]] !== "object" || node[parts[i]] === null) node[parts[i]] = {};
-    node = node[parts[i]];
+    const segment = parts[i];
+    if (typeof node[segment] !== "object" || node[segment] === null) node[segment] = {};
+    node = node[segment] as JsonRecord;
   }
   node[parts[parts.length - 1]] = value;
 
@@ -117,12 +119,13 @@ export async function addTranslationKeyAction(key: string, enValue: string) {
   await requireAdmin();
   const file = localePath("en");
   if (!existsSync(file)) throw new Error("en locale file not found");
-  const json = JSON.parse(readFileSync(file, "utf8"));
+  const json: JsonRecord = JSON.parse(readFileSync(file, "utf8"));
   const parts = key.split(".");
-  let node = json;
+  let node: JsonRecord = json;
   for (let i = 0; i < parts.length - 1; i++) {
-    if (typeof node[parts[i]] !== "object" || node[parts[i]] === null) node[parts[i]] = {};
-    node = node[parts[i]];
+    const segment = parts[i];
+    if (typeof node[segment] !== "object" || node[segment] === null) node[segment] = {};
+    node = node[segment] as JsonRecord;
   }
   if (node[parts[parts.length - 1]] !== undefined) throw new Error("Key already exists");
   node[parts[parts.length - 1]] = enValue;

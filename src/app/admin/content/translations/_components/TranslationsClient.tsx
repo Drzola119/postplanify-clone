@@ -6,11 +6,12 @@ import {
   updateTranslationAction,
   addTranslationKeyAction,
 } from "@/app/admin/localization/actions";
+import type { TranslationRow } from "@/app/admin/localization/actions";
 import { useToast } from "@/components/ui/toast";
 
 interface Props {
   data: {
-    rows: any[];
+    rows: TranslationRow[];
     locales: string[];
     namespaces: string[];
     totalKeys: number;
@@ -23,7 +24,7 @@ export function TranslationsClient({ data }: Props) {
   const [namespace, setNamespace] = useState("all");
   const [search, setSearch] = useState("");
   const [onlyMissing, setOnlyMissing] = useState(false);
-  const [editKey, setEditKey] = useState<any | null>(null);
+  const [editKey, setEditKey] = useState<TranslationRow | null>(null);
   const [editLocale, setEditLocale] = useState("");
   const [editValue, setEditValue] = useState("");
   const [saving, setSaving] = useState(false);
@@ -41,7 +42,7 @@ export function TranslationsClient({ data }: Props) {
     return list;
   }, [data.rows, namespace, search, onlyMissing]);
 
-  const openEdit = (row: any, locale: string) => {
+  const openEdit = (row: TranslationRow, locale: string) => {
     setEditKey(row);
     setEditLocale(locale);
     setEditValue(row.values[locale] ?? "");
@@ -56,8 +57,8 @@ export function TranslationsClient({ data }: Props) {
       toast({ title: "Translation saved", tone: "success" });
       setEditKey(null);
       router.refresh();
-    } catch (err: any) {
-      toast({ title: "Save failed", description: err?.message ?? "Unknown error", tone: "error" });
+    } catch (err: unknown) {
+      toast({ title: "Save failed", description: err instanceof Error ? err.message : "Unknown error", tone: "error" });
     } finally {
       setSaving(false);
     }
@@ -72,7 +73,7 @@ export function TranslationsClient({ data }: Props) {
       setNewKey("");
       setNewValue("");
       router.refresh();
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({ title: "Add failed", description: err?.message ?? "Unknown error", tone: "error" });
     }
   };
@@ -82,7 +83,7 @@ export function TranslationsClient({ data }: Props) {
       <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-4 flex flex-wrap gap-3 items-center">
         <select
           value={namespace}
-          onChange={(e: any) => setNamespace(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setNamespace(e.target.value)}
           className="p-2 text-xs bg-gray-50 border border-gray-200 rounded-xl"
         >
           <option value="all">All namespaces ({data.namespaces.length})</option>

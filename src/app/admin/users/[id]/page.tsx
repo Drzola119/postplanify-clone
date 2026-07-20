@@ -1,7 +1,21 @@
-// Fix #9 — dynamic user detail page for deep-linking
 import { getUsersData } from "../../actions";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+
+interface UserDetail {
+  id: string;
+  uid: string;
+  name: string;
+  email: string;
+  plan: string;
+  status: string;
+  connectedAccounts: number;
+  joined: string;
+  lastActive: string;
+  photoURL: string | null;
+  ipAddress: string;
+  device: string;
+}
 
 export async function generateMetadata({ params }: { params: { id: string } }) {
   return { title: `User ${params.id} — PostPlanify Admin` };
@@ -9,7 +23,7 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
 
 export default async function UserDetailPage({ params }: { params: { id: string } }) {
   const users = await getUsersData();
-  const user = users.find((u: any) => u.id === params.id || u.uid === params.id);
+  const user = users.find((u: UserDetail) => u.id === params.id || u.uid === params.id);
 
   if (!user) notFound();
 

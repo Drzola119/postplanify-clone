@@ -6,11 +6,12 @@ import {
   suspendWorkspaceAction,
   reactivateWorkspaceAction,
   transferWorkspaceOwnershipAction,
+  type AdminWorkspaceRow,
 } from "@/app/admin/actions";
 import { useToast } from "@/components/ui/toast";
 
 interface Props {
-  workspaces: any[];
+  workspaces: AdminWorkspaceRow[];
 }
 
 const PLAN_COLORS: Record<string, string> = {

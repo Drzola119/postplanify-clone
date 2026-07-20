@@ -17,8 +17,21 @@ const SEVERITY_ICONS: Record<string, React.ElementType> = {
   info: Bell,
 };
 
+interface AlertRow {
+  id: string;
+  type: string;
+  severity: string;
+  title: string;
+  message: string;
+  source: string;
+  dedupeKey: string;
+  acknowledged: boolean;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
 interface Props {
-  initialAlerts: any[];
+  initialAlerts: AlertRow[];
 }
 
 export function AlertsClient({ initialAlerts }: Props) {

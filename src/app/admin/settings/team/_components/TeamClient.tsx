@@ -20,12 +20,25 @@ const ROLE_BADGE: Record<string, string> = {
   readonly: "px-2.5 py-0.5 text-[11px] font-bold bg-gray-100 text-gray-600 border border-gray-200 rounded-full",
 };
 
+interface AdminUserDisplay {
+  uid: string;
+  email: string;
+  displayName: string;
+  role: string;
+  status: string;
+  createdAt: string;
+  invitedBy?: string;
+  permissions?: string[];
+  invitePending?: boolean;
+  invitedAt?: string;
+}
+
 interface Props {
-  initialAdmins: any[];
+  initialAdmins: AdminUserDisplay[];
 }
 
 export function TeamClient({ initialAdmins }: Props) {
-  const [admins, setAdmins] = useState(initialAdmins);
+  const [admins, setAdmins] = useState<AdminUserDisplay[]>(initialAdmins);
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<string>("admin");
@@ -36,7 +49,7 @@ export function TeamClient({ initialAdmins }: Props) {
     e.preventDefault();
     if (!inviteEmail.trim()) return;
     setInviting(true);
-    const result = await inviteAdminAction({ email: inviteEmail.trim(), role: inviteRole as any });
+    const result = await inviteAdminAction({ email: inviteEmail.trim(), role: inviteRole as "admin" | "support" | "finance" | "readonly" });
     setInviting(false);
     if (result.success) {
       toast({ title: "Admin Invited", description: `Invitation sent to ${inviteEmail}`, tone: "success" });
@@ -99,7 +112,7 @@ export function TeamClient({ initialAdmins }: Props) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {admins.map((admin: any) => (
+            {admins.map((admin) => (
               <tr key={admin.uid} className="hover:bg-gray-50/80">
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">

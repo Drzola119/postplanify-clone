@@ -6,14 +6,24 @@ import { createCoupon } from "@/app/admin/actions";
 import { useToast } from "@/components/ui/toast";
 import { Plus } from "lucide-react";
 
+interface CouponDisplay {
+  id: string;
+  name: string;
+  percentOff: number | null;
+  amountOff: number | null;
+  duration: string;
+  timesRedeemed: number;
+  valid: boolean;
+}
+
 interface Props {
-  initialCoupons: any[];
+  initialCoupons: CouponDisplay[];
 }
 
 export function CouponsClient({ initialCoupons }: Props) {
   const { toast } = useToast();
   const router = useRouter();
-  const [coupons, setCoupons] = useState(initialCoupons);
+  const [coupons, setCoupons] = useState<CouponDisplay[]>(initialCoupons);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [code, setCode] = useState("");
@@ -28,8 +38,8 @@ export function CouponsClient({ initialCoupons }: Props) {
       toast({ title: "Stripe Coupon Created", description: `Created coupon code ${code}`, tone: "success" });
       setShowModal(false);
       router.refresh();
-    } catch (err: any) {
-      toast({ title: "Failed to create coupon", description: err?.message ?? "Unknown error", tone: "error" });
+    } catch (err: unknown) {
+      toast({ title: "Failed to create coupon", description: err instanceof Error ? err.message : "Unknown error", tone: "error" });
     } finally {
       setLoading(false);
     }
@@ -118,7 +128,7 @@ export function CouponsClient({ initialCoupons }: Props) {
               <label className="font-bold text-gray-700">Duration:</label>
               <select
                 value={duration}
-                onChange={(e: any) => setDuration(e.target.value)}
+                onChange={(e) => setDuration(e.target.value as "once" | "repeating" | "forever")}
                 className="w-full mt-1 p-2 bg-gray-50 border border-gray-200 rounded-xl"
               >
                 <option value="once">Once</option>

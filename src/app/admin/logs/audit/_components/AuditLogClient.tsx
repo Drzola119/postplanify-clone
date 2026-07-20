@@ -33,8 +33,17 @@ const ACTION_LABELS: Record<string, string> = {
 
 const ACTION_KEYS = Object.keys(ACTION_LABELS).sort();
 
+interface AuditLogEntry {
+  id: string;
+  adminEmail: string;
+  action: string;
+  targetId: string;
+  timestamp: string;
+  metadata: Record<string, unknown>;
+}
+
 interface Props {
-  initialLogs: any[];
+  initialLogs: AuditLogEntry[];
 }
 
 export function AuditLogClient({ initialLogs }: Props) {

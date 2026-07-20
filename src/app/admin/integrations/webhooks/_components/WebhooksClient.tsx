@@ -4,8 +4,19 @@ import React, { useState } from "react";
 import { disableWebhookAction } from "@/app/admin/actions";
 import { useToast } from "@/components/ui/toast";
 
+interface WebhookEntry {
+  id: string;
+  workspaceId: string;
+  url: string;
+  events: string[];
+  status: string;
+  createdAt: string | null;
+  lastTriggeredAt: string | null;
+  consecutiveFailures: number;
+}
+
 interface Props {
-  initialWebhooks: any[];
+  initialWebhooks: WebhookEntry[];
 }
 
 export function WebhooksClient({ initialWebhooks }: Props) {

@@ -2,11 +2,11 @@
 
 import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { disableAutomationAction } from "@/app/admin/actions";
+import { disableAutomationAction, type AdminAutomationRow } from "@/app/admin/actions";
 import { useToast } from "@/components/ui/toast";
 
 interface Props {
-  automations: any[];
+  automations: AdminAutomationRow[];
 }
 
 export function AutomationsClient({ automations }: Props) {
@@ -22,7 +22,7 @@ export function AutomationsClient({ automations }: Props) {
     );
   }, [automations, search]);
 
-  const handleDisable = async (a: any) => {
+  const handleDisable = async (a: AdminAutomationRow) => {
     if (!confirm(`Disable automation "${a.name}"?`)) return;
     await disableAutomationAction(a.workspaceId, a.campaignId);
     toast({ title: "Automation Disabled", tone: "warning" });

@@ -3,16 +3,17 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { upsertContentOverrideAction, deleteContentOverrideAction } from "@/app/admin/actions";
+import type { ContentOverride } from "@/app/admin/actions";
 import { useToast } from "@/components/ui/toast";
 
 interface Props {
-  overrides: any[];
+  overrides: ContentOverride[];
 }
 
 export function ContentBlogClient({ overrides }: Props) {
   const { toast } = useToast();
   const router = useRouter();
-  const [editing, setEditing] = useState<any | null>(null);
+  const [editing, setEditing] = useState<ContentOverride | { isNew: boolean } | null>(null);
   const [key, setKey] = useState("");
   const [title, setTitle] = useState("");
   const [excerpt, setExcerpt] = useState("");
@@ -29,7 +30,7 @@ export function ContentBlogClient({ overrides }: Props) {
     setMetaDescription("");
   };
 
-  const openEdit = (o: any) => {
+  const openEdit = (o: ContentOverride) => {
     setEditing(o);
     setKey(o.key);
     setTitle(o.title ?? "");
@@ -57,8 +58,8 @@ export function ContentBlogClient({ overrides }: Props) {
       toast({ title: "Blog override saved", tone: "success" });
       setEditing(null);
       router.refresh();
-    } catch (err: any) {
-      toast({ title: "Save failed", description: err?.message ?? "Unknown error", tone: "error" });
+    } catch (err: unknown) {
+      toast({ title: "Save failed", description: err instanceof Error ? err.message : "Unknown error", tone: "error" });
     } finally {
       setSaving(false);
     }

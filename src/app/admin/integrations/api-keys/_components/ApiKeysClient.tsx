@@ -4,8 +4,18 @@ import React, { useState } from "react";
 import { revokeApiKeyAction } from "@/app/admin/actions";
 import { useToast } from "@/components/ui/toast";
 
+interface ApiKeyEntry {
+  id: string;
+  workspaceId: string;
+  name: string;
+  masked: string;
+  createdAt: string | null;
+  lastUsedAt: string | null;
+  status: string;
+}
+
 interface Props {
-  initialKeys: any[];
+  initialKeys: ApiKeyEntry[];
 }
 
 export function ApiKeysClient({ initialKeys }: Props) {

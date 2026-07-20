@@ -4,7 +4,7 @@ import { PlatformStatusClient } from "./_components/PlatformStatusClient";
 
 async function StatusFetcher() {
   const status = await getPlatformStatus();
-  return <PlatformStatusClient initialStatus={status as any} />;
+  return <PlatformStatusClient initialStatus={status as { state: "operational" | "degraded" | "maintenance"; message: string }} />;
 }
 
 export default function AdminStatusPage() {

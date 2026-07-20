@@ -3,8 +3,20 @@
 import React from "react";
 import { ExternalLink } from "lucide-react";
 
+interface DisputeRow {
+  id: string;
+  disputeId: string;
+  chargeId: string;
+  amount: number;
+  currency: string;
+  reason: string;
+  status: string;
+  evidenceDueBy: string | null;
+  stripeDashboardUrl: string | null;
+}
+
 interface Props {
-  disputes: any[];
+  disputes: DisputeRow[];
 }
 
 function statusBadge(status: string) {

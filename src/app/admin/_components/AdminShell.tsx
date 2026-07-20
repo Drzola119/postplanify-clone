@@ -240,6 +240,15 @@ interface AdminProfile {
   role: string;
 }
 
+interface AdminNotification {
+  id: string;
+  title?: string;
+  message?: string;
+  severity?: string;
+  read?: boolean;
+  createdAt?: string;
+}
+
 interface AdminShellProps {
   children: React.ReactNode;
   unreadNotifications?: number;
@@ -261,7 +270,7 @@ export function AdminShell({ children, unreadNotifications = 0, adminProfile }: 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const profile = adminProfile ?? { uid: "", email: "edylabels@gmail.com", displayName: "Edy Labels", role: "owner" };
@@ -449,7 +458,7 @@ export function AdminShell({ children, unreadNotifications = 0, adminProfile }: 
                     ) : notifications.length === 0 ? (
                       <div className="px-4 py-6 text-center text-xs text-gray-400">No notifications</div>
                     ) : (
-                      notifications.slice(0, 10).map((n: any) => (
+                      notifications.slice(0, 10).map((n: AdminNotification) => (
                         <div key={n.id} className={`px-4 py-3 border-b border-gray-50 hover:bg-gray-50 cursor-pointer ${!n.read ? "bg-teal-50/30" : ""}`}>
                           <div className="flex items-start gap-2">
                             <div className={`mt-0.5 size-2 rounded-full shrink-0 ${n.severity === "critical" ? "bg-rose-500" : n.severity === "warning" ? "bg-amber-500" : "bg-teal-500"}`} />

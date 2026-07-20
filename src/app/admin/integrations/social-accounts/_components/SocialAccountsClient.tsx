@@ -15,8 +15,21 @@ const PLATFORM_COLORS: Record<string, string> = {
   youtube: "bg-red-100 text-red-700",
 };
 
+interface SocialAccountEntry {
+  id: string;
+  workspaceId: string;
+  platform: string;
+  accountName: string;
+  connectedAt: string | null;
+  tokenExpiresAt: string | null;
+  status: string;
+  lastError: string | null;
+  lastPublishResult: string | null;
+  userEmail: string;
+}
+
 interface Props {
-  initialAccounts: any[];
+  initialAccounts: SocialAccountEntry[];
 }
 
 export function SocialAccountsClient({ initialAccounts }: Props) {
