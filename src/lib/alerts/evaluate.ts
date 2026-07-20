@@ -37,11 +37,11 @@ export async function evaluateAlertRules(): Promise<void> {
     // Reuse existing system health data
     let failedPosts24h = 0;
     let totalPosts24h = 0;
-    const paymentFailures24h = 0;
-    const tokenExpiringSoon = 0;
+    let paymentFailures24h = 0;
+    let tokenExpiringSoon = 0;
     let queueDepth = 0;
-    const dailyAiCostUsd = 0;
-    const storageHighWorkspaces = 0;
+    let dailyAiCostUsd = 0;
+    let storageHighWorkspaces = 0;
     let signups24h = 0;
     let cancellations24h = 0;
 
@@ -82,6 +82,52 @@ export async function evaluateAlertRules(): Promise<void> {
         const statsData = statsDoc.data();
         queueDepth = (statsData?.queueDepth ?? 0) as number;
       }
+    } catch {}
+
+    // Payment failures — subscriptions currently past_due
+    try {
+      const pastDueSnap = await adminDb.collection("subscriptions")
+        .where("status", "==", "past_due")
+        .get();
+      paymentFailures24h = pastDueSnap.size;
+    } catch {}
+
+    // Tokens expiring within 3 days
+    try {
+      const threeDaysFromNow = new Date(now + 3 * 86400000).toISOString();
+      const tokenSnap = await adminDb.collectionGroup("socialAccounts")
+        .where("tokenExpiry", ">=", new Date().toISOString())
+        .where("tokenExpiry", "<=", threeDaysFromNow)
+        .get();
+      tokenExpiringSoon = tokenSnap.size;
+    } catch {}
+
+    // Daily AI cost — sum imageGenLastCostUsd + textGenLastCostUsd from workspaces
+    try {
+      const wsSnap = await adminDb.collection("workspaces").get();
+      wsSnap.docs.forEach((doc) => {
+        const d = doc.data();
+        dailyAiCostUsd += (d.imageGenLastCostUsd ?? 0) + (d.textGenLastCostUsd ?? 0);
+      });
+    } catch {}
+
+    // Storage — group mediaAssets by workspace, count over 1 GB threshold
+    try {
+      const mediaSnap = await adminDb.collectionGroup("mediaAssets").get();
+      const perWorkspace = new Map<string, number>();
+      mediaSnap.docs.forEach((doc) => {
+        const d = doc.data();
+        const wsId = d.workspaceId || doc.ref.parent.parent?.id;
+        if (!wsId) return;
+        const bytes = d.sizeBytes ?? d.totalBytes ?? 0;
+        perWorkspace.set(wsId, (perWorkspace.get(wsId) ?? 0) + bytes);
+      });
+      const ONE_GB = 1_073_741_824;
+      let count = 0;
+      for (const totalBytes of perWorkspace.values()) {
+        if (totalBytes > ONE_GB) count++;
+      }
+      storageHighWorkspaces = count;
     } catch {}
 
     const failureRatePct = totalPosts24h > 0 ? (failedPosts24h / totalPosts24h) * 100 : 0;
