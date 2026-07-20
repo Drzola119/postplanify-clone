@@ -2122,3 +2122,75 @@ export async function getAnalyticsData() {
     ],
   };
 }
+
+// ==========================================
+// CONTENT / CMS MANAGEMENT (Phase 6)
+// Minimal Firestore-backed override layer for static marketing/legal copy.
+// The static TSX/TS code remains the deploy-time default; overrides merge at read time.
+// ==========================================
+
+export interface ContentOverride {
+  key: string;
+  type: "blog" | "template" | "legal" | "alternative";
+  title?: string;
+  metaTitle?: string;
+  metaDescription?: string;
+  excerpt?: string;
+  body?: string;
+  updatedAt?: number | null;
+  updatedBy?: string;
+}
+
+export async function getContentOverrides(type?: string): Promise<ContentOverride[]> {
+  await requirePermission("platform.settings");
+  if (!adminDb) return [];
+  let ref: any = adminDb.collection("contentOverrides");
+  if (type) ref = ref.where("type", "==", type);
+  const snap = await ref.get();
+  return snap.docs.map((d: any) => {
+    const data = d.data() as any;
+    return {
+      key: d.id,
+      type: data.type,
+      title: data.title,
+      metaTitle: data.metaTitle,
+      metaDescription: data.metaDescription,
+      excerpt: data.excerpt,
+      body: data.body,
+      updatedAt: data.updatedAt?.toMillis?.() ?? null,
+      updatedBy: data.updatedBy,
+    };
+  });
+}
+
+export async function upsertContentOverrideAction(input: ContentOverride) {
+  await requirePermission("platform.settings");
+  if (!adminDb) throw new Error("DB unavailable");
+  const { key, ...rest } = input;
+  await adminDb
+    .collection("contentOverrides")
+    .doc(key)
+    .set(
+      {
+        ...rest,
+        key,
+        updatedAt: new Date(),
+        updatedBy: "admin",
+      },
+      { merge: true }
+    );
+  await logAdminAudit("content_override_update", key, { type: input.type });
+  revalidatePath("/admin/content/blog");
+  revalidatePath("/admin/content/templates");
+  revalidatePath("/admin/content/legal");
+}
+
+export async function deleteContentOverrideAction(key: string) {
+  await requirePermission("platform.settings");
+  if (!adminDb) throw new Error("DB unavailable");
+  await adminDb.collection("contentOverrides").doc(key).delete();
+  await logAdminAudit("content_override_delete", key);
+  revalidatePath("/admin/content/blog");
+  revalidatePath("/admin/content/templates");
+  revalidatePath("/admin/content/legal");
+}

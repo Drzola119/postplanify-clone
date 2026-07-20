@@ -15,6 +15,8 @@ import {
   XCircle,
   TrendingUp,
   FileText,
+  LayoutTemplate,
+  Scale,
   Clock,
   AlertOctagon,
   Share2,
@@ -80,6 +82,9 @@ const BREADCRUMB_MAP: Record<string, string> = {
   "/admin/integrations/api-keys": "API Keys",
   "/admin/integrations/ai-usage": "AI Usage & Cost",
   "/admin/workspaces": "All Workspaces",
+  "/admin/content/blog": "Blog & Pages",
+  "/admin/content/templates": "Templates Gallery",
+  "/admin/content/legal": "Legal Documents",
   "/admin/inbox": "Inbox Moderation",
   "/admin/automations": "Automations",
   "/admin/media": "Media & Storage",
@@ -129,6 +134,14 @@ const NAV_SECTIONS: NavSection[] = [
     title: "WORKSPACES",
     items: [
       { label: "All Workspaces", href: "/admin/workspaces", icon: Building2 },
+    ],
+  },
+  {
+    title: "CONTENT MGMT",
+    items: [
+      { label: "Blog & Pages", href: "/admin/content/blog", icon: FileText },
+      { label: "Templates Gallery", href: "/admin/content/templates", icon: LayoutTemplate },
+      { label: "Legal Documents", href: "/admin/content/legal", icon: Scale },
     ],
   },
   {

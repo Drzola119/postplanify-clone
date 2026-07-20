@@ -178,6 +178,9 @@ service cloud.firestore {
     match /billingAdjustments/{docId} {
       allow read, write: if false;
     }
+    match /contentOverrides/{docId} {
+      allow read, write: if false;
+    }
     match /supportTickets/{docId} {
       allow read, write: if false;
       match /messages/{messageId} {
