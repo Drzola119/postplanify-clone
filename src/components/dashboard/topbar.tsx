@@ -8,7 +8,7 @@ import { BookOpen, ShieldAlert } from "lucide-react";
 import { LocaleSwitcher } from "@/components/ui/locale-switcher";
 import { useHelpSystem } from "@/components/dashboard/help/help-system";
 import { useAuth } from "@/contexts/AuthContext";
-import { isAdminUser } from "@/lib/firebase/admin-auth";
+import { isAdminUser } from "@/lib/firebase/admin-email";
 import { NotificationBell } from "@/app/dashboard/_components/NotificationBell";
 
 function usePageTitle(t: (key: string) => string): string {

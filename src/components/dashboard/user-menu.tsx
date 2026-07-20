@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LogOut, ChevronUp, Settings, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { isAdminUser } from "@/lib/firebase/admin-auth";
+import { isAdminUser } from "@/lib/firebase/admin-email";
 
 export function UserMenu() {
   const auth = useAuth();

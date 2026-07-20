@@ -1,6 +1,7 @@
 import { adminAuth, adminDb } from "./admin";
+import { ADMIN_EMAIL, isAdminUser } from "./admin-email";
 
-export const ADMIN_EMAIL = "edylabels@gmail.com";
+export { ADMIN_EMAIL, isAdminUser };
 
 export async function getAdminUser(uid: string): Promise<{
   uid: string;
@@ -32,16 +33,6 @@ export async function getAdminUser(uid: string): Promise<{
   } catch {
     return null;
   }
-}
-
-/** Legacy sync check — used by middleware fallback and existing call sites. */
-export function isAdminUser(
-  user: { email?: string | null } | string | null | undefined
-): boolean {
-  if (!user) return false;
-  if (typeof user === "string") return user.toLowerCase() === ADMIN_EMAIL.toLowerCase();
-  if (user.email) return user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
-  return false;
 }
 
 /** Set Firebase Auth custom claims on an admin user. */

@@ -39,7 +39,7 @@ import { cn } from "@/lib/utils";
 import { useDrawer } from "@/components/dashboard/drawer-provider";
 import { UserMenu } from "@/components/dashboard/user-menu";
 import { useAuth } from "@/contexts/AuthContext";
-import { isAdminUser } from "@/lib/firebase/admin-auth";
+import { isAdminUser } from "@/lib/firebase/admin-email";
 import { ShieldAlert } from "lucide-react";
 
 import { useTranslations } from "next-intl";
