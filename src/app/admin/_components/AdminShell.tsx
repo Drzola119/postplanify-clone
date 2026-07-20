@@ -28,6 +28,7 @@ import {
   Ticket,
   Terminal,
   ShieldAlert,
+  ShieldCheck,
   Activity,
   Menu,
   X,
@@ -87,6 +88,7 @@ const BREADCRUMB_MAP: Record<string, string> = {
   "/admin/content/templates": "Templates Gallery",
   "/admin/content/legal": "Legal Documents",
   "/admin/content/translations": "Translations",
+  "/admin/compliance/data-requests": "Data Requests",
   "/admin/inbox": "Inbox Moderation",
   "/admin/automations": "Automations",
   "/admin/media": "Media & Storage",
@@ -145,6 +147,12 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Templates Gallery", href: "/admin/content/templates", icon: LayoutTemplate },
       { label: "Legal Documents", href: "/admin/content/legal", icon: Scale },
       { label: "Translations", href: "/admin/content/translations", icon: Languages },
+    ],
+  },
+  {
+    title: "COMPLIANCE",
+    items: [
+      { label: "Data Requests", href: "/admin/compliance/data-requests", icon: ShieldCheck },
     ],
   },
   {

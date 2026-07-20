@@ -2199,3 +2199,116 @@ export async function deleteContentOverrideAction(key: string) {
   revalidatePath("/admin/content/templates");
   revalidatePath("/admin/content/legal");
 }
+
+// ==========================================
+// COMPLIANCE & DATA REQUESTS (Phase 8) — GDPR/CCPA
+// ==========================================
+
+export interface DataRequestRow {
+  id: string;
+  uid: string;
+  type: "export" | "delete";
+  status: "pending" | "fulfilled" | "rejected";
+  requestedAt: number | null;
+  fulfilledAt: number | null;
+  fulfilledBy?: string;
+  note?: string;
+}
+
+export async function getDataRequests(): Promise<DataRequestRow[]> {
+  await requirePermission("security.manage");
+  if (!adminDb) return [];
+  const snap = await adminDb.collection("dataRequests").orderBy("requestedAt", "desc").get();
+  return snap.docs.map((d) => {
+    const data = d.data() as any;
+    return {
+      id: d.id,
+      uid: data.uid,
+      type: data.type,
+      status: data.status ?? "pending",
+      requestedAt: data.requestedAt?.toMillis?.() ?? null,
+      fulfilledAt: data.fulfilledAt?.toMillis?.() ?? null,
+      fulfilledBy: data.fulfilledBy,
+      note: data.note,
+    };
+  });
+}
+
+export async function createDataRequestAction(input: { uid: string; type: "export" | "delete" }) {
+  await requirePermission("security.manage");
+  if (!adminDb) throw new Error("DB unavailable");
+  await adminDb.collection("dataRequests").add({
+    uid: input.uid,
+    type: input.type,
+    status: "pending",
+    requestedAt: new Date(),
+  });
+  await logAdminAudit("data_request_created", input.uid, { type: input.type });
+  revalidatePath("/admin/compliance/data-requests");
+}
+
+// Gather a user's Firestore data into a serializable bundle (export).
+export async function fulfillExportAction(requestId: string) {
+  await requirePermission("security.manage");
+  if (!adminDb) throw new Error("DB unavailable");
+  const docRef = adminDb.collection("dataRequests").doc(requestId);
+  const doc = await docRef.get();
+  if (!doc.exists) throw new Error("Request not found");
+  const { uid } = doc.data() as any;
+
+  const bundle: Record<string, any> = { user: null, workspaces: {} };
+  const userSnap = await adminDb.collection("users").doc(uid).get();
+  bundle.user = userSnap.exists ? userSnap.data() : null;
+
+  const wsSnap = await adminDb.collection("workspaces").where("ownerUid", "==", uid).get();
+  for (const ws of wsSnap.docs) {
+    const subcols = ["members", "socialAccounts", "posts", "drafts", "mediaAssets", "labels", "comments", "conversations", "apiKeys", "webhooks"];
+    const wsData: Record<string, any[]> = {};
+    for (const sc of subcols) {
+      const s = await adminDb!.collection("workspaces").doc(ws.id).collection(sc).get();
+      wsData[sc] = s.docs.map((d) => d.data());
+    }
+    bundle.workspaces[ws.id] = { doc: ws.data(), ...wsData };
+  }
+
+  const exportJson = JSON.stringify(bundle, null, 2);
+  await docRef.update({
+    status: "fulfilled",
+    fulfilledAt: new Date(),
+    fulfilledBy: "admin",
+    exportSizeBytes: Buffer.byteLength(exportJson, "utf8"),
+  });
+  await logAdminAudit("data_export_fulfilled", uid, { requestId });
+  revalidatePath("/admin/compliance/data-requests");
+  return { exportJson };
+}
+
+// Destructive cascading deletion. Requires the typed confirmation string.
+export async function fulfillDeleteAction(requestId: string, confirmText: string) {
+  await requirePermission("security.manage");
+  if (confirmText !== "DELETE USER DATA") throw new Error("Confirmation text did not match.");
+  if (!adminDb) throw new Error("DB unavailable");
+  const docRef = adminDb.collection("dataRequests").doc(requestId);
+  const doc = await docRef.get();
+  if (!doc.exists) throw new Error("Request not found");
+  const { uid } = doc.data() as any;
+
+  const wsSnap = await adminDb.collection("workspaces").where("ownerUid", "==", uid).get();
+  for (const ws of wsSnap.docs) {
+    const subcols = ["members", "socialAccounts", "posts", "drafts", "mediaAssets", "labels", "comments", "conversations", "apiKeys", "webhooks", "reports", "reportSchedules", "destinations", "hashtagSets", "hashtagsTrending", "analyticsDaily"];
+    for (const sc of subcols) {
+      const s = await adminDb!.collection("workspaces").doc(ws.id).collection(sc).get();
+      for (const d of s.docs) await d.ref.delete();
+    }
+    await ws.ref.delete();
+  }
+  await adminDb.collection("users").doc(uid).delete();
+
+  await docRef.update({
+    status: "fulfilled",
+    fulfilledAt: new Date(),
+    fulfilledBy: "admin",
+  });
+  await logAdminAudit("data_deletion_fulfilled", uid, { requestId });
+  revalidatePath("/admin/compliance/data-requests");
+}
