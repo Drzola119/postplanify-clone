@@ -2058,6 +2058,11 @@ export async function getMediaStorageOverview(): Promise<{
   return { rows, totals: { totalBytes, totalAssets, byWorkspace } };
 }
 
+// Shared revalidate helper for sibling server-action modules (localization, etc.)
+export async function revalidateHelper(path: string) {
+  revalidatePath(path);
+}
+
 export async function orphanMediaAssetsAction(workspaceId: string) {
   await requirePermission("content.moderate");
   if (!adminDb) throw new Error("DB unavailable");

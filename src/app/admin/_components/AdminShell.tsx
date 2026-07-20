@@ -17,6 +17,7 @@ import {
   FileText,
   LayoutTemplate,
   Scale,
+  Languages,
   Clock,
   AlertOctagon,
   Share2,
@@ -85,6 +86,7 @@ const BREADCRUMB_MAP: Record<string, string> = {
   "/admin/content/blog": "Blog & Pages",
   "/admin/content/templates": "Templates Gallery",
   "/admin/content/legal": "Legal Documents",
+  "/admin/content/translations": "Translations",
   "/admin/inbox": "Inbox Moderation",
   "/admin/automations": "Automations",
   "/admin/media": "Media & Storage",
@@ -142,6 +144,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Blog & Pages", href: "/admin/content/blog", icon: FileText },
       { label: "Templates Gallery", href: "/admin/content/templates", icon: LayoutTemplate },
       { label: "Legal Documents", href: "/admin/content/legal", icon: Scale },
+      { label: "Translations", href: "/admin/content/translations", icon: Languages },
     ],
   },
   {
