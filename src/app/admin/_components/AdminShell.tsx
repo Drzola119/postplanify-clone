@@ -67,6 +67,10 @@ const BREADCRUMB_MAP: Record<string, string> = {
   "/admin/settings/status": "Platform Status",
   "/admin/alerts": "Active Alerts",
   "/admin/alerts/rules": "Alert Rules",
+  "/admin/integrations/social-accounts": "Social Accounts",
+  "/admin/integrations/webhooks": "Webhooks",
+  "/admin/integrations/api-keys": "API Keys",
+  "/admin/integrations/ai-usage": "AI Usage & Cost",
   "/admin/logs": "API Logs",
   "/admin/logs/security": "Security Events",
   "/admin/logs/audit": "Admin Activity Log",
@@ -98,6 +102,15 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Active Alerts", href: "/admin/alerts", icon: AlertTriangle },
       { label: "Alert Rules", href: "/admin/alerts/rules", icon: BellRing },
+    ],
+  },
+  {
+    title: "INTEGRATIONS",
+    items: [
+      { label: "Social Accounts", href: "/admin/integrations/social-accounts", icon: Share2 },
+      { label: "Webhooks", href: "/admin/integrations/webhooks", icon: Activity },
+      { label: "API Keys", href: "/admin/integrations/api-keys", icon: Terminal },
+      { label: "AI Usage & Cost", href: "/admin/integrations/ai-usage", icon: DollarSign },
     ],
   },
   {

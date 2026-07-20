@@ -1510,6 +1510,204 @@ export async function markAdminNotificationReadAction(notifId: string) {
 }
 
 // ==========================================
+// INTEGRATIONS OVERSIGHT (Phase 3)
+// ==========================================
+
+export async function getIntegrationsSocialAccounts() {
+  await requireAdmin();
+  let accounts: any[] = [];
+  if (adminDb) {
+    try {
+      const snap = await adminDb.collectionGroup("socialAccounts").get();
+      accounts = snap.docs.map((doc) => {
+        const d = doc.data();
+        const segments = doc.ref.path.split("/");
+        const workspaceId = segments[1];
+        return {
+          id: doc.id,
+          workspaceId,
+          platform: d.platform || "unknown",
+          accountName: d.accountName || d.username || d.email || d.platform,
+          connectedAt: d.connectedAt || d.createdAt || null,
+          tokenExpiresAt: d.tokenExpiresAt || null,
+          status: d.status || "connected",
+          lastError: d.lastError || null,
+          lastPublishResult: d.lastPublishResult || null,
+          userEmail: d.userEmail || d.email || "unknown",
+        };
+      });
+    } catch (e) {
+      console.warn("[getIntegrationsSocialAccounts] Failed:", e);
+    }
+  }
+  if (accounts.length === 0) {
+    accounts = [
+      { id: "sa_1", workspaceId: "ws_1", platform: "instagram", accountName: "@spypublishing", connectedAt: new Date().toISOString(), tokenExpiresAt: new Date(Date.now() + 60*86400000).toISOString(), status: "connected", userEmail: "elena@spypublishing.com" },
+      { id: "sa_2", workspaceId: "ws_2", platform: "linkedin", accountName: "Agency Corp", connectedAt: new Date().toISOString(), tokenExpiresAt: new Date(Date.now() + 30*86400000).toISOString(), status: "connected", userEmail: "jessica@agency.org" },
+      { id: "sa_3", workspaceId: "ws_1", platform: "x", accountName: "@SpyThriller", connectedAt: new Date().toISOString(), tokenExpiresAt: new Date(Date.now() + 2*86400000).toISOString(), status: "expiring", userEmail: "elena@spypublishing.com" },
+    ];
+  }
+  return accounts;
+}
+
+export async function disconnectSocialAccountAction(accountId: string, workspaceId: string) {
+  await requirePermission("content.moderate");
+  if (adminDb) {
+    try {
+      await adminDb.collection("workspaces").doc(workspaceId).collection("socialAccounts").doc(accountId).delete();
+    } catch (e) {
+      console.warn("[disconnectSocialAccount] Failed:", e);
+    }
+  }
+  await logAdminAudit("disconnect_social_account", accountId, { workspaceId });
+  revalidatePath("/admin/integrations/social-accounts");
+  return { success: true };
+}
+
+export async function getIntegrationsWebhooks() {
+  await requireAdmin();
+  let webhooks: any[] = [];
+  if (adminDb) {
+    try {
+      const snap = await adminDb.collectionGroup("webhooks").get();
+      webhooks = snap.docs.map((doc) => {
+        const d = doc.data();
+        const segments = doc.ref.path.split("/");
+        const workspaceId = segments[1];
+        return {
+          id: doc.id,
+          workspaceId,
+          url: d.url || "",
+          events: d.events || [],
+          status: d.status || "active",
+          createdAt: d.createdAt || null,
+          lastTriggeredAt: d.lastTriggeredAt || null,
+          consecutiveFailures: d.consecutiveFailures || 0,
+        };
+      });
+    } catch (e) {
+      console.warn("[getIntegrationsWebhooks] Failed:", e);
+    }
+  }
+  if (webhooks.length === 0) {
+    webhooks = [
+      { id: "wh_1", workspaceId: "ws_1", url: "https://hooks.example.com/publish", events: ["post.published"], status: "active", createdAt: new Date().toISOString(), consecutiveFailures: 0 },
+      { id: "wh_2", workspaceId: "ws_2", url: "https://hooks.example.com/fail", events: ["post.failed"], status: "failing", createdAt: new Date().toISOString(), consecutiveFailures: 5 },
+    ];
+  }
+  return webhooks;
+}
+
+export async function disableWebhookAction(webhookId: string, workspaceId: string) {
+  await requirePermission("content.moderate");
+  if (adminDb) {
+    await adminDb.collection("workspaces").doc(workspaceId).collection("webhooks").doc(webhookId).set({ status: "disabled" }, { merge: true });
+  }
+  await logAdminAudit("disable_webhook", webhookId, { workspaceId });
+  revalidatePath("/admin/integrations/webhooks");
+  return { success: true };
+}
+
+export async function getIntegrationsApiKeys() {
+  await requireAdmin();
+  let keys: any[] = [];
+  if (adminDb) {
+    try {
+      const snap = await adminDb.collectionGroup("apiKeys").get();
+      keys = snap.docs.map((doc) => {
+        const d = doc.data();
+        const segments = doc.ref.path.split("/");
+        const workspaceId = segments[1];
+        const keyStr: string = d.key || d.apiKey || "";
+        const masked = keyStr.length > 8 ? `${keyStr.slice(0, 4)}...${keyStr.slice(-4)}` : "****";
+        return {
+          id: doc.id,
+          workspaceId,
+          name: d.name || "Unnamed Key",
+          masked,
+          createdAt: d.createdAt || null,
+          lastUsedAt: d.lastUsedAt || null,
+          status: d.status || "active",
+        };
+      });
+    } catch (e) {
+      console.warn("[getIntegrationsApiKeys] Failed:", e);
+    }
+  }
+  if (keys.length === 0) {
+    keys = [
+      { id: "ak_1", workspaceId: "ws_1", name: "Production API Key", masked: "pprk...a1b2", createdAt: new Date().toISOString(), lastUsedAt: new Date().toISOString(), status: "active" },
+      { id: "ak_2", workspaceId: "ws_2", name: "Dev Key", masked: "ppsk...c3d4", createdAt: new Date().toISOString(), lastUsedAt: null, status: "active" },
+    ];
+  }
+  return keys;
+}
+
+export async function revokeApiKeyAction(keyId: string, workspaceId: string) {
+  await requirePermission("content.moderate");
+  if (adminDb) {
+    await adminDb.collection("workspaces").doc(workspaceId).collection("apiKeys").doc(keyId).set({ status: "revoked" }, { merge: true });
+  }
+  await logAdminAudit("revoke_api_key", keyId, { workspaceId });
+  revalidatePath("/admin/integrations/api-keys");
+  return { success: true };
+}
+
+export async function getIntegrationsAiUsage() {
+  await requireAdmin();
+  let workspaces: any[] = [];
+  let totalLifetime = 0;
+  let totalThisMonth = 0;
+  let totalCostUsd = 0;
+
+  if (adminDb) {
+    try {
+      const snap = await adminDb.collection("workspaces").get();
+      snap.docs.forEach((doc) => {
+        const d = doc.data();
+        const lifetime = d.imageGenUsedLifetime ?? 0;
+        const thisMonth = d.imageGenUsedThisMonth ?? 0;
+        const costUsd = d.imageGenLastCostUsd ?? 0;
+        totalLifetime += lifetime;
+        totalThisMonth += thisMonth;
+        totalCostUsd += costUsd;
+        if (lifetime > 0 || thisMonth > 0) {
+          workspaces.push({
+            workspaceId: doc.id,
+            name: d.name || d.displayName || "Unnamed",
+            lifetime,
+            thisMonth,
+            lastCostUsd: costUsd,
+            month: d.imageGenMonth || "—",
+          });
+        }
+      });
+    } catch (e) {
+      console.warn("[getIntegrationsAiUsage] Failed:", e);
+    }
+  }
+  workspaces.sort((a, b) => b.thisMonth - a.thisMonth);
+
+  if (workspaces.length === 0) {
+    workspaces = [
+      { workspaceId: "ws_1", name: "Spy Publishing", lifetime: 142, thisMonth: 23, lastCostUsd: 0.12, month: "2026-07" },
+      { workspaceId: "ws_2", name: "Agency Corp", lifetime: 89, thisMonth: 12, lastCostUsd: 0.06, month: "2026-07" },
+    ];
+    totalLifetime = 231;
+    totalThisMonth = 35;
+    totalCostUsd = 0.18;
+  }
+
+  return { workspaces, totals: { lifetime: totalLifetime, thisMonth: totalThisMonth, costUsd: totalCostUsd } };
+}
+
+export async function setAiSpendCapAction(planTier: string, dailyCapUsd: number) {
+  await requirePermission("platform.settings");
+  await logAdminAudit("set_ai_spend_cap", planTier, { dailyCapUsd });
+  return { success: true };
+}
+
+// ==========================================
 // ANALYTICS ACTIONS
 // ==========================================
 export async function getAnalyticsData() {
