@@ -1,29 +1,25 @@
 import { NextRequest } from "next/server";
 import { requireSession } from "@/lib/auth/session-context";
-import { getAccountAnalytics } from "@/lib/db/analytics";
+import { resolvers } from "@/lib/security/server-config";
+import { readProfile } from "@/lib/db/upload-post-profiles";
 import { readCache } from "@/lib/db/account-health";
+import { getProfileAnalytics, isAnalyticsSupported } from "@/lib/uploadpost/analytics";
+import { getCachedPlatform, setCachedPlatform } from "@/lib/db/analytics-cache";
 import { analyticsOverviewQuerySchema } from "@/lib/validation/analytics";
-import { platformIdSchema } from "@/lib/validation/posts";
 import { parseSearchParams, jsonError, jsonOk } from "@/lib/validation/helpers";
-import type { PlatformId as DbPlatformId } from "@/lib/db/schema";
+import { createLogger } from "@/lib/log";
+import { adminDb } from "@/lib/db";
+import type { PlatformId } from "@/lib/db/schema";
+import type { NormalizedPlatformAnalytics } from "@/types/analytics";
+
+const log = createLogger("analytics-account");
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Per-account analytics.
- *
- * Resolves the platform for `id` (e.g. "nick-lorance:tiktok") from the
- * cached social-accounts snapshot, then aggregates the per-day series for
- * that platform within the date range and counts published posts.
- *
- * Platforms that exist at upload-post.com but aren't yet wired into the
- * analytics store (google_business, reddit, discord, telegram) return an
- * empty analytics payload so the page still renders.
- */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await requireSession();
   if (session instanceof Response) return session;
@@ -31,7 +27,6 @@ export async function GET(
   const { id } = await params;
   if (!id) return jsonError(400, "Missing account id");
 
-  // Default range: last 7 days.
   const url = new URL(request.url);
   const parsed = parseSearchParams(url.searchParams, analyticsOverviewQuerySchema);
   if (!parsed.ok || !parsed.data) {
@@ -44,44 +39,178 @@ export async function GET(
     return jsonError(400, "Invalid date range");
   }
 
-  // Look up the platform for this account id from the cached snapshot.
+  // Resolve platform for this account id from the cached snapshot.
   const cache = await readCache(session.workspaceId).catch(() => null);
   const acct = cache?.accounts?.find((a) => a.id === id);
   if (!acct) {
     return jsonError(404, "Account not found in workspace snapshot. Try refreshing accounts.");
   }
-  const platformCheck = platformIdSchema.safeParse(acct.platform);
-  if (!platformCheck.success) {
-    // Newer platforms that don't have analytics storage yet — return an empty
-    // payload so the page still renders with 0s and a "collecting" state.
+  const platform = acct.platform;
+
+  if (!isAnalyticsSupported(platform)) {
+    // Discord / Telegram / Google Business — analytics not offered by Upload-Post.
     return jsonOk({
       analytics: {
         accountId: id,
-        platform: acct.platform,
+        platform,
         from: from.toISOString(),
         to: to.toISOString(),
+        status: "unsupported",
+        errorMessage: "Analytics not supported for this platform",
         totals: {
-          followers: 0,
-          impressions: 0,
-          likes: 0,
-          comments: 0,
-          shares: 0,
-          clicks: 0,
-          engagementRate: 0,
+          followers: null,
+          impressions: null,
+          likes: null,
+          comments: null,
+          shares: null,
+          saves: null,
+          clicks: null,
+          engagementRate: null,
           postsPublished: 0,
         },
         series: [],
       },
     });
   }
-  const platform: DbPlatformId = platformCheck.data as DbPlatformId;
 
-  const analytics = await getAccountAnalytics(
+  let apiKey: string;
+  try {
+    apiKey = resolvers.uploadPostApiKey(request.headers);
+  } catch (err) {
+    log.warn("UPLOAD_POST_API_KEY not configured", { error: String(err) });
+    return jsonOk({
+      analytics: {
+        accountId: id,
+        platform,
+        from: from.toISOString(),
+        to: to.toISOString(),
+        status: "error",
+        errorMessage: "Upload-Post API key not configured",
+        totals: nullSeries(),
+        series: [],
+      },
+    });
+  }
+
+  const profile = await readProfile(session.workspaceId);
+  const profileUsername = profile?.username ?? session.workspaceId;
+
+  const cached = await getCachedPlatform(
     session.workspaceId,
-    id,
+    profileUsername,
     platform,
     from,
-    to
+    to,
+  ).catch(() => null);
+
+  let normalized: NormalizedPlatformAnalytics | null = cached;
+  if (!normalized) {
+    const [settled] = await Promise.allSettled([
+      getProfileAnalytics(apiKey, profileUsername, [platform as never]),
+    ]);
+    const list = settled.status === "fulfilled" ? settled.value : null;
+    normalized = list?.[0] ?? null;
+    if (normalized) {
+      await setCachedPlatform(
+        session.uid,
+        session.workspaceId,
+        profileUsername,
+        platform,
+        from,
+        to,
+        normalized,
+      ).catch(() => {});
+    }
+  }
+
+  const postsPublished = await countPublishedPosts(
+    session.workspaceId,
+    platform as PlatformId,
+    from,
+    to,
   );
-  return jsonOk({ analytics });
+
+  if (!normalized) {
+    return jsonOk({
+      analytics: {
+        accountId: id,
+        platform,
+        from: from.toISOString(),
+        to: to.toISOString(),
+        status: "error",
+        errorMessage: "No analytics returned",
+        totals: nullSeries(),
+        series: [],
+      },
+    });
+  }
+
+  return jsonOk({
+    analytics: {
+      accountId: id,
+      platform,
+      from: from.toISOString(),
+      to: to.toISOString(),
+      status: normalized.status,
+      errorMessage: normalized.errorMessage,
+      lastSyncedAt: normalized.lastSyncedAt,
+      totals: {
+        followers: normalized.followers,
+        impressions: normalized.impressionsPrimary,
+        likes: normalized.likes,
+        comments: normalized.comments,
+        shares: normalized.shares,
+        saves: normalized.saves,
+        clicks: normalized.clicks,
+        engagementRate: normalized.engagementRate,
+        postsPublished,
+      },
+      // Timeseries only when present — never fabricated.
+      series: normalized.timeseries.map((pt) => ({
+        date: pt.date,
+        followers: normalized?.followers ?? 0,
+        engagementRate: normalized?.engagementRate ?? 0,
+        impressions: pt.value,
+        likes: normalized?.likes ?? 0,
+        comments: normalized?.comments ?? 0,
+        shares: normalized?.shares ?? 0,
+        clicks: normalized?.clicks ?? 0,
+      })),
+    },
+  });
+}
+
+function nullSeries() {
+  return {
+    followers: null,
+    impressions: null,
+    likes: null,
+    comments: null,
+    shares: null,
+    saves: null,
+    clicks: null,
+    engagementRate: null,
+    postsPublished: 0,
+  };
+}
+
+async function countPublishedPosts(
+  workspaceId: string,
+  platform: PlatformId,
+  from: Date,
+  to: Date,
+): Promise<number> {
+  if (!adminDb) return 0;
+  try {
+    const posts = await adminDb
+      .collection(`workspaces/${workspaceId}/posts`)
+      .where("status", "==", "published")
+      .where("platforms", "array-contains", platform)
+      .where("publishedAt", ">=", from)
+      .where("publishedAt", "<=", to)
+      .get();
+    return posts.size;
+  } catch {
+    return 0;
+  }
 }

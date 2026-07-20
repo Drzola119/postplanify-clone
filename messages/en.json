@@ -643,7 +643,19 @@
       "d30": "30d",
       "d90": "90d",
       "account_not_found": "Account not found.",
-      "loading_fallback": "Loading…"
+      "loading_fallback": "Loading…",
+      "loading_title": "Loading analytics…",
+      "connect_platforms_sub": "Connect a social account to see live analytics from Upload-Post.",
+      "last_synced": "Last synced {time}",
+      "all_platforms": "All",
+      "status_ok": "Live",
+      "status_unsupported": "Unsupported",
+      "status_not_connected": "Not connected",
+      "status_unavailable": "Unavailable",
+      "reconnect_platform": "Reconnect",
+      "unsupported_title": "Analytics not supported",
+      "unsupported_sub": "Upload-Post does not provide analytics for this platform. Connect another platform to see live metrics.",
+      "not_connected_sub": "This platform is not connected at Upload-Post. Reconnect it to restore analytics."
     },
     "reports": {
       "page_title": "Reports",

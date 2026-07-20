@@ -643,7 +643,19 @@
       "d30": "30ي",
       "d90": "90ي",
       "account_not_found": "الحساب غير موجود.",
-      "loading_fallback": "جارٍ التحميل…"
+      "loading_fallback": "جارٍ التحميل…",
+      "loading_title": "جارٍ تحميل التحليلات…",
+      "connect_platforms_sub": "اربط حساباً اجتماعياً لعرض التحليلات المباشرة من Upload-Post.",
+      "last_synced": "آخر مزامنة {time}",
+      "all_platforms": "الكل",
+      "status_ok": "مباشر",
+      "status_unsupported": "غير مدعوم",
+      "status_not_connected": "غير متصل",
+      "status_unavailable": "غير متوفر",
+      "reconnect_platform": "إعادة الربط",
+      "unsupported_title": "التحليلات غير مدعومة",
+      "unsupported_sub": "لا يوفر Upload-Post تحليلات لهذه المنصة. اربط منصة أخرى لعرض المقاييس المباشرة.",
+      "not_connected_sub": "هذه المنصة غير متصلة على Upload-Post. أعد ربطها لاستعادة التحليلات."
     },
     "reports": {
       "page_title": "التقارير",

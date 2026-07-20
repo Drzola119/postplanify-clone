@@ -643,7 +643,19 @@
       "d30": "30j",
       "d90": "90j",
       "account_not_found": "Compte introuvable.",
-      "loading_fallback": "Chargement…"
+      "loading_fallback": "Chargement…",
+      "loading_title": "Chargement des analyses…",
+      "connect_platforms_sub": "Connectez un compte social pour voir les analyses en direct d'Upload-Post.",
+      "last_synced": "Dernière synchro {time}",
+      "all_platforms": "Tous",
+      "status_ok": "En direct",
+      "status_unsupported": "Non pris en charge",
+      "status_not_connected": "Non connecté",
+      "status_unavailable": "Indisponible",
+      "reconnect_platform": "Reconnecter",
+      "unsupported_title": "Analyses non prises en charge",
+      "unsupported_sub": "Upload-Post ne fournit pas d'analyses pour cette plateforme. Connectez une autre plateforme pour voir les métriques en direct.",
+      "not_connected_sub": "Cette plateforme n'est pas connectée sur Upload-Post. Reconnectez-la pour restaurer les analyses."
     },
     "reports": {
       "page_title": "Rapports",

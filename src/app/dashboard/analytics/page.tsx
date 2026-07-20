@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 import {
   Users, Eye, BarChart3, ChevronDown, ChevronRight, Calendar, RefreshCw,
   Heart, MessageCircle, Repeat2, Bookmark, Share2, MousePointerClick, MessageSquare, Play,
@@ -23,6 +24,8 @@ type Platform =
   | "facebook" | "threads" | "linkedin" | "pinterest" | "bluesky";
 
 
+
+type AnalyticsStatus = "ok" | "error" | "token_expired" | "not_connected" | "unsupported" | "unknown";
 
 interface AccountSummary {
   id: string;
@@ -49,6 +52,7 @@ interface AccountSummary {
   isError?: boolean;
   errorMessage?: string;
   contentTypes?: { images: number; videos: number; text: number; imageViews?: number };
+  analyticsStatus?: AnalyticsStatus;
 }
 
 // ============================================================
@@ -129,14 +133,53 @@ const PLATFORM_ACCENT: Record<Platform, { color: string; leftClass: string }> = 
 // ============================================================
 // Platform avatar / icon
 // ============================================================
-function PlatformIcon({ platform, className = "" }: { platform: Platform; className?: string }) {
-  return (
+function PlatformIcon({ platform, className = "" }: { platform: Platform; className?: string }) {  return (
     <span className={`inline-flex items-center justify-center shrink-0 ${className}`}>
       <PlatformAvatar
         platform={{ id: platform, name: platform.charAt(0).toUpperCase() + platform.slice(1), handle: "", avatar: null, charLimit: 0, borderClass: "", textClass: "", icon: "" }}
         size={16}
         rounded="sm"
       />
+    </span>
+  );
+}
+
+// ============================================================
+// Status badge for honest platform states
+// ============================================================
+function StatusBadge({ status, errorMessage }: { status: AnalyticsStatus; errorMessage?: string | null }) {
+  const t = useTranslations("dashboard");
+  if (status === "ok") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+        <CheckCircle2 className="size-3" /> {t("analytics.status_ok")}
+      </span>
+    );
+  }
+  if (status === "unsupported") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-600">
+        {t("analytics.status_unsupported")}
+      </span>
+    );
+  }
+  if (status === "not_connected") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+        {t("analytics.status_not_connected")}
+      </span>
+    );
+  }
+  if (status === "token_expired") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700">
+        {t("analytics.reconnect_platform")}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700" title={errorMessage ?? undefined}>
+      {t("analytics.status_unavailable")}
     </span>
   );
 }
@@ -523,14 +566,18 @@ interface PerAccountAnalytics {
   platform: Platform;
   from: string;
   to: string;
+  status?: AnalyticsStatus;
+  errorMessage?: string | null;
+  lastSyncedAt?: string | null;
   totals: {
-    followers: number;
-    impressions: number;
-    likes: number;
-    comments: number;
-    shares: number;
-    clicks: number;
-    engagementRate: number;
+    followers: number | null;
+    impressions: number | null;
+    likes: number | null;
+    comments: number | null;
+    shares: number | null;
+    saves: number | null;
+    clicks: number | null;
+    engagementRate: number | null;
     postsPublished: number;
   };
   series: { date: string; followers: number; engagementRate: number; impressions: number; likes: number; comments: number; shares: number; clicks: number }[];
@@ -542,6 +589,12 @@ function fmt(n: number): string {
   return n.toLocaleString();
 }
 
+/** Format an optional number, returning an em-dash when unavailable. */
+function fmtOpt(n: number | null | undefined): string {
+  if (n === null || n === undefined || Number.isNaN(n)) return "—";
+  return fmt(n);
+}
+
 function fmtPct(n: number): string {
   return `${n.toFixed(2)}%`;
 }
@@ -550,6 +603,21 @@ function fmtDateShort(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function timeAgo(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const now = Date.now();
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const diffMs = now - then;
+  if (diffMs < 1000) return "just now";
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }
 
 function PerAccountView({ accountId, accounts }: { accountId: string; accounts: AccountSummary[] }) {
@@ -563,6 +631,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
   const [error, setError] = useState<string | null>(null);
   const [fetchNonce, setFetchNonce] = useState(0);
   const [publishedPosts, setPublishedPosts] = useState<{ id: string; caption: string; publishedAt: string | null; platforms: string[] }[] | null>(null);
+  const [liveMetrics, setLiveMetrics] = useState<Record<string, { status?: string; likes: number | null; comments: number | null; shares: number | null; impressions: number | null }>>({});
 
   const fetchAnalytics = useCallback(async () => {
     setLoading(true);
@@ -591,7 +660,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
     fetchAnalytics();
   }, [fetchAnalytics, fetchNonce]);
 
-  // Fetch published posts for this account's platform.
+  // Fetch published posts + live per-post analytics.
   useEffect(() => {
     const account = accounts.find((a) => a.id === accountId);
     if (!account) return;
@@ -608,7 +677,23 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
         );
         if (!cancelled && res.ok) {
           const data = await res.json();
-          setPublishedPosts(data.posts as typeof publishedPosts);
+          const posts = (data.posts as typeof publishedPosts) ?? [];
+          setPublishedPosts(posts);
+          // Fetch live per-post analytics.
+          if (posts.length > 0) {
+            const postIds = posts.map((p: { id: string }) => p.id).join(",");
+            const lmRes = await fetch(`/api/posts/live-metrics?postIds=${postIds}`, {
+              cache: "no-store", headers: getOverrideHeaders(),
+            });
+            if (!cancelled && lmRes.ok) {
+              const lmData = await lmRes.json();
+              const metricsMap: Record<string, typeof liveMetrics[string]> = {};
+              for (const m of lmData.metrics ?? []) {
+                metricsMap[m.postId] = { status: m.status, likes: m.likes, comments: m.comments, shares: m.shares, impressions: m.impressions };
+              }
+              if (!cancelled) setLiveMetrics(metricsMap);
+            }
+          }
         }
       } catch {
         // silent
@@ -686,25 +771,35 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
   const engagementSeries = series.map((p) => p.engagementRate);
   const interactionsSeries = series.map((p) => p.likes + p.comments + p.shares + p.clicks);
 
+  const isUnsupported = analytics?.status === "unsupported";
+  const isReconnect = analytics?.status === "token_expired";
+  const isNotConnected = analytics?.status === "not_connected";
+  const hasData =
+    totals &&
+    (totals.followers !== null ||
+      totals.impressions !== null ||
+      totals.likes !== null ||
+      totals.comments !== null ||
+      totals.shares !== null);
+
   const isCollecting = !analytics || series.length < dayCount;
-  const isEmpty = !analytics || (totals && totals.followers === 0 && totals.impressions === 0 && totals.likes === 0);
 
   const data = {
     headerMetrics: totals
       ? [
-          { value: fmt(totals.followers), label: t("analytics.followers_label"), color: accent.color, icon: <Users className="size-4 text-white" /> },
+          { value: fmtOpt(totals.followers), label: t("analytics.followers_label"), color: accent.color, icon: <Users className="size-4 text-white" /> },
           { value: fmt(totals.postsPublished), label: t("analytics.posts_label"), color: "#3b82f6", icon: <MessageCircle className="size-4 text-white" /> },
-          { value: fmt(totals.impressions), label: t("analytics.impressions_label"), color: "#a855f7", icon: <Eye className="size-4 text-white" /> },
+          { value: fmtOpt(totals.impressions), label: t("analytics.impressions_label"), color: "#a855f7", icon: <Eye className="size-4 text-white" /> },
         ]
       : [],
     metrics: totals
       ? [
-          { label: t("analytics.views"), value: fmt(totals.impressions), sub: t("analytics.views_sub"), color: "indigo" as MetricColor, icon: "eye" as MetricIcon },
-          { label: t("analytics.likes"), value: fmt(totals.likes), sub: t("analytics.likes_sub2"), color: "red" as MetricColor, icon: "heart" as MetricIcon },
-          { label: t("analytics.comments"), value: fmt(totals.comments), sub: t("analytics.comments_sub2"), color: "purple" as MetricColor, icon: "message" as MetricIcon },
-          { label: t("analytics.shares"), value: fmt(totals.shares), sub: t("analytics.shares_sub2"), color: "green" as MetricColor, icon: "share" as MetricIcon },
-          { label: t("analytics.clicks"), value: fmt(totals.clicks), sub: t("analytics.clicks_sub2"), color: "amber" as MetricColor, icon: "click" as MetricIcon },
-          { label: t("analytics.engagement"), value: fmtPct(totals.engagementRate), sub: t("analytics.engagement_sub2"), color: "orange" as MetricColor, icon: "trending" as MetricIcon },
+          { label: t("analytics.views"), value: fmtOpt(totals.impressions), sub: t("analytics.views_sub"), color: "indigo" as MetricColor, icon: "eye" as MetricIcon },
+          { label: t("analytics.likes"), value: fmtOpt(totals.likes), sub: t("analytics.likes_sub2"), color: "red" as MetricColor, icon: "heart" as MetricIcon },
+          { label: t("analytics.comments"), value: fmtOpt(totals.comments), sub: t("analytics.comments_sub2"), color: "purple" as MetricColor, icon: "message" as MetricIcon },
+          { label: t("analytics.shares"), value: fmtOpt(totals.shares), sub: t("analytics.shares_sub2"), color: "green" as MetricColor, icon: "share" as MetricIcon },
+          { label: t("analytics.clicks"), value: fmtOpt(totals.clicks), sub: t("analytics.clicks_sub2"), color: "amber" as MetricColor, icon: "click" as MetricIcon },
+          { label: t("analytics.engagement"), value: totals.engagementRate != null ? fmtPct(totals.engagementRate) : "—", sub: t("analytics.engagement_sub2"), color: "orange" as MetricColor, icon: "trending" as MetricIcon },
         ]
       : [],
     trends: {
@@ -715,7 +810,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
     },
   };
 
-  if (account.isError) {
+  if (account.isError || isReconnect) {
     return (
       <div className="px-6 py-6 space-y-4">
         <PageHeader
@@ -724,7 +819,27 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
           accounts={accounts}
           onSync={() => setFetchNonce((n) => n + 1)}
         />
-        <AnalyticsErrorState message={account.errorMessage || "Analytics are not available for this account."} />
+        <AnalyticsErrorState message={account.errorMessage || analytics?.errorMessage || "Reconnect this platform to restore analytics."} />
+      </div>
+    );
+  }
+
+  if (isUnsupported) {
+    return (
+      <div className="px-6 py-6 space-y-4">
+        <PageHeader
+          currentId={accountId}
+          onSelect={(id) => router.push(`${pathname}?accountId=${id}`)}
+          accounts={accounts}
+          onSync={() => setFetchNonce((n) => n + 1)}
+        />
+        <div className="rounded-xl border border-zinc-200 bg-white p-12 flex flex-col items-center justify-center text-center">
+          <div className="size-16 rounded-full bg-zinc-100 flex items-center justify-center mb-4">
+            <TrendingUp className="size-7 text-zinc-400" />
+          </div>
+          <h2 className="text-xl font-bold text-zinc-900 mb-2">{t("analytics.unsupported_title")}</h2>
+          <p className="text-[13px] text-zinc-500 max-w-md mb-6">{t("analytics.unsupported_sub")}</p>
+        </div>
       </div>
     );
   }
@@ -756,10 +871,23 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
         </div>
       ) : null}
 
-      {isEmpty && !error ? (
+      {isNotConnected && !error ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+          {t("analytics.not_connected_sub")}
+        </div>
+      ) : null}
+
+      {!hasData && !error && !isNotConnected ? (
         <div className="rounded-xl border border-zinc-200 bg-white p-8 text-center text-zinc-500 text-sm">
           <p className="font-medium text-zinc-700 mb-1">{t("analytics.no_data")}</p>
           <p>{t("analytics.no_data_sub")}</p>
+        </div>
+      ) : null}
+
+      {analytics?.lastSyncedAt ? (
+        <div className="text-[12px] text-zinc-500 inline-flex items-center gap-1.5">
+          <CheckCircle2 className="size-3.5" />
+          {t("analytics.last_synced", { time: timeAgo(analytics.lastSyncedAt) })}
         </div>
       ) : null}
 
@@ -883,36 +1011,47 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
                 <th className="px-3 py-2.5 text-left">{t("analytics.col_content")}</th>
                 <th className="px-3 py-2.5 text-left">{t("analytics.col_date")}</th>
                 <th className="px-3 py-2.5 text-left">{t("analytics.col_platforms")}</th>
+                <th className="px-3 py-2.5 text-right">Impr.</th>
+                <th className="px-3 py-2.5 text-right">Likes</th>
+                <th className="px-3 py-2.5 text-right">Cmts</th>
+                <th className="px-3 py-2.5 text-right">Shares</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
               {!publishedPosts || publishedPosts.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-3 py-8 text-center text-[12px] text-zinc-500">
+                  <td colSpan={8} className="px-3 py-8 text-center text-[12px] text-zinc-500">
                     {t("analytics.no_post_data")}
                   </td>
                 </tr>
               ) : (
-                publishedPosts.map((post, i) => (
-                  <tr key={post.id} className="hover:bg-zinc-50/50">
-                    <td className="px-3 py-2 text-[12px] text-zinc-400 tabular-nums">{i + 1}</td>
-                    <td className="px-3 py-2 max-w-xs">
-                      <p className="text-zinc-900 line-clamp-2 text-[13px]">{post.caption || t("analytics.no_caption")}</p>
-                    </td>
-                    <td className="px-3 py-2 text-[12px] text-zinc-500 whitespace-nowrap">
-                      {post.publishedAt ? fmtDateShort(post.publishedAt) : "—"}
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-1 flex-wrap">
-                        {post.platforms.map((p) => (
-                          <span key={p} className="inline-flex items-center gap-0.5 rounded-md bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 capitalize">
-                            {p}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                publishedPosts.map((post, i) => {
+                  const m = liveMetrics[post.id];
+                  return (
+                    <tr key={post.id} className="hover:bg-zinc-50/50">
+                      <td className="px-3 py-2 text-[12px] text-zinc-400 tabular-nums">{i + 1}</td>
+                      <td className="px-3 py-2 max-w-xs">
+                        <p className="text-zinc-900 line-clamp-2 text-[13px]">{post.caption || t("analytics.no_caption")}</p>
+                      </td>
+                      <td className="px-3 py-2 text-[12px] text-zinc-500 whitespace-nowrap">
+                        {post.publishedAt ? fmtDateShort(post.publishedAt) : "—"}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {post.platforms.map((p) => (
+                            <span key={p} className="inline-flex items-center gap-0.5 rounded-md bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 capitalize">
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-right text-[12px] tabular-nums text-zinc-800">{fmtOpt(m?.impressions)}</td>
+                      <td className="px-3 py-2 text-right text-[12px] tabular-nums text-zinc-800">{fmtOpt(m?.likes)}</td>
+                      <td className="px-3 py-2 text-right text-[12px] tabular-nums text-zinc-800">{fmtOpt(m?.comments)}</td>
+                      <td className="px-3 py-2 text-right text-[12px] tabular-nums text-zinc-800">{fmtOpt(m?.shares)}</td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -976,21 +1115,30 @@ interface OverviewData {
   workspaceId: string;
   from: string;
   to: string;
+  status?: AnalyticsStatus;
+  errorMessage?: string | null;
+  lastSyncedAt?: string | null;
   totals: {
-    followers: number;
-    engagementRate: number;
-    impressions: number;
-    likes: number;
-    comments: number;
-    shares: number;
-    clicks: number;
+    followers: number | null;
+    engagementRate: number | null;
+    impressions: number | null;
+    likes: number | null;
+    comments: number | null;
+    shares: number | null;
+    saves: number | null;
+    clicks: number | null;
     postsPublished: number;
   };
   byPlatform: Array<{
     platform: string;
-    followers: number;
-    impressions: number;
-    engagementRate: number;
+    status?: AnalyticsStatus;
+    errorMessage?: string | null;
+    followers: number | null;
+    impressions: number | null;
+    likes: number | null;
+    comments: number | null;
+    shares: number | null;
+    engagementRate: number | null;
   }>;
 }
 
@@ -999,6 +1147,7 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const [period, setPeriod] = useState<Period>("7d");
+  const [platformFilter, setPlatformFilter] = useState("");
   const [loading, setLoading] = useState(false);
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -1043,7 +1192,38 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
 
   const range = periodToRange(period);
   const dayCount = Math.max(1, Math.round((range.to.getTime() - range.from.getTime()) / (24 * 60 * 60 * 1000)));
-  const totals = overview?.totals;
+
+  // Filter bySelectedPlatform
+  const byPlatform = overview?.byPlatform ?? [];
+  const filteredByPlatform = platformFilter
+    ? byPlatform.filter((p) => p.platform === platformFilter)
+    : byPlatform;
+
+  const activePlatform = platformFilter && filteredByPlatform.length === 1 ? filteredByPlatform[0] : null;
+  const ft = overview?.totals ?? { followers: null, engagementRate: null, impressions: null, likes: null, comments: null, shares: null, saves: null, clicks: null, postsPublished: 0 };
+
+  const platformOptions = byPlatform.map((p) => ({
+    platform: p.platform,
+    label: p.platform.charAt(0).toUpperCase() + p.platform.slice(1),
+  }));
+  const PillRow = (
+    <div className="flex flex-wrap items-center gap-1">
+      {[{ platform: "", label: "All" }, ...platformOptions.sort((a, b) => a.label.localeCompare(b.label))].map((p) => (
+        <button
+          key={p.platform}
+          type="button"
+          onClick={() => setPlatformFilter(p.platform)}
+          className={`inline-flex items-center gap-1 rounded-full px-2.5 h-6 text-[11px] font-medium transition-colors ${
+            platformFilter === p.platform ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+          }`}
+        >
+          {p.label === "All" ? t("analytics.all_platforms") : (
+            <><PlatformIcon platform={p.platform as Platform} className="mr-0.5" /> {p.label}</>
+          )}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div className="px-6 py-6 space-y-4">
@@ -1075,58 +1255,89 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
 
       {!t ? null : (
         <>
+          {/* Error banner when the whole fetch failed */}
+          {overview?.status && overview.status !== "ok" && overview.errorMessage ? (
+            <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-900">
+              <span className="size-1.5 mt-1.5 rounded-full bg-rose-500 shrink-0" />
+              <span>{overview.errorMessage}</span>
+            </div>
+          ) : null}
+
+          {/* Platform filter pills */}
+          <div className="flex items-center gap-3">
+            {overview?.byPlatform && overview.byPlatform.length > 1 ? PillRow : null}
+          </div>
+
           {/* KPI Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            <MetricCard spec={{ label: t("analytics.followers"), value: fmt(totals?.followers ?? 0), sub: t("analytics.followers_sub"), color: "indigo", icon: "eye" }} />
-            <MetricCard spec={{ label: t("analytics.impressions"), value: fmt(totals?.impressions ?? 0), sub: t("analytics.impressions_sub"), color: "blue", icon: "eye" }} />
-            <MetricCard spec={{ label: t("analytics.engagement"), value: fmtPct(totals?.engagementRate ?? 0), sub: t("analytics.engagement_sub"), color: "orange", icon: "trending" }} />
-            <MetricCard spec={{ label: t("analytics.posts"), value: fmt(totals?.postsPublished ?? 0), sub: t("analytics.posts_sub"), color: "green", icon: "chart" }} />
-            <MetricCard spec={{ label: t("analytics.likes"), value: fmt(totals?.likes ?? 0), sub: t("analytics.likes_sub"), color: "red", icon: "heart" }} />
-            <MetricCard spec={{ label: t("analytics.comments"), value: fmt(totals?.comments ?? 0), sub: t("analytics.comments_sub"), color: "purple", icon: "message" }} />
-            <MetricCard spec={{ label: t("analytics.shares"), value: fmt(totals?.shares ?? 0), sub: t("analytics.shares_sub"), color: "teal", icon: "share" }} />
-            <MetricCard spec={{ label: t("analytics.clicks"), value: fmt(totals?.clicks ?? 0), sub: t("analytics.clicks_sub"), color: "amber", icon: "click" }} />
+            <MetricCard spec={{ label: t("analytics.followers"), value: fmtOpt(activePlatform?.followers ?? ft.followers), sub: t("analytics.followers_sub"), color: "indigo", icon: "eye" }} />
+            <MetricCard spec={{ label: t("analytics.impressions"), value: fmtOpt(activePlatform?.impressions ?? ft.impressions), sub: t("analytics.impressions_sub"), color: "blue", icon: "eye" }} />
+            <MetricCard spec={{ label: t("analytics.engagement"), value: activePlatform?.engagementRate != null ? fmtPct(activePlatform.engagementRate) : ft.engagementRate != null ? fmtPct(ft.engagementRate) : "—", sub: t("analytics.engagement_sub"), color: "orange", icon: "trending" }} />
+            <MetricCard spec={{ label: t("analytics.posts"), value: fmt(ft.postsPublished), sub: t("analytics.posts_sub"), color: "green", icon: "chart" }} />
+            <MetricCard spec={{ label: t("analytics.likes"), value: fmtOpt(activePlatform?.likes ?? ft.likes), sub: t("analytics.likes_sub"), color: "red", icon: "heart" }} />
+            <MetricCard spec={{ label: t("analytics.comments"), value: fmtOpt(activePlatform?.comments ?? ft.comments), sub: t("analytics.comments_sub"), color: "purple", icon: "message" }} />
+            <MetricCard spec={{ label: t("analytics.shares"), value: fmtOpt(activePlatform?.shares ?? ft.shares), sub: t("analytics.shares_sub"), color: "teal", icon: "share" }} />
+            <MetricCard spec={{ label: t("analytics.clicks"), value: fmtOpt(ft.clicks), sub: t("analytics.clicks_sub"), color: "amber", icon: "click" }} />
           </div>
+
+          {/* Last synced */}
+          {overview?.lastSyncedAt ? (
+            <div className="text-[12px] text-zinc-500 inline-flex items-center gap-1.5">
+              <Calendar className="size-3.5" />
+              {t("analytics.last_synced", { time: timeAgo(overview.lastSyncedAt) })}
+            </div>
+          ) : null}
 
           {/* Per-platform breakdown */}
           <div className="rounded-xl border border-zinc-200/70 bg-white overflow-hidden">
             <div className="px-4 py-3 border-b border-zinc-100 flex items-center justify-between">
               <h3 className="text-base font-semibold text-zinc-900 inline-flex items-center gap-1.5">
-                <BarChart3 className="size-4" /> Per-Platform Breakdown
+                <BarChart3 className="size-4" /> {t("analytics.per_platform")}
               </h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-[12px] font-medium text-zinc-500 border-b border-zinc-100 bg-zinc-50/40">
                   <tr>
-                    <th className="px-3 py-2.5 text-left">Platform</th>
-                    <th className="px-3 py-2.5 text-right">Followers</th>
-                    <th className="px-3 py-2.5 text-right">Impressions</th>
-                    <th className="px-3 py-2.5 text-right">Eng. Rate</th>
+                    <th className="px-3 py-2.5 text-left">{t("analytics.col_platform")}</th>
+                    <th className="px-3 py-2.5 text-right">{t("analytics.col_followers")}</th>
+                    <th className="px-3 py-2.5 text-right">{t("analytics.col_impressions")}</th>
+                    <th className="px-3 py-2.5 text-right">Likes</th>
+                    <th className="px-3 py-2.5 text-right">Comments</th>
+                    <th className="px-3 py-2.5 text-right">Shares</th>
+                    <th className="px-3 py-2.5 text-right">{t("analytics.col_engagement_rate")}</th>
+                    <th className="px-3 py-2.5 text-left">Status</th>
+                    <th className="px-3 py-2.5 text-right">Synced</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {overview?.byPlatform?.length === 0 ? (
+                  {filteredByPlatform.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-3 py-8 text-center text-[12px] text-zinc-500">
-                        No platform data available yet.
+                      <td colSpan={9} className="px-3 py-8 text-center text-[12px] text-zinc-500">
+                        {t("analytics.no_platform_data")}
                       </td>
                     </tr>
                   ) : (
-                    (overview?.byPlatform ?? [])
-                      .filter((p) => p.followers > 0 || p.impressions > 0)
-                      .map((p, i) => (
-                        <tr key={i} className="hover:bg-zinc-50/50">
-                          <td className="px-3 py-2.5">
-                            <div className="flex items-center gap-2">
-                              <PlatformIcon platform={p.platform as Platform} />
-                              <span className="capitalize text-zinc-900 text-[13px]">{p.platform}</span>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2.5 text-right tabular-nums">{fmt(p.followers)}</td>
-                          <td className="px-3 py-2.5 text-right tabular-nums">{fmt(p.impressions)}</td>
-                          <td className="px-3 py-2.5 text-right tabular-nums">{fmtPct(p.engagementRate)}</td>
-                        </tr>
-                      ))
+                    filteredByPlatform.map((p, i) => (
+                      <tr key={i} className="hover:bg-zinc-50/50">
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <PlatformIcon platform={p.platform as Platform} />
+                            <span className="capitalize text-zinc-900 text-[13px]">{p.platform}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{fmtOpt(p.followers)}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{fmtOpt(p.impressions)}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{fmtOpt(p.likes)}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{fmtOpt(p.comments)}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{fmtOpt(p.shares)}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{p.engagementRate != null ? fmtPct(p.engagementRate) : "—"}</td>
+                        <td className="px-3 py-2.5">
+                          <StatusBadge status={p.status ?? "unknown"} errorMessage={p.errorMessage ?? null} />
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-[11px] text-zinc-400 tabular-nums">{timeAgo(overview?.lastSyncedAt)}</td>
+                      </tr>
+                    ))
                   )}
                 </tbody>
               </table>
@@ -1142,9 +1353,11 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
 // Main page (with Suspense for useSearchParams)
 // ============================================================
 function AnalyticsPageInner() {
+  const t = useTranslations("dashboard");
   const searchParams = useSearchParams();
   const accountId = searchParams.get("accountId") ?? undefined;
-  const [accounts, setAccounts] = useState<AccountSummary[]>(FALLBACK_ACCOUNTS);
+  const [accounts, setAccounts] = useState<AccountSummary[]>([]);
+  const [accountsError, setAccountsError] = useState(false);
 
   // Fetch accounts from social-accounts/list and auto-sync analytics on mount.
   useEffect(() => {
@@ -1157,17 +1370,53 @@ function AnalyticsPageInner() {
         });
         if (!res.ok) return;
         const data: { ok: boolean; accounts?: Parameters<typeof adaptAccount>[0][] } = await res.json();
-        if (cancelled || !data?.ok || !data.accounts) return;
+        if (cancelled || !data?.ok || !data.accounts) {
+          setAccountsError(true);
+          return;
+        }
         const adapted = data.accounts.map(adaptAccount);
         if (adapted.length > 0) setAccounts(adapted);
       } catch {
-        // API unavailable — keep FALLBACK_ACCOUNTS
+        setAccountsError(true);
       }
     })();
     // Fire-and-forget auto-sync: refresh analytics cache in the background.
     fetch("/api/analytics/sync", { method: "POST", headers: getOverrideHeaders() }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
+
+  if (accounts.length === 0 && !accountsError) {
+    return (
+      <div className="px-6 py-6">
+        <div className="rounded-xl border border-zinc-200 bg-white p-12 flex flex-col items-center justify-center text-center">
+          <div className="size-16 rounded-full bg-zinc-100 flex items-center justify-center mb-4">
+            <TrendingUp className="size-7 text-zinc-400" />
+          </div>
+          <h2 className="text-xl font-bold text-zinc-900 mb-2">{t("analytics.loading_title")}</h2>
+        </div>
+      </div>
+    );
+  }
+
+  if (accounts.length === 0 && accountsError) {
+    return (
+      <div className="px-6 py-6">
+        <div className="rounded-xl border border-zinc-200 bg-white p-12 flex flex-col items-center justify-center text-center">
+          <div className="size-16 rounded-full bg-pink-100 flex items-center justify-center mb-4">
+            <TrendingUp className="size-7 text-pink-600" />
+          </div>
+          <h2 className="text-xl font-bold text-rose-700 mb-2">{t("analytics.unable_load")}</h2>
+          <p className="text-[13px] text-rose-700/80 max-w-md mb-6">{t("analytics.connect_platforms_sub")}</p>
+          <Link
+            href="/dashboard/accounts"
+            className="inline-flex items-center justify-center rounded-md bg-zinc-900 px-5 h-10 text-[13px] font-medium text-white hover:bg-zinc-800"
+          >
+            {t("analytics.go_accounts")}
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return accountId ? <PerAccountView accountId={accountId} accounts={accounts} /> : <OverviewView accounts={accounts} />;
 }
