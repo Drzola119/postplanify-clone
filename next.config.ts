@@ -20,9 +20,6 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
-  experimental: {
-    missingSuspenseWithCSRBailout: false,
-  },
   async headers() {
     return [
       {
@@ -60,7 +57,7 @@ const nextConfig: NextConfig = {
       // built-in handler intercepts rewrites before they can match.
       { source: "/_next/static/chunks/:path*", destination: "/api/chunks/:path*" },
       // Link in Bio public page: /@username → /username (Next.js App Router
-      // reserves `@` for parallel route slots, so we use a rewrite).
+      // reserves `@` for parallel route slots, so we use a rewrite).\
       { source: "/@:username", destination: "/:username" },
       { source: "/tools/instagram-engagement-calculator", destination: "/tools/instagram-engagement" },
       { source: "/tools/instagram-grid-maker", destination: "/tools/instagram-grid" },
