@@ -181,6 +181,12 @@ service cloud.firestore {
     match /contentOverrides/{docId} {
       allow read, write: if false;
     }
+    match /webhookDeliveryLogs/{docId} {
+      allow read, write: if false;
+    }
+    match /adminStats/{docId} {
+      allow read, write: if false;
+    }
     match /supportTickets/{docId} {
       allow read, write: if false;
       match /messages/{messageId} {

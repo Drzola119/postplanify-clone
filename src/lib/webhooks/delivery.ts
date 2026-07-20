@@ -1,10 +1,34 @@
 import "server-only";
 import { createHmac } from "node:crypto";
 import type { PlatformId } from "@/lib/db/schema";
+import { adminDb } from "@/lib/firebase/admin";
 import { listDestinations, getDestinationSecret, markDestinationDelivered, incrementConsecutiveFailures, resetConsecutiveFailures } from "@/lib/db/destinations";
 import { createLogger } from "@/lib/log";
 
 const log = createLogger("webhook-delivery");
+
+// Persistent delivery log so System Health can compute a 24h success rate.
+async function logDelivery(
+  workspaceId: string,
+  destinationId: string,
+  url: string,
+  event: string,
+  success: boolean,
+  status?: number,
+  error?: string
+) {
+  if (!adminDb) return;
+  await adminDb.collection("webhookDeliveryLogs").add({
+    workspaceId,
+    destinationId,
+    url,
+    event,
+    success,
+    status: status ?? null,
+    error: error ?? null,
+    timestamp: new Date().toISOString(),
+  });
+}
 
 export interface DeliveryResult {
   url: string;
@@ -94,6 +118,7 @@ export async function deliverWebhook(
           if (res.ok) {
             await markDestinationDelivered(workspaceId, d.id);
             await resetConsecutiveFailures(workspaceId, d.id);
+            void logDelivery(workspaceId, d.id, d.url, payload.event, true, res.status).catch(() => {});
             return { url: d.url, success: true, attempts: attempt + 1, status: res.status };
           }
           lastStatus = res.status;
@@ -112,6 +137,7 @@ export async function deliverWebhook(
         attempts: retryDelays.length,
       });
       await incrementConsecutiveFailures(workspaceId, d.id);
+      void logDelivery(workspaceId, d.id, d.url, payload.event, false, lastStatus, lastError).catch(() => {});
       return {
         url: d.url,
         success: false,

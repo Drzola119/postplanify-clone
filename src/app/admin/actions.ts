@@ -1075,12 +1075,14 @@ export async function getSecurityEvents() {
 }
 
 // Fix #12 — real HTTP health checks for Stripe and Firebase
+type HealthStatus = "healthy" | "degraded" | "down" | "critical" | "unknown";
+
 export async function getSystemHealth() {
   await requireAdmin();
 
-  let stripeStatus: "healthy" | "degraded" | "down" = "down";
+  let stripeStatus: HealthStatus = "down";
   let stripeLatencyMs = 0;
-  let firebaseStatus: "healthy" | "degraded" | "down" = "down";
+  let firebaseStatus: HealthStatus = "down";
   let firebaseLatencyMs = 0;
   let queueDepth = 0;
   let firestoreReadsToday = 0;
@@ -1103,6 +1105,8 @@ export async function getSystemHealth() {
   }
 
   // Check Firebase / Firestore by performing a lightweight read
+  let lastCronRun: string | null = null;
+  let webhookSuccessRate: number | null = null;
   if (adminDb) {
     try {
       const t0 = Date.now();
@@ -1124,16 +1128,191 @@ export async function getSystemHealth() {
     } catch {
       // optional stats doc — ignore if missing
     }
+
+    // Queue worker heartbeat — compare persisted lastCronRun vs now
+    try {
+      const workerDoc = await adminDb.collection("adminStats").doc("worker").get();
+      if (workerDoc.exists) {
+        lastCronRun = workerDoc.data()?.lastCronRun ?? null;
+      }
+    } catch {
+      // heartbeat optional
+    }
+
+    // Webhook delivery success rate over the last 24h
+    try {
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const logs = await adminDb
+        .collection("webhookDeliveryLogs")
+        .where("timestamp", ">=", since.toISOString())
+        .get();
+      let total = 0;
+      let ok = 0;
+      logs.forEach((d) => {
+        total++;
+        if (d.data()?.success) ok++;
+      });
+      webhookSuccessRate = total > 0 ? Math.round((ok / total) * 100) : null;
+    } catch {
+      // delivery log optional
+    }
   }
+
+  // AI provider reachability (Groq) — tiny completion, 5s timeout
+  let aiStatus: HealthStatus = "unknown";
+  let aiLatencyMs = 0;
+  try {
+    const { callGroq, GROQ_TEXT_MODEL } = await import("@/lib/ai/groq");
+    const key = process.env.GROQ_API_KEY;
+    if (!key) {
+      aiStatus = "unknown";
+    } else {
+      const t0 = Date.now();
+      await callGroq({
+        apiKey: key,
+        model: GROQ_TEXT_MODEL,
+        messages: [{ role: "user", content: "ping" }],
+        maxTokens: 1,
+        temperature: 0,
+      });
+      aiLatencyMs = Date.now() - t0;
+      aiStatus = "healthy";
+    }
+  } catch {
+    aiStatus = "down";
+  }
+
+  // Image-gen provider config check (no network — confirms keys are set)
+  const imageProviders = await checkImageGenProviders();
+
+  // Bunny CDN reachability — HEAD to public CDN edge
+  let bunnyStatus: HealthStatus = "unknown";
+  let bunnyLatencyMs = 0;
+  try {
+    const { BUNNY_CDN_BASE } = await import("@/lib/bunny");
+    if (!BUNNY_CDN_BASE) {
+      bunnyStatus = "unknown";
+    } else {
+      const t0 = Date.now();
+      const res = await fetch(BUNNY_CDN_BASE, { method: "HEAD", signal: AbortSignal.timeout(5000) });
+      bunnyLatencyMs = Date.now() - t0;
+      bunnyStatus = res.ok || res.status === 404 ? "healthy" : "degraded";
+    }
+  } catch {
+    bunnyStatus = "down";
+  }
+
+  // Email (Resend) — authenticated GET to /domains
+  let emailStatus: HealthStatus = "unknown";
+  try {
+    const key = process.env.RESEND_API_KEY;
+    if (!key) {
+      emailStatus = "unknown";
+    } else {
+      const res = await fetch("https://api.resend.com/domains", {
+        headers: { Authorization: `Bearer ${key}` },
+        signal: AbortSignal.timeout(5000),
+      });
+      emailStatus = res.ok ? "healthy" : "degraded";
+    }
+  } catch {
+    emailStatus = "down";
+  }
+
+  // Queue worker staleness: critical if heartbeat older than 10 minutes
+  let workerStatus: HealthStatus = "unknown";
+  if (lastCronRun) {
+    const ageMs = Date.now() - new Date(lastCronRun).getTime();
+    workerStatus = ageMs > 10 * 60 * 1000 ? "critical" : "healthy";
+  }
+
+  // Feed critical outages into the alert engine
+  await raiseSystemHealthAlerts({
+    aiStatus,
+    bunnyStatus,
+    emailStatus,
+    workerStatus,
+    firebaseStatus,
+    stripeStatus,
+  });
 
   return {
     firebase: { status: firebaseStatus, latencyMs: firebaseLatencyMs },
     stripe: { status: stripeStatus, latencyMs: stripeLatencyMs },
+    ai: { status: aiStatus, latencyMs: aiLatencyMs },
+    imageProviders,
+    bunny: { status: bunnyStatus, latencyMs: bunnyLatencyMs },
+    email: { status: emailStatus },
+    worker: { status: workerStatus, lastCronRun },
+    webhookSuccessRate,
     queueDepth,
-    lastCronRun: new Date(Date.now() - 120000).toISOString(),
+    lastCronRun,
     firestoreReadsToday,
     firestoreWritesToday,
   };
+}
+
+async function checkImageGenProviders(): Promise<{ id: string; configured: boolean }[]> {
+  try {
+    const { PROVIDER_IDS } = await import("@/lib/image-gen/types");
+    const { platformApiKey } = await import("@/lib/image-gen/resolution");
+    return PROVIDER_IDS.map((id) => {
+      let configured = false;
+      try {
+        platformApiKey(id);
+        configured = true;
+      } catch {
+        configured = false;
+      }
+      return { id, configured };
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function raiseSystemHealthAlerts(parts: {
+  aiStatus: HealthStatus;
+  bunnyStatus: HealthStatus;
+  emailStatus: HealthStatus;
+  workerStatus: HealthStatus;
+  firebaseStatus: HealthStatus;
+  stripeStatus: HealthStatus;
+}) {
+  if (!adminDb) return;
+  const checks: Array<{ name: string; status: HealthStatus }> = [
+    { name: "AI Provider", status: parts.aiStatus },
+    { name: "Bunny CDN", status: parts.bunnyStatus },
+    { name: "Email Service", status: parts.emailStatus },
+    { name: "Queue Worker", status: parts.workerStatus },
+    { name: "Firebase", status: parts.firebaseStatus },
+    { name: "Stripe", status: parts.stripeStatus },
+  ];
+  for (const c of checks) {
+    if (c.status === "down" || c.status === "critical") {
+      const severity = c.status === "critical" ? "critical" : "warning";
+      const dedupeKey = `system_health_${c.name}`;
+      const existing = await adminDb
+        .collection("platformAlerts")
+        .where("dedupeKey", "==", dedupeKey)
+        .where("resolvedAt", "==", null)
+        .limit(1)
+        .get();
+      if (existing.empty) {
+        await adminDb.collection("platformAlerts").add({
+          type: "system_health",
+          severity,
+          title: `${c.name} ${c.status === "critical" ? "Heartbeat Stale" : "Outage"}`,
+          message: `The ${c.name} service is reporting ${c.status}. Check the System Health page for details.`,
+          source: "health",
+          dedupeKey,
+          acknowledged: false,
+          createdAt: new Date().toISOString(),
+          resolvedAt: null,
+        });
+      }
+    }
+  }
 }
 
 // ==========================================

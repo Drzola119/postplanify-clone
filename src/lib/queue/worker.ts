@@ -62,6 +62,16 @@ async function tickOnce(): Promise<TickResult> {
   const result: TickResult = { scanned: 0, published: 0, failed: 0, reaped: 0 };
   if (!adminDb) return result;
 
+  // Persist heartbeat so System Health can detect a stale worker.
+  try {
+    await adminDb.collection("adminStats").doc("worker").set(
+      { lastCronRun: new Date().toISOString() },
+      { merge: true }
+    );
+  } catch {
+    // heartbeat is best-effort
+  }
+
   try {
     result.reaped = await resetStuckClaimsForAllWorkspaces(STUCK_CLAIM_MS);
   } catch (err) {

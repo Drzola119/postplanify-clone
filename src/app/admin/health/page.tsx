@@ -1,8 +1,60 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Activity, Database, CreditCard, Clock, RefreshCw, CheckCircle2 } from "lucide-react";
+import {
+  Activity,
+  Database,
+  CreditCard,
+  Clock,
+  RefreshCw,
+  Bot,
+  Images,
+  Cloud,
+  Mail,
+  Cpu,
+  Webhook,
+} from "lucide-react";
 import { getSystemHealth } from "@/app/admin/actions";
+
+function statusPill(status: string | undefined) {
+  const s = status ?? "unknown";
+  if (s === "healthy")
+    return <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full"><span className="size-2 bg-emerald-500 rounded-full animate-ping" />Healthy</span>;
+  if (s === "degraded")
+    return <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded-full"><span className="size-2 bg-amber-500 rounded-full animate-ping" />Degraded</span>;
+  if (s === "critical")
+    return <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 rounded-full"><span className="size-2 bg-rose-500 rounded-full animate-ping" />Critical</span>;
+  if (s === "down")
+    return <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 rounded-full"><span className="size-2 bg-rose-500 rounded-full" />Down</span>;
+  return <span className="px-2.5 py-0.5 text-[11px] font-bold bg-gray-100 text-gray-600 border border-gray-200 rounded-full">Unknown</span>;
+}
+
+function iconFor(status: string | undefined) {
+  if (status === "down" || status === "critical") return "text-rose-600 bg-rose-50";
+  if (status === "degraded") return "text-amber-600 bg-amber-50";
+  if (status === "healthy") return "text-emerald-600 bg-emerald-50";
+  return "text-gray-500 bg-gray-50";
+}
+
+function ServiceCard({ icon: Icon, name, status, latencyMs }: any) {
+  return (
+    <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-xs space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-gray-500">{name}</span>
+        {statusPill(status)}
+      </div>
+      <div className="flex items-center gap-3">
+        <div className={`p-3 rounded-xl ${iconFor(status)}`}>
+          <Icon className="size-5" />
+        </div>
+        <div>
+          <p className="text-xl font-extrabold text-gray-900">{latencyMs ? `${latencyMs} ms` : "—"}</p>
+          <p className="text-[10px] text-gray-400">Response Latency</p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function SystemHealthPage() {
   const [health, setHealth] = useState<any>(null);
@@ -30,7 +82,7 @@ export default function SystemHealthPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">System Health & Infrastructure</h1>
+          <h1 className="text-2xl font-bold text-gray-900">System Health &amp; Infrastructure</h1>
           <p className="text-xs text-gray-500">Live service health pings, database operations, and background queue depth.</p>
         </div>
         <button
@@ -43,45 +95,30 @@ export default function SystemHealthPage() {
         </button>
       </div>
 
-      {/* Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Firebase Status */}
-        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-xs space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-500">Firebase Firestore</span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full">
-              <span className="size-2 bg-emerald-500 rounded-full animate-ping" />
-              Healthy
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
-              <Database className="size-5" />
-            </div>
-            <div>
-              <p className="text-xl font-extrabold text-gray-900">{health?.firebase?.latencyMs || 24} ms</p>
-              <p className="text-[10px] text-gray-400">Response Latency</p>
-            </div>
-          </div>
-        </div>
+        <ServiceCard icon={Database} name="Firebase Firestore" status={health?.firebase?.status} latencyMs={health?.firebase?.latencyMs} />
+        <ServiceCard icon={CreditCard} name="Stripe Billing API" status={health?.stripe?.status} latencyMs={health?.stripe?.latencyMs} />
+        <ServiceCard icon={Bot} name="AI Provider (Groq)" status={health?.ai?.status} latencyMs={health?.ai?.latencyMs} />
+        <ServiceCard icon={Cloud} name="Bunny CDN" status={health?.bunny?.status} latencyMs={health?.bunny?.latencyMs} />
+        <ServiceCard icon={Mail} name="Email (Resend)" status={health?.email?.status} />
+        <ServiceCard icon={Cpu} name="Queue Worker" status={health?.worker?.status} />
 
-        {/* Stripe API Status */}
-        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-xs space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-500">Stripe Billing API</span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full">
-              <span className="size-2 bg-emerald-500 rounded-full animate-ping" />
-              Operational
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-teal-50 text-teal-700 rounded-xl">
-              <CreditCard className="size-5" />
-            </div>
-            <div>
-              <p className="text-xl font-extrabold text-gray-900">{health?.stripe?.latencyMs || 65} ms</p>
-              <p className="text-[10px] text-gray-400">Response Latency</p>
-            </div>
+        {/* Image-gen provider config */}
+        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-xs space-y-3 lg:col-span-2">
+          <span className="text-xs font-bold text-gray-500">Image-Gen Providers (API keys configured)</span>
+          <div className="flex flex-wrap gap-2 pt-1">
+            {(health?.imageProviders ?? []).map((p: any) => (
+              <span
+                key={p.id}
+                className={`px-2.5 py-0.5 text-[11px] font-bold rounded-full border ${
+                  p.configured
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : "bg-gray-100 text-gray-500 border-gray-200"
+                }`}
+              >
+                {p.id}: {p.configured ? "OK" : "missing key"}
+              </span>
+            ))}
           </div>
         </div>
 
@@ -89,17 +126,42 @@ export default function SystemHealthPage() {
         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-gray-500">Publishing Queue Depth</span>
-            <span className="px-2 py-0.5 text-[10px] font-bold bg-sky-50 text-sky-700 rounded-full">Optimal</span>
+            {statusPill((health?.queueDepth ?? 0) > 50 ? "degraded" : "healthy")}
           </div>
           <div className="flex items-center gap-3">
             <div className="p-3 bg-sky-50 text-sky-600 rounded-xl">
               <Clock className="size-5" />
             </div>
             <div>
-              <p className="text-xl font-extrabold text-gray-900">{health?.queueDepth || 4} Pending</p>
+              <p className="text-xl font-extrabold text-gray-900">{health?.queueDepth ?? 0} Pending</p>
               <p className="text-[10px] text-gray-400">Queue Items</p>
             </div>
           </div>
+        </div>
+
+        {/* Webhook success rate */}
+        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-gray-500">Webhook Success (24h)</span>
+            {health?.webhookSuccessRate == null ? statusPill("unknown") : statusPill((health.webhookSuccessRate ?? 0) >= 95 ? "healthy" : "degraded")}
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+              <Webhook className="size-5" />
+            </div>
+            <div>
+              <p className="text-xl font-extrabold text-gray-900">{health?.webhookSuccessRate == null ? "—" : `${health.webhookSuccessRate}%`}</p>
+              <p className="text-[10px] text-gray-400">Delivery Success</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Worker heartbeat */}
+        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-xs space-y-3">
+          <span className="text-xs font-bold text-gray-500">Queue Worker Heartbeat</span>
+          <p className="text-xs text-gray-700">
+            Last run: {health?.lastCronRun ? new Date(health.lastCronRun).toLocaleString() : "never recorded"}
+          </p>
         </div>
 
         {/* Database Operations */}
@@ -108,11 +170,11 @@ export default function SystemHealthPage() {
           <div className="grid grid-cols-2 gap-4 pt-2">
             <div className="p-4 bg-gray-50 rounded-xl">
               <p className="text-xs text-gray-500">Document Reads</p>
-              <p className="text-2xl font-extrabold text-gray-900">{health?.firestoreReadsToday || 1420}</p>
+              <p className="text-2xl font-extrabold text-gray-900">{health?.firestoreReadsToday ?? 0}</p>
             </div>
             <div className="p-4 bg-gray-50 rounded-xl">
               <p className="text-xs text-gray-500">Document Writes</p>
-              <p className="text-2xl font-extrabold text-gray-900">{health?.firestoreWritesToday || 310}</p>
+              <p className="text-2xl font-extrabold text-gray-900">{health?.firestoreWritesToday ?? 0}</p>
             </div>
           </div>
         </div>
