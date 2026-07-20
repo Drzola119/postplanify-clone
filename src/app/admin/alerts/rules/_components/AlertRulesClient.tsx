@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { Plus, ToggleLeft, ToggleRight } from "lucide-react";
-import { toggleAlertRuleAction, createAlertRuleAction, muteAlertRuleAction } from "@/app/admin/actions";
+import { Plus, ToggleLeft, ToggleRight, Play } from "lucide-react";
+import { toggleAlertRuleAction, createAlertRuleAction, muteAlertRuleAction, triggerAlertEvaluation } from "@/app/admin/actions";
 import { useToast } from "@/components/ui/toast";
 
 const METRIC_LABELS: Record<string, string> = {
@@ -46,6 +46,11 @@ export function AlertRulesClient({ initialRules }: Props) {
     toast({ title: "Rule Muted for 24h", tone: "warning" });
   };
 
+  const handleRunEvaluation = async () => {
+    await triggerAlertEvaluation();
+    toast({ title: "Evaluation Complete", description: "Alert rules have been re-evaluated.", tone: "success" });
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     await createAlertRuleAction(form);
@@ -67,13 +72,22 @@ export function AlertRulesClient({ initialRules }: Props) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-xs text-gray-500">{rules.length} rule{rules.length !== 1 ? "s" : ""} configured</p>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-[#01696f] text-white text-xs font-bold rounded-xl shadow-xs hover:bg-[#015257]"
-        >
-          <Plus className="size-4" />
-          New Rule
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleRunEvaluation}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 text-xs font-bold rounded-xl shadow-xs hover:bg-gray-50"
+          >
+            <Play className="size-4" />
+            Run Evaluation Now
+          </button>
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-[#01696f] text-white text-xs font-bold rounded-xl shadow-xs hover:bg-[#015257]"
+          >
+            <Plus className="size-4" />
+            New Rule
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">

@@ -6,6 +6,7 @@ import { isAdminUser, getAdminUser, setAdminCustomClaims, hasPermission, ADMIN_E
 import { getStripe } from "@/lib/stripe";
 import { revalidatePath } from "next/cache";
 import { createNotification } from "@/lib/notifications";
+import { evaluateAlertRules } from "@/lib/alerts/evaluate";
 
 /**
  * Verify caller is admin and auto-seed the owner doc if missing.
@@ -1659,6 +1660,14 @@ export async function createAlertRuleAction(data: {
     });
   }
   await logAdminAudit("create_alert_rule", data.name, data);
+  revalidatePath("/admin/alerts/rules");
+  return { success: true };
+}
+
+export async function triggerAlertEvaluation() {
+  await requirePermission("platform.settings");
+  await evaluateAlertRules();
+  revalidatePath("/admin/alerts");
   revalidatePath("/admin/alerts/rules");
   return { success: true };
 }

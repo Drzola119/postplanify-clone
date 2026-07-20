@@ -5,6 +5,7 @@ import { resolvers } from "@/lib/security/server-config";
 import { deliverWebhook } from "@/lib/webhooks/delivery";
 import { ensureProfile, readProfile } from "@/lib/db/upload-post-profiles";
 import { createLogger } from "@/lib/log";
+import { evaluateAlertRules } from "@/lib/alerts/evaluate";
 
 const log = createLogger("queue-worker");
 
@@ -135,6 +136,14 @@ async function tickOnce(): Promise<TickResult> {
       result.failed++;
     }
   }
+
+  // Evaluate alert rules on every tick so the alert system stays live.
+  try {
+    await evaluateAlertRules();
+  } catch {
+    // Evaluation is best-effort; tick continues regardless.
+  }
+
   return result;
 }
 
