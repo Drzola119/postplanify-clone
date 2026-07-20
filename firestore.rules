@@ -202,5 +202,11 @@ service cloud.firestore {
         allow read, write: if false;
       }
     }
+    match /analyticsCache/{docId} {
+      allow read, write: if false; // admin SDK only
+    }
+    match /apiLogs/{docId} {
+      allow read, write: if false; // admin SDK only
+    }
   }
 }
