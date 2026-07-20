@@ -43,7 +43,7 @@ interface Props {
 export function AlertRulesClient({ initialRules }: Props) {
   const [rules, setRules] = useState(initialRules);
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ name: "", metric: "failure_rate_pct", comparator: "gt", threshold: 0, windowMinutes: 60, severity: "warning" });
+  const [form, setForm] = useState<{ name: string; metric: string; comparator: "gt" | "gte" | "lt" | "eq"; threshold: number; windowMinutes: number; severity: "info" | "warning" | "critical" }>({ name: "", metric: "failure_rate_pct", comparator: "gt", threshold: 0, windowMinutes: 60, severity: "warning" });
   const { toast } = useToast();
 
   const handleToggle = async (ruleId: string, current: boolean) => {
@@ -166,7 +166,7 @@ export function AlertRulesClient({ initialRules }: Props) {
               </div>
               <div>
                 <label className="text-xs font-bold text-gray-600">Comparator:</label>
-                <select value={form.comparator} onChange={(e) => setForm({ ...form, comparator: e.target.value })}
+                <select value={form.comparator} onChange={(e) => setForm({ ...form, comparator: e.target.value as "gt" | "gte" | "lt" | "eq" })}
                   className="w-full mt-1 p-2 text-xs bg-gray-50 border border-gray-200 rounded-xl">
                   {Object.entries(COMPARATOR_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
@@ -186,7 +186,7 @@ export function AlertRulesClient({ initialRules }: Props) {
             </div>
             <div>
               <label className="text-xs font-bold text-gray-600">Severity:</label>
-              <select value={form.severity} onChange={(e) => setForm({ ...form, severity: e.target.value })}
+              <select value={form.severity} onChange={(e) => setForm({ ...form, severity: e.target.value as "info" | "warning" | "critical" })}
                 className="w-full mt-1 p-2 text-xs bg-gray-50 border border-gray-200 rounded-xl">
                 <option value="info">Info</option>
                 <option value="warning">Warning</option>

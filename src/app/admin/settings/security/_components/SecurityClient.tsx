@@ -55,11 +55,8 @@ export function SecurityClient({ initialInfo }: Props) {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 text-[10px] text-amber-700 bg-amber-50 px-2 py-1 rounded-lg border border-amber-200">
-              <Info className="size-3" />
-              <span>TODO: Wire Firebase MFA</span>
-            </div>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700 max-w-sm">
+            <strong>Two-factor authentication</strong> requires Firebase Authentication MFA to be enabled in your Firebase Console (Authentication → Sign-in method → Multi-factor). Once enabled, remove this notice and wire the enrollment flow here.
           </div>
         </div>
         <p className="text-[10px] text-gray-400 mt-4">

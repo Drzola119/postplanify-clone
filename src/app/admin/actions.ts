@@ -87,8 +87,16 @@ interface InvoiceRow {
   amount: number; currency: string; status: string | null; created: string | null;
   hostedUrl: string | null; pdfUrl: string | null; subscriptionId: string | null;
 }
-interface DisputeRow extends Record<string, unknown> {
+export interface DisputeRow {
   id: string;
+  disputeId: string;
+  chargeId: string;
+  amount: number;
+  currency: string;
+  reason: string;
+  status: string;
+  evidenceDueBy: string | null;
+  stripeDashboardUrl: string | null;
 }
 interface PostRow {
   id: string; userEmail: string; platforms: string[]; status: string;
@@ -573,7 +581,7 @@ export async function getSubscriptionsData() {
         billingCycle: s.items.data[0]?.price.recurring?.interval || "month",
         status: s.status,
         started: new Date(s.created * 1000).toISOString(),
-        nextRenewal: new Date((sub.current_period_end || s.created + 30 * 86400) * 1000).toISOString(),
+        nextRenewal: new Date(((s as any).currentPeriodEnd ?? (s as any).currentPeriodStart ?? s.created) * 1000).toISOString(),
       };
     });
   } catch {
@@ -647,7 +655,7 @@ export async function getInvoicesData(): Promise<InvoiceRow[]> {
         created: inv.created ? new Date(inv.created * 1000).toISOString() : null,
         hostedUrl: inv.hosted_invoice_url ?? null,
         pdfUrl: inv.invoice_pdf ?? null,
-        subscriptionId: invoice.subscription as string | null,
+        subscriptionId: (inv as unknown as Record<string, unknown>).subscription as string | null ?? null,
       };
     });
   } catch {
@@ -690,7 +698,20 @@ export async function getDisputesData(): Promise<DisputeRow[]> {
   await requireAdmin();
   if (!adminDb) return [];
   const snap = await adminDb.collection("stripeDisputes").orderBy("createdAt", "desc").get();
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as FirestoreData) }));
+  return snap.docs.map((d) => {
+    const data = d.data() as FirestoreData;
+    return {
+      id: d.id,
+      disputeId: (data.disputeId as string) ?? d.id,
+      chargeId: (data.chargeId as string) ?? "",
+      amount: (data.amount as number) ?? 0,
+      currency: (data.currency as string) ?? "usd",
+      reason: (data.reason as string) ?? "",
+      status: (data.status as string) ?? "needs_response",
+      evidenceDueBy: (data.evidenceDueBy as string | null) ?? null,
+      stripeDashboardUrl: (data.stripeDashboardUrl as string | null) ?? null,
+    };
+  });
 }
 
 export async function applyBillingAdjustmentAction(input: {
@@ -754,6 +775,7 @@ export async function getPostsData() {
         scheduledAt: "2026-07-19T09:00:00.000Z",
         publishedAt: "2026-07-19T09:00:12.000Z",
         caption: "New spy thriller chapter dropped today! Check out the details in bio link 🔥",
+        errorMessage: null,
       },
       {
         id: "post_2",
@@ -763,6 +785,7 @@ export async function getPostsData() {
         scheduledAt: "2026-07-20T14:00:00.000Z",
         publishedAt: null,
         caption: "Top 5 ways to automate your agency social media workflow in 2026.",
+        errorMessage: null,
       },
       {
         id: "post_3",
@@ -922,7 +945,7 @@ export async function getFeatureFlags() {
   if (adminDb) {
     try {
       const snap = await adminDb.collection("featureFlags").get();
-      flags = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      flags = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() } as FeatureFlagRow));
     } catch {}
   }
   if (flags.length === 0) {
@@ -967,7 +990,7 @@ export async function getAnnouncements() {
   if (adminDb) {
     try {
       const snap = await adminDb.collection("announcements").get();
-      announcements = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      announcements = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() } as AnnouncementRow));
     } catch {}
   }
   if (announcements.length === 0) {
@@ -1921,9 +1944,9 @@ export async function getIntegrationsSocialAccounts() {
   }
   if (accounts.length === 0) {
     accounts = [
-      { id: "sa_1", workspaceId: "ws_1", platform: "instagram", accountName: "@spypublishing", connectedAt: new Date().toISOString(), tokenExpiresAt: new Date(Date.now() + 60*86400000).toISOString(), status: "connected", userEmail: "elena@spypublishing.com" },
-      { id: "sa_2", workspaceId: "ws_2", platform: "linkedin", accountName: "Agency Corp", connectedAt: new Date().toISOString(), tokenExpiresAt: new Date(Date.now() + 30*86400000).toISOString(), status: "connected", userEmail: "jessica@agency.org" },
-      { id: "sa_3", workspaceId: "ws_1", platform: "x", accountName: "@SpyThriller", connectedAt: new Date().toISOString(), tokenExpiresAt: new Date(Date.now() + 2*86400000).toISOString(), status: "expiring", userEmail: "elena@spypublishing.com" },
+      { id: "sa_1", workspaceId: "ws_1", platform: "instagram", accountName: "@spypublishing", connectedAt: new Date().toISOString(), tokenExpiresAt: new Date(Date.now() + 60*86400000).toISOString(), status: "connected", userEmail: "elena@spypublishing.com", lastError: null, lastPublishResult: null },
+      { id: "sa_2", workspaceId: "ws_2", platform: "linkedin", accountName: "Agency Corp", connectedAt: new Date().toISOString(), tokenExpiresAt: new Date(Date.now() + 30*86400000).toISOString(), status: "connected", userEmail: "jessica@agency.org", lastError: null, lastPublishResult: null },
+      { id: "sa_3", workspaceId: "ws_1", platform: "x", accountName: "@SpyThriller", connectedAt: new Date().toISOString(), tokenExpiresAt: new Date(Date.now() + 2*86400000).toISOString(), status: "expiring", userEmail: "elena@spypublishing.com", lastError: null, lastPublishResult: null },
     ];
   }
   return accounts;
@@ -1970,8 +1993,8 @@ export async function getIntegrationsWebhooks() {
   }
   if (webhooks.length === 0) {
     webhooks = [
-      { id: "wh_1", workspaceId: "ws_1", url: "https://hooks.example.com/publish", events: ["post.published"], status: "active", createdAt: new Date().toISOString(), consecutiveFailures: 0 },
-      { id: "wh_2", workspaceId: "ws_2", url: "https://hooks.example.com/fail", events: ["post.failed"], status: "failing", createdAt: new Date().toISOString(), consecutiveFailures: 5 },
+      { id: "wh_1", workspaceId: "ws_1", url: "https://hooks.example.com/publish", events: ["post.published"], status: "active", createdAt: new Date().toISOString(), consecutiveFailures: 0, lastTriggeredAt: null },
+      { id: "wh_2", workspaceId: "ws_2", url: "https://hooks.example.com/fail", events: ["post.failed"], status: "failing", createdAt: new Date().toISOString(), consecutiveFailures: 5, lastTriggeredAt: null },
     ];
   }
   return webhooks;
@@ -2545,7 +2568,7 @@ export async function fulfillExportAction(requestId: string) {
 
   const bundle: { user: FirebaseFirestore.DocumentData | null; workspaces: Record<string, unknown> } = { user: null, workspaces: {} };
   const userSnap = await adminDb.collection("users").doc(uid).get();
-  bundle.user = userSnap.exists ? userSnap.data() : null;
+  bundle.user = userSnap.exists ? (userSnap.data() ?? null) : null;
 
   const wsSnap = await adminDb.collection("workspaces").where("ownerUid", "==", uid).get();
   for (const ws of wsSnap.docs) {

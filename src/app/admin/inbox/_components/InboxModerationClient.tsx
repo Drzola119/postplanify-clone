@@ -102,7 +102,7 @@ export function InboxModerationClient({ comments }: Props) {
                 <td className="px-6 py-4 text-xs text-gray-700 max-w-[360px] truncate">{c.body}</td>
                 <td className="px-6 py-4 text-xs text-gray-600">{c.platform}</td>
                 <td className="px-6 py-4">
-                  <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${SENTIMENT_COLOR[c.sentiment] ?? SENTIMENT_COLOR.neutral}`}>
+                  <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${SENTIMENT_COLOR[c.sentiment ?? "neutral"] ?? SENTIMENT_COLOR.neutral}`}>
                     {c.sentiment ?? "unknown"}
                   </span>
                 </td>

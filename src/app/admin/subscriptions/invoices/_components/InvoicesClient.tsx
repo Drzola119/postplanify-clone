@@ -61,7 +61,7 @@ export function InvoicesClient({ invoices }: Props) {
                 <td className="px-6 py-4 text-xs font-bold text-gray-900">
                   ${(inv.amount ?? 0).toFixed(2)} {inv.currency?.toUpperCase()}
                 </td>
-                <td className="px-6 py-4"><span className={statusBadge(inv.status)}>{inv.status}</span></td>
+                <td className="px-6 py-4"><span className={statusBadge(inv.status ?? "")}>{inv.status ?? "—"}</span></td>
                 <td className="px-6 py-4 text-xs text-gray-500">
                   {inv.created ? new Date(inv.created).toLocaleDateString() : "—"}
                 </td>

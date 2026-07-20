@@ -73,13 +73,15 @@ export function ContentBlogClient({ overrides }: Props) {
   };
 
   if (editing) {
+    const isNew = "isNew" in editing && editing.isNew;
+    const editKey = "key" in editing ? editing.key : "";
     return (
       <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-6 max-w-2xl">
-        <h3 className="font-bold text-gray-900 text-sm mb-4">{editing.isNew ? "New Blog Override" : `Edit ${editing.key}`}</h3>
+        <h3 className="font-bold text-gray-900 text-sm mb-4">{isNew ? "New Blog Override" : `Edit ${editKey}`}</h3>
         <form onSubmit={handleSave} className="space-y-4 text-xs">
           <div>
             <label className="font-bold text-gray-700">Key (e.g. blog.my-post-slug)</label>
-            <input value={key} onChange={(e) => setKey(e.target.value)} disabled={!editing.isNew} className="w-full mt-1 p-2 bg-gray-50 border border-gray-200 rounded-xl disabled:opacity-60" />
+            <input value={key} onChange={(e) => setKey(e.target.value)} disabled={!isNew} className="w-full mt-1 p-2 bg-gray-50 border border-gray-200 rounded-xl disabled:opacity-60" />
           </div>
           <div>
             <label className="font-bold text-gray-700">Title</label>

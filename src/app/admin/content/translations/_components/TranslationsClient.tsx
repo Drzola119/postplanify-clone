@@ -74,7 +74,7 @@ export function TranslationsClient({ data }: Props) {
       setNewValue("");
       router.refresh();
     } catch (err: unknown) {
-      toast({ title: "Add failed", description: err?.message ?? "Unknown error", tone: "error" });
+      toast({ title: "Add failed", description: err instanceof Error ? err.message : "Unknown error", tone: "error" });
     }
   };
 

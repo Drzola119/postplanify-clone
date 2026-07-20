@@ -50,7 +50,7 @@ interface DashboardData {
   mrrChart: { month: string; mrr: number }[];
   postsChart: { day: string; count: number }[];
   planDistribution: { name: string; value: number; color: string }[];
-  recentSignups: { id: string; email: string; displayName: string; plan: string; createdAt: string; photoURL?: string }[];
+  recentSignups: { id: string; email: string; displayName: string; plan: string; createdAt: string; photoURL?: string | null }[];
   recentStripeEvents: { id: string; type: string; created: string }[];
 }
 
