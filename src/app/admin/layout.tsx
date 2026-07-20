@@ -1,12 +1,14 @@
 import { AdminShell } from "./_components/AdminShell";
-import { getUnreadAdminNotificationsCount } from "./actions";
+import { getUnreadAdminNotificationsCount, getCurrentAdminProfile } from "./actions";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  // Fix #6 — fetch live unread count server-side and pass it to the shell
-  const unreadNotifications = await getUnreadAdminNotificationsCount();
+  const [unreadNotifications, adminProfile] = await Promise.all([
+    getUnreadAdminNotificationsCount(),
+    getCurrentAdminProfile().catch(() => null),
+  ]);
 
   return (
-    <AdminShell unreadNotifications={unreadNotifications}>
+    <AdminShell unreadNotifications={unreadNotifications} adminProfile={adminProfile ?? undefined}>
       {children}
     </AdminShell>
   );

@@ -47,7 +47,9 @@ export function middleware(request: NextRequest) {
               .join("")
           );
           const decoded = JSON.parse(jsonPayload);
-          if (decoded?.email && decoded.email.toLowerCase() !== "edylabels@gmail.com") {
+          // Allow if admin custom claim is set, or if email matches the owner fallback
+          const isAdmin = decoded.admin === true || decoded?.email?.toLowerCase() === "edylabels@gmail.com";
+          if (!isAdmin) {
             const dashboardUrl = request.nextUrl.clone();
             dashboardUrl.pathname = "/dashboard";
             dashboardUrl.search = "error=access_denied";

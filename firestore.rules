@@ -152,5 +152,34 @@ service cloud.firestore {
         allow write: if false;
       }
     }
+
+    // ===== ADMIN-ONLY COLLECTIONS (server-side via firebase-admin only) =====
+    match /adminUsers/{uid} {
+      allow read, write: if false;
+    }
+    match /adminAuditLog/{docId} {
+      allow read, write: if false;
+    }
+    match /adminNotifications/{docId} {
+      allow read, write: if false;
+    }
+    match /alertRules/{docId} {
+      allow read, write: if false;
+    }
+    match /platformAlerts/{docId} {
+      allow read, write: if false;
+    }
+    match /platformStatus/{docId} {
+      allow read, write: if false;
+    }
+    match /supportTickets/{docId} {
+      allow read, write: if false;
+      match /messages/{messageId} {
+        allow read, write: if false;
+      }
+    }
+    match /dataRequests/{docId} {
+      allow read, write: if false;
+    }
   }
 }

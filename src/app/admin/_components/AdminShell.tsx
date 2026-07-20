@@ -33,6 +33,8 @@ import {
   ArrowLeft,
   LogOut,
   Sparkles,
+  Shield,
+  UserCog,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -56,8 +58,11 @@ const BREADCRUMB_MAP: Record<string, string> = {
   "/admin/settings/announcements": "Announcements",
   "/admin/settings/email": "Email Broadcasts",
   "/admin/settings/coupons": "Coupons / Promo",
+  "/admin/settings/team": "Admin Team",
+  "/admin/settings/security": "Security & Sessions",
   "/admin/logs": "API Logs",
   "/admin/logs/security": "Security Events",
+
   "/admin/health": "System Health",
 };
 
@@ -89,6 +94,13 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
+    title: "TEAM & ACCESS",
+    items: [
+      { label: "Admin Team", href: "/admin/settings/team", icon: UserCog },
+      { label: "Security & Sessions", href: "/admin/settings/security", icon: Shield },
+    ],
+  },
+  {
     title: "SUBSCRIPTIONS & BILLING",
     items: [
       { label: "Plans Overview", href: "/admin/subscriptions", icon: CreditCard },
@@ -98,7 +110,7 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: "CONTENT",
+    title: "POSTS & MODERATION",
     items: [
       { label: "All Posts", href: "/admin/posts", icon: FileText },
       { label: "Scheduled Queue", href: "/admin/posts/queue", icon: Clock },
@@ -127,18 +139,36 @@ const NAV_SECTIONS: NavSection[] = [
 ];
 
 // Fix #6 — prop for unread notification count (passed from server)
+interface AdminProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+  role: string;
+}
+
 interface AdminShellProps {
   children: React.ReactNode;
   unreadNotifications?: number;
+  adminProfile?: AdminProfile;
 }
 
-export function AdminShell({ children, unreadNotifications = 0 }: AdminShellProps) {
+const ROLE_LABELS: Record<string, string> = {
+  owner: "Owner",
+  admin: "Administrator",
+  support: "Support Agent",
+  finance: "Finance",
+  readonly: "Read Only",
+};
+
+export function AdminShell({ children, unreadNotifications = 0, adminProfile }: AdminShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const auth = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const profile = adminProfile ?? { uid: "", email: "edylabels@gmail.com", displayName: "Edy Labels", role: "owner" };
+  const avatarLetter = profile.displayName?.[0]?.toUpperCase() ?? "A";
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -307,11 +337,11 @@ export function AdminShell({ children, unreadNotifications = 0 }: AdminShellProp
                 className="flex items-center gap-2.5 p-1 rounded-full hover:bg-gray-100 transition-colors"
               >
                 <div className="size-8 rounded-full bg-gradient-to-tr from-[#01696f] to-teal-500 text-white font-bold flex items-center justify-center text-xs shadow-xs">
-                  E
+                  {avatarLetter}
                 </div>
                 <div className="hidden lg:block text-left pr-1">
-                  <p className="text-xs font-semibold leading-tight text-gray-900">Edy Labels</p>
-                  <p className="text-[10px] text-gray-500">Super Admin</p>
+                  <p className="text-xs font-semibold leading-tight text-gray-900">{profile.displayName}</p>
+                  <p className="text-[10px] text-gray-500">{ROLE_LABELS[profile.role] ?? profile.role}</p>
                 </div>
                 <ChevronDown className="size-3.5 text-gray-400" />
               </button>
@@ -319,8 +349,8 @@ export function AdminShell({ children, unreadNotifications = 0 }: AdminShellProp
               {profileDropdownOpen && (
                 <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50 animate-in fade-in slide-in-from-top-2">
                   <div className="px-4 py-2 border-b border-gray-100">
-                    <p className="text-xs font-semibold text-gray-900">edylabels@gmail.com</p>
-                    <p className="text-[10px] text-teal-600 font-medium">System Administrator</p>
+                    <p className="text-xs font-semibold text-gray-900">{profile.email}</p>
+                    <p className="text-[10px] text-teal-600 font-medium">{ROLE_LABELS[profile.role] ?? profile.role}</p>
                   </div>
                   <Link
                     href="/dashboard"
