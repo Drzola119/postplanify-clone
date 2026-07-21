@@ -80,9 +80,9 @@ function adaptAccount(a: {
     platform,
     initials: (a.displayName || a.handle)[0]?.toUpperCase() || "?",
     avatar: a.img || undefined,
-    isError: platform === "linkedin" && a.reauthRequired,
-    errorMessage: platform === "linkedin" && a.reauthRequired
-      ? "LinkedIn analytics are not available for this account. Please reconnect with the required permissions."
+    isError: a.reauthRequired,
+    errorMessage: a.reauthRequired
+      ? `${platform.charAt(0).toUpperCase() + platform.slice(1)} analytics are not available for this account. Please reconnect with the required permissions.`
       : undefined,
     syncedAgo: "just now",
     contentTypes: platform === "threads" ? { images: 100, videos: 0, text: 0, imageViews: 1 } : undefined,
