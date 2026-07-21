@@ -2,7 +2,7 @@ import "server-only";
 import { NextRequest } from "next/server";
 import { requireSession } from "@/lib/auth/session-context";
 import { MissingServerSecretError, resolvers } from "@/lib/security/server-config";
-import { readCache, writeCache } from "@/lib/db/account-health";
+import { writeCache } from "@/lib/db/account-health";
 import { readProfile } from "@/lib/db/upload-post-profiles";
 import {
   getProfileAnalytics,
@@ -69,17 +69,14 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    // Ensure we have the profile username (workspaceId scoped at upload-post.com).
-    const profile = await readProfile(session.workspaceId);
-    const profileUsername = profile?.username ?? session.workspaceId;
-
-    if (force) {
-      await invalidateAnalyticsCache(session.workspaceId, profileUsername).catch(() => {});
-    }
-
     // Fetch accounts snapshot for the cache + platform list.
+    // Use readProfile as a hint for the username to call Upload-Post with,
+    // but the returned upProfile.username is the authoritative value.
+    const storedProfile = await readProfile(session.workspaceId);
+    const hintUsername = storedProfile?.username ?? session.workspaceId;
+
     const listRes = await fetch(
-      `https://api.upload-post.com/api/uploadposts/users/${encodeURIComponent(profileUsername)}`,
+      `https://api.upload-post.com/api/uploadposts/users/${encodeURIComponent(hintUsername)}`,
       {
         method: "GET",
         headers: { Authorization: `Apikey ${apiKey}`, Accept: "application/json" },
@@ -92,6 +89,15 @@ export async function POST(request: NextRequest) {
     }
 
     const upProfile = listData.profile;
+
+    // Now we have the real username — use it for cache invalidation.
+    if (force) {
+      await invalidateAnalyticsCache(session.workspaceId, upProfile.username).catch(() => {});
+    }
+
+    // Canonical profileUsername from the live API response.
+    const profileUsername = upProfile.username;
+
     const accounts: {
       id: string;
       profileUsername: string;
@@ -120,7 +126,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Cache accounts snapshot (no secrets — just ids/handles).
-    const cached = await readCache(session.workspaceId).catch(() => null);
     await writeCache(session.workspaceId, {
       accounts: accounts.map((a) => ({
         id: a.id,
@@ -131,9 +136,16 @@ export async function POST(request: NextRequest) {
         img: a.img,
         reauthRequired: a.reauthRequired,
       })),
-      profiles: cached?.profiles ?? [],
-      plan: cached?.plan ?? null,
-      limit: cached?.limit ?? null,
+      // Always persist the freshly-fetched username so overview + account routes
+      // can resolve profileUsername correctly without a separate Firestore read.
+      profiles: [{
+        username: upProfile.username,
+        redirectUrl: upProfile.redirect_url ?? null,
+        blocked: !!upProfile.blocked,
+        createdAt: upProfile.created_at ?? null,
+      }],
+      plan: null,
+      limit: null,
     });
 
     // Pull live analytics from Upload-Post.
