@@ -307,6 +307,13 @@ export async function getProfileAnalytics(
 
   const { status, body } = await fetchUploadPost(url, apiKey, signal);
 
+  log.info("getProfileAnalytics response", {
+    url,
+    status,
+    platformKeys: Object.keys((body as { platforms?: Record<string, unknown> })?.platforms ?? {}),
+    rawBody: JSON.stringify(body).slice(0, 500),
+  });
+
   if (!status.toString().startsWith("2")) {
     const failStatus = classifyFailure(status, body);
     const message =
@@ -334,6 +341,7 @@ export async function getProfileAnalytics(
     const upKey = toUploadPostPlatform(p);
     const rawEntry = platformsMap[upKey];
     const raw = rawEntry && typeof rawEntry !== "string" ? rawEntry : null;
+    log.info("platform data", { platform: p, upKey, hasRaw: !!raw, rawEntry: JSON.stringify(rawEntry)?.slice(0, 200) });
     if (!raw) {
       return normalizePlatformAnalytics(
         p,

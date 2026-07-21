@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { requireSession } from "@/lib/auth/session-context";
 import { resolvers } from "@/lib/security/server-config";
 import { readProfile } from "@/lib/db/upload-post-profiles";
+import { readCache } from "@/lib/db/account-health";
 import { getUnifiedAnalytics } from "@/lib/uploadpost/analytics";
 import {
   getCachedUnified,
@@ -15,6 +16,9 @@ import type { PlatformId } from "@/lib/db/schema";
 import type { NormalizedPlatformAnalytics, UnifiedAnalytics } from "@/types/analytics";
 
 const log = createLogger("analytics-overview");
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const session = await requireSession();
@@ -42,8 +46,18 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const profile = await readProfile(session.workspaceId);
-  const profileUsername = profile?.username ?? session.workspaceId;
+  // Prefer the profileUsername stored in the account health cache (set during
+  // /api/social-accounts/list from live Upload-Post API), fall back to the
+  // stored Firestore profile, then finally workspaceId.
+  const [accountCache, profile] = await Promise.all([
+    readCache(session.workspaceId).catch(() => null),
+    readProfile(session.workspaceId).catch(() => null),
+  ]);
+  const profileUsername =
+    accountCache?.profiles?.[0]?.username ??
+    profile?.username ??
+    session.workspaceId;
+  log.info("overview analytics fetch", { profileUsername, workspaceId: session.workspaceId });
 
   // Serve cached payload when fresh (avoids hammering Upload-Post per load).
   const cached = await getCachedUnified(session.workspaceId, profileUsername, from, to).catch(

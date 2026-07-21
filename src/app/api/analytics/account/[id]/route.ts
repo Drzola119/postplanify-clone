@@ -92,8 +92,11 @@ export async function GET(
     });
   }
 
-  const profile = await readProfile(session.workspaceId);
-  const profileUsername = profile?.username ?? session.workspaceId;
+  // Use the profileUsername stored on the cached account record — this is the
+  // exact username the Upload-Post API used when the account was connected,
+  // so it's guaranteed to match the analytics endpoint.
+  const profileUsername = acct.profileUsername ?? (await readProfile(session.workspaceId))?.username ?? session.workspaceId;
+  log.info("account analytics fetch", { accountId: id, platform, profileUsername });
 
   const cached = await getCachedPlatform(
     session.workspaceId,
