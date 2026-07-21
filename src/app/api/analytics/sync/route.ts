@@ -15,6 +15,7 @@ import {
   invalidateAnalyticsCache,
   setCachedUnified,
 } from "@/lib/db/analytics-cache";
+import { countPublishedPosts } from "@/lib/db/posts";
 import { toInternalPlatform } from "@/lib/platforms";
 import { jsonError, jsonOk } from "@/lib/validation/helpers";
 import { createLogger } from "@/lib/log";
@@ -140,32 +141,44 @@ export async function POST(request: NextRequest) {
       .map((a) => toInternalPlatform(a.platform))
       .filter((p) => isAnalyticsSupported(p)) as PlatformId[];
 
-    // Use allSettled so a failure in one analytics source never breaks the other.
-    const [profileSettled, unifiedSettled] = await Promise.allSettled([
+    // Fetch profile analytics + multi-period unified analytics in parallel
+    const periodsDays = [7, 14, 30, 90];
+    const now = new Date();
+
+    const unifiedPromises = periodsDays.map(async (days) => {
+      const fromDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+      const periodRange: DateRange = { from: fromDate, to: now };
+      const [u, postCount] = await Promise.all([
+        getUnifiedAnalytics(apiKey, profileUsername, periodRange).catch(() => null),
+        countPublishedPosts(session.workspaceId, fromDate, now).catch(() => 0),
+      ]);
+      if (u) {
+        u.postsPublished = postCount;
+        await setCachedUnified(
+          session.uid,
+          session.workspaceId,
+          profileUsername,
+          fromDate,
+          now,
+          u,
+        ).catch((e) => log.warn(`cache unified ${days}d failed`, { error: String(e) }));
+      }
+      return { days, unified: u };
+    });
+
+    const [profileSettled, ...unifiedSettledList] = await Promise.allSettled([
       getProfileAnalytics(apiKey, profileUsername, SUPPORTED_ANALYTICS_PLATFORMS),
-      getUnifiedAnalytics(apiKey, profileUsername, range),
+      ...unifiedPromises,
     ]);
 
     const profileData = profileSettled.status === "fulfilled" ? profileSettled.value : null;
-    const unified = unifiedSettled.status === "fulfilled" ? unifiedSettled.value : null;
+    const ninetyDayResult = unifiedSettledList.find(
+      (s) => s.status === "fulfilled" && s.value.days === 90,
+    );
+    const unified = ninetyDayResult && ninetyDayResult.status === "fulfilled" ? ninetyDayResult.value.unified : null;
 
     if (profileSettled.status === "rejected") {
       log.warn("profile analytics fetch failed in sync", { reason: String(profileSettled.reason) });
-    }
-    if (unifiedSettled.status === "rejected") {
-      log.warn("unified analytics fetch failed in sync", { reason: String(unifiedSettled.reason) });
-    }
-
-    // Persist a unified snapshot into the user-scoped cache.
-    if (unified?.status === "ok" || unified?.errorMessage) {
-      await setCachedUnified(
-        session.uid,
-        session.workspaceId,
-        profileUsername,
-        range.from,
-        range.to,
-        unified,
-      ).catch((e) => log.warn("cache unified failed", { error: String(e) }));
     }
 
     const results = accounts.map((a) => ({

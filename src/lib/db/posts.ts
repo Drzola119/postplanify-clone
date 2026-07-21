@@ -1,6 +1,6 @@
 import "server-only";
 import { toIso } from "@/lib/db/date-utils";
-import { adminDb, FieldValue } from "@/lib/db";
+import { adminDb } from "@/lib/db";
 import type { PostDoc, PostStatus, PlatformId } from "@/lib/db/schema";
 
 const SERVER_TIMESTAMP = { _methodName: "serverTimestamp" } as const;
@@ -250,4 +250,29 @@ function serialize(workspaceId: string, id: string, data: PostDoc): PostListItem
     updatedAt: toIso(data.updatedAt),
   };
 }
+
+export async function countPublishedPosts(
+  workspaceId: string,
+  from: Date,
+  to: Date,
+  platform?: PlatformId,
+): Promise<number> {
+  if (!adminDb) return 0;
+  try {
+    let q = adminDb
+      .collection(`workspaces/${workspaceId}/posts`)
+      .where("status", "==", "published")
+      .where("publishedAt", ">=", from)
+      .where("publishedAt", "<=", to);
+
+    if (platform) {
+      q = q.where("platforms", "array-contains", platform);
+    }
+    const snap = await q.get();
+    return snap.size;
+  } catch {
+    return 0;
+  }
+}
+
 

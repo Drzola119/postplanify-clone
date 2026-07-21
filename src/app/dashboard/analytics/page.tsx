@@ -55,34 +55,6 @@ interface AccountSummary {
   analyticsStatus?: AnalyticsStatus;
 }
 
-// ============================================================
-// Accounts — fallback used when API call fails or user is unauthenticated
-// ============================================================
-const FALLBACK_ACCOUNTS: AccountSummary[] = [
-  { id: "yt-zakaria", name: "Zakaria 11", handle: "@zakaria_119", platform: "youtube", initials: "Z",
-    subscribers: 1, videos: 6, totalViews: 9, syncedAgo: "47m ago" },
-  { id: "pin-nick", name: "nicklorance7", handle: "pinterest.com/nicklorance7", platform: "pinterest", initials: "N",
-    followers: 0, monthlyViews: 0, pins: 14, syncedAgo: "42m ago" },
-  { id: "fb-nicklife", name: "nick lorance life", handle: "Personal blog", platform: "facebook", initials: "N",
-    bio: "Personal blog", followers: 0, posts: 1, totalViews: 0, syncedAgo: "14h ago" },
-  { id: "th-nick", name: "Nick Lorance", handle: "@nicklorance7", platform: "threads", initials: "N",
-    avatar: "https://scontent-dus1-1.cdninstagram.com/v/t51.82787-19/694687640_18106157872753132_4330973063129979937_n.jpg",
-    followers: 2, following: 11, posts: 25, syncedAgo: "4h ago",
-    contentTypes: { images: 100, videos: 0, text: 0, imageViews: 1 } },
-  { id: "bs-nick", name: "Nick Lorance", handle: "@nicklorance7", platform: "bluesky", initials: "N",
-    followers: 0, syncedAgo: "40m ago" },
-  { id: "tt-nick", name: "nick_lorance", handle: "@nick_lorance", platform: "tiktok", initials: "n",
-    followers: 3, following: 1, videos: 22, totalLikes: 183, syncedAgo: "3h ago" },
-  { id: "li-nick", name: "LinkedIn Account", handle: "@nick-lorance", platform: "linkedin", initials: "N",
-    syncedAgo: "—", isError: true,
-    errorMessage: "LinkedIn analytics are not available for this account. Please reconnect with the required permissions." },
-  { id: "x-nick", name: "nick lorance", handle: "@LoranceNic36048", platform: "twitter", initials: "N",
-    followers: 0, following: 12, posts: 42, totalLikes: 0, listed: 0, syncedAgo: "2h ago" },
-  { id: "bs-bsky", name: "nicklorance.bsky.social", handle: "@nicklorance.bsky.social", platform: "bluesky", initials: "🦋",
-    avatar: "https://cdn.bsky.app/img/avatar/plain/did:plc:rxzikv2qahzbwx7kggut2fiq/bafkreibbjbshetcjzi6cionfd3f62wzbhtmad7raj43h3pd3753vothaxy",
-    followers: 17, following: 33, posts: 26, syncedAgo: "41m ago" },
-];
-
 // Map upload-post.com platform key → our Platform type
 function toPlatform(key: string): Platform {
   const p = toInternalPlatform(key);

@@ -7,6 +7,7 @@ import {
   getCachedUnified,
   setCachedUnified,
 } from "@/lib/db/analytics-cache";
+import { countPublishedPosts } from "@/lib/db/posts";
 import { analyticsOverviewQuerySchema } from "@/lib/validation/analytics";
 import { parseSearchParams, jsonError, jsonOk } from "@/lib/validation/helpers";
 import { createLogger } from "@/lib/log";
@@ -53,16 +54,20 @@ export async function GET(request: NextRequest) {
   }
 
   const range = { from, to };
-  const [unifiedSettled] = await Promise.allSettled([
+  const [unifiedSettled, postsCountSettled] = await Promise.allSettled([
     getUnifiedAnalytics(apiKey, profileUsername, range),
+    countPublishedPosts(session.workspaceId, from, to),
   ]);
   const unified: UnifiedAnalytics | null = unifiedSettled.status === "fulfilled" ? unifiedSettled.value : null;
+  const postsPublished = postsCountSettled.status === "fulfilled" ? postsCountSettled.value : 0;
 
   if (!unified) {
     return jsonOk({
       overview: emptyOverview(session.workspaceId, from, to, "error", "Upload-Post analytics fetch failed"),
     });
   }
+
+  unified.postsPublished = postsPublished;
 
   await setCachedUnified(
     session.uid,

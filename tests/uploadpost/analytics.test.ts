@@ -250,3 +250,32 @@ describe("getPostAnalyticsByRequestId", () => {
     expect(res.impressions).toBeNull();
   });
 });
+
+describe("analytics normalization edge cases", () => {
+  it("defaults postsPublished to 0 from service level", async () => {
+    fetchMock
+      .mockImplementationOnce(async () => ({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ impressions: 100, breakdown: {} }),
+      }))
+      .mockImplementationOnce(async () => ({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ platforms: {} }),
+      }));
+
+    const res = await analytics.getUnifiedAnalytics("key", "ws1", {
+      from: new Date("2026-07-01"),
+      to: new Date("2026-07-31"),
+    });
+    expect(res.postsPublished).toBe(0);
+  });
+
+  it("handles unsupported platforms cleanly in helper check", () => {
+    expect(analytics.UNSUPPORTED_ANALYTICS_PLATFORMS).toContain("discord");
+    expect(analytics.UNSUPPORTED_ANALYTICS_PLATFORMS).toContain("telegram");
+    expect(analytics.UNSUPPORTED_ANALYTICS_PLATFORMS).toContain("google_business");
+  });
+});
+

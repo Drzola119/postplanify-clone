@@ -8,7 +8,7 @@ import { getCachedPlatform, setCachedPlatform } from "@/lib/db/analytics-cache";
 import { analyticsOverviewQuerySchema } from "@/lib/validation/analytics";
 import { parseSearchParams, jsonError, jsonOk } from "@/lib/validation/helpers";
 import { createLogger } from "@/lib/log";
-import { adminDb } from "@/lib/db";
+import { countPublishedPosts } from "@/lib/db/posts";
 import type { PlatformId } from "@/lib/db/schema";
 import type { NormalizedPlatformAnalytics } from "@/types/analytics";
 
@@ -125,9 +125,9 @@ export async function GET(
 
   const postsPublished = await countPublishedPosts(
     session.workspaceId,
-    platform as PlatformId,
     from,
     to,
+    platform as PlatformId,
   );
 
   if (!normalized) {
@@ -165,16 +165,16 @@ export async function GET(
         engagementRate: normalized.engagementRate,
         postsPublished,
       },
-      // Timeseries only when present — never fabricated.
+      // Timeseries only when present — never fabricated with static totals.
       series: normalized.timeseries.map((pt) => ({
         date: pt.date,
-        followers: normalized?.followers ?? 0,
-        engagementRate: normalized?.engagementRate ?? 0,
+        followers: 0,
+        engagementRate: 0,
         impressions: pt.value,
-        likes: normalized?.likes ?? 0,
-        comments: normalized?.comments ?? 0,
-        shares: normalized?.shares ?? 0,
-        clicks: normalized?.clicks ?? 0,
+        likes: 0,
+        comments: 0,
+        shares: 0,
+        clicks: 0,
       })),
     },
   });
@@ -194,23 +194,3 @@ function nullSeries() {
   };
 }
 
-async function countPublishedPosts(
-  workspaceId: string,
-  platform: PlatformId,
-  from: Date,
-  to: Date,
-): Promise<number> {
-  if (!adminDb) return 0;
-  try {
-    const posts = await adminDb
-      .collection(`workspaces/${workspaceId}/posts`)
-      .where("status", "==", "published")
-      .where("platforms", "array-contains", platform)
-      .where("publishedAt", ">=", from)
-      .where("publishedAt", "<=", to)
-      .get();
-    return posts.size;
-  } catch {
-    return 0;
-  }
-}
