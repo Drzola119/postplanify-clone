@@ -41,7 +41,6 @@ const SIMPLE_ICONS_SLUGS: Record<string, string> = {
 };
 
 function iconUrl(id: string): string {
-  if (id === "linkedin") return "/images/help/icon-linkedin.svg";
   const slug = SIMPLE_ICONS_SLUGS[id] ?? id;
   return `https://cdn.simpleicons.org/${slug}/ffffff`;
 }
@@ -95,11 +94,7 @@ export function PlatformAvatar({
         height={iconSize}
         loading="lazy"
         decoding="async"
-        style={{
-          width: iconSize,
-          height: iconSize,
-          ...(id === "linkedin" ? { filter: "brightness(0) invert(1)" } : {}),
-        }}
+        style={{ width: iconSize, height: iconSize }}
         onError={(e) => {
           const target = e.currentTarget;
           target.style.display = "none";

@@ -363,19 +363,11 @@ function AccountAvatar({ account, size = 32 }: { account: AccountSummary; size?:
         className="rounded-full bg-gradient-to-br from-zinc-300 to-zinc-400 flex items-center justify-center text-zinc-700 font-semibold overflow-hidden"
         style={{ width: size, height: size, fontSize: size * 0.4 }}
       >
-        <span className="absolute inset-0 flex items-center justify-center">
-          {account.initials ?? account.name[0]?.toUpperCase()}
-        </span>
-        {account.avatar && (
+        {account.avatar ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={account.avatar}
-            alt={account.name}
-            className="relative w-full h-full object-cover"
-            onError={(event) => {
-              event.currentTarget.style.display = "none";
-            }}
-          />
+          <img src={account.avatar} alt={account.name} className="w-full h-full object-cover" />
+        ) : (
+          account.initials ?? account.name[0]?.toUpperCase()
         )}
       </div>
       <span className="absolute -bottom-0.5 -right-0.5">
@@ -705,7 +697,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
       }
     };
 
-    start();
+    if (document.visibilityState === "visible") start();
     document.addEventListener("visibilitychange", onVis);
     return () => {
       cancelled = true;
@@ -1283,7 +1275,7 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
       }
     };
 
-    start();
+    if (document.visibilityState === "visible") start();
     document.addEventListener("visibilitychange", onVis);
     return () => {
       cancelled = true;
