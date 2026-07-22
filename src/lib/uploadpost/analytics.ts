@@ -61,6 +61,7 @@ function toInternalPlatformKey(platform: string): PlatformKey {
 interface RawProfilePlatform {
   success?: boolean;
   message?: string | null;
+  error?: string | null;
   linkedin_personal_unsupported?: boolean;
   followers?: number | null;
   reach?: number | null;
@@ -169,14 +170,14 @@ function classifyFailure(status: number, body: unknown): AnalyticsStatus {
 }
 
 function classifyPlatformFailure(raw: RawProfilePlatform): AnalyticsStatus {
-  const message = raw.message ?? "";
+  const message = `${raw.message ?? ""} ${raw.error ?? ""}`.trim();
   if (raw.linkedin_personal_unsupported || /not supported yet/i.test(message)) {
     return "unsupported";
   }
-  if (/token|expired|unauthor/i.test(message)) return "token_expired";
-  if (/Page access token|select this Page|page_id is required|please reconnect/i.test(message)) {
+  if (/Page access token|select this Page|page_id is required|please reconnect|reconnect/i.test(message)) {
     return "token_expired";
   }
+  if (/token|expired|unauthor/i.test(message)) return "token_expired";
   if (/not connected|not found|does not exist/i.test(message)) return "not_connected";
   return "error";
 }
@@ -314,6 +315,46 @@ export async function getPlatformMetricsConfig(
 /** Optional per-platform query parameters (e.g. Facebook `page_id`). */
 export type PlatformExtraParams = Record<string, string>;
 
+interface FacebookPage {
+  id?: string;
+  name?: string;
+  account_id?: string;
+}
+
+/**
+ * Resolve the Facebook Page id required by the analytics endpoint.
+ *
+ * Upload-Post stores `social_accounts.facebook.username` as the Facebook USER
+ * id, not the Page id — passing it to the analytics endpoint fails. The real
+ * Page id lives behind `/uploadposts/facebook/pages`, where each page has an
+ * `account_id` (the user id) and an `id` (the page id). We match by account_id
+ * when possible, otherwise fall back to the only page.
+ *
+ * Returns null when no page can be resolved (caller then surfaces a reconnect
+ * status instead of fabricating data).
+ */
+export async function resolveFacebookPageId(
+  apiKey: string,
+  profileUsername: string,
+  accountId?: string | null,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  try {
+    const url = `${UPLOAD_POST_BASE}/uploadposts/facebook/pages?profile=${encodeURIComponent(profileUsername)}`;
+    const { status, body } = await fetchUploadPost(url, apiKey, signal);
+    if (status !== 200) return null;
+    const pages = (body as { pages?: FacebookPage[] })?.pages ?? [];
+    if (!pages.length) return null;
+    if (accountId) {
+      const match = pages.find((pg) => pg.account_id === accountId);
+      if (match?.id) return match.id;
+    }
+    return pages[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getProfileAnalytics(
   apiKey: string,
   profileUsername: string,
@@ -422,7 +463,7 @@ async function getProfileAnalyticsOnce(
         null,
         null,
         classifyPlatformFailure(raw),
-        raw.message ?? "Upload-Post could not load analytics for this platform",
+        raw.message ?? raw.error ?? "Upload-Post could not load analytics for this platform",
         lastSyncedAt,
       );
     }

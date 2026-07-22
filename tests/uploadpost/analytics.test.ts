@@ -394,3 +394,83 @@ describe("analytics normalization edge cases", () => {
   });
 });
 
+describe("Facebook page-token error classified via raw.error (not just message)", () => {
+  beforeEach(() => fetchMock.mockReset());
+  afterEach(() => fetchMock.mockReset());
+
+  it("classifies a Facebook error returned in the `error` field (no message) as token_expired", async () => {
+    fetchMock.mockImplementationOnce(async () => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          facebook: {
+            success: false,
+            error: "No Page access token found. Please select this Page and reconnect.",
+          },
+        }),
+    }));
+    const result = await analytics.getProfileAnalytics("key", "ws1", ["facebook"]);
+    expect(result[0].status).toBe("token_expired");
+    expect(result[0].errorMessage).toMatch(/Page access token|reconnect/i);
+  });
+
+  it("classifies a Facebook 'page_id is required' returned in `error` as token_expired", async () => {
+    fetchMock.mockImplementationOnce(async () => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          facebook: { success: false, error: "Query parameter page_id is required for Facebook analytics." },
+        }),
+    }));
+    const result = await analytics.getProfileAnalytics("key", "ws1", ["facebook"]);
+    expect(result[0].status).toBe("token_expired");
+  });
+});
+
+describe("resolveFacebookPageId", () => {
+  beforeEach(() => fetchMock.mockReset());
+  afterEach(() => fetchMock.mockReset());
+
+  it("matches by account_id and returns the real page id", async () => {
+    fetchMock.mockImplementationOnce(async (url: string) => {
+      expect(url).toContain("/uploadposts/facebook/pages");
+      expect(url).toContain("profile=ws1");
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            pages: [
+              { id: "page_AAA", name: "Page A", account_id: "122098423833291792" },
+              { id: "page_BBB", name: "Page B", account_id: "9999999999" },
+            ],
+          }),
+      };
+    });
+    const pageId = await analytics.resolveFacebookPageId("key", "ws1", "122098423833291792");
+    expect(pageId).toBe("page_AAA");
+  });
+
+  it("returns the only page when no accountId is supplied", async () => {
+    fetchMock.mockImplementationOnce(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ pages: [{ id: "page_ONLY", account_id: "x" }] }),
+    }));
+    const pageId = await analytics.resolveFacebookPageId("key", "ws1");
+    expect(pageId).toBe("page_ONLY");
+  });
+
+  it("returns null on non-200 (no fabricated data)", async () => {
+    fetchMock.mockImplementationOnce(async () => ({
+      ok: false,
+      status: 403,
+      text: async () => JSON.stringify({ message: "forbidden" }),
+    }));
+    const pageId = await analytics.resolveFacebookPageId("key", "ws1", "x");
+    expect(pageId).toBeNull();
+  });
+});
+

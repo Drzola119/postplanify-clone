@@ -3,7 +3,7 @@ import { requireSession } from "@/lib/auth/session-context";
 import { resolvers } from "@/lib/security/server-config";
 import { readProfile } from "@/lib/db/upload-post-profiles";
 import { readCache } from "@/lib/db/account-health";
-import { getProfileAnalytics, isAnalyticsSupported, type PlatformExtraParams } from "@/lib/uploadpost/analytics";
+import { getProfileAnalytics, isAnalyticsSupported, resolveFacebookPageId, type PlatformExtraParams } from "@/lib/uploadpost/analytics";
 import { getCachedPlatform, setCachedPlatform } from "@/lib/db/analytics-cache";
 import { analyticsOverviewQuerySchema } from "@/lib/validation/analytics";
 import { parseSearchParams, jsonError, jsonOk } from "@/lib/validation/helpers";
@@ -113,12 +113,19 @@ export async function GET(
     ).catch(() => null);
   }
   if (!normalized) {
-    // Facebook analytics require a page_id query param. The cached account's
-    // platformUsername holds the page id captured when the account connected.
-    const extraParams: Record<string, PlatformExtraParams> =
-      platform === "facebook" && acct.platformUsername
-        ? { facebook: { page_id: acct.platformUsername } }
-        : {};
+    // Facebook analytics require the Page id (not the stored FB user id).
+    // Resolve it from Upload-Post's facebook/pages endpoint; if it can't be
+    // resolved we send no page_id and let the upstream error surface as a
+    // reconnect status rather than fabricating data.
+    const extraParams: Record<string, PlatformExtraParams> = {};
+    if (platform === "facebook") {
+      const pageId = await resolveFacebookPageId(
+        apiKey,
+        profileUsername,
+        acct.platformUsername,
+      );
+      if (pageId) extraParams.facebook = { page_id: pageId };
+    }
     const [settled] = await Promise.allSettled([
       getProfileAnalytics(apiKey, profileUsername, [platform as never], extraParams),
     ]);

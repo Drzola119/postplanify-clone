@@ -603,6 +603,8 @@
       "impressions_label": "Impressions",
       "unable_load": "Impossible de charger les analyses",
       "go_accounts": "Aller aux comptes",
+      "no_accounts_title": "Aucun compte connecté pour l'instant",
+      "connect_platforms_sub": "Connectez un compte social depuis la page Comptes pour commencer à voir les analyses ici.",
       "views": "VUES",
       "views_sub": "Nombre total d'impressions",
       "likes_sub2": "Total des j'aime",

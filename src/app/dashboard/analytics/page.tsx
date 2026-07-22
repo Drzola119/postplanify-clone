@@ -1467,6 +1467,7 @@ function AnalyticsPageInner() {
   const accountId = searchParams.get("accountId") ?? undefined;
   const [accounts, setAccounts] = useState<AccountSummary[]>([]);
   const [accountsError, setAccountsError] = useState(false);
+  const [accountsLoaded, setAccountsLoaded] = useState(false);
 
   // Fetch accounts from social-accounts/list and auto-sync analytics on mount.
   useEffect(() => {
@@ -1477,16 +1478,28 @@ function AnalyticsPageInner() {
           cache: "no-store",
           headers: getOverrideHeaders(),
         });
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (!cancelled) {
+            setAccountsError(true);
+            setAccountsLoaded(true);
+          }
+          return;
+        }
         const data: { ok: boolean; accounts?: Parameters<typeof adaptAccount>[0][] } = await res.json();
-        if (cancelled || !data?.ok || !data.accounts) {
+        if (cancelled) return;
+        if (!data?.ok || !data.accounts) {
           setAccountsError(true);
+          setAccountsLoaded(true);
           return;
         }
         const adapted = data.accounts.map(adaptAccount);
         if (adapted.length > 0) setAccounts(adapted);
+        setAccountsLoaded(true);
       } catch {
-        setAccountsError(true);
+        if (!cancelled) {
+          setAccountsError(true);
+          setAccountsLoaded(true);
+        }
       }
     })();
     // Fire-and-forget auto-sync: refresh analytics cache in the background.
@@ -1494,7 +1507,8 @@ function AnalyticsPageInner() {
     return () => { cancelled = true; };
   }, []);
 
-  if (accounts.length === 0 && !accountsError) {
+  // Still fetching the account list — genuine loading state.
+  if (accounts.length === 0 && !accountsError && !accountsLoaded) {
     return (
       <div className="px-6 py-6">
         <div className="rounded-xl border border-zinc-200 bg-white p-12 flex flex-col items-center justify-center text-center">
@@ -1502,6 +1516,27 @@ function AnalyticsPageInner() {
             <TrendingUp className="size-7 text-zinc-400" />
           </div>
           <h2 className="text-xl font-bold text-zinc-900 mb-2">{t("analytics.loading_title")}</h2>
+        </div>
+      </div>
+    );
+  }
+
+  // Loaded successfully but this workspace has no connected accounts.
+  if (accounts.length === 0 && !accountsError && accountsLoaded) {
+    return (
+      <div className="px-6 py-6">
+        <div className="rounded-xl border border-zinc-200 bg-white p-12 flex flex-col items-center justify-center text-center">
+          <div className="size-16 rounded-full bg-zinc-100 flex items-center justify-center mb-4">
+            <TrendingUp className="size-7 text-zinc-400" />
+          </div>
+          <h2 className="text-xl font-bold text-zinc-900 mb-2">{t("analytics.no_accounts_title")}</h2>
+          <p className="text-[13px] text-zinc-500 max-w-md mb-6">{t("analytics.connect_platforms_sub")}</p>
+          <Link
+            href="/dashboard/accounts"
+            className="inline-flex items-center justify-center rounded-md bg-zinc-900 px-5 h-10 text-[13px] font-medium text-white hover:bg-zinc-800"
+          >
+            {t("analytics.go_accounts")}
+          </Link>
         </div>
       </div>
     );

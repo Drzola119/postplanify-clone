@@ -603,6 +603,8 @@
       "impressions_label": "Impressions",
       "unable_load": "Unable to Load Analytics",
       "go_accounts": "Go to Accounts",
+      "no_accounts_title": "No connected accounts yet",
+      "connect_platforms_sub": "Connect a social account on the Accounts page to start seeing analytics here.",
       "views": "VIEWS",
       "views_sub": "Total impressions",
       "likes_sub2": "Total likes",

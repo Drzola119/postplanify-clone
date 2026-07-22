@@ -6,6 +6,7 @@ import { readCache } from "@/lib/db/account-health";
 import {
   getProfileAnalytics,
   isAnalyticsSupported,
+  resolveFacebookPageId,
   type PlatformExtraParams,
 } from "@/lib/uploadpost/analytics";
 import {
@@ -88,10 +89,15 @@ export async function GET(request: NextRequest) {
   );
   const platforms = connected.map((a) => a.platform as PlatformKey);
   const extraParams: Record<string, PlatformExtraParams> = {};
-  for (const a of connected) {
-    if (a.platform === "facebook" && a.platformUsername) {
-      extraParams[a.platform] = { page_id: a.platformUsername };
-    }
+  const facebookAccount = connected.find((a) => a.platform === "facebook");
+  if (facebookAccount) {
+    // Resolve the real Facebook Page id (the stored value is the FB user id).
+    const pageId = await resolveFacebookPageId(
+      apiKey,
+      profileUsername,
+      facebookAccount.platformUsername,
+    );
+    if (pageId) extraParams.facebook = { page_id: pageId };
   }
   const reauthByPlatform = new Map<string, boolean>(
     connected.map((a) => [a.platform, a.reauthRequired]),

@@ -8,6 +8,7 @@ import {
   getProfileAnalytics,
   getUnifiedAnalytics,
   isAnalyticsSupported,
+  resolveFacebookPageId,
   UNSUPPORTED_ANALYTICS_PLATFORMS,
   type PlatformExtraParams,
 } from "@/lib/uploadpost/analytics";
@@ -170,11 +171,17 @@ export async function POST(request: NextRequest) {
       .filter((a) => isAnalyticsSupported(toInternalPlatform(a.platform)))
       .map((a) => toInternalPlatform(a.platform) as PlatformKey);
     const analyticsExtraParams: Record<string, PlatformExtraParams> = {};
-    for (const a of accounts) {
-      const internal = toInternalPlatform(a.platform);
-      if (internal === "facebook" && a.platformUsername) {
-        analyticsExtraParams[internal] = { page_id: a.platformUsername };
-      }
+    const facebookAccount = accounts.find(
+      (a) => toInternalPlatform(a.platform) === "facebook",
+    );
+    if (facebookAccount) {
+      // Resolve the real Facebook Page id (stored value is the FB user id).
+      const pageId = await resolveFacebookPageId(
+        apiKey,
+        profileUsername,
+        facebookAccount.platformUsername,
+      );
+      if (pageId) analyticsExtraParams.facebook = { page_id: pageId };
     }
 
     // Fetch profile analytics + multi-period unified analytics in parallel
