@@ -169,8 +169,59 @@ describe("getProfileAnalytics — network + honest status", () => {
     const result = await analytics.getProfileAnalytics("key", "ws1", ["linkedin", "facebook"]);
     expect(result[0].status).toBe("unsupported");
     expect(result[0].errorMessage).toContain("not supported");
-    expect(result[1].status).toBe("error");
+    // "page_id is required" is a fixable reconnect issue, surfaced as token_expired
+    // so the UI shows a Reconnect CTA rather than a dead-end error.
+    expect(result[1].status).toBe("token_expired");
     expect(result[1].errorMessage).toContain("page_id");
+  });
+
+  it("sends the Facebook page_id as a query param when provided via extraParams", async () => {
+    let capturedUrl = "";
+    fetchMock.mockImplementationOnce(async (url: string) => {
+      capturedUrl = url;
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            facebook: { followers: 42, impressions: 1000, likes: 5 },
+          }),
+      };
+    });
+
+    const result = await analytics.getProfileAnalytics(
+      "key",
+      "ws1",
+      ["facebook"],
+      { facebook: { page_id: "122098423833291792" } },
+    );
+    expect(capturedUrl).toContain("page_id=122098423833291792");
+    expect(capturedUrl).toContain("platforms=facebook");
+    expect(result[0].status).toBe("ok");
+    expect(result[0].followers).toBe(42);
+    expect(result[0].impressionsPrimary).toBe(1000);
+  });
+
+  it("classifies a Facebook page-token error as token_expired (reconnect)", async () => {
+    fetchMock.mockImplementationOnce(async () => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          facebook: {
+            success: false,
+            message: "No Page access token found. Please reconnect and select this Page.",
+          },
+        }),
+    }));
+    const result = await analytics.getProfileAnalytics("key", "ws1", ["facebook"]);
+    expect(result[0].status).toBe("token_expired");
+  });
+
+  it("treats bluesky as an unsupported platform (no analytics card)", () => {
+    expect(analytics.isAnalyticsSupported("bluesky")).toBe(false);
+    expect(analytics.UNSUPPORTED_ANALYTICS_PLATFORMS).toContain("bluesky");
+    expect(analytics.SUPPORTED_ANALYTICS_PLATFORMS).not.toContain("bluesky");
   });
 
   it("classifies 401 as token_expired for all platforms", async () => {

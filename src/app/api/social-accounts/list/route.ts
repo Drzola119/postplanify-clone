@@ -30,6 +30,16 @@ interface UploadPostAccount {
   handle?: string;
   social_images?: string;
   reauth_required?: boolean;
+  /** Per-platform identifier used by some analytics endpoints (e.g. Facebook page_id). */
+  username?: string;
+  page_id?: string;
+  social_id?: string;
+  id?: string;
+}
+
+/** Extract a per-platform username/id (Facebook page_id, etc.) if the upstream provides one. */
+function platformUsernameOf(a: UploadPostAccount): string | null {
+  return a.page_id ?? a.username ?? a.social_id ?? a.id ?? null;
 }
 
 interface UploadPostProfile {
@@ -57,6 +67,7 @@ export interface ConnectedAccountDTO {
   /** Unique id combining profile + platform. */
   id: string;
   profileUsername: string;
+  platformUsername: string | null;
   platform: string;
   handle: string;
   displayName: string | null;
@@ -95,6 +106,7 @@ function flatten(profile: UploadPostProfile | null): ConnectedAccountDTO[] {
     out.push({
       id: `${profile.username}:${key}`,
       profileUsername: profile.username,
+      platformUsername: platformUsernameOf(a),
       platform: toInternalPlatform(key),
       handle: a.handle,
       displayName: a.display_name ?? null,
@@ -214,6 +226,7 @@ export async function GET(request: Request) {
           accounts: accounts.map((a) => ({
             id: a.id,
             profileUsername: a.profileUsername,
+            platformUsername: a.platformUsername,
             platform: a.platform,
             handle: a.handle,
             displayName: a.displayName,

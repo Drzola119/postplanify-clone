@@ -26,13 +26,13 @@ export const SUPPORTED_ANALYTICS_PLATFORMS: PlatformKey[] = [
   "threads",
   "pinterest",
   "reddit",
-  "bluesky",
 ];
 
 export const UNSUPPORTED_ANALYTICS_PLATFORMS: PlatformKey[] = [
   "discord",
   "telegram",
   "google_business",
+  "bluesky",
 ];
 
 export function isAnalyticsSupported(platform: string): boolean {
@@ -170,10 +170,13 @@ function classifyFailure(status: number, body: unknown): AnalyticsStatus {
 
 function classifyPlatformFailure(raw: RawProfilePlatform): AnalyticsStatus {
   const message = raw.message ?? "";
-  if (raw.linkedin_personal_unsupported || /not supported|unsupported|limitation/i.test(message)) {
+  if (raw.linkedin_personal_unsupported || /not supported yet/i.test(message)) {
     return "unsupported";
   }
   if (/token|expired|unauthor/i.test(message)) return "token_expired";
+  if (/Page access token|select this Page|page_id is required|please reconnect/i.test(message)) {
+    return "token_expired";
+  }
   if (/not connected|not found|does not exist/i.test(message)) return "not_connected";
   return "error";
 }
@@ -308,16 +311,48 @@ export async function getPlatformMetricsConfig(
   }
 }
 
+/** Optional per-platform query parameters (e.g. Facebook `page_id`). */
+export type PlatformExtraParams = Record<string, string>;
+
 export async function getProfileAnalytics(
   apiKey: string,
   profileUsername: string,
   platforms: PlatformKey[] = SUPPORTED_ANALYTICS_PLATFORMS,
+  extraParams: Record<string, PlatformExtraParams> = {},
   signal?: AbortSignal,
 ): Promise<NormalizedPlatformAnalytics[]> {
-  const platformQuery = platforms
-    .map((p) => toUploadPostPlatform(p))
-    .join(",");
-  const url = `${UPLOAD_POST_BASE}/analytics/${encodeURIComponent(profileUsername)}?platforms=${platformQuery}`;
+  // Append platform-specific extra params (e.g. Facebook page_id). We don't
+  // pass per-platform params to a multi-platform request because Upload-Post
+  // expects a single value; instead, we batch platforms that share the same
+  // extra params together.
+  const groups = new Map<string, PlatformKey[]>();
+  for (let i = 0; i < platforms.length; i++) {
+    const key = JSON.stringify(extraParams[platforms[i]] ?? {});
+    const list = groups.get(key) ?? [];
+    list.push(platforms[i]);
+    groups.set(key, list);
+  }
+
+  const results: NormalizedPlatformAnalytics[] = [];
+  for (const [key, list] of groups) {
+    const params = JSON.parse(key) as PlatformExtraParams;
+    const query = new URLSearchParams({
+      platforms: list.map((p) => toUploadPostPlatform(p)).join(","),
+      ...params,
+    });
+    const url = `${UPLOAD_POST_BASE}/analytics/${encodeURIComponent(profileUsername)}?${query.toString()}`;
+    const slice = await getProfileAnalyticsOnce(apiKey, url, list, signal);
+    results.push(...slice);
+  }
+  return results;
+}
+
+async function getProfileAnalyticsOnce(
+  apiKey: string,
+  url: string,
+  platforms: PlatformKey[],
+  signal?: AbortSignal,
+): Promise<NormalizedPlatformAnalytics[]> {
   const { status, body } = await fetchUploadPost(url, apiKey, signal);
 
   const responseRecord =

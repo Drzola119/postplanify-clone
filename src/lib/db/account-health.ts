@@ -6,6 +6,8 @@ export type AccountHealthStatus = "healthy" | "needs_reauth" | "stale" | "discon
 export interface CachedAccount {
   id: string;
   profileUsername: string;
+  /** Per-platform username (e.g. Facebook page_id). May be absent for older cached snapshots. */
+  platformUsername?: string | null;
   platform: string;
   handle: string;
   displayName: string | null;

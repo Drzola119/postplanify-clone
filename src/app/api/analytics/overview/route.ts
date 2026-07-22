@@ -3,7 +3,11 @@ import { requireSession } from "@/lib/auth/session-context";
 import { resolvers } from "@/lib/security/server-config";
 import { readProfile } from "@/lib/db/upload-post-profiles";
 import { readCache } from "@/lib/db/account-health";
-import { getUnifiedAnalytics } from "@/lib/uploadpost/analytics";
+import {
+  getProfileAnalytics,
+  isAnalyticsSupported,
+  type PlatformExtraParams,
+} from "@/lib/uploadpost/analytics";
 import {
   getCachedUnified,
   setCachedUnified,
@@ -13,7 +17,11 @@ import { analyticsOverviewQuerySchema } from "@/lib/validation/analytics";
 import { parseSearchParams, jsonError, jsonOk } from "@/lib/validation/helpers";
 import { createLogger } from "@/lib/log";
 import type { PlatformId } from "@/lib/db/schema";
-import type { NormalizedPlatformAnalytics, UnifiedAnalytics } from "@/types/analytics";
+import type {
+  NormalizedPlatformAnalytics,
+  PlatformKey,
+  UnifiedAnalytics,
+} from "@/types/analytics";
 
 const log = createLogger("analytics-overview");
 
@@ -72,21 +80,51 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const range = { from, to };
-  const [unifiedSettled, postsCountSettled] = await Promise.allSettled([
-    getUnifiedAnalytics(apiKey, profileUsername, range),
+  // Only the connected + analytics-supported accounts. We aggregate the SAME
+  // per-platform data the account cards use so overview totals equal the sum of
+  // the per-account numbers — no divergent second data source.
+  const connected = (accountCache?.accounts ?? []).filter(
+    (a) => a.handle && isAnalyticsSupported(a.platform),
+  );
+  const platforms = connected.map((a) => a.platform as PlatformKey);
+  const extraParams: Record<string, PlatformExtraParams> = {};
+  for (const a of connected) {
+    if (a.platform === "facebook" && a.platformUsername) {
+      extraParams[a.platform] = { page_id: a.platformUsername };
+    }
+  }
+  const reauthByPlatform = new Map<string, boolean>(
+    connected.map((a) => [a.platform, a.reauthRequired]),
+  );
+
+  const [perPlatformSettled, postsCountSettled] = await Promise.allSettled([
+    platforms.length
+      ? getProfileAnalytics(apiKey, profileUsername, platforms, extraParams)
+      : Promise.resolve<NormalizedPlatformAnalytics[]>([]),
     countPublishedPosts(session.workspaceId, from, to),
   ]);
-  const unified: UnifiedAnalytics | null = unifiedSettled.status === "fulfilled" ? unifiedSettled.value : null;
-  const postsPublished = postsCountSettled.status === "fulfilled" ? postsCountSettled.value : 0;
 
-  if (!unified) {
+  if (perPlatformSettled.status !== "fulfilled") {
     return jsonOk({
       overview: emptyOverview(session.workspaceId, from, to, "error", "Upload-Post analytics fetch failed"),
     });
   }
 
-  unified.postsPublished = postsPublished;
+  const perPlatform = perPlatformSettled.value.map((p) => {
+    // A connected account flagged for reauth always surfaces as token_expired,
+    // even if the API happened to return stale numbers.
+    if (reauthByPlatform.get(p.platform)) {
+      return {
+        ...p,
+        status: "token_expired" as const,
+        errorMessage: "Please reconnect this account to restore analytics.",
+      };
+    }
+    return p;
+  });
+  const postsPublished = postsCountSettled.status === "fulfilled" ? postsCountSettled.value : 0;
+
+  const unified = aggregateUnified(perPlatform, postsPublished);
 
   await setCachedUnified(
     session.uid,
@@ -100,6 +138,72 @@ export async function GET(request: NextRequest) {
   return jsonOk({
     overview: toOverviewShape(unified, session.workspaceId, from, to),
   });
+}
+
+/** Sum a list of nullable numbers, returning null only when every value is null. */
+function sumNullable(values: (number | null)[]): number | null {
+  let seen = false;
+  let total = 0;
+  for (const v of values) {
+    if (typeof v === "number") {
+      seen = true;
+      total += v;
+    }
+  }
+  return seen ? total : null;
+}
+
+/** Build a UnifiedAnalytics from honest per-platform results (totals = sum of parts). */
+function aggregateUnified(
+  perPlatform: NormalizedPlatformAnalytics[],
+  postsPublished: number,
+): UnifiedAnalytics {
+  const impressions = sumNullable(perPlatform.map((p) => p.impressionsPrimary));
+  const followers = sumNullable(perPlatform.map((p) => p.followers));
+  const likes = sumNullable(perPlatform.map((p) => p.likes));
+  const comments = sumNullable(perPlatform.map((p) => p.comments));
+  const shares = sumNullable(perPlatform.map((p) => p.shares));
+  const saves = sumNullable(perPlatform.map((p) => p.saves));
+  const clicks = sumNullable(perPlatform.map((p) => p.clicks));
+  const reach = sumNullable(perPlatform.map((p) => p.reach));
+  const views = sumNullable(perPlatform.map((p) => p.views));
+
+  const engagements =
+    likes !== null || comments !== null || shares !== null || saves !== null
+      ? (likes ?? 0) + (comments ?? 0) + (shares ?? 0) + (saves ?? 0)
+      : null;
+  const engagementRate =
+    impressions && impressions > 0 && engagements !== null
+      ? (engagements / impressions) * 100
+      : null;
+
+  const anyOk = perPlatform.some((p) => p.status === "ok");
+  const status: UnifiedAnalytics["status"] = perPlatform.length === 0
+    ? "not_connected"
+    : anyOk
+      ? "ok"
+      : perPlatform[0].status;
+
+  const lastSyncedAt =
+    perPlatform.find((p) => p.lastSyncedAt)?.lastSyncedAt ?? null;
+
+  return {
+    status,
+    followers,
+    impressions,
+    reach,
+    views,
+    likes,
+    comments,
+    shares,
+    saves,
+    clicks,
+    engagementRate,
+    postsPublished,
+    byPlatform: perPlatform,
+    errorMessage: null,
+    lastSyncedAt,
+  };
 }
 
 function emptyOverview(

@@ -885,7 +885,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
             <TrendingUp className="size-7 text-zinc-400" />
           </div>
           <h2 className="text-xl font-bold text-zinc-900 mb-2">{t("analytics.unsupported_title")}</h2>
-          <p className="text-[13px] text-zinc-500 max-w-md mb-6">{t("analytics.unsupported_sub")}</p>
+          <p className="text-[13px] text-zinc-500 max-w-md mb-6">{analytics?.errorMessage ?? t("analytics.unsupported_sub")}</p>
         </div>
       </div>
     );

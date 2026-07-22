@@ -8,8 +8,8 @@ import {
   getProfileAnalytics,
   getUnifiedAnalytics,
   isAnalyticsSupported,
-  SUPPORTED_ANALYTICS_PLATFORMS,
   UNSUPPORTED_ANALYTICS_PLATFORMS,
+  type PlatformExtraParams,
 } from "@/lib/uploadpost/analytics";
 import {
   invalidateAnalyticsCache,
@@ -20,7 +20,7 @@ import { toInternalPlatform } from "@/lib/platforms";
 import { jsonError, jsonOk } from "@/lib/validation/helpers";
 import { createLogger } from "@/lib/log";
 import type { PlatformId } from "@/lib/db/schema";
-import type { DateRange } from "@/types/analytics";
+import type { DateRange, PlatformKey } from "@/types/analytics";
 
 const log = createLogger("analytics-sync");
 
@@ -29,6 +29,14 @@ interface UploadPostAccount {
   handle?: string;
   social_images?: string;
   reauth_required?: boolean;
+  username?: string;
+  page_id?: string;
+  social_id?: string;
+  id?: string;
+}
+
+function platformUsernameOf(a: UploadPostAccount): string | null {
+  return a.page_id ?? a.username ?? a.social_id ?? a.id ?? null;
 }
 
 interface UploadPostProfile {
@@ -101,6 +109,7 @@ export async function POST(request: NextRequest) {
     const accounts: {
       id: string;
       profileUsername: string;
+      platformUsername: string | null;
       platform: string;
       handle: string;
       displayName: string | null;
@@ -116,6 +125,7 @@ export async function POST(request: NextRequest) {
         accounts.push({
           id,
           profileUsername: upProfile.username,
+          platformUsername: platformUsernameOf(acct),
           platform,
           handle: acct.handle,
           displayName: acct.display_name ?? null,
@@ -130,6 +140,7 @@ export async function POST(request: NextRequest) {
       accounts: accounts.map((a) => ({
         id: a.id,
         profileUsername: a.profileUsername,
+        platformUsername: a.platformUsername,
         platform: a.platform,
         handle: a.handle,
         displayName: a.displayName,
@@ -152,6 +163,19 @@ export async function POST(request: NextRequest) {
     const connectedPlatforms = accounts
       .map((a) => toInternalPlatform(a.platform))
       .filter((p) => isAnalyticsSupported(p)) as PlatformId[];
+
+    // Per-platform extra params (Facebook page_id) so the profile analytics call
+    // returns real Facebook data instead of a "page_id required" error.
+    const analyticsPlatforms = accounts
+      .filter((a) => isAnalyticsSupported(toInternalPlatform(a.platform)))
+      .map((a) => toInternalPlatform(a.platform) as PlatformKey);
+    const analyticsExtraParams: Record<string, PlatformExtraParams> = {};
+    for (const a of accounts) {
+      const internal = toInternalPlatform(a.platform);
+      if (internal === "facebook" && a.platformUsername) {
+        analyticsExtraParams[internal] = { page_id: a.platformUsername };
+      }
+    }
 
     // Fetch profile analytics + multi-period unified analytics in parallel
     const periodsDays = [7, 14, 30, 90];
@@ -179,7 +203,9 @@ export async function POST(request: NextRequest) {
     });
 
     const [profileSettled, ...unifiedSettledList] = await Promise.allSettled([
-      getProfileAnalytics(apiKey, profileUsername, SUPPORTED_ANALYTICS_PLATFORMS),
+      analyticsPlatforms.length
+        ? getProfileAnalytics(apiKey, profileUsername, analyticsPlatforms, analyticsExtraParams)
+        : Promise.resolve([]),
       ...unifiedPromises,
     ]);
 

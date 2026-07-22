@@ -3,7 +3,7 @@ import { requireSession } from "@/lib/auth/session-context";
 import { resolvers } from "@/lib/security/server-config";
 import { readProfile } from "@/lib/db/upload-post-profiles";
 import { readCache } from "@/lib/db/account-health";
-import { getProfileAnalytics, isAnalyticsSupported } from "@/lib/uploadpost/analytics";
+import { getProfileAnalytics, isAnalyticsSupported, type PlatformExtraParams } from "@/lib/uploadpost/analytics";
 import { getCachedPlatform, setCachedPlatform } from "@/lib/db/analytics-cache";
 import { analyticsOverviewQuerySchema } from "@/lib/validation/analytics";
 import { parseSearchParams, jsonError, jsonOk } from "@/lib/validation/helpers";
@@ -113,8 +113,14 @@ export async function GET(
     ).catch(() => null);
   }
   if (!normalized) {
+    // Facebook analytics require a page_id query param. The cached account's
+    // platformUsername holds the page id captured when the account connected.
+    const extraParams: Record<string, PlatformExtraParams> =
+      platform === "facebook" && acct.platformUsername
+        ? { facebook: { page_id: acct.platformUsername } }
+        : {};
     const [settled] = await Promise.allSettled([
-      getProfileAnalytics(apiKey, profileUsername, [platform as never]),
+      getProfileAnalytics(apiKey, profileUsername, [platform as never], extraParams),
     ]);
     const list = settled.status === "fulfilled" ? settled.value : null;
     normalized = list?.[0] ?? null;

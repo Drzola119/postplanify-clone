@@ -33,6 +33,14 @@ interface UploadPostAccount {
   handle?: string;
   social_images?: string;
   reauth_required?: boolean;
+  username?: string;
+  page_id?: string;
+  social_id?: string;
+  id?: string;
+}
+
+function platformUsernameOf(a: UploadPostAccount): string | null {
+  return a.page_id ?? a.username ?? a.social_id ?? a.id ?? null;
 }
 
 interface UploadPostSingleResponse {
@@ -71,6 +79,7 @@ async function fetchLiveAccounts(workspaceId: string, apiKey: string): Promise<C
       out.push({
         id: `${p.username}:${key}`,
         profileUsername: p.username,
+        platformUsername: platformUsernameOf(a),
         platform: toInternalPlatform(key),
         handle: a.handle,
         displayName: a.display_name ?? null,
