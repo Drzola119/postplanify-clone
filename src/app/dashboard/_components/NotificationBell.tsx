@@ -55,8 +55,8 @@ export function NotificationBell({
           setNotifications(items);
           setUnreadCount(items.filter((i) => !i.read).length);
         },
-        (error) => {
-          console.warn("[NotificationBell] Listener error:", error);
+        () => {
+          // Notifications remain at their server-rendered state when the listener is unavailable.
         }
       );
 
