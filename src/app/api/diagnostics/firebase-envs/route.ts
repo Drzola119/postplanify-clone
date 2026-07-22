@@ -61,7 +61,21 @@ export async function GET(request: Request) {
     missing.push("FIREBASE_PRIVATE_KEY (placeholder text, paste the real PEM)");
   }
 
-  const ok = missing.length === 0 && keyLooksValid;
+  let authTestOk = false;
+  let authTestError: string | null = null;
+  try {
+    const { adminAuth } = await import("@/lib/firebase/admin");
+    if (adminAuth) {
+      const token = await adminAuth.createCustomToken("diagnostic-test-uid");
+      authTestOk = !!token;
+    } else {
+      authTestError = "adminAuth is null (SDK not initialized)";
+    }
+  } catch (err) {
+    authTestError = err instanceof Error ? err.message : String(err);
+  }
+
+  const ok = missing.length === 0 && keyLooksValid && authTestOk;
 
   return NextResponse.json(
     {
@@ -75,9 +89,11 @@ export async function GET(request: Request) {
       privateKeyLooksValid: keyLooksValid,
       privateKeyLooksLikePlaceholder: keyLooksLikePlaceholder,
       privateKeyFingerprint: keyFingerprint,
+      authTestOk,
+      authTestError,
       nodeEnv: process.env.NODE_ENV,
       // Helper boolean the front-end can use to render a "fix your envs" message.
-      needsHostingerEnvPaste: missing.length > 0 || !keyLooksValid,
+      needsHostingerEnvPaste: missing.length > 0 || !keyLooksValid || !authTestOk,
       docsHint: "docs/hpanel-env-paste.md",
     },
     {
