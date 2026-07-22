@@ -59,6 +59,9 @@ function toInternalPlatformKey(platform: string): PlatformKey {
 // Raw response shapes (Upload-Post)
 // ============================================================
 interface RawProfilePlatform {
+  success?: boolean;
+  message?: string | null;
+  linkedin_personal_unsupported?: boolean;
   followers?: number | null;
   reach?: number | null;
   views?: number | null;
@@ -68,7 +71,9 @@ interface RawProfilePlatform {
   comments?: number | null;
   shares?: number | null;
   saves?: number | null;
-  reach_timeseries?: Record<string, number> | null;
+  pin_clicks?: number | null;
+  outbound_clicks?: number | null;
+  reach_timeseries?: Array<{ date?: string; value?: number }> | Record<string, number> | null;
   metric_type?: string | null;
   primary_impressions_field?: string | null;
   available_metrics?: string[] | null;
@@ -80,12 +85,16 @@ interface RawProfileResponse {
   message?: string;
   platforms?: Record<string, RawProfilePlatform | "" | null> | null;
   error?: string | null;
+  [platform: string]: unknown;
 }
 
 interface RawUnifiedResponse {
   success?: boolean;
   message?: string;
   error?: string | null;
+  total_impressions?: number | null;
+  per_platform?: Record<string, number> | null;
+  per_day?: Record<string, number> | null;
   followers?: number | null;
   impressions?: number | null;
   reach?: number | null;
@@ -159,25 +168,25 @@ function classifyFailure(status: number, body: unknown): AnalyticsStatus {
   return "error";
 }
 
-// ============================================================
-// Clicks resolution per platform
-// ============================================================
+function classifyPlatformFailure(raw: RawProfilePlatform): AnalyticsStatus {
+  const message = raw.message ?? "";
+  if (raw.linkedin_personal_unsupported || /not supported|unsupported|limitation/i.test(message)) {
+    return "unsupported";
+  }
+  if (/token|expired|unauthor/i.test(message)) return "token_expired";
+  if (/not connected|not found|does not exist/i.test(message)) return "not_connected";
+  return "error";
+}
+
 function resolveClicks(platform: PlatformKey, raw: RawProfilePlatform): number | null {
-  // Only report clicks when the provider actually exposes a click metric.
-  // We never fabricate click totals from impressions/reach.
   if (platform === "pinterest") {
-    // Pinterest exposes pin_clicks (mapped to outbound_clicks upstream) when available.
-    if (typeof raw.impressions === "number" && "outbound_clicks" in raw) {
-      const v = (raw as Record<string, unknown>).outbound_clicks;
-      return typeof v === "number" ? v : null;
-    }
-    return null;
+    return typeof raw.outbound_clicks === "number"
+      ? raw.outbound_clicks
+      : typeof raw.pin_clicks === "number"
+        ? raw.pin_clicks
+        : null;
   }
-  if ("outbound_clicks" in raw) {
-    const v = (raw as Record<string, unknown>).outbound_clicks;
-    return typeof v === "number" ? v : null;
-  }
-  return null;
+  return typeof raw.outbound_clicks === "number" ? raw.outbound_clicks : null;
 }
 
 // ============================================================
@@ -238,14 +247,20 @@ export function normalizePlatformAnalytics(
       ? (engagements / impressionsPrimary) * 100
       : null;
 
-  // Timeseries: use the platform's reach_timeseries when present.
+  // Upload-Post returns reach_timeseries as an array on the live API and an object in older responses.
   const timeseries: AnalyticsTimeseriesPoint[] = [];
-  if (raw?.reach_timeseries) {
-    for (const [date, value] of Object.entries(raw.reach_timeseries)) {
-      timeseries.push({ date, value: typeof value === "number" ? value : 0 });
+  if (Array.isArray(raw?.reach_timeseries)) {
+    for (const point of raw.reach_timeseries) {
+      if (typeof point.date === "string" && typeof point.value === "number") {
+        timeseries.push({ date: point.date, value: point.value });
+      }
     }
-    timeseries.sort((a, b) => a.date.localeCompare(b.date));
+  } else if (raw?.reach_timeseries) {
+    for (const [date, value] of Object.entries(raw.reach_timeseries)) {
+      if (typeof value === "number") timeseries.push({ date, value });
+    }
   }
+  timeseries.sort((a, b) => a.date.localeCompare(b.date));
 
   return {
     platform,
@@ -303,14 +318,22 @@ export async function getProfileAnalytics(
     .map((p) => toUploadPostPlatform(p))
     .join(",");
   const url = `${UPLOAD_POST_BASE}/analytics/${encodeURIComponent(profileUsername)}?platforms=${platformQuery}`;
-  const config = await getPlatformMetricsConfig(apiKey, signal);
-
   const { status, body } = await fetchUploadPost(url, apiKey, signal);
+
+  const responseRecord =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? (body as RawProfileResponse)
+      : ({} as RawProfileResponse);
+  const wrappedPlatforms =
+    responseRecord.platforms && typeof responseRecord.platforms === "object"
+      ? responseRecord.platforms
+      : null;
+  const platformsMap = wrappedPlatforms ?? responseRecord;
 
   log.info("getProfileAnalytics response", {
     url,
     status,
-    platformKeys: Object.keys((body as { platforms?: Record<string, unknown> })?.platforms ?? {}),
+    platformKeys: Object.keys(platformsMap),
     rawBody: JSON.stringify(body).slice(0, 500),
   });
 
@@ -326,36 +349,52 @@ export async function getProfileAnalytics(
       normalizePlatformAnalytics(
         p,
         null,
-        config ? config[toUploadPostPlatform(p)] ?? null : null,
+        null,
         failStatus,
         message,
       ),
     );
   }
 
-  const parsed = body as RawProfileResponse;
-  const platformsMap = parsed.platforms ?? {};
   const lastSyncedAt = new Date().toISOString();
 
   return platforms.map((p) => {
     const upKey = toUploadPostPlatform(p);
     const rawEntry = platformsMap[upKey];
-    const raw = rawEntry && typeof rawEntry !== "string" ? rawEntry : null;
-    log.info("platform data", { platform: p, upKey, hasRaw: !!raw, rawEntry: JSON.stringify(rawEntry)?.slice(0, 200) });
+    const raw =
+      rawEntry && typeof rawEntry === "object" && !Array.isArray(rawEntry)
+        ? (rawEntry as RawProfilePlatform)
+        : null;
+    log.info("platform data", {
+      platform: p,
+      upKey,
+      hasRaw: !!raw,
+      rawEntry: JSON.stringify(rawEntry)?.slice(0, 200),
+    });
     if (!raw) {
       return normalizePlatformAnalytics(
         p,
         null,
-        config ? config[upKey] ?? null : null,
+        null,
         "not_connected",
         "No data returned for this platform",
+        lastSyncedAt,
+      );
+    }
+    if (raw.success === false) {
+      return normalizePlatformAnalytics(
+        p,
+        null,
+        null,
+        classifyPlatformFailure(raw),
+        raw.message ?? "Upload-Post could not load analytics for this platform",
         lastSyncedAt,
       );
     }
     return normalizePlatformAnalytics(
       p,
       raw,
-      config ? config[upKey] ?? null : null,
+      null,
       "ok",
       null,
       lastSyncedAt,
@@ -401,36 +440,60 @@ export async function getUnifiedAnalytics(
   }
 
   const parsed = body as RawUnifiedResponse;
-  const breakdownRaw = parsed.breakdown ?? {};
-  const config = await getPlatformMetricsConfig(apiKey);
   const lastSyncedAt = new Date().toISOString();
+  const byPlatform: NormalizedPlatformAnalytics[] = [];
 
-  const byPlatform: NormalizedPlatformAnalytics[] = Object.entries(breakdownRaw).map(
-    ([upKey, metrics]) => {
-      const platform = toInternalPlatformKey(upKey);
-      const raw: RawProfilePlatform = {
-        followers: metrics.followers,
-        impressions: metrics.impressions,
-        reach: metrics.reach,
-        views: metrics.views,
-        likes: metrics.likes,
-        comments: metrics.comments,
-        shares: metrics.shares,
-        saves: metrics.saves,
-        profileViews: metrics.profileViews,
-      };
-      return normalizePlatformAnalytics(
+  for (const [upKey, metrics] of Object.entries(parsed.breakdown ?? {})) {
+    const platform = toInternalPlatformKey(upKey);
+    const raw: RawProfilePlatform = {
+      followers: metrics.followers,
+      impressions: metrics.impressions,
+      reach: metrics.reach,
+      views: metrics.views,
+      likes: metrics.likes,
+      comments: metrics.comments,
+      shares: metrics.shares,
+      saves: metrics.saves,
+      profileViews: metrics.profileViews,
+    };
+    byPlatform.push(
+      normalizePlatformAnalytics(
         platform,
         raw,
-        config ? config[upKey] ?? null : null,
+        null,
         "ok",
         null,
         lastSyncedAt,
-      );
-    },
-  );
+      ),
+    );
+  }
 
-  const impressions = typeof parsed.impressions === "number" ? parsed.impressions : null;
+  if (byPlatform.length === 0) {
+    for (const [upKey, impressions] of Object.entries(parsed.per_platform ?? {})) {
+      if (typeof impressions !== "number") continue;
+      byPlatform.push(
+        normalizePlatformAnalytics(
+          toInternalPlatformKey(upKey),
+          {
+            impressions,
+            metric_type: "impressions",
+            primary_impressions_field: "impressions",
+          },
+          null,
+          "ok",
+          null,
+          lastSyncedAt,
+        ),
+      );
+    }
+  }
+
+  const impressions =
+    typeof parsed.total_impressions === "number"
+      ? parsed.total_impressions
+      : typeof parsed.impressions === "number"
+        ? parsed.impressions
+        : null;
   const likes = typeof parsed.likes === "number" ? parsed.likes : null;
   const comments = typeof parsed.comments === "number" ? parsed.comments : null;
   const shares = typeof parsed.shares === "number" ? parsed.shares : null;

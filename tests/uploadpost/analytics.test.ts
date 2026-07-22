@@ -80,6 +80,21 @@ describe("normalizePlatformAnalytics", () => {
     expect(n.timeseries.map((p) => p.date)).toEqual(["2026-07-01", "2026-07-02", "2026-07-03"]);
     expect(n.timeseries.map((p) => p.value)).toEqual([1, 2, 3]);
   });
+
+  it("maps the live reach_timeseries array response", () => {
+    const raw = {
+      followers: 3,
+      reach_timeseries: [
+        { date: "2026-07-02", value: 12 },
+        { date: "2026-07-01", value: 8 },
+      ],
+    };
+    const n = normalizePlatformAnalytics("instagram", raw, null);
+    expect(n.timeseries).toEqual([
+      { date: "2026-07-01", value: 8 },
+      { date: "2026-07-02", value: 12 },
+    ]);
+  });
 });
 
 describe("isAnalyticsSupported", () => {
@@ -103,24 +118,24 @@ describe("getProfileAnalytics — network + honest status", () => {
   });
 
   it("returns ok normalized platforms on 200 with data", async () => {
-    fetchMock
-      // 1) platform-metrics config call
-      .mockImplementationOnce(async () => ({
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify({ platforms: {} }),
-      }))
-      // 2) profile analytics call
-      .mockImplementationOnce(async () => ({
-        ok: true,
-        status: 200,
-        text: async () =>
-          JSON.stringify({
-            platforms: {
-              instagram: { followers: 1000, impressions: 50000, likes: 500, comments: 20, shares: 10, saves: 5 },
-            },
-          }),
-      }));
+    fetchMock.mockImplementationOnce(async () => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          instagram: {
+            followers: 1000,
+            reach: 50000,
+            impressions: 70000,
+            likes: 500,
+            comments: 20,
+            shares: 10,
+            saves: 5,
+            primary_impressions_field: "reach",
+            reach_timeseries: [{ date: "2026-07-22", value: 50 }],
+          },
+        }),
+    }));
 
     const result = await analytics.getProfileAnalytics("key", "ws1", ["instagram", "tiktok"]);
     expect(result.length).toBe(2);
@@ -128,8 +143,34 @@ describe("getProfileAnalytics — network + honest status", () => {
     expect(ig?.status).toBe("ok");
     expect(ig?.impressionsPrimary).toBe(50000);
     expect(ig?.engagements).toBe(535);
+    expect(ig?.timeseries).toEqual([{ date: "2026-07-22", value: 50 }]);
     const tt = result.find((p) => p.platform === "tiktok");
     expect(tt?.status).toBe("not_connected");
+  });
+
+  it("preserves platform-level failures returned inside a 200 response", async () => {
+    fetchMock.mockImplementationOnce(async () => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          linkedin: {
+            success: false,
+            linkedin_personal_unsupported: true,
+            message: "LinkedIn personal analytics are not supported.",
+          },
+          facebook: {
+            success: false,
+            message: "Query parameter page_id is required.",
+          },
+        }),
+    }));
+
+    const result = await analytics.getProfileAnalytics("key", "ws1", ["linkedin", "facebook"]);
+    expect(result[0].status).toBe("unsupported");
+    expect(result[0].errorMessage).toContain("not supported");
+    expect(result[1].status).toBe("error");
+    expect(result[1].errorMessage).toContain("page_id");
   });
 
   it("classifies 401 as token_expired for all platforms", async () => {
@@ -174,11 +215,6 @@ describe("getUnifiedAnalytics — breakdown aggregation", () => {
               tiktok: { followers: 200, impressions: 10000, likes: 100, comments: 20, shares: 10 },
             },
           }),
-      }))
-      .mockImplementationOnce(async () => ({
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify({ platforms: {} }),
       }));
 
     const res = await analytics.getUnifiedAnalytics(
@@ -194,6 +230,39 @@ describe("getUnifiedAnalytics — breakdown aggregation", () => {
     expect(ig?.impressionsPrimary).toBe(50000);
     // (600+40+20)/60000*100 = 1.1%
     expect(res.engagementRate).toBeCloseTo(1.1, 5);
+  });
+
+  it("maps the live total-impressions response", async () => {
+    fetchMock
+      .mockImplementationOnce(async () => ({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            success: true,
+            total_impressions: 31175,
+            per_platform: {
+              instagram: 968,
+              tiktok: 29794,
+              threads: 327,
+            },
+            per_day: {
+              "2026-07-21": 3931,
+              "2026-07-22": 3955,
+            },
+          }),
+      }));
+
+    const res = await analytics.getUnifiedAnalytics(
+      "key",
+      "ws1",
+      { from: new Date("2026-06-22"), to: new Date("2026-07-22") },
+      true,
+    );
+    expect(res.status).toBe("ok");
+    expect(res.impressions).toBe(31175);
+    expect(res.byPlatform.find((p) => p.platform === "instagram")?.impressionsPrimary).toBe(968);
+    expect(res.byPlatform.find((p) => p.platform === "tiktok")?.impressionsPrimary).toBe(29794);
   });
 
   it("returns error status with nulls on 500 (never zeros)", async () => {
@@ -258,11 +327,6 @@ describe("analytics normalization edge cases", () => {
         ok: true,
         status: 200,
         text: async () => JSON.stringify({ impressions: 100, breakdown: {} }),
-      }))
-      .mockImplementationOnce(async () => ({
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify({ platforms: {} }),
       }));
 
     const res = await analytics.getUnifiedAnalytics("key", "ws1", {

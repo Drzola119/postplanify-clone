@@ -820,6 +820,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
   const isUnsupported = analytics?.status === "unsupported";
   const isReconnect = analytics?.status === "token_expired";
   const isNotConnected = analytics?.status === "not_connected";
+  const isUpstreamError = analytics?.status === "error";
   const hasData =
     totals &&
     (totals.followers !== null ||
@@ -917,16 +918,27 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
         </div>
       ) : null}
 
-      {isNotConnected && !error ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
-          {t("analytics.not_connected_sub")}
+      {isUpstreamError && analytics?.errorMessage ? (
+        <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-900">
+          <span className="size-1.5 mt-1.5 rounded-full bg-rose-500 shrink-0" />
+          <span>{analytics.errorMessage}</span>
         </div>
       ) : null}
 
-      {!hasData && !error && !isNotConnected ? (
+      {isNotConnected ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+          <span className="size-1.5 mr-2 inline-block rounded-full bg-amber-500 align-middle" />
+          {analytics?.errorMessage ?? t("analytics.not_connected_sub")}
+        </div>
+      ) : null}
+
+      {!hasData && !error && !isNotConnected && !isReconnect && !isUpstreamError ? (
         <div className="rounded-xl border border-zinc-200 bg-white p-8 text-center text-zinc-500 text-sm">
           <p className="font-medium text-zinc-700 mb-1">{t("analytics.no_data")}</p>
           <p>{t("analytics.no_data_sub")}</p>
+          {analytics?.errorMessage ? (
+            <p className="mt-3 text-[12px] text-zinc-400">upload-post.com: {analytics.errorMessage}</p>
+          ) : null}
         </div>
       ) : null}
 

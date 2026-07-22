@@ -131,20 +131,12 @@ export async function GET(
     }
   }
 
-  if (normalized) {
-    if (acct.reauthRequired) {
-      normalized = {
-        ...normalized,
-        status: "token_expired",
-        errorMessage: "Please reconnect this account to restore analytics.",
-      };
-    } else if (normalized.status === "not_connected") {
-      normalized = {
-        ...normalized,
-        status: "ok",
-        errorMessage: null,
-      };
-    }
+  if (normalized && acct.reauthRequired) {
+    normalized = {
+      ...normalized,
+      status: "token_expired",
+      errorMessage: "Please reconnect this account to restore analytics.",
+    };
   }
 
   const postsPublished = await countPublishedPosts(
