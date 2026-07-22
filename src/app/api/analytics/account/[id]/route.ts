@@ -98,15 +98,20 @@ export async function GET(
   const profileUsername = acct.profileUsername ?? (await readProfile(session.workspaceId))?.username ?? session.workspaceId;
   log.info("account analytics fetch", { accountId: id, platform, profileUsername });
 
-  const cached = await getCachedPlatform(
-    session.workspaceId,
-    profileUsername,
-    platform,
-    from,
-    to,
-  ).catch(() => null);
+  // Pass ?fresh=1 to bypass the cache — used by the page's live-poll loop so
+  // the user actually sees fresh numbers every 30s.
+  const wantsFresh = new URL(request.url).searchParams.get("fresh") === "1";
 
-  let normalized: NormalizedPlatformAnalytics | null = cached;
+  let normalized: NormalizedPlatformAnalytics | null = null;
+  if (!wantsFresh) {
+    normalized = await getCachedPlatform(
+      session.workspaceId,
+      profileUsername,
+      platform,
+      from,
+      to,
+    ).catch(() => null);
+  }
   if (!normalized) {
     const [settled] = await Promise.allSettled([
       getProfileAnalytics(apiKey, profileUsername, [platform as never]),

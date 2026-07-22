@@ -8,7 +8,10 @@ import type {
 
 const log = createLogger("analytics-cache");
 
-const CACHE_TTL_MS = 1000 * 60 * 15; // 15 minutes
+// Short TTL so the UI can poll on a "live" cadence without serving 15-min-old
+// data. Polling interval (30s) + TTL (60s) gives an effective freshness window
+// of ~30-90s per user.
+const CACHE_TTL_MS = 1000 * 60 * 1; // 1 minute
 const COLLECTION = "analyticsCache";
 
 export interface AnalyticsCacheDoc {

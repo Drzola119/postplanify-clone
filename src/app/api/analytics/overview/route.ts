@@ -60,11 +60,16 @@ export async function GET(request: NextRequest) {
   log.info("overview analytics fetch", { profileUsername, workspaceId: session.workspaceId });
 
   // Serve cached payload when fresh (avoids hammering Upload-Post per load).
-  const cached = await getCachedUnified(session.workspaceId, profileUsername, from, to).catch(
-    () => null,
-  );
-  if (cached) {
-    return jsonOk({ overview: toOverviewShape(cached, session.workspaceId, from, to) });
+  // Pass ?fresh=1 to bypass the cache — used by the page's live-poll loop so
+  // the user actually sees fresh numbers every 30s.
+  const wantsFresh = new URL(request.url).searchParams.get("fresh") === "1";
+  if (!wantsFresh) {
+    const cached = await getCachedUnified(session.workspaceId, profileUsername, from, to).catch(
+      () => null,
+    );
+    if (cached) {
+      return jsonOk({ overview: toOverviewShape(cached, session.workspaceId, from, to) });
+    }
   }
 
   const range = { from, to };

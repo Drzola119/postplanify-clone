@@ -592,6 +592,36 @@ function timeAgo(iso: string | null | undefined): string {
   return `${days}d ago`;
 }
 
+// "Live · refreshing in Ns" badge. Counts down to the next auto-poll.
+// Hides when `lastFetchedAt` is null (before the first load completes).
+const LIVE_POLL_INTERVAL_MS = 30_000;
+function LivePill({ lastFetchedAt }: { lastFetchedAt: number | null }) {
+  const [now, setNow] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (lastFetchedAt == null) return null;
+  const elapsed = now - lastFetchedAt;
+  // Negative elapsed means the next refresh is still N seconds away.
+  const sinceStart = elapsed < 0 ? LIVE_POLL_INTERVAL_MS : elapsed;
+  const sinceStartCapped = sinceStart % LIVE_POLL_INTERVAL_MS;
+  const secsToNext = LIVE_POLL_INTERVAL_MS - Math.floor(sinceStartCapped / 1000);
+  const secsToNextClamped = Math.max(0, Math.min(LIVE_POLL_INTERVAL_MS / 1000, secsToNext));
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700"
+      title="Live · auto-refreshes every 30s from upload-post.com"
+    >
+      <span className="relative inline-flex size-2">
+        <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+        <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+      </span>
+      Live · next refresh in {secsToNextClamped}s
+    </span>
+  );
+}
+
 function PerAccountView({ accountId, accounts }: { accountId: string; accounts: AccountSummary[] }) {
   const t = useTranslations("dashboard");
   const router = useRouter();
@@ -604,13 +634,15 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
   const [fetchNonce, setFetchNonce] = useState(0);
   const [publishedPosts, setPublishedPosts] = useState<{ id: string; caption: string; publishedAt: string | null; platforms: string[] }[] | null>(null);
   const [liveMetrics, setLiveMetrics] = useState<Record<string, { status?: string; likes: number | null; comments: number | null; shares: number | null; impressions: number | null }>>({});
+  const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null);
 
-  const fetchAnalytics = useCallback(async () => {
+  const fetchAnalytics = useCallback(async (opts?: { fresh?: boolean }) => {
     setLoading(true);
     setError(null);
     try {
       const range = periodToRange(period);
-      const url = `/api/analytics/account/${encodeURIComponent(accountId)}?from=${encodeURIComponent(range.from.toISOString())}&to=${encodeURIComponent(range.to.toISOString())}`;
+      const freshQs = opts?.fresh ? "&fresh=1" : "";
+      const url = `/api/analytics/account/${encodeURIComponent(accountId)}?from=${encodeURIComponent(range.from.toISOString())}&to=${encodeURIComponent(range.to.toISOString())}${freshQs}`;
       const res = await fetch(url, { cache: "no-store", headers: getOverrideHeaders() });
       if (!res.ok) {
         const body = await res.text().catch(() => "");
@@ -620,6 +652,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
       }
       const data = await res.json();
       setAnalytics(data.analytics as PerAccountAnalytics);
+      setLastFetchedAt(Date.now());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
       setAnalytics(null);
@@ -631,6 +664,47 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
   useEffect(() => {
     fetchAnalytics();
   }, [fetchAnalytics, fetchNonce]);
+
+  // Live polling: refresh every 30s with ?fresh=1 so the server bypasses its
+  // 1-min cache and we always pull the latest from upload-post.com.
+  // Pauses when the tab is hidden to avoid silent request spam.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    let cancelled = false;
+
+    const tick = () => {
+      if (cancelled) return;
+      if (document.visibilityState === "visible") {
+        void fetchAnalytics({ fresh: true });
+      }
+    };
+
+    const start = () => {
+      if (timer) return;
+      timer = setInterval(tick, 30_000);
+    };
+    const stop = () => {
+      if (timer) { clearInterval(timer); timer = null; }
+    };
+
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        void fetchAnalytics({ fresh: true });
+        start();
+      } else {
+        stop();
+      }
+    };
+
+    if (document.visibilityState === "visible") start();
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      stop();
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [fetchAnalytics]);
 
   // Fetch published posts + live per-post analytics.
   useEffect(() => {
@@ -857,9 +931,12 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
       ) : null}
 
       {analytics?.lastSyncedAt ? (
-        <div className="text-[12px] text-zinc-500 inline-flex items-center gap-1.5">
-          <CheckCircle2 className="size-3.5" />
-          {t("analytics.last_synced", { time: timeAgo(analytics.lastSyncedAt) })}
+        <div className="flex items-center gap-3">
+          <div className="text-[12px] text-zinc-500 inline-flex items-center gap-1.5">
+            <CheckCircle2 className="size-3.5" />
+            {t("analytics.last_synced", { time: timeAgo(analytics.lastSyncedAt) })}
+          </div>
+          <LivePill lastFetchedAt={lastFetchedAt} />
         </div>
       ) : null}
 
@@ -1124,20 +1201,23 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [fetchNonce, setFetchNonce] = useState(0);
+  const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null);
 
-  const fetchOverview = useCallback(async () => {
+  const fetchOverview = useCallback(async (opts?: { fresh?: boolean }) => {
     setLoading(true);
     try {
       const range = periodToRange(period);
       const from = encodeURIComponent(range.from.toISOString());
       const to = encodeURIComponent(range.to.toISOString());
-      const res = await fetch(`/api/analytics/overview?from=${from}&to=${to}`, {
+      const freshQs = opts?.fresh ? "&fresh=1" : "";
+      const res = await fetch(`/api/analytics/overview?from=${from}&to=${to}${freshQs}`, {
         cache: "no-store",
         headers: getOverrideHeaders(),
       });
       if (res.ok) {
         const data = await res.json();
         setOverview(data.overview as OverviewData);
+        setLastFetchedAt(Date.now());
       }
     } catch {
       // keep previous data
@@ -1149,6 +1229,48 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
   useEffect(() => {
     fetchOverview();
   }, [fetchOverview, fetchNonce]);
+
+  // Live polling: refresh every 30s with ?fresh=1 so the server bypasses its
+  // 1-min cache and we always pull the latest from upload-post.com.
+  // Pauses when the tab is hidden to avoid silent request spam.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    let cancelled = false;
+
+    const tick = () => {
+      if (cancelled) return;
+      if (document.visibilityState === "visible") {
+        void fetchOverview({ fresh: true });
+      }
+    };
+
+    const start = () => {
+      if (timer) return;
+      timer = setInterval(tick, 30_000);
+    };
+    const stop = () => {
+      if (timer) { clearInterval(timer); timer = null; }
+    };
+
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        // Immediate refresh when coming back into focus.
+        void fetchOverview({ fresh: true });
+        start();
+      } else {
+        stop();
+      }
+    };
+
+    if (document.visibilityState === "visible") start();
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      stop();
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [fetchOverview]);
 
   const handleSync = async () => {
     setSyncing(true);
@@ -1254,9 +1376,12 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
 
           {/* Last synced */}
           {overview?.lastSyncedAt ? (
-            <div className="text-[12px] text-zinc-500 inline-flex items-center gap-1.5">
-              <Calendar className="size-3.5" />
-              {t("analytics.last_synced", { time: timeAgo(overview.lastSyncedAt) })}
+            <div className="flex items-center gap-3">
+              <div className="text-[12px] text-zinc-500 inline-flex items-center gap-1.5">
+                <Calendar className="size-3.5" />
+                {t("analytics.last_synced", { time: timeAgo(overview.lastSyncedAt) })}
+              </div>
+              <LivePill lastFetchedAt={lastFetchedAt} />
             </div>
           ) : null}
 
