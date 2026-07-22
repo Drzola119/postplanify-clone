@@ -63,19 +63,33 @@ export async function GET(request: Request) {
 
   let authTestOk = false;
   let authTestError: string | null = null;
+  let firestoreTestOk = false;
+  let firestoreTestError: string | null = null;
   try {
-    const { adminAuth } = await import("@/lib/firebase/admin");
+    const { adminAuth, adminDb } = await import("@/lib/firebase/admin");
     if (adminAuth) {
       const token = await adminAuth.createCustomToken("diagnostic-test-uid");
       authTestOk = !!token;
     } else {
       authTestError = "adminAuth is null (SDK not initialized)";
     }
+    
+    if (adminDb) {
+      // Try to read a dummy document to verify if the credentials can actually query Firestore
+      await adminDb.collection("workspaces").limit(1).get();
+      firestoreTestOk = true;
+    } else {
+      firestoreTestError = "adminDb is null (SDK not initialized)";
+    }
   } catch (err) {
-    authTestError = err instanceof Error ? err.message : String(err);
+    if (!authTestOk) {
+      authTestError = err instanceof Error ? err.message : String(err);
+    } else {
+      firestoreTestError = err instanceof Error ? err.message : String(err);
+    }
   }
 
-  const ok = missing.length === 0 && keyLooksValid && authTestOk;
+  const ok = missing.length === 0 && keyLooksValid && authTestOk && firestoreTestOk;
 
   return NextResponse.json(
     {
@@ -91,9 +105,11 @@ export async function GET(request: Request) {
       privateKeyFingerprint: keyFingerprint,
       authTestOk,
       authTestError,
+      firestoreTestOk,
+      firestoreTestError,
       nodeEnv: process.env.NODE_ENV,
       // Helper boolean the front-end can use to render a "fix your envs" message.
-      needsHostingerEnvPaste: missing.length > 0 || !keyLooksValid || !authTestOk,
+      needsHostingerEnvPaste: missing.length > 0 || !keyLooksValid || !authTestOk || !firestoreTestOk,
       docsHint: "docs/hpanel-env-paste.md",
     },
     {
