@@ -64,11 +64,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // protected API routes 401 even though the client looks "logged in".
         try {
           const idToken = await u.getIdToken();
-          await fetch("/api/auth/session", {
+          const sessionRes = await fetch("/api/auth/session", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ idToken }),
           });
+          // Yield one microtask tick so the browser has time to commit the
+          // Set-Cookie header from the session response before children mount
+          // and fire their own API calls. Without this yield, the accounts
+          // page useEffect fires before pp_session lands in the cookie jar,
+          // which is the recurring source of the 401 on /api/social-accounts/list.
+          if (sessionRes.ok) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          }
         } catch {
           // Client-side auth still works; protected APIs may 401 until the
           // next successful exchange. Don't block the UI on this.
