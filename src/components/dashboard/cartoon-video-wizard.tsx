@@ -312,7 +312,7 @@ export function CartoonVideoWizard() {
         <div className="grid gap-4">
           {finalAssets.map((asset) => (
             <div key={asset.assetId} className="space-y-2">
-              <Badge variant="outline">{asset.aspectRatio}</Badge>
+              <Badge tone="default">{asset.aspectRatio}</Badge>
               {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
               <video
                 src={asset.assetUrl}
@@ -320,11 +320,15 @@ export function CartoonVideoWizard() {
                 className="w-full rounded-xl border bg-black"
               />
               <div className="flex gap-2">
-                <Button asChild size="sm" variant="outline">
-                  <a href={asset.assetUrl} download target="_blank" rel="noopener noreferrer">
-                    {t("wizard.download")}
-                  </a>
-                </Button>
+                <a
+                  href={asset.assetUrl}
+                  download
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-7 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-sm font-medium hover:bg-muted hover:text-foreground"
+                >
+                  {t("wizard.download")}
+                </a>
               </div>
             </div>
           ))}
