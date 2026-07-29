@@ -136,4 +136,10 @@ export const resolvers = {
   engineApiKey(h: Headers): string | undefined {
     return resolveOptional("ADSIFY_ENGINE_API_KEY", "x-engine-api-key", h);
   },
+  falApiKey(h: Headers): string {
+    return resolve("FAL_API_KEY", "FAL_API_KEY", "x-fal-key", h);
+  },
+  geminiApiKey(h: Headers): string | undefined {
+    return resolveOptional("GEMINI_API_KEY", "x-gemini-key", h);
+  },
 };
