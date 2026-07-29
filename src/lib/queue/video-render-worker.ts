@@ -1,29 +1,13 @@
 /**
  * video-render-worker.ts
  * Background worker that processes videoJobs from Firestore.
- * Started from src/instrumentation.ts alongside the existing workers.
- *
- * Tick responsibilities (mirrors worker.ts pattern):
- *   1. Query videoJobs where status == "queued" for this workspace
- *   2. Pick up queued jobs, call generateVideo() for each clip
- *   3. Persist the result via persistGeneratedVideo()
- *   4. Update the videoJob doc to "complete" (or "failed" after MAX_RETRIES)
- *
- * M1 scope: Cartoon workflow only — single clip, no composition step needed.
- * Multi-clip composition (Real Estate/Whiteboard/Viral) comes in M2/M3.
- *
- * INSTRUMENTATION HOOK:
- * In src/instrumentation.ts, add after the existing worker starts:
- *
- *   const { startVideoRenderWorker } = await import("./lib/queue/video-render-worker");
- *   startVideoRenderWorker();
  */
 import "server-only";
-import { getAdminFirestore } from "../firebase/admin";
+import { adminDb } from "../firebase/admin";
 import { generateVideo } from "../video-gen/router";
 import { persistGeneratedVideo } from "../video-gen/asset-saver";
 import { buildCartoonPrompt } from "../video-gen/workflows/cartoon";
-import { createLogger } from "../logging";
+import { createLogger } from "../log";
 import type {
   VideoGenerateInput,
   VideoJobDoc,
@@ -40,16 +24,19 @@ const MAX_RETRIES = 3;
 let workerTimer: ReturnType<typeof setInterval> | null = null;
 
 async function processPendingJobs(): Promise<void> {
-  const db = getAdminFirestore();
+  const db = adminDb;
+  if (!db) {
+    logger.warn("adminDb not initialised — skipping video worker tick");
+    return;
+  }
 
-  // Collect all workspaces with queued jobs (collectionGroup query)
   let snapshot;
   try {
     snapshot = await db
       .collectionGroup("videoJobs")
       .where("status", "==", "queued")
       .orderBy("createdAt", "asc")
-      .limit(5) // process up to 5 jobs per tick
+      .limit(5)
       .get();
   } catch (err) {
     logger.error("Failed to query videoJobs", { error: err });
@@ -84,7 +71,6 @@ async function processJob(
     return;
   }
 
-  // Claim the job atomically
   await jobRef.update({
     status: "generating_clips",
     updatedAt: FieldValue.serverTimestamp(),
@@ -93,7 +79,6 @@ async function processJob(
   try {
     const output = await dispatchWorkflow(job.workflow, job.request, job, jobId);
 
-    // Fetch video buffer from provider URL for CDN upload
     const videoRes = await fetch(output.assetUrl);
     if (!videoRes.ok) {
       throw new Error(`Failed to fetch video from provider: ${videoRes.status}`);
@@ -115,7 +100,7 @@ async function processJob(
       status: "complete",
       finalAssets: [
         {
-          aspectRatio: "16:9", // default for M1 Cartoon single-clip
+          aspectRatio: "16:9",
           assetId,
           assetUrl,
         },
@@ -133,7 +118,6 @@ async function processJob(
     const errorMsg = err instanceof Error ? err.message : String(err);
     logger.error("Video job failed", { jobId, error: errorMsg, retryCount });
 
-    // Reset to queued for retry, unless max retries exceeded
     await jobRef.update({
       status: retryCount + 1 >= MAX_RETRIES ? "failed" : "queued",
       retryCount: retryCount + 1,
@@ -181,13 +165,12 @@ async function dispatchWorkflow(
 }
 
 export function startVideoRenderWorker(): void {
-  if (workerTimer) return; // already running
+  if (workerTimer) return;
 
   logger.info("Starting video render worker", {
     intervalMs: WORKER_INTERVAL_MS,
   });
 
-  // Run immediately on boot, then on interval
   processPendingJobs().catch((err) =>
     logger.error("Initial video worker tick failed", { error: err })
   );

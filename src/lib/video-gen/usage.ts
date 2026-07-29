@@ -5,8 +5,8 @@
  * but with finer-grained metrics appropriate to variable-duration video.
  */
 import "server-only";
-import { getAdminFirestore } from "../firebase/admin";
-import { createLogger } from "../logging";
+import { adminDb } from "../firebase/admin";
+import { createLogger } from "../log";
 
 const logger = createLogger("video-gen:usage");
 
@@ -27,7 +27,8 @@ export interface VideoUsageRecord {
  */
 export async function recordVideoGenUsage(record: VideoUsageRecord): Promise<void> {
   try {
-    const db = getAdminFirestore();
+    const db = adminDb;
+    if (!db) throw new Error("adminDb not initialised");
     const wsRef = db.collection("workspaces").doc(record.workspaceId);
     const now = new Date();
     const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -74,7 +75,8 @@ export async function readVideoGenUsage(workspaceId: string): Promise<{
   costThisMonthUsd: number;
   usedLifetime: number;
 }> {
-  const db = getAdminFirestore();
+  const db = adminDb;
+  if (!db) throw new Error("adminDb not initialised");
   const wsSnap = await db.collection("workspaces").doc(workspaceId).get();
   const data = wsSnap.data() ?? {};
   const now = new Date();

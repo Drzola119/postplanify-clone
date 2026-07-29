@@ -1,13 +1,11 @@
 /**
  * GET /api/videos/[jobId]
  * Polls the status of a video generation job.
- * Mirrors /api/images/outpaint/[jobId]/route.ts pattern.
  */
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminFirestore } from "@/lib/firebase/admin";
-import { getAuthenticatedUser } from "@/lib/auth/server";
-import { createLogger } from "@/lib/logging";
+import { adminDb, getCurrentUser } from "@/lib/firebase/admin";
+import { createLogger } from "@/lib/log";
 
 const logger = createLogger("api:videos:jobId");
 
@@ -16,7 +14,7 @@ export async function GET(
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
-    const user = await getAuthenticatedUser(req);
+    const user = await getCurrentUser();
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -26,8 +24,10 @@ export async function GET(
       return NextResponse.json({ error: "Missing jobId" }, { status: 400 });
     }
 
-    // Resolve the workspace for this user
-    const db = getAdminFirestore();
+    const db = adminDb;
+    if (!db) {
+      return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+    }
     const userSnap = await db.collection("users").doc(user.uid).get();
     const workspaceId: string | undefined = userSnap.data()?.workspaceId;
 
@@ -48,7 +48,6 @@ export async function GET(
 
     const job = jobSnap.data()!;
 
-    // Security: ensure the job belongs to the authenticated user's workspace
     if (job.uid !== user.uid) {
       logger.warn("Unauthorized job access attempt", {
         uid: user.uid,

@@ -1,18 +1,9 @@
 /**
  * video-gen/providers/seedance-2-fal.ts
  * Seedance 2.0 via fal.ai queue API — both standard and fast tiers.
- *
- * fal.ai async queue pattern:
- *   POST /queue/fal-ai/seedance-2.0-{variant}/requests -> { request_id }
- *   GET  /queue/fal-ai/seedance-2.0-{variant}/requests/{id}/status
- *   GET  /queue/fal-ai/seedance-2.0-{variant}/requests/{id}
- *
- * Docs: https://fal.ai/models/fal-ai/seedance-2.0-api
- * IMPORTANT: Verify exact model slugs + API shape against live fal.ai docs at build time.
  */
 import "server-only";
-import { createLogger } from "../../logging";
-import { getServerConfig } from "../../security/server-config";
+import { createLogger } from "../../log";
 import type { VideoGenProvider } from "./base";
 import type { VideoGenerateInput, VideoAspectRatio } from "../types";
 import { estimateVideoCostUsd } from "../cost";
@@ -29,23 +20,16 @@ const ASPECT_RATIO_MAP: Record<VideoAspectRatio, string> = {
   "21:9": "21:9",
 };
 
-/**
- * Returns the fal.ai model slug for the given variant.
- * Verify these slugs at https://fal.ai/models before deploying.
- */
 function getFalModelSlug(fast: boolean, mode: VideoGenerateInput["mode"]): string {
   const tier = fast ? "t2v-fast" : "standard";
   if (mode === "image-to-video") {
-    // Seedance image-to-video endpoint (verify slug against fal docs)
     return fast ? "fal-ai/seedance-2.0-i2v-fast" : "fal-ai/seedance-2.0-i2v";
   }
-  // Text-to-video
   return fast ? `fal-ai/seedance-2.0-${tier}` : "fal-ai/seedance-2.0";
 }
 
 function getFalApiKey(): string {
-  const config = getServerConfig();
-  const key = config.FAL_API_KEY;
+  const key = process.env.FAL_API_KEY?.trim();
   if (!key) throw new Error("FAL_API_KEY is not configured");
   return key;
 }
@@ -140,7 +124,6 @@ function makeSeedanceProvider(fast: boolean): VideoGenProvider {
 
       const { request_id } = await falQueuePost(modelSlug, body);
 
-      // Store so we can look it up during poll/fetch
       jobModelMap.set(request_id, modelSlug);
 
       return request_id;
@@ -162,7 +145,7 @@ function makeSeedanceProvider(fast: boolean): VideoGenProvider {
 
       if (status === "COMPLETED") return "complete";
       if (status === "FAILED" || status === "CANCELLED") return "failed";
-      return "pending"; // IN_QUEUE, IN_PROGRESS
+      return "pending";
     },
 
     async fetchResult(providerJobId: string) {
@@ -171,8 +154,6 @@ function makeSeedanceProvider(fast: boolean): VideoGenProvider {
 
       const data = await falQueueResult(modelSlug, providerJobId);
 
-      // fal.ai Seedance response shape (verify against live API):
-      // { video: { url, duration, width, height }, ... }
       const video = data.video as {
         url: string;
         duration?: number;

@@ -1,13 +1,11 @@
 /**
  * video-gen/asset-saver.ts
  * Persists a generated video to Bunny CDN + creates a mediaAssets Firestore doc.
- * Mirrors src/lib/image-gen/asset-saver.ts — uses the same Bunny CDN helpers
- * and mediaAssets collection, just with mime: "video/mp4".
  */
 import "server-only";
-import { getAdminFirestore } from "../firebase/admin";
-import { uploadToBunny } from "../bunny/upload";
-import { createLogger } from "../logging";
+import { adminDb } from "../firebase/admin";
+import { uploadToBunny } from "../bunny";
+import { createLogger } from "../log";
 import { recordVideoGenUsage } from "./usage";
 import type { VideoGenerateOutput, VideoWorkflow } from "./types";
 
@@ -35,7 +33,7 @@ export async function persistGeneratedVideo(
 ): Promise<PersistVideoResult> {
   const { workspaceId, uid, jobId, workflow, styleId, output, videoBuffer, tags } = input;
 
-  const fileName = `videos/${workspaceId}/${jobId}-${Date.now()}.mp4`;
+  const fileName = `${jobId}-${Date.now()}.mp4`;
 
   logger.info("Uploading generated video to Bunny CDN", {
     workspaceId,
@@ -44,13 +42,16 @@ export async function persistGeneratedVideo(
     fileName,
   });
 
-  const cdnUrl = await uploadToBunny({
-    buffer: videoBuffer,
-    fileName,
+  const { cdnUrl } = await uploadToBunny({
+    userId: uid,
+    folder: "assets",
+    filename: fileName,
     contentType: "video/mp4",
+    body: videoBuffer,
   });
 
-  const db = getAdminFirestore();
+  const db = adminDb;
+  if (!db) throw new Error("adminDb not initialised");
   const assetRef = db.collection("mediaAssets").doc();
   const assetId = assetRef.id;
 

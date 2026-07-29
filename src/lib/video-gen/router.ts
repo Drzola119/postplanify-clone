@@ -1,17 +1,12 @@
 /**
  * video-gen/router.ts
  * generateVideo() — walks the fallback chain, submitting+polling each provider.
- * Mirrors src/lib/image-gen/router.ts but wraps an async submit+poll loop
- * per provider (video generation is 30s–3min+, never synchronous).
- *
- * NOTE: This is called by the render worker (not directly from the API route).
- * The API route writes a videoJob doc + returns 202; the worker calls generateVideo().
  */
 import "server-only";
 import { resolveFallbackChain } from "./fallback-chain";
 import { estimateVideoCostUsd } from "./cost";
 import { getProviderInstance } from "./providers";
-import { createLogger } from "../logging";
+import { createLogger } from "../log";
 import type {
   VideoGenerateInput,
   VideoGenerateOutput,
@@ -63,7 +58,6 @@ export async function generateVideo(
         pollAttempts++;
 
         if (pollAttempts % 6 === 0) {
-          // Log every 30s
           logger.info("Polling video generation", {
             providerId,
             providerJobId,
@@ -101,7 +95,7 @@ export async function generateVideo(
       return {
         provider: providerId,
         model: result.model,
-        assetId: "", // populated by asset-saver after CDN upload
+        assetId: "",
         assetUrl: result.videoUrl,
         mime: "video/mp4",
         durationSec: result.durationSec,

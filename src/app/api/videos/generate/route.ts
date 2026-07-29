@@ -1,15 +1,12 @@
 /**
  * POST /api/videos/generate
  * Validates request, writes a videoJobs Firestore doc, returns 202 + jobId.
- * Mirrors the 202 + poll pattern of /api/images/outpaint/route.ts.
- * The actual generation happens in the video-render-worker (src/lib/queue/video-render-worker.ts).
  */
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminFirestore } from "@/lib/firebase/admin";
-import { getAuthenticatedUser } from "@/lib/auth/server";
+import { adminDb, getCurrentUser } from "@/lib/firebase/admin";
 import { videoGenerateRequestSchema } from "@/lib/validation/video-gen";
-import { createLogger } from "@/lib/logging";
+import { createLogger } from "@/lib/log";
 import { FieldValue } from "firebase-admin/firestore";
 
 const logger = createLogger("api:videos:generate");
@@ -17,7 +14,7 @@ const logger = createLogger("api:videos:generate");
 export async function POST(req: NextRequest) {
   try {
     // ─ Auth ───────────────────────────────────────────────────────────────────────────
-    const user = await getAuthenticatedUser(req);
+    const user = await getCurrentUser();
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -36,8 +33,10 @@ export async function POST(req: NextRequest) {
     const body = parsed.data;
 
     // ─ Resolve workspaceId for the authenticated user ──────────────────────────────
-    // Mirrors how the infographics route resolves the workspace.
-    const db = getAdminFirestore();
+    const db = adminDb;
+    if (!db) {
+      return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+    }
     const userSnap = await db.collection("users").doc(user.uid).get();
     const workspaceId: string | undefined = userSnap.data()?.workspaceId;
 
@@ -61,7 +60,7 @@ export async function POST(req: NextRequest) {
       status: "queued",
       provider: body.provider,
       styleId: body.styleId,
-      request: body, // store full validated request for the worker to process
+      request: body,
       clips: [],
       finalAssets: [],
       totalCostUsd: 0,
@@ -76,7 +75,6 @@ export async function POST(req: NextRequest) {
       workflow: body.workflow,
     });
 
-    // ─ Return 202 Accepted + jobId for client polling ──────────────────────────────
     return NextResponse.json(
       {
         jobId,
