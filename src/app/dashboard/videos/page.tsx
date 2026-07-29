@@ -132,7 +132,7 @@ function WorkflowCard({
         <div className="flex items-center gap-2">
           <h2 className="font-semibold text-lg leading-tight">{title}</h2>
           <Badge
-            variant={available ? "default" : "secondary"}
+            tone={available ? "violet" : "default"}
             className="text-xs"
           >
             {badge}
