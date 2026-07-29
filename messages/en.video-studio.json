@@ -1,0 +1,45 @@
+{
+  "videos": {
+    "landing": {
+      "title": "Video Studio",
+      "subtitle": "Generate AI-powered videos and publish them straight to your socials.",
+      "cartoon_title": "Cartoon-Style Video",
+      "cartoon_summary": "Turn a topic or photo into an animated cartoon short \u2014 3D Pixar, flat 2D, anime, or classic styles.",
+      "viral_title": "Viral / Trend Short",
+      "viral_summary": "Fast-cut, caption-driven short for TikTok, Reels, or Shorts.",
+      "real-estate_title": "Real Estate Listing Video",
+      "real-estate_summary": "Upload property photos and generate a cinematic listing video with branded intro/outro.",
+      "whiteboard_title": "Whiteboard Explainer",
+      "whiteboard_summary": "Turn a script or topic into a hand-drawn-style explainer video."
+    },
+    "cartoon": {
+      "title": "Cartoon-Style Video",
+      "subtitle": "Choose a style, describe your topic, and get a cartoon video in minutes.",
+      "step_style": "Choose a cartoon style",
+      "step_content": "Describe your topic",
+      "step_settings": "Duration & format",
+      "topic_label": "Topic or concept",
+      "topic_placeholder": "e.g. A friendly robot learning to bake a cake",
+      "dialogue_label": "Dialogue or sound effect",
+      "dialogue_placeholder": "e.g. \"Beep boop, this is delicious!\" (optional \u2014 adds native audio)",
+      "duration_label": "Clip duration",
+      "aspect_ratio_label": "Aspect ratio",
+      "aspect_ratio_hint": "Select up to 3. Each ratio is a separate render."
+    },
+    "wizard": {
+      "next": "Next",
+      "back": "Back",
+      "generate": "Generate video",
+      "optional": "optional",
+      "status_queued": "Queued\u2026",
+      "status_generating": "Generating your video\u2026",
+      "status_composing": "Composing your final video\u2026",
+      "generation_hint": "This can take 30 seconds to a few minutes. You can leave this page \u2014 we\u2019ll keep processing.",
+      "generation_failed": "Something went wrong",
+      "try_again": "Try again",
+      "done": "Your video is ready!",
+      "download": "Download",
+      "make_another": "Make another"
+    }
+  }
+}
