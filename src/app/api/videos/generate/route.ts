@@ -1,0 +1,97 @@
+/**
+ * POST /api/videos/generate
+ * Validates request, writes a videoJobs Firestore doc, returns 202 + jobId.
+ * Mirrors the 202 + poll pattern of /api/images/outpaint/route.ts.
+ * The actual generation happens in the video-render-worker (src/lib/queue/video-render-worker.ts).
+ */
+import "server-only";
+import { NextRequest, NextResponse } from "next/server";
+import { getAdminFirestore } from "@/lib/firebase/admin";
+import { getAuthenticatedUser } from "@/lib/auth/server";
+import { videoGenerateRequestSchema } from "@/lib/validation/video-gen";
+import { createLogger } from "@/lib/logging";
+import { FieldValue } from "firebase-admin/firestore";
+
+const logger = createLogger("api:videos:generate");
+
+export async function POST(req: NextRequest) {
+  try {
+    // ─ Auth ───────────────────────────────────────────────────────────────────────────
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // ─ Parse + validate body ───────────────────────────────────────────────────────
+    const rawBody = await req.json();
+    const parsed = videoGenerateRequestSchema.safeParse(rawBody);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", issues: parsed.error.issues },
+        { status: 400 }
+      );
+    }
+
+    const body = parsed.data;
+
+    // ─ Resolve workspaceId for the authenticated user ──────────────────────────────
+    // Mirrors how the infographics route resolves the workspace.
+    const db = getAdminFirestore();
+    const userSnap = await db.collection("users").doc(user.uid).get();
+    const workspaceId: string | undefined = userSnap.data()?.workspaceId;
+
+    if (!workspaceId) {
+      return NextResponse.json({ error: "No workspace found" }, { status: 400 });
+    }
+
+    // ─ Write videoJob doc (status: queued) ───────────────────────────────────────────
+    const jobRef = db
+      .collection("workspaces")
+      .doc(workspaceId)
+      .collection("videoJobs")
+      .doc();
+
+    const jobId = jobRef.id;
+
+    await jobRef.set({
+      workspaceId,
+      uid: user.uid,
+      workflow: body.workflow,
+      status: "queued",
+      provider: body.provider,
+      styleId: body.styleId,
+      request: body, // store full validated request for the worker to process
+      clips: [],
+      finalAssets: [],
+      totalCostUsd: 0,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    logger.info("Video job queued", {
+      jobId,
+      workspaceId,
+      uid: user.uid,
+      workflow: body.workflow,
+    });
+
+    // ─ Return 202 Accepted + jobId for client polling ──────────────────────────────
+    return NextResponse.json(
+      {
+        jobId,
+        status: "queued",
+        workspaceId,
+        workflow: body.workflow,
+        message: "Video job queued. Poll GET /api/videos/:jobId for status.",
+      },
+      { status: 202 }
+    );
+  } catch (err) {
+    logger.error("Error queuing video job", { error: err });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
