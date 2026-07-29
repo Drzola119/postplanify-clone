@@ -1,0 +1,45 @@
+{
+  "videos": {
+    "landing": {
+      "title": "Studio Vid\u00e9o",
+      "subtitle": "G\u00e9n\u00e9rez des vid\u00e9os aliment\u00e9es par l\u2019IA et publiez-les directement sur vos r\u00e9seaux.",
+      "cartoon_title": "Vid\u00e9o Style Dessin Anim\u00e9",
+      "cartoon_summary": "Transformez un sujet ou une photo en court dessin anim\u00e9 \u2014 3D Pixar, 2D plat, anime ou style classique.",
+      "viral_title": "Short Viral / Tendance",
+      "viral_summary": "Short montage rapide avec sous-titres pour TikTok, Reels ou Shorts.",
+      "real-estate_title": "Vid\u00e9o Annonce Immobili\u00e8re",
+      "real-estate_summary": "Importez des photos et g\u00e9n\u00e9rez une vid\u00e9o cin\u00e9matographique avec intro/outro brandis\u00e9e.",
+      "whiteboard_title": "Explication Tableau Blanc",
+      "whiteboard_summary": "Transformez un script ou un sujet en vid\u00e9o explicative style tableau blanc."
+    },
+    "cartoon": {
+      "title": "Vid\u00e9o Style Dessin Anim\u00e9",
+      "subtitle": "Choisissez un style, d\u00e9crivez votre sujet et obtenez une vid\u00e9o anim\u00e9e en quelques minutes.",
+      "step_style": "Choisissez un style de dessin anim\u00e9",
+      "step_content": "D\u00e9crivez votre sujet",
+      "step_settings": "Dur\u00e9e et format",
+      "topic_label": "Sujet ou concept",
+      "topic_placeholder": "ex\u202f: Un robot sympathique qui apprend \u00e0 faire un g\u00e2teau",
+      "dialogue_label": "Dialogue ou effet sonore",
+      "dialogue_placeholder": "ex\u202f: \u00ab\u00a0Bip bip, c\u2019est d\u00e9licieux\u00a0!\u00a0\u00bb (optionnel \u2014 ajoute un audio natif)",
+      "duration_label": "Dur\u00e9e du clip",
+      "aspect_ratio_label": "Format d\u2019image",
+      "aspect_ratio_hint": "S\u00e9lectionnez jusqu\u2019\u00e0 3. Chaque format est un rendu s\u00e9par\u00e9."
+    },
+    "wizard": {
+      "next": "Suivant",
+      "back": "Retour",
+      "generate": "G\u00e9n\u00e9rer la vid\u00e9o",
+      "optional": "optionnel",
+      "status_queued": "En attente\u2026",
+      "status_generating": "G\u00e9n\u00e9ration de votre vid\u00e9o\u2026",
+      "status_composing": "Composition de votre vid\u00e9o finale\u2026",
+      "generation_hint": "Cela peut prendre de 30 secondes \u00e0 quelques minutes. Vous pouvez quitter cette page \u2014 le traitement continue.",
+      "generation_failed": "Une erreur est survenue",
+      "try_again": "R\u00e9essayer",
+      "done": "Votre vid\u00e9o est pr\u00eate\u00a0!",
+      "download": "T\u00e9l\u00e9charger",
+      "make_another": "En cr\u00e9er une autre"
+    }
+  }
+}

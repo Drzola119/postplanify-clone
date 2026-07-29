@@ -33,6 +33,7 @@ import {
   Palette,
   Send,
   Sparkles,
+  Clapperboard,
 } from "lucide-react";
 import { ACTIVE_WORKSPACE_STORAGE_KEY } from "@/lib/security/storage-keys";
 import { cn } from "@/lib/utils";
@@ -149,6 +150,7 @@ export function DashboardSidebar() {
     { label: t("nav.social_inbox"), href: "/dashboard/inbox", icon: Inbox },
     { label: t("nav.media_library"), href: "/dashboard/assets", icon: ImageIcon },
     { label: t("nav.infographics"), href: "/dashboard/infographics", icon: Sparkles },
+    { label: "Videos", href: "/dashboard/videos", icon: Clapperboard },
   ];
 
   const CONFIG: NavItem[] = [
@@ -392,14 +394,14 @@ export function DashboardSidebar() {
         {!collapsed && <SectionLabel>{t("nav.main_section")}</SectionLabel>}
         <div className="px-3 space-y-0.5">
           {MAIN.map((item) => (
-            <NavLink key={item.href} item={item} active={pathname === item.href} />
+            <NavLink key={item.href} item={item} active={pathname === item.href || pathname.startsWith(item.href + "/")} />
           ))}
         </div>
 
         {!collapsed && <SectionLabel>{t("nav.config_section")}</SectionLabel>}
         <div className="px-3 space-y-0.5">
           {CONFIG.map((item) => (
-            <NavLink key={item.href} item={item} active={pathname === item.href} />
+            <NavLink key={item.href} item={item} active={pathname === item.href || pathname.startsWith(item.href + "/")} />
           ))}
           {CONFIG_DRAWERS.map((d) => (
             <DrawerNavButton
@@ -414,7 +416,7 @@ export function DashboardSidebar() {
         {!collapsed && <SectionLabel>{t("nav.other_section")}</SectionLabel>}
         <div className="px-3 space-y-0.5">
           {OTHER.map((item) => (
-            <NavLink key={item.href} item={item} active={pathname === item.href} />
+            <NavLink key={item.href} item={item} active={pathname === item.href || pathname.startsWith(item.href + "/")} />
           ))}
         </div>
       </nav>
