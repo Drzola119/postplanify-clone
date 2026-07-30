@@ -100,6 +100,14 @@
     },
     {
       "collectionGroup": "videoJobs",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "videoJobs",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "workspaceId", "order": "ASCENDING" },

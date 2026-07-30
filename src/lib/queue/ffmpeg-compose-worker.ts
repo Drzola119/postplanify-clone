@@ -311,7 +311,9 @@ function main(): void {
 
   run();
   timer = setInterval(run, INTERVAL_MS);
-  timer.unref?.();
+  // Intentionally do NOT call .unref() here — the timer is what keeps this
+  // long-running worker alive between firestore polls. With .unref(), Node
+  // would exit after the first poll cycle once the gRPC connection goes idle.
 }
 
 function shutdown(signal: string): void {
