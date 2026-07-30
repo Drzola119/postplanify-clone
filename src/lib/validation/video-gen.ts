@@ -13,6 +13,7 @@ export const videoProviderIdSchema = z.enum([
   "veo-3.1-lite",
   "veo-3.1",
   "gemini-omni-flash",
+  "higgsfield",
   "auto",
 ]);
 

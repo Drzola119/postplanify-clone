@@ -22,6 +22,8 @@ const PROVIDER_SUFFIX: Record<VideoProviderId, string> = {
     "Short-form social video, bold visuals, high retention, hand-drawn whiteboard look.",
   "seedance-2-fast":
     "Short-form viral video style, bold text, fast-paced hand-drawn whiteboard animation.",
+  "higgsfield":
+    "Higgsfield DoP Turbo style, image-to-video animation, smooth whiteboard motion graphics.",
 };
 
 /**

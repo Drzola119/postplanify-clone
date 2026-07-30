@@ -63,4 +63,13 @@ describe("resolveClipSpec", () => {
     expect(spec.actualTotalSec).toBe(32);
     expect(spec.actualTotalSec).toBeGreaterThanOrEqual(30);
   });
+
+  it("splits 30s into 6x5s clips on higgsfield (image-to-video, 5s max)", () => {
+    expect(resolveClipSpec("higgsfield", 30)).toEqual({
+      provider: "higgsfield",
+      clipDurationSec: 5,
+      clipCount: 6,
+      actualTotalSec: 30,
+    });
+  });
 });

@@ -13,7 +13,8 @@ export type VideoProviderId =
   | "seedance-2"
   | "veo-3.1-lite"
   | "veo-3.1"
-  | "gemini-omni-flash";
+  | "gemini-omni-flash"
+  | "higgsfield";
 
 export type VideoProviderIdOrAuto = VideoProviderId | "auto";
 
@@ -164,6 +165,11 @@ export const VIDEO_PROVIDER_PRICING: Record<
     flatMinCostUsd: 0.03,
     displayLabel: "Gemini Omni Flash",
   },
+  "higgsfield": {
+    costPerSecUsd: 0.05,
+    flatMinCostUsd: 0.4,
+    displayLabel: "Higgsfield DoP Turbo",
+  },
 };
 
 // ─── Provider key env-var mapping (mirrors resolution.ts PLATFORM_KEY_ENV) ────
@@ -174,4 +180,5 @@ export const VIDEO_PROVIDER_KEY_ENV: Record<VideoProviderId, string> = {
   "veo-3.1-lite": "GEMINI_API_KEY",
   "veo-3.1": "GEMINI_API_KEY",
   "gemini-omni-flash": "GEMINI_API_KEY",
+  "higgsfield": "HIGGSFIELD_API_KEY",
 };

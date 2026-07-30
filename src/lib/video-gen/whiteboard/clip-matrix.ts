@@ -32,6 +32,7 @@ const PROVIDER_MAX_CLIP_SEC: Record<VideoProviderId, number> = {
   "gemini-omni-flash": 8,
   "veo-3.1-lite": 8,
   "veo-3.1": 10,
+  "higgsfield": 5,
 };
 
 /**

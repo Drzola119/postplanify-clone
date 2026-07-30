@@ -142,4 +142,13 @@ export const resolvers = {
   geminiApiKey(h: Headers): string | undefined {
     return resolveOptional("GEMINI_API_KEY", "x-gemini-key", h);
   },
+  /**
+   * Higgsfield Cloud API key. Value is the colon-joined pair
+   * `API_KEY_ID:API_KEY_SECRET` from https://cloud.higgsfield.ai/api-keys.
+   * Sent as `Authorization: Key <value>` on every request — the literal
+   * "Key" prefix is required by the Higgsfield platform (not "Bearer").
+   */
+  higgsfieldApiKey(h: Headers): string {
+    return resolve("HIGGSFIELD_API_KEY", "HIGGSFIELD_API_KEY", "x-higgsfield-key", h);
+  },
 };
