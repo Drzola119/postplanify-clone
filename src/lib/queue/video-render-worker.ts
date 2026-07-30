@@ -1,15 +1,25 @@
 /**
  * video-render-worker.ts
  * Background worker that processes videoJobs from Firestore.
+ *
+ * Workflow dispatch:
+ *   cartoon   → single-clip generation, this worker uploads the result to Bunny.
+ *   whiteboard → multi-clip generation; this worker renders N clips then
+ *                transitions the job to `waiting_compose`. The FFmpeg VPS
+ *                worker (src/lib/queue/ffmpeg-compose-worker.ts) picks it
+ *                up from there, concatenates the clips, and writes
+ *                `finalAssets` back.
  */
 import "server-only";
 import { adminDb } from "../firebase/admin";
 import { generateVideo } from "../video-gen/router";
 import { persistGeneratedVideo } from "../video-gen/asset-saver";
 import { buildCartoonPrompt } from "../video-gen/workflows/cartoon";
+import { runWhiteboardWorkflow } from "../video-gen/workflows/whiteboard";
 import { createLogger } from "../log";
 import type {
   VideoGenerateInput,
+  VideoGenerateOutput,
   VideoJobDoc,
   VideoWorkflow,
 } from "../video-gen/types";
@@ -71,12 +81,21 @@ async function processJob(
     return;
   }
 
-  await jobRef.update({
-    status: "generating_clips",
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-
   try {
+    if (job.workflow === "whiteboard") {
+      // Whiteboard handles its own status transitions:
+      //   queued → generating_clips → waiting_compose
+      // The FFmpeg worker takes over from `waiting_compose`.
+      await runWhiteboardWorkflow({ jobRef, job });
+      logger.info("Whiteboard job handed off to FFmpeg composer", { jobId });
+      return;
+    }
+
+    await jobRef.update({
+      status: "generating_clips",
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
     const output = await dispatchWorkflow(job.workflow, job.request, job, jobId);
 
     const videoRes = await fetch(output.assetUrl);
@@ -132,7 +151,7 @@ async function dispatchWorkflow(
   request: unknown,
   job: VideoJobDoc,
   jobId: string
-) {
+): Promise<VideoGenerateOutput> {
   if (workflow === "cartoon") {
     const req = request as CartoonRequest;
     const { prompt, mode } = buildCartoonPrompt({
@@ -161,7 +180,7 @@ async function dispatchWorkflow(
     return generateVideo(input);
   }
 
-  throw new Error(`Workflow "${workflow}" is not yet supported in M1`);
+  throw new Error(`Workflow "${workflow}" is not yet supported`);
 }
 
 export function startVideoRenderWorker(): void {

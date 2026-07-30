@@ -64,6 +64,7 @@ export async function GET(
       provider: job.provider,
       clips: job.clips ?? [],
       finalAssets: job.finalAssets ?? [],
+      script: job.script ?? null,
       totalCostUsd: job.totalCostUsd ?? 0,
       error: job.error ?? null,
       createdAt: job.createdAt?.toDate()?.toISOString() ?? null,

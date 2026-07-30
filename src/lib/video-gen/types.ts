@@ -87,7 +87,9 @@ export interface VideoGenProvider {
 
 export type VideoJobStatus =
   | "queued"
+  | "scripting"
   | "generating_clips"
+  | "waiting_compose"
   | "composing"
   | "complete"
   | "failed";
@@ -120,6 +122,12 @@ export interface VideoJobDoc {
   finalAssets: VideoFinalAsset[];
   totalCostUsd: number;
   error?: string;
+  /** Whiteboard workflow only — populated at job creation with the script returned by Groq. */
+  script?: import("./whiteboard/types").WhiteboardScript;
+  /** Whiteboard workflow only — locks the rendered aspect ratio across all clips. */
+  aspectRatio?: VideoAspectRatio;
+  /** Whiteboard workflow only — total target duration (30 or 60s). */
+  durationSec?: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

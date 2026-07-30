@@ -53,7 +53,7 @@ export default async function VideosPage() {
       accent: "from-amber-500/10 to-amber-500/0",
       iconCls: "bg-amber-50 text-amber-700",
       summary: t("landing.whiteboard_summary"),
-      available: false,
+      available: true,
     },
   ];
 

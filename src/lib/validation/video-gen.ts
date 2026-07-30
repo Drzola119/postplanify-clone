@@ -69,10 +69,13 @@ const realEstateRequestSchema = baseVideoRequestSchema.extend({
 
 const whiteboardRequestSchema = baseVideoRequestSchema.extend({
   workflow: z.literal("whiteboard"),
-  topicOrScript: z.string().min(10).max(1000),
-  tone: z.enum(["friendly", "corporate", "energetic"]).default("friendly"),
-  targetLengthSec: z.enum(["15", "30", "60"]).default("30"),
-  voiceoverMode: z.enum(["none", "auto"]).default("none"),
+  topic: z.string().min(3).max(300),
+  cta: z.string().max(100).optional(),
+  mood: z.enum(["professional", "energetic", "funny", "aggressive", "calm", "inspiring"]),
+  language: z.enum(["en", "fr", "es", "ar", "pt", "de"]),
+  durationSec: z.union([z.literal(30), z.literal(60)]),
+  aspectRatio: z.enum(["9:16", "16:9", "1:1"]),
+  qualityPreference: z.enum(["budget", "quality"]).default("budget"),
 });
 
 const viralRequestSchema = baseVideoRequestSchema.extend({
