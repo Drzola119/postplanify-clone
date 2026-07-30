@@ -15,14 +15,11 @@ export default async function CartoonVideoPage() {
   const t = await getTranslations("videos");
 
   return (
-    <div className="container mx-auto max-w-3xl py-8 px-4">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">{t("cartoon.title")}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t("cartoon.subtitle")}
-        </p>
-      </div>
-      <CartoonVideoWizard />
+    <div className="p-6 max-w-6xl">
+      <CartoonVideoWizard
+        title={t("cartoon.title")}
+        subtitle={t("cartoon.subtitle")}
+      />
     </div>
   );
 }

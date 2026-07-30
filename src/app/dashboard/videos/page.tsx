@@ -1,152 +1,156 @@
 /**
  * /dashboard/videos
  * Video Studio hub — four workflow cards.
- * Mirrors src/app/dashboard/infographics/page.tsx structure.
+ * Mirrors src/app/dashboard/infographics/page.tsx exactly: PageHeader,
+ * pastel-accent cards with a 10%/px icon chip, no diagonal gradient tiles,
+ * no emoji, no dark: variants, no shadcn theme tokens.
  */
-import { Metadata } from "next";
-import Link from "next/link";
+
+import { Sparkles, Zap, Home, PenTool, ArrowRight, ImageIcon, KeyRound, Wand2 } from "lucide-react";
 import { getTranslations } from "next-intl/server";
-import {
-  Film,
-  Home,
-  PenTool,
-  Zap,
-  Sparkles,
-  Lock,
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-
-export const metadata: Metadata = {
-  title: "Video Studio",
-  description: "Generate AI-powered videos from your content.",
-};
-
-const WORKFLOWS = [
-  {
-    id: "cartoon",
-    href: "/dashboard/videos/cartoon",
-    icon: Sparkles,
-    available: true,
-    badge: "New",
-    gradient: "from-violet-500 to-purple-600",
-  },
-  {
-    id: "viral",
-    href: "/dashboard/videos/viral",
-    icon: Zap,
-    available: false,
-    badge: "Soon",
-    gradient: "from-rose-500 to-pink-600",
-  },
-  {
-    id: "real-estate",
-    href: "/dashboard/videos/real-estate",
-    icon: Home,
-    available: false,
-    badge: "Soon",
-    gradient: "from-emerald-500 to-teal-600",
-  },
-  {
-    id: "whiteboard",
-    href: "/dashboard/videos/whiteboard",
-    icon: PenTool,
-    available: false,
-    badge: "Soon",
-    gradient: "from-amber-500 to-orange-600",
-  },
-] as const;
+import { PageHeader } from "@/components/dashboard/page-header";
+import Link from "next/link";
 
 export default async function VideosPage() {
   const t = await getTranslations("videos");
 
+  const TOOLS = [
+    {
+      id: "cartoon",
+      title: t("landing.cartoon_title"),
+      href: "/dashboard/videos/cartoon",
+      icon: Sparkles,
+      accent: "from-sky-500/10 to-sky-500/0",
+      iconCls: "bg-sky-50 text-sky-700",
+      summary: t("landing.cartoon_summary"),
+      available: true,
+    },
+    {
+      id: "viral",
+      title: t("landing.viral_title"),
+      href: "/dashboard/videos/viral",
+      icon: Zap,
+      accent: "from-rose-500/10 to-rose-500/0",
+      iconCls: "bg-rose-50 text-rose-700",
+      summary: t("landing.viral_summary"),
+      available: false,
+    },
+    {
+      id: "real-estate",
+      title: t("landing.real-estate_title"),
+      href: "/dashboard/videos/real-estate",
+      icon: Home,
+      accent: "from-emerald-500/10 to-emerald-500/0",
+      iconCls: "bg-emerald-50 text-emerald-700",
+      summary: t("landing.real-estate_summary"),
+      available: false,
+    },
+    {
+      id: "whiteboard",
+      title: t("landing.whiteboard_title"),
+      href: "/dashboard/videos/whiteboard",
+      icon: PenTool,
+      accent: "from-amber-500/10 to-amber-500/0",
+      iconCls: "bg-amber-50 text-amber-700",
+      summary: t("landing.whiteboard_summary"),
+      available: false,
+    },
+  ];
+
   return (
-    <div className="container mx-auto max-w-6xl py-8 px-4">
-      {/* Header */}
-      <div className="mb-8 flex items-center gap-3">
-        <div className="flex size-10 items-center justify-center rounded-xl bg-violet-100 text-violet-600 dark:bg-violet-900/30">
-          <Film className="size-5" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            {t("landing.title")}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {t("landing.subtitle")}
-          </p>
-        </div>
+    <div className="p-6 max-w-5xl">
+      <PageHeader
+        title={t("landing.title")}
+        subtitle={t("landing.subtitle")}
+      />
+
+      <div className="grid gap-5 md:grid-cols-2">
+        {TOOLS.map((tool) => {
+          const Icon = tool.icon;
+          const inner = (
+            <div className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-white p-6 transition-all hover:border-zinc-300 hover:shadow-sm">
+              <div
+                className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${tool.accent}`}
+                aria-hidden
+              />
+              <div className="relative">
+                <div className={`inline-flex size-10 items-center justify-center rounded-xl ${tool.iconCls}`}>
+                  <Icon className="size-5" />
+                </div>
+                <div className="mt-4 flex items-center gap-2 flex-wrap">
+                  <h3 className="text-lg font-semibold tracking-tight">{tool.title}</h3>
+                  {!tool.available ? (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                      Coming soon
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-1.5 text-sm text-zinc-600">{tool.summary}</p>
+                {tool.available ? (
+                  <div className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-900">
+                    Try it
+                    <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+                  </div>
+                ) : (
+                  <div className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-zinc-400">
+                    Notify me when ready
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+          if (!tool.available) {
+            return (
+              <div key={tool.id} className="opacity-60 pointer-events-none" aria-disabled>
+                {inner}
+              </div>
+            );
+          }
+          return (
+            <Link key={tool.id} href={tool.href}>
+              {inner}
+            </Link>
+          );
+        })}
       </div>
 
-      {/* Workflow cards */}
-      <div className="grid gap-5 sm:grid-cols-2">
-        {WORKFLOWS.map(({ id, href, icon: Icon, available, badge, gradient }) => (
-          <WorkflowCard
-            key={id}
-            href={href}
-            icon={<Icon className="size-6 text-white" />}
-            title={t(`landing.${id}_title`)}
-            summary={t(`landing.${id}_summary`)}
-            badge={badge}
-            available={available}
-            gradient={gradient}
-          />
-        ))}
+      <div className="mt-8 grid gap-4 md:grid-cols-3">
+        <Hint
+          icon={ImageIcon}
+          title="Your videos land in Assets"
+          body="Every render is saved to your media library so you can re-post, download, or schedule re-shares."
+        />
+        <Hint
+          icon={Wand2}
+          title="Pick Auto and we choose the best model"
+          body="Auto mode runs the fallback chain — the fastest path that respects quality for the chosen style."
+        />
+        <Hint
+          icon={KeyRound}
+          title="Costs come out of your plan credits"
+          body="Render costs are visible at the bottom of the right-hand preview panel before you confirm."
+        />
       </div>
     </div>
   );
 }
 
-function WorkflowCard({
-  href,
-  icon,
+function Hint({
+  icon: Icon,
   title,
-  summary,
-  badge,
-  available,
-  gradient,
+  body,
 }: {
-  href: string;
-  icon: React.ReactNode;
+  icon: React.ComponentType<{ className?: string }>;
   title: string;
-  summary: string;
-  badge: string;
-  available: boolean;
-  gradient: string;
+  body: string;
 }) {
-  const card = (
-    <div
-      className={`group relative flex flex-col gap-4 rounded-2xl border bg-card p-6 shadow-sm transition-all
-        ${
-          available
-            ? "cursor-pointer hover:shadow-md hover:-translate-y-0.5"
-            : "opacity-60 cursor-not-allowed"
-        }`}
-    >
-      {/* Gradient icon badge */}
-      <div
-        className={`flex size-12 items-center justify-center rounded-xl bg-gradient-to-br ${gradient}`}
-      >
-        {icon}
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white p-4">
+      <div className="flex items-center gap-2">
+        <Icon className="size-4 text-zinc-500" />
+        <p className="text-sm font-semibold">{title}</p>
       </div>
-
-      <div className="flex-1">
-        <div className="flex items-center gap-2">
-          <h2 className="font-semibold text-lg leading-tight">{title}</h2>
-          <Badge
-            tone={available ? "violet" : "default"}
-            className="text-xs"
-          >
-            {badge}
-          </Badge>
-        </div>
-        <p className="mt-1 text-sm text-muted-foreground">{summary}</p>
-      </div>
-
-      {!available && (
-        <Lock className="absolute top-4 end-4 size-4 text-muted-foreground" />
-      )}
+      <p className="mt-1.5 text-xs text-zinc-600">{body}</p>
     </div>
   );
-
-  if (!available) return card;
-  return <Link href={href}>{card}</Link>;
 }
