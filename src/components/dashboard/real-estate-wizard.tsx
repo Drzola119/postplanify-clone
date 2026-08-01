@@ -60,6 +60,7 @@ interface PropertyTransition {
   fromShotIndex: number;
   toShotIndex: number;
   cameraDirection: CameraDirection;
+  voiceoverLine?: string;
   status: "pending" | "generating" | "complete" | "failed";
   assetUrl?: string;
   assetId?: string;
@@ -70,7 +71,7 @@ interface ShotPlan {
   styleId: string;
   shots: PropertyShot[];
   transitions: PropertyTransition[];
-  voiceover?: { enabled: boolean; language: Language; script?: string };
+  language?: Language;
 }
 
 interface UploadedPhoto {
@@ -146,8 +147,9 @@ export function RealEstateWizard({ title, subtitle }: RealEstateWizardProps) {
   const [provider, setProvider] = useState<"seedance-2-fast" | "seedance-2">("seedance-2-fast");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
   const [language, setLanguage] = useState<Language>("fr");
-  const [voiceoverEnabled, setVoiceoverEnabled] = useState(false);
-  const [voiceoverScript, setVoiceoverScript] = useState("");
+  const [headline, setHeadline] = useState("");
+  const [price, setPrice] = useState("");
+  const [address, setAddress] = useState("");
 
   // Job state
   const [plan, setPlan] = useState<ShotPlan | null>(null);
@@ -167,9 +169,8 @@ export function RealEstateWizard({ title, subtitle }: RealEstateWizardProps) {
     const perClip = provider === "seedance-2-fast" ? 0.04 : 0.06;
     const imagePerShot = 0.002;
     const imageCost = mode === "ai-generated" ? shotN * imagePerShot : 0;
-    const ttsCost = voiceoverEnabled ? 0.05 : 0;
-    return Math.round((imageCost + transitionsN * perClip + ttsCost) * 100) / 100;
-  }, [mode, shotCount, photos.length, provider, voiceoverEnabled]);
+    return Math.round((imageCost + transitionsN * perClip) * 100) / 100;
+  }, [mode, shotCount, photos.length, provider]);
 
   const canPreview =
     !isPreviewing &&
@@ -223,7 +224,9 @@ export function RealEstateWizard({ title, subtitle }: RealEstateWizardProps) {
           propertyDescription: mode === "ai-generated" ? propertyDescription.trim() : undefined,
           shotCount: mode === "ai-generated" ? shotCount : undefined,
           language,
-          voiceover: { enabled: voiceoverEnabled, script: voiceoverScript.trim() || undefined },
+          headline: headline.trim() || undefined,
+          price: price.trim() || undefined,
+          address: address.trim() || undefined,
           photoAssetIds: mode === "my-photos" ? photos.map((p) => p.id) : undefined,
         }),
       });
@@ -233,7 +236,6 @@ export function RealEstateWizard({ title, subtitle }: RealEstateWizardProps) {
       }
       const data = (await res.json()) as {
         plan: ShotPlan;
-        voiceoverScript?: string;
       };
       // For my-photos, imageUrl is a blob: URL — not portable. Strip it;
       // the job doc on commit will re-derive from mediaAssets.
@@ -245,7 +247,6 @@ export function RealEstateWizard({ title, subtitle }: RealEstateWizardProps) {
         })),
       };
       setPlan(sanitized);
-      if (data.voiceoverScript) setVoiceoverScript(data.voiceoverScript);
     } catch (err) {
       setJobError(err instanceof Error ? err.message : "Preview failed");
     } finally {
@@ -271,7 +272,9 @@ export function RealEstateWizard({ title, subtitle }: RealEstateWizardProps) {
             propertyDescription: mode === "ai-generated" ? propertyDescription.trim() : undefined,
             shotCount: mode === "ai-generated" ? shotCount : undefined,
             language,
-            voiceover: { enabled: voiceoverEnabled, script: voiceoverScript.trim() || undefined },
+            headline: headline.trim() || undefined,
+            price: price.trim() || undefined,
+            address: address.trim() || undefined,
             photoAssetIds: mode === "my-photos" ? photos.map((p) => p.id) : undefined,
           },
           plan: {
@@ -285,8 +288,8 @@ export function RealEstateWizard({ title, subtitle }: RealEstateWizardProps) {
               fromShotIndex: tr.fromShotIndex,
               toShotIndex: tr.toShotIndex,
               cameraDirection: tr.cameraDirection,
+              voiceoverLine: tr.voiceoverLine,
             })),
-            voiceoverScript: voiceoverScript.trim() || undefined,
           },
         }),
       });
@@ -354,7 +357,9 @@ export function RealEstateWizard({ title, subtitle }: RealEstateWizardProps) {
     setFinalAssets([]);
     setJobError(null);
     setPropertyDescription("");
-    setVoiceoverScript("");
+    setHeadline("");
+    setPrice("");
+    setAddress("");
   }
 
   const isRendering =
@@ -572,7 +577,7 @@ export function RealEstateWizard({ title, subtitle }: RealEstateWizardProps) {
           )}
 
           {/* Step 3 — Format */}
-          <Panel step="3" title="Format & voiceover">
+          <Panel step="3" title="Format">
             <Field label="Aspect ratio">
               <div className="flex flex-wrap gap-2">
                 {ASPECT_RATIOS.map((ar) => {
@@ -620,37 +625,45 @@ export function RealEstateWizard({ title, subtitle }: RealEstateWizardProps) {
                 })}
               </div>
             </Field>
+            <p className="text-[11px] text-zinc-500 -mt-1">
+              Narration voice may vary slightly between scenes.
+            </p>
             <Field
               label={
                 <span>
-                  ElevenLabs voiceover
+                  Captions
                   <span className="ms-1 text-xs text-zinc-500 font-normal">
-                    (optional — adds ~$0.05)
+                    (optional — burned in as lower-third)
                   </span>
                 </span>
               }
             >
-              <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="text"
+                value={headline}
+                onChange={(e) => setHeadline(e.target.value.slice(0, 200))}
+                placeholder="Listing headline (e.g. Modern 4-bed villa with pool)"
+                maxLength={200}
+                className="w-full px-3 py-2 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+              />
+              <div className="mt-2 grid grid-cols-2 gap-2">
                 <input
-                  type="checkbox"
-                  checked={voiceoverEnabled}
-                  onChange={(e) => setVoiceoverEnabled(e.target.checked)}
-                  className="size-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900/20"
+                  type="text"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value.slice(0, 80))}
+                  placeholder="Price (e.g. $1,250,000)"
+                  maxLength={80}
+                  className="w-full px-3 py-2 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
                 />
-                <span className="text-sm text-zinc-700">
-                  Auto-draft narration in {LANGUAGES.find((l) => l.id === language)?.label}
-                </span>
-              </label>
-              {voiceoverEnabled ? (
-                <textarea
-                  value={voiceoverScript}
-                  onChange={(e) => setVoiceoverScript(e.target.value.slice(0, 1200))}
-                  placeholder="Leave empty to auto-draft from the property description."
-                  rows={3}
-                  maxLength={1200}
-                  className="mt-2 w-full px-3 py-2 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                <input
+                  type="text"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value.slice(0, 200))}
+                  placeholder="Address (e.g. 142 Ocean Dr, Miami)"
+                  maxLength={200}
+                  className="w-full px-3 py-2 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
                 />
-              ) : null}
+              </div>
             </Field>
             <Field label="Video model">
               <div className="grid gap-2 sm:grid-cols-2">
@@ -710,7 +723,8 @@ export function RealEstateWizard({ title, subtitle }: RealEstateWizardProps) {
                   <span className="font-semibold">{plan.transitions.length} transitions</span>
                   {" · "}
                   <span className="font-mono">{aspectRatio}</span>
-                  {plan.voiceover?.enabled ? " · voiceover on" : ""}
+                  {" · "}
+                  <span>{LANGUAGES.find((l) => l.id === language)?.label}</span>
                 </div>
 
                 {/* Shot thumbnails — imageUrl streams in as image-plan-runner completes */}
@@ -944,10 +958,7 @@ export function RealEstateWizard({ title, subtitle }: RealEstateWizardProps) {
                 <Meta label="Shots" value={String(plan?.shots.length ?? 0)} />
                 <Meta label="Transitions" value={String(plan?.transitions.length ?? 0)} />
                 <Meta label="Ratio" value={aspectRatio} />
-                <Meta
-                  label="Voiceover"
-                  value={plan?.voiceover?.enabled ? "on" : "off"}
-                />
+                <Meta label="Language" value={LANGUAGES.find((l) => l.id === language)?.label ?? language} />
                 <div className="flex flex-wrap items-center gap-2 pt-2">
                   <Link
                     href="/dashboard/assets"

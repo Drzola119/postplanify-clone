@@ -22,7 +22,7 @@ export async function GET() {
         label: "Real Estate Listing Video",
         description:
           "Upload property photos and generate a cinematic listing video with branded intro/outro.",
-        available: false, // M3
+        available: true,
         styles: [],
       },
       {

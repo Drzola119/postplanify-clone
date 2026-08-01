@@ -132,6 +132,23 @@ interface ComposeJobShape {
    * existing plain concat runs unchanged.
    */
   voiceoverAudioUrl?: string;
+  /**
+   * Optional burned-in fact captions. When present, the final video
+   * has the caption text overlaid in the lower-third using FFmpeg's
+   * drawtext filter. When absent, the existing silent-no-caption path
+   * runs unchanged.
+   */
+  caption?: CaptionBlock;
+}
+
+/**
+ * Single burned-in caption block. Two lines by default — headline on
+ * top, price below. Address is appended to the headline line when
+ * short enough. Kept intentionally simple; a future enhancement could
+ * pass `startSec`/`endSec` to time captions to specific transitions.
+ */
+interface CaptionBlock {
+  text: string;
 }
 
 async function composeFinalVideo(job: ComposeJobShape): Promise<{
@@ -182,10 +199,16 @@ async function composeFinalVideo(job: ComposeJobShape): Promise<{
       { maxBuffer: 64 * 1024 * 1024 }
     );
 
-    // 4. If a voiceover is present, mux it under the concatenated video.
-    //    Otherwise the plain-concat result is the final result — preserves
-    //    the existing Whiteboard silent path bit-for-bit.
+    // 4. Layered output:
+    //    a) if captions are present, burn them in via drawtext (requires
+    //       re-encoding the video — fast because each clip is short).
+    //    b) if voiceover is present, mux it under the (now captioned) video.
+    //    c) if neither is present, the existing silent-no-caption path
+    //       runs unchanged: rename video-only → final.
     const outPath = join(workdir, "final.mp4");
+    const captionApplied = await maybeBurnCaptions(workdir, videoOnlyPath, job);
+    const finalVideoPath = captionApplied ? join(workdir, "with-captions.mp4") : videoOnlyPath;
+
     if (job.voiceoverAudioUrl) {
       const audioPath = join(workdir, "voiceover.mp3");
       const audioRes = await fetch(job.voiceoverAudioUrl);
@@ -197,14 +220,13 @@ async function composeFinalVideo(job: ComposeJobShape): Promise<{
       const audioBuf = Buffer.from(await audioRes.arrayBuffer());
       await writeFile(audioPath, audioBuf);
 
-      // Stream-copy the concatenated video, transcode the voiceover to AAC,
-      // and pad/trim the audio to match the video length via -shortest.
-      // Map video from input 0, audio from input 1.
+      // Stream-copy the (possibly captioned) video, transcode the
+      // voiceover to AAC, pad/trim audio to the video length via -shortest.
       await execFileAsync(
         "ffmpeg",
         [
           "-y",
-          "-i", videoOnlyPath,
+          "-i", finalVideoPath,
           "-i", audioPath,
           "-map", "0:v:0",
           "-map", "1:a:0",
@@ -218,9 +240,17 @@ async function composeFinalVideo(job: ComposeJobShape): Promise<{
         { maxBuffer: 64 * 1024 * 1024 }
       );
     } else {
-      // Silent path: rename video-only → final so the upload reads the same path.
-      const videoOnlyBuf = await readFile(videoOnlyPath);
-      await writeFile(outPath, videoOnlyBuf);
+      // Silent path: if captions were burned in, the captioned video
+      // already lives at finalVideoPath — copy/rename to outPath.
+      // Otherwise the existing rename path preserves the silent Whiteboard
+      // bit-for-bit.
+      if (captionApplied) {
+        const captionedBuf = await readFile(finalVideoPath);
+        await writeFile(outPath, captionedBuf);
+      } else {
+        const videoOnlyBuf = await readFile(videoOnlyPath);
+        await writeFile(outPath, videoOnlyBuf);
+      }
     }
 
     // 5. Upload to Bunny CDN.
@@ -233,6 +263,73 @@ async function composeFinalVideo(job: ComposeJobShape): Promise<{
   } finally {
     await rm(workdir, { recursive: true, force: true });
   }
+}
+
+/**
+ * Build the drawtext filter chain for the caption block and re-encode
+ * the concatenated video with the captions baked in. Returns true if
+ * a captioned video was written (outPath: with-captions.mp4), false
+ * if no caption was applied (caller should keep the existing videoOnlyPath).
+ *
+ * The filter renders a lower-third box on a translucent dark bar with
+ * a clean sans-serif caption. Two lines by default; tighter layout for
+ * 9:16 (Stories) since vertical real estate is narrower.
+ *
+ * Requires a TrueType font on the FFmpeg VPS. Defaults to the
+ * DejaVuSans-Bold path that ships with `apt install fonts-dejavu`;
+ * override with CAPTION_FONT_FILE env var if you ship a different font.
+ */
+async function maybeBurnCaptions(
+  workdir: string,
+  videoOnlyPath: string,
+  job: ComposeJobShape
+): Promise<boolean> {
+  if (!job.caption?.text) return false;
+
+  const fontFile = process.env.CAPTION_FONT_FILE
+    ?? "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
+
+  const outPath = join(workdir, "with-captions.mp4");
+  const isVertical = job.aspectRatio === "9:16";
+  const fontSize = isVertical ? 36 : 44;
+  const boxHeight = isVertical ? 130 : 110;
+  const boxOpacity = 0.55;
+
+  // drawtext filter: lower-third, white text on a translucent dark bar.
+  // Multi-line text uses textfile + line-spacing; we write the caption
+  // to a one-line temp file with explicit newline escapes.
+  const captionFile = join(workdir, "caption.txt");
+  const safeText = job.caption.text
+    .replace(/\\/g, "\\\\")
+    .replace(/:/g, "\\:")
+    .replace(/'/g, "\\'");
+  await writeFile(captionFile, safeText);
+
+  const filter = [
+    `drawtext=fontfile='${fontFile}':textfile='${captionFile}':` +
+      `fontcolor=white:fontsize=${fontSize}:` +
+      `box=1:boxcolor=black@${boxOpacity}:boxborderw=18:` +
+      `x=(w-text_w)/2:y=h-${boxHeight}:` +
+      `line_spacing=8:fix_bounds=1`,
+  ].join("");
+
+  await execFileAsync(
+    "ffmpeg",
+    [
+      "-y",
+      "-i", videoOnlyPath,
+      "-vf", filter,
+      "-c:v", "libx264",
+      "-preset", "veryfast",
+      "-crf", "23",
+      "-c:a", "copy",
+      "-movflags", "+faststart",
+      outPath,
+    ],
+    { maxBuffer: 64 * 1024 * 1024 }
+  );
+
+  return true;
 }
 
 // ─── Worker tick ─────────────────────────────────────────────────────────────

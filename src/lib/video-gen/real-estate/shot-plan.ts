@@ -3,9 +3,9 @@
  * Generates a Real Estate shot plan via Groq — mirrors whiteboard/script-gen.ts's
  * callGroq + extractJson + jsonMode pattern exactly.
  *
- * One Groq call produces BOTH the property shot plan AND an optional
- * voiceover script (when voiceover is enabled), so the expensive LLM
- * step is paid for once.
+ * One Groq call produces the property shot plan. Narration is added
+ * per-transition in step 2 (real-estate/motion-prompt.ts) using the
+ * video model's native audio — no separate TTS step.
  *
  * Continuity language ("preserve the same X, do not repeat Y as the
  * main subject") is baked into the prompt template fragments in code,
@@ -98,28 +98,27 @@ function buildSkeletonPrompt(
 const SYSTEM_PROMPT = `You are an architectural-listing copywriter. Produce a JSON plan for a property walkthrough video.
 
 Given a property description and a style preset, output:
-- shots: an array of objects { roomLabel, imagePrompt, cameraNote } — one per shot, in order, EXACTLY matching the skeleton's shot count and labels. Refine the roomLabel if the skeleton feels generic for this property. Build a vivid, specific imagePrompt per shot by combining (a) the skeleton's continuity instructions verbatim, (b) the style descriptors verbatim, (c) two or three concrete details lifted from the property description (specific materials, rooms, features). Do not invent features not implied by the description.
-- voiceoverScript (optional): one short continuous narration in the requested language, ~30–55 seconds when read aloud at natural pace, that walks the viewer through the property. Plain text, no quotes, no stage directions, no emoji, no leading preamble. If voiceover is disabled, omit this field entirely.
+- shots: an array of objects { roomLabel, imagePrompt, cameraNote, voiceoverLine } — one per shot, in order, EXACTLY matching the skeleton's shot count and labels. Refine the roomLabel if the skeleton feels generic for this property. Build a vivid, specific imagePrompt per shot by combining (a) the skeleton's continuity instructions verbatim, (b) the style descriptors verbatim, (c) two or three concrete details lifted from the property description (specific materials, rooms, features). Do not invent features not implied by the description.
 
 Rules:
 - Each imagePrompt MUST start by referencing the exact continuity instruction for that shot — those are non-negotiable, they are what makes the chain hold together.
 - Each imagePrompt MUST end with the no-text/no-logo rule.
 - cameraNote: one short phrase describing how the camera moves at this beat ("forward into the room", "turn right toward the stairs", "tilt up for the reveal"). This will be mapped to a fixed enum.
-- language: confirm the language of voiceoverScript matches the request.
+- voiceoverLine: a short spoken narration line for the transition BRIDGING THIS SHOT INTO THE NEXT (omit on the very last shot). Under 12 words, warm and professional real-estate-agent tone, in the requested language. NEVER include numbers, prices, addresses, square footage, room counts, or any specific facts — only mood and atmosphere. Plain text, no quotes, no stage directions, no emoji.
 - Do not output any prose outside the JSON.
 
 Respond with JSON only, shaped:
-{"shots":[{"roomLabel":"...","imagePrompt":"...","cameraNote":"..."}],"voiceoverScript":"..."}`;
+{"shots":[{"roomLabel":"...","imagePrompt":"...","cameraNote":"...","voiceoverLine":"..."}]}`;
 
 interface RawShot {
   roomLabel?: unknown;
   imagePrompt?: unknown;
   cameraNote?: unknown;
+  voiceoverLine?: unknown;
 }
 
 interface RawPlan {
   shots?: RawShot[];
-  voiceoverScript?: unknown;
 }
 
 const CAMERA_DIRECTION_ALIASES: Array<{ match: RegExp; dir: CameraDirection }> = [
@@ -140,7 +139,6 @@ function mapCameraNoteToDirection(note: string, fallback: CameraDirection): Came
 
 export interface GenerateShotPlanResult {
   plan: PropertyShotPlan;
-  voiceoverScript?: string;
 }
 
 export async function generateRealEstateShotPlan(
@@ -172,9 +170,8 @@ export async function generateRealEstateShotPlan(
     `Property description: ${req.propertyDescription}`,
     `Style preset: ${style.label} — ${style.descriptors}`,
     `Target shot count: ${shotCount}`,
-    `Voiceover enabled: ${req.voiceover?.enabled ? "yes" : "no"}`,
-    `Voiceover language: ${req.language}`,
-    `Language for any on-image text: ${req.language}`,
+    `Narration language: ${req.language}`,
+    `voiceoverLine language: ${req.language}`,
     "",
     "Shot skeleton (use these roomLabel values verbatim unless refining, keep continuity language intact, splice in style descriptors verbatim):",
     trimmedSkeleton,
@@ -224,31 +221,29 @@ export async function generateRealEstateShotPlan(
     const raw = rawShots[i];
     const cameraNote =
       typeof raw?.cameraNote === "string" ? raw.cameraNote : "";
+    const voiceoverLine =
+      typeof raw?.voiceoverLine === "string" && raw.voiceoverLine.trim().length > 0
+        ? raw.voiceoverLine.trim().slice(0, 200)
+        : undefined;
     transitions.push({
       index: i,
       fromShotIndex: i,
       toShotIndex: i + 1,
       cameraDirection: mapCameraNoteToDirection(cameraNote, trimmedDirections[i] ?? "forward"),
+      voiceoverLine,
       status: "pending",
     });
   }
-
-  const voiceoverScript =
-    typeof parsed?.voiceoverScript === "string" && parsed.voiceoverScript.trim().length > 0
-      ? parsed.voiceoverScript.trim().slice(0, 1200)
-      : undefined;
 
   const plan: PropertyShotPlan = {
     mode: "ai-generated",
     styleId: style.id,
     shots,
     transitions,
-    voiceover: req.voiceover?.enabled
-      ? { enabled: true, language: req.language, script: voiceoverScript }
-      : undefined,
+    language: req.language,
   };
 
-  return { plan, voiceoverScript };
+  return { plan };
 }
 
 /**
@@ -260,10 +255,8 @@ export function buildShotPlanFromPhotos(args: {
   photoAssetIds: string[];
   photoAssetUrls: string[];
   language: "fr" | "en" | "ar";
-  voiceoverEnabled: boolean;
-  voiceoverScript?: string;
 }): PropertyShotPlan {
-  const { photoAssetIds, photoAssetUrls, styleId, language, voiceoverEnabled, voiceoverScript } = args;
+  const { photoAssetIds, photoAssetUrls, styleId, language } = args;
   if (photoAssetIds.length !== photoAssetUrls.length) {
     throw new Error("photoAssetIds and photoAssetUrls must be the same length");
   }
@@ -294,12 +287,6 @@ export function buildShotPlanFromPhotos(args: {
     styleId,
     shots,
     transitions,
-    voiceover: voiceoverEnabled
-      ? {
-          enabled: true,
-          language,
-          script: voiceoverScript,
-        }
-      : undefined,
+    language,
   };
 }

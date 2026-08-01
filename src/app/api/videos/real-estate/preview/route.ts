@@ -3,8 +3,8 @@
  * Stage 0 of the Real Estate pipeline — generates the shot plan via Groq
  * and returns it to the wizard for review, with NO state written.
  *
- * ai-generated mode: one Groq call returns the shot plan + (optional)
- *   voiceover script. No image generation yet.
+ * ai-generated mode: one Groq call returns the shot plan. No image
+ *   generation yet. Narration is added per-transition in step 2.
  * my-photos mode:    no LLM call needed; we just echo back the planned
  *   transition pairs so the wizard can show "Photo 1 → Photo 2 → ...".
  */
@@ -64,14 +64,13 @@ export async function POST(req: NextRequest) {
           { status: 503 }
         );
       }
-      const { plan, voiceoverScript } = await generateRealEstateShotPlan(body, groqApiKey);
+      const { plan } = await generateRealEstateShotPlan(body, groqApiKey);
       logger.info("Real Estate preview generated (ai-generated)", {
         uid: user.uid,
         shots: plan.shots.length,
         transitions: plan.transitions.length,
-        voiceover: !!voiceoverScript,
       });
-      return NextResponse.json({ plan, voiceoverScript }, { status: 200 });
+      return NextResponse.json({ plan }, { status: 200 });
     }
 
     // my-photos mode: resolve photo asset URLs from mediaAssets so the
@@ -93,8 +92,6 @@ export async function POST(req: NextRequest) {
       photoAssetIds,
       photoAssetUrls,
       language: body.language,
-      voiceoverEnabled: body.voiceover?.enabled === true,
-      voiceoverScript: body.voiceover?.script,
     });
 
     logger.info("Real Estate preview generated (my-photos)", {

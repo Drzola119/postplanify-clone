@@ -45,6 +45,13 @@ export interface PropertyTransition {
    * without the user writing a prompt themselves.
    */
   cameraDirection: CameraDirection;
+  /**
+   * Spoken narration line for this transition (~10 words). Kept generic
+   * and mood-only — never facts (address, price, room count). The
+   * video model narrates this aloud in the job's selected language;
+   * see real-estate/motion-prompt.ts.
+   */
+  voiceoverLine?: string;
   status: "pending" | "generating" | "complete" | "failed";
   assetUrl?: string;
   assetId?: string;
@@ -58,14 +65,7 @@ export interface PropertyShotPlan {
   styleId: string;
   shots: PropertyShot[];
   transitions: PropertyTransition[];
-  /** Voiceover plan; absent when voiceover is disabled. */
-  voiceover?: {
-    enabled: boolean;
-    language: "fr" | "en" | "ar";
-    /** Optional ElevenLabs voice id; falls back to language default in tts/elevenlabs. */
-    voiceId?: string;
-    script?: string;
-    audioUrl?: string;
-    durationSec?: number;
-  };
+  /** Narration language for native audio on each clip. Drives the prompt
+   *  instruction appended by real-estate/motion-prompt.ts; no separate TTS. */
+  language: "fr" | "en" | "ar";
 }

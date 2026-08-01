@@ -16,9 +16,10 @@
  *     └─ ai-gen mode     → generating_images (image-plan-runner) → generating_clips
  *   generating_clips  → waiting_compose → composing (FFmpeg) → complete / failed
  *
- * Voiceover (ElevenLabs) runs in parallel with generating_clips; status
- * moves to waiting_compose only when BOTH clips AND (if enabled)
- * voiceover are done — see §9 of the spec.
+ * Narration is generated natively by the video model on each clip (see
+ * real-estate/motion-prompt.ts → withRealEstateNarrationInstruction) —
+ * no separate TTS step. The optional burned-in caption overlay is added
+ * by the FFmpeg compose worker from per-job fields on the videoJobs doc.
  */
 
 import "server-only";
@@ -36,8 +37,8 @@ import {
 } from "../types";
 import type { PropertyShotPlan, PropertyTransition, CameraDirection } from "../real-estate/types";
 import { runImagePlan } from "../real-estate/image-plan-runner";
+import { withRealEstateNarrationInstruction } from "../real-estate/motion-prompt";
 import { generateVideo } from "../router";
-import { synthesizeVoiceover } from "../tts/elevenlabs";
 import { createLogger } from "../../log";
 
 const logger = createLogger("video-gen:real-estate");
@@ -50,15 +51,12 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export interface RunRealEstateArgs {
   jobRef: FirebaseFirestore.DocumentReference;
   job: VideoJobDoc & { request?: unknown };
-  /** Headers from the originating request — needed to resolve ELEVENLABS_API_KEY, etc. */
-  headers?: Headers;
 }
 
 export interface RunRealEstateResult {
   totalCostUsd: number;
   transitionsSucceeded: number;
   transitionsFailed: number;
-  voiceoverApplied: boolean;
 }
 
 /**
@@ -85,13 +83,29 @@ export function buildTransitionPrompt(direction: CameraDirection): string {
 }
 
 /**
+ * Build the final per-transition prompt. If a voiceoverLine is attached
+ * to the transition, run it through the narration helper so the video
+ * model narrates the line aloud in the job's selected language. The
+ * caller also sets `generateAudio: true` on the input — the helper only
+ * adds the prompt instruction; the audio flag is what actually enables
+ * output audio on providers that support it.
+ */
+function buildTransitionPromptWithNarration(
+  transition: PropertyTransition,
+  language: PropertyShotPlan["language"]
+): string {
+  const visual = buildTransitionPrompt(transition.cameraDirection);
+  if (!transition.voiceoverLine) return visual;
+  return withRealEstateNarrationInstruction(visual, transition.voiceoverLine, language);
+}
+
+/**
  * Run the full Real Estate workflow for a queued job. Throws on fatal
  * (non-retryable) errors so the video-render-worker can mark the job failed.
  */
 export async function runRealEstateWorkflow({
   jobRef,
   job,
-  headers,
 }: RunRealEstateArgs): Promise<RunRealEstateResult> {
   const plan = job.shotPlan as PropertyShotPlan | undefined;
   if (!plan || !Array.isArray(plan.shots) || plan.shots.length < 2) {
@@ -120,7 +134,6 @@ export async function runRealEstateWorkflow({
           totalCostUsd: stage1.totalCostUsd,
           transitionsSucceeded: 0,
           transitionsFailed: plan.transitions.length,
-          voiceoverApplied: false,
         };
       }
     }
@@ -134,12 +147,11 @@ export async function runRealEstateWorkflow({
       plan: refreshedPlan,
       provider,
       aspectRatio,
-      headers,
     });
   }
 
   // ─── my-photos mode: images already exist, go straight to Stage 2 ─────────
-  return await runStage2({ jobRef, job, plan, provider, aspectRatio, headers });
+  return await runStage2({ jobRef, job, plan, provider, aspectRatio });
 }
 
 interface RunStage2Args {
@@ -148,7 +160,6 @@ interface RunStage2Args {
   plan: PropertyShotPlan;
   provider: VideoProviderId;
   aspectRatio: NonNullable<VideoJobDoc["aspectRatio"]>;
-  headers?: Headers;
 }
 
 async function runStage2({
@@ -157,53 +168,11 @@ async function runStage2({
   plan,
   provider,
   aspectRatio,
-  headers,
 }: RunStage2Args): Promise<RunRealEstateResult> {
   await jobRef.update({
     status: "generating_clips",
     updatedAt: FieldValue.serverTimestamp(),
   });
-
-  const voiceoverEnabled = plan.voiceover?.enabled === true;
-  const headersRef = headers ?? new Headers();
-
-  // Voiceover runs in parallel with clip generation; both must complete
-  // before we flip to waiting_compose.
-  const voiceoverPromise = voiceoverEnabled
-    ? (async () => {
-        try {
-          const vo = await synthesizeVoiceover({
-            text: plan.voiceover?.script ?? "",
-            language: plan.voiceover?.language ?? "fr",
-            voiceId: plan.voiceover?.voiceId,
-            headers: headersRef,
-          });
-          const refreshed = await jobRef.get();
-          const cur = (refreshed.data()?.shotPlan as PropertyShotPlan | undefined) ?? plan;
-          await jobRef.update({
-            shotPlan: {
-              ...cur,
-              voiceover: {
-                ...(cur.voiceover ?? { enabled: true, language: plan.voiceover?.language ?? "fr" }),
-                enabled: true,
-                language: plan.voiceover?.language ?? "fr",
-                script: plan.voiceover?.script,
-                audioUrl: vo.audioUrl,
-                durationSec: vo.durationSec,
-              },
-            },
-            updatedAt: FieldValue.serverTimestamp(),
-          });
-          return { ok: true, audioUrl: vo.audioUrl, costUsd: vo.costUsd };
-        } catch (err) {
-          logger.warn("Voiceover generation failed — continuing without narration", {
-            jobId: jobRef.id,
-            error: err instanceof Error ? err.message : String(err),
-          });
-          return { ok: false, audioUrl: undefined, costUsd: 0 };
-        }
-      })()
-    : Promise.resolve({ ok: true, audioUrl: undefined as string | undefined, costUsd: 0 });
 
   // Seed clips[] with the index/provider skeleton so the wizard has something to poll.
   const initialClips: VideoClipRecord[] = plan.transitions.map((t) => ({
@@ -214,7 +183,7 @@ async function runStage2({
   }));
   await jobRef.update({ clips: initialClips, updatedAt: FieldValue.serverTimestamp() });
 
-  const settled = await Promise.allSettled(
+  await Promise.allSettled(
     plan.transitions.map((transition) =>
       generateOneTransitionClip({
         jobRef,
@@ -227,21 +196,17 @@ async function runStage2({
     )
   );
 
-  const voiceoverResult = await voiceoverPromise;
-
   const clipsSnapshot = await jobRef.get();
   const finalClips: VideoClipRecord[] = clipsSnapshot.data()?.clips ?? initialClips;
   const succeeded = finalClips.filter((c) => c.status === "complete").length;
   const failed = finalClips.filter((c) => c.status === "failed").length;
-  const totalClipCost = finalClips.reduce((sum, c) => sum + (c.costUsd ?? 0), 0);
-  const totalCost = totalClipCost + (voiceoverResult.costUsd ?? 0);
+  const totalCost = finalClips.reduce((sum, c) => sum + (c.costUsd ?? 0), 0);
 
   logger.info("Real Estate clip phase complete", {
     jobId: jobRef.id,
     succeeded,
     failed,
     totalCost,
-    voiceoverOk: voiceoverResult.ok,
   });
 
   if (failed > 0) {
@@ -255,7 +220,6 @@ async function runStage2({
       totalCostUsd: totalCost,
       transitionsSucceeded: succeeded,
       transitionsFailed: failed,
-      voiceoverApplied: voiceoverResult.ok && !!voiceoverResult.audioUrl,
     };
   }
 
@@ -269,7 +233,6 @@ async function runStage2({
     totalCostUsd: totalCost,
     transitionsSucceeded: succeeded,
     transitionsFailed: 0,
-    voiceoverApplied: voiceoverResult.ok && !!voiceoverResult.audioUrl,
   };
 }
 
@@ -302,7 +265,8 @@ export async function generateOneTransitionClip({
   }
 
   const duration = clampKeyframeClipDuration(clipDurationSec ?? KEYFRAME_CLIP_DURATION_DEFAULT_SEC);
-  const prompt = buildTransitionPrompt(transition.cameraDirection);
+  const prompt = buildTransitionPromptWithNarration(transition, plan.language);
+  const hasNarration = !!transition.voiceoverLine;
 
   const input: VideoGenerateInput = {
     workspaceId: job.workspaceId,
@@ -313,6 +277,7 @@ export async function generateOneTransitionClip({
     endImageUrl: toShot.imageUrl,
     durationSec: duration,
     aspectRatios: [aspectRatio],
+    generateAudio: hasNarration,
     context: {
       workflow: "real-estate",
       styleId: plan.styleId,

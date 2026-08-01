@@ -7,10 +7,11 @@
  * clip) and the only one whose endpoints are documented in this account.
  *
  * As of 2026-07-30 every video model in the Higgsfield public catalog is
- * image-to-video; there is no text-to-video endpoint. Callers that pick
- * this provider must supply `sourceImageUrl` — submitting a text-to-video
- * request throws a clear error so the router falls back to the next
- * provider in the chain.
+ * image-to-video; there is no text-to-video endpoint and no keyframe /
+ * end-image support. Callers that pick this provider must supply
+ * `sourceImageUrl` AND keep mode on `image-to-video` — submitting a
+ * text-to-video or keyframe-to-video request throws a clear error so the
+ * router falls back to the next provider in the chain.
  *
  * API contract (verified 2026-07-30):
  *   - Base URL: https://platform.higgsfield.ai
@@ -113,6 +114,15 @@ export const higgsfieldProvider: VideoGenProvider = {
   displayName: "Higgsfield DoP Turbo",
 
   async submit(input: VideoGenerateInput): Promise<string> {
+    if (input.mode === "keyframe-to-video") {
+      // Higgsfield has no end_image_url equivalent — silently ignoring the
+      // second frame would produce a broken, non-continuous result. Throw
+      // so the router falls back to a provider that supports keyframes
+      // (currently only Seedance 2.0 family).
+      throw new Error(
+        "Higgsfield does not support keyframe-to-video (no end_image_url). Falling back required."
+      );
+    }
     if (!input.sourceImageUrl) {
       // Every video model in the Higgsfield catalog is image-to-video.
       // Throw so the router falls back to the next provider in the chain.

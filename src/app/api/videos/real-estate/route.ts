@@ -7,8 +7,8 @@
  * ai-generated mode: writes shotPlan.shots with status "pending" and
  *   no imageUrl — the render worker runs Stage 1 (image-plan-runner)
  *   first because every later shot's continuity depends on the prior
- *   shots existing. ai-generated voiceoverScript is persisted on the
- *   shotPlan so Stage 2 can hand it to ElevenLabs.
+ *   shots existing. Narration is added per-transition in Stage 2
+ *   using the video model's native audio.
  *
  * my-photos mode: writes shotPlan.shots already status "complete" with
  *   imageUrl = the uploaded asset URL — Stage 1 is skipped entirely.
@@ -26,9 +26,9 @@ import { createLogger } from "@/lib/log";
 const logger = createLogger("api:videos:real-estate");
 
 // Shot plan posted back from the wizard after preview — only the bits
-// the user can edit (room labels, camera direction overrides, voiceover
-// script). The shape comes from /preview; we keep the preview's shots
-// list structurally identical and re-derive from photos for my-photos.
+// the user can edit (room labels, camera direction overrides). The
+// shape comes from /preview; we keep the preview's shots list
+// structurally identical and re-derive from photos for my-photos.
 const commitBodySchema = z.object({
   base: videoGenerateRequestSchema,
   plan: z
@@ -56,10 +56,10 @@ const commitBodySchema = z.object({
               "tilt-up",
               "tilt-down",
             ]),
+            voiceoverLine: z.string().max(200).optional(),
           })
         )
         .optional(),
-      voiceoverScript: z.string().max(1200).optional(),
     })
     .optional(),
 });
@@ -115,9 +115,6 @@ export async function POST(req: NextRequest) {
         photoAssetIds,
         photoAssetUrls,
         language: body.language,
-        voiceoverEnabled: body.voiceover?.enabled === true,
-        voiceoverScript:
-          parsed.data.plan?.voiceoverScript ?? body.voiceover?.script,
       });
     } else {
       // ai-generated: the preview endpoint already produced the shot plan;
@@ -153,6 +150,9 @@ export async function POST(req: NextRequest) {
       styleId: body.styleId,
       aspectRatio: body.aspectRatios[0] ?? "16:9",
       shotPlan: plan,
+      headline: body.headline,
+      price: body.price,
+      address: body.address,
       clips: [],
       finalAssets: [],
       totalCostUsd: 0,
@@ -227,6 +227,7 @@ async function buildAiGeneratedPlanFromCommit(
       fromShotIndex: i,
       toShotIndex: i + 1,
       cameraDirection: override?.cameraDirection ?? TRANSITION_DIRECTIONS[i] ?? "forward" as const,
+      voiceoverLine: override?.voiceoverLine,
       status: "pending" as const,
     };
   });
@@ -236,12 +237,6 @@ async function buildAiGeneratedPlanFromCommit(
     styleId: style.id,
     shots,
     transitions,
-    voiceover: body.voiceover?.enabled
-      ? {
-          enabled: true,
-          language: body.language,
-          script: overrides.voiceoverScript ?? body.voiceover?.script,
-        }
-      : undefined,
+    language: body.language,
   };
 }

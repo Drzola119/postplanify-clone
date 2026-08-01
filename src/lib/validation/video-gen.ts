@@ -68,13 +68,6 @@ const cartoonRequestSchema = baseVideoRequestSchema.extend({
 // and upscale real-estate marketing there.
 
 const realEstateLanguageSchema = z.enum(["fr", "en", "ar"]);
-const realEstateVoiceoverSchema = z
-  .object({
-    enabled: z.boolean().default(false),
-    voiceId: z.string().min(1).max(128).optional(),
-    script: z.string().max(1200).optional(),
-  })
-  .default({ enabled: false });
 
 const realEstateAiGeneratedSchema = baseVideoRequestSchema.extend({
   workflow: z.literal("real-estate"),
@@ -83,7 +76,10 @@ const realEstateAiGeneratedSchema = baseVideoRequestSchema.extend({
   styleId: z.string().min(1).max(64),
   shotCount: z.number().int().min(5).max(10).default(10),
   language: realEstateLanguageSchema.default("fr"),
-  voiceover: realEstateVoiceoverSchema,
+  /** Optional fact captions burned into the final video. */
+  headline: z.string().max(200).optional(),
+  price: z.string().max(80).optional(),
+  address: z.string().max(200).optional(),
 });
 
 const realEstateMyPhotosSchema = baseVideoRequestSchema.extend({
@@ -91,8 +87,9 @@ const realEstateMyPhotosSchema = baseVideoRequestSchema.extend({
   mode: z.literal("my-photos"),
   photoAssetIds: z.array(z.string()).min(2).max(12),
   headline: z.string().max(200).optional(),
+  price: z.string().max(80).optional(),
+  address: z.string().max(200).optional(),
   language: realEstateLanguageSchema.default("fr"),
-  voiceover: realEstateVoiceoverSchema,
 });
 
 const whiteboardRequestSchema = baseVideoRequestSchema.extend({

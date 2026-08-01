@@ -56,6 +56,13 @@ export interface VideoGenerateInput {
   endImageUrl?: string;
   durationSec: number;
   aspectRatios: VideoAspectRatio[];
+  /**
+   * When true, providers that support native audio generation will
+   * synthesise a voiceover from the narration instruction embedded in
+   * `prompt`. Currently wired to Seedance 2.0 (fal.ai) via the
+   * `generate_audio` request body field. Other providers ignore it.
+   */
+  generateAudio?: boolean;
   context: {
     workflow: VideoWorkflow;
     styleId: string;

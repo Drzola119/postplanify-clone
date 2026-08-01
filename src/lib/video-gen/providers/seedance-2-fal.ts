@@ -135,6 +135,14 @@ function makeSeedanceProvider(fast: boolean): VideoGenProvider {
         body.end_image_url = input.endImageUrl;
       }
 
+      // Native audio generation. The narration instruction is embedded in
+      // `prompt` by the caller (see real-estate/motion-prompt.ts); this
+      // flag tells the model to actually synthesise the audio. When
+      // false or unset, the model generates silent video (default).
+      if (input.generateAudio) {
+        body.generate_audio = true;
+      }
+
       logger.info("fal.ai submit", { modelSlug, aspectRatio, mode: input.mode });
 
       const { request_id } = await falQueuePost(modelSlug, body);
