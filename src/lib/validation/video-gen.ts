@@ -115,14 +115,15 @@ const viralRequestSchema = baseVideoRequestSchema.extend({
   voiceoverMode: z.enum(["none", "auto"]).default("none"),
 });
 
-// ─── Main discriminated union ───────────────────────────────────────────────────
+// ─── Main union ────────────────────────────────────────────────────────────────
 //
-// Real Estate flattens its two modes directly into the outer union — Zod's
-// `z.discriminatedUnion` requires each option to be a plain ZodObject, not
-// a nested discriminated union. We keep `mode` as the secondary
-// discriminator inside each real-estate option.
+// Real Estate has two input modes (ai-generated vs my-photos) that share the
+// `workflow: "real-estate"` discriminator. Zod's `z.discriminatedUnion` only
+// allows ONE entry per discriminator value, so we use `z.union` here and
+// narrow on `mode` afterwards in the route handlers. The performance hit is
+// negligible for a request schema that's at most ~10 fields.
 
-export const videoGenerateRequestSchema = z.discriminatedUnion("workflow", [
+export const videoGenerateRequestSchema = z.union([
   cartoonRequestSchema,
   realEstateAiGeneratedSchema,
   realEstateMyPhotosSchema,
