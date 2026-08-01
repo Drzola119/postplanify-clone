@@ -65,6 +65,7 @@ export async function GET(
       clips: job.clips ?? [],
       finalAssets: job.finalAssets ?? [],
       script: job.script ?? null,
+      shotPlan: job.shotPlan ?? null,
       totalCostUsd: job.totalCostUsd ?? 0,
       error: job.error ?? null,
       createdAt: job.createdAt?.toDate()?.toISOString() ?? null,

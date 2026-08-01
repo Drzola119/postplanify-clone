@@ -16,6 +16,7 @@ import { generateVideo } from "../video-gen/router";
 import { persistGeneratedVideo } from "../video-gen/asset-saver";
 import { buildCartoonPrompt } from "../video-gen/workflows/cartoon";
 import { runWhiteboardWorkflow } from "../video-gen/workflows/whiteboard";
+import { runRealEstateWorkflow } from "../video-gen/workflows/real-estate";
 import { createLogger } from "../log";
 import type {
   VideoGenerateInput,
@@ -88,6 +89,18 @@ async function processJob(
       // The FFmpeg worker takes over from `waiting_compose`.
       await runWhiteboardWorkflow({ jobRef, job });
       logger.info("Whiteboard job handed off to FFmpeg composer", { jobId });
+      return;
+    }
+
+    if (job.workflow === "real-estate") {
+      // Real Estate handles its own status transitions:
+      //   queued → (ai-gen only: generating_images →) generating_clips → waiting_compose
+      // The FFmpeg worker takes over from `waiting_compose`. We don't have
+      // access to the originating request headers from this polling context,
+      // so we pass undefined — the worker falls back to env-only resolution
+      // (production-safe). The ElevenLabs key is provisioned in env.
+      await runRealEstateWorkflow({ jobRef, job });
+      logger.info("Real Estate job handed off to FFmpeg composer", { jobId });
       return;
     }
 

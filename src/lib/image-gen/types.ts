@@ -132,6 +132,15 @@ export interface GenerateInput {
    */
   outputLanguage?: OutputLanguage;
   /**
+   * Reference image URLs to send as image_url parts alongside the text
+   * prompt. Only Gemini-family providers (gemini-flash-image,
+   * gemini-flash-lite-image) read these today; other providers ignore
+   * the field silently. Used by reference-chained workflows (e.g.
+   * Real Estate Video Studio) to anchor successive generations on one
+   * or more prior images so identity stays consistent across a chain.
+   */
+  referenceImageUrls?: string[];
+  /**
    * Optional caller metadata propagated to the generation log so we can
    * attribute usage to specific tools, campaigns, or A/B buckets.
    */

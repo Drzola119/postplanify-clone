@@ -43,7 +43,7 @@ export default async function VideosPage() {
       accent: "from-emerald-500/10 to-emerald-500/0",
       iconCls: "bg-emerald-50 text-emerald-700",
       summary: t("landing.real-estate_summary"),
-      available: false,
+      available: true,
     },
     {
       id: "whiteboard",

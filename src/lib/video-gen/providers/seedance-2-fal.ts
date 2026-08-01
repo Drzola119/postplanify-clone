@@ -22,7 +22,9 @@ const ASPECT_RATIO_MAP: Record<VideoAspectRatio, string> = {
 
 function getFalModelSlug(fast: boolean, mode: VideoGenerateInput["mode"]): string {
   const tier = fast ? "t2v-fast" : "standard";
-  if (mode === "image-to-video") {
+  // Both image-to-video and keyframe-to-video go through the i2v tiers —
+  // keyframe mode is a first-and-last-frame extension of the same endpoint.
+  if (mode === "image-to-video" || mode === "keyframe-to-video") {
     return fast ? "fal-ai/seedance-2.0-i2v-fast" : "fal-ai/seedance-2.0-i2v";
   }
   return fast ? `fal-ai/seedance-2.0-${tier}` : "fal-ai/seedance-2.0";
@@ -118,6 +120,19 @@ function makeSeedanceProvider(fast: boolean): VideoGenProvider {
 
       if (input.mode === "image-to-video" && input.sourceImageUrl) {
         body.image_url = input.sourceImageUrl;
+      }
+
+      // Keyframe-to-keyframe: send both the first and last frame so the
+      // model can interpolate the camera motion between them. fal.ai's
+      // Seedance i2v endpoint accepts `end_image_url` natively for this.
+      if (input.mode === "keyframe-to-video") {
+        if (!input.sourceImageUrl || !input.endImageUrl) {
+          throw new Error(
+            "keyframe-to-video requires both sourceImageUrl and endImageUrl"
+          );
+        }
+        body.image_url = input.sourceImageUrl;
+        body.end_image_url = input.endImageUrl;
       }
 
       logger.info("fal.ai submit", { modelSlug, aspectRatio, mode: input.mode });

@@ -26,7 +26,19 @@ export type VideoAspectRatio = "9:16" | "1:1" | "16:9" | "4:3" | "3:4" | "21:9";
 
 export type VideoWorkflow = "real-estate" | "whiteboard" | "cartoon" | "viral";
 
-export type VideoMode = "text-to-video" | "image-to-video" | "reference-to-video";
+export type VideoMode =
+  | "text-to-video"
+  | "image-to-video"
+  | "reference-to-video"
+  /**
+   * First-and-last-frame interpolation. The provider receives both a
+   * `sourceImageUrl` (first frame) and an `endImageUrl` (last frame) and
+   * synthesises the camera motion between them. Used by Real Estate
+   * Video Studio to chain consecutive property photos into a seamless
+   * walkthrough. Currently supported by Seedance 2.0 (i2v) tiers via
+   * the `end_image_url` field.
+   */
+  | "keyframe-to-video";
 
 // ─── Generation input ────────────────────────────────────────────────────────
 
@@ -37,6 +49,11 @@ export interface VideoGenerateInput {
   /** Final, server-built prompt — never trust client prompt directly */
   prompt: string;
   sourceImageUrl?: string;
+  /**
+   * Last-frame image. Only meaningful when `mode === "keyframe-to-video"`.
+   * Together with `sourceImageUrl` it defines the interpolation target.
+   */
+  endImageUrl?: string;
   durationSec: number;
   aspectRatios: VideoAspectRatio[];
   context: {
@@ -129,6 +146,13 @@ export interface VideoJobDoc {
   aspectRatio?: VideoAspectRatio;
   /** Whiteboard workflow only — total target duration (30 or 60s). */
   durationSec?: number;
+  /**
+   * Real Estate workflow only — the planned shot sequence + transitions.
+   * Populated by the /api/videos/real-estate route, mutated by the
+   * image-plan-runner as each shot's image lands, then read by
+   * workflows/real-estate.ts to drive Stage 2 (keyframe-to-video clips).
+   */
+  shotPlan?: import("./real-estate/types").PropertyShotPlan;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -182,3 +206,21 @@ export const VIDEO_PROVIDER_KEY_ENV: Record<VideoProviderId, string> = {
   "gemini-omni-flash": "GEMINI_API_KEY",
   "higgsfield": "HIGGSFIELD_API_KEY",
 };
+
+// ─── Keyframe-mode clip length (Real Estate Video Studio) ────────────────────
+//
+// First-and-last-frame interpolation clips stay short by design — every
+// provider implementation of this technique caps around 5s. This is a
+// separate constant from each provider's plain-generation max (in
+// whiteboard/clip-matrix.ts) because the two caps describe different
+// things. Real Estate uses this constant; Whiteboard does not.
+export const KEYFRAME_CLIP_DURATION_DEFAULT_SEC = 4;
+export const KEYFRAME_CLIP_DURATION_MIN_SEC = 3;
+export const KEYFRAME_CLIP_DURATION_MAX_SEC = 5;
+export function clampKeyframeClipDuration(sec: number): number {
+  if (!Number.isFinite(sec)) return KEYFRAME_CLIP_DURATION_DEFAULT_SEC;
+  return Math.min(
+    KEYFRAME_CLIP_DURATION_MAX_SEC,
+    Math.max(KEYFRAME_CLIP_DURATION_MIN_SEC, Math.round(sec))
+  );
+}

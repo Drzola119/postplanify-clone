@@ -125,6 +125,13 @@ interface ComposeJobShape {
   jobId: string;
   clipUrls: string[];
   aspectRatio: "9:16" | "16:9" | "1:1";
+  /**
+   * Optional voiceover audio URL (mp3) from the Real Estate workflow.
+   * When present, the final video has this audio muxed underneath the
+   * concatenated video. When absent (current Whiteboard path), the
+   * existing plain concat runs unchanged.
+   */
+  voiceoverAudioUrl?: string;
 }
 
 async function composeFinalVideo(job: ComposeJobShape): Promise<{
@@ -160,7 +167,7 @@ async function composeFinalVideo(job: ComposeJobShape): Promise<{
     await writeFile(listPath, listBody);
 
     // 3. FFmpeg concat demuxer with stream copy.
-    const outPath = join(workdir, "final.mp4");
+    const videoOnlyPath = join(workdir, "video-only.mp4");
     await execFileAsync(
       "ffmpeg",
       [
@@ -170,12 +177,53 @@ async function composeFinalVideo(job: ComposeJobShape): Promise<{
         "-i", listPath,
         "-c", "copy",
         "-movflags", "+faststart",
-        outPath,
+        videoOnlyPath,
       ],
       { maxBuffer: 64 * 1024 * 1024 }
     );
 
-    // 4. Upload to Bunny CDN.
+    // 4. If a voiceover is present, mux it under the concatenated video.
+    //    Otherwise the plain-concat result is the final result — preserves
+    //    the existing Whiteboard silent path bit-for-bit.
+    const outPath = join(workdir, "final.mp4");
+    if (job.voiceoverAudioUrl) {
+      const audioPath = join(workdir, "voiceover.mp3");
+      const audioRes = await fetch(job.voiceoverAudioUrl);
+      if (!audioRes.ok) {
+        throw new Error(
+          `Failed to download voiceover audio (${job.voiceoverAudioUrl}): ${audioRes.status}`
+        );
+      }
+      const audioBuf = Buffer.from(await audioRes.arrayBuffer());
+      await writeFile(audioPath, audioBuf);
+
+      // Stream-copy the concatenated video, transcode the voiceover to AAC,
+      // and pad/trim the audio to match the video length via -shortest.
+      // Map video from input 0, audio from input 1.
+      await execFileAsync(
+        "ffmpeg",
+        [
+          "-y",
+          "-i", videoOnlyPath,
+          "-i", audioPath,
+          "-map", "0:v:0",
+          "-map", "1:a:0",
+          "-c:v", "copy",
+          "-c:a", "aac",
+          "-b:a", "128k",
+          "-shortest",
+          "-movflags", "+faststart",
+          outPath,
+        ],
+        { maxBuffer: 64 * 1024 * 1024 }
+      );
+    } else {
+      // Silent path: rename video-only → final so the upload reads the same path.
+      const videoOnlyBuf = await readFile(videoOnlyPath);
+      await writeFile(outPath, videoOnlyBuf);
+    }
+
+    // 5. Upload to Bunny CDN.
     const finalBuffer = await readFile(outPath);
     return await uploadFinal({
       workspaceId: job.workspaceId,
@@ -252,6 +300,12 @@ async function processComposeJob(
       throw new Error("No completed clips found for compose job");
     }
     const aspectRatio = (data.aspectRatio ?? "16:9") as ComposeJobShape["aspectRatio"];
+    const voiceoverAudioUrl =
+      typeof data.shotPlan?.voiceover?.audioUrl === "string" &&
+      data.shotPlan.voiceover.audioUrl.length > 0
+        ? data.shotPlan.voiceover.audioUrl
+        : undefined;
+    const workflow = (data.workflow ?? "whiteboard") as string;
 
     await jobRef.update({
       status: "composing",
@@ -259,7 +313,9 @@ async function processComposeJob(
     });
 
     console.log(
-      `[ffmpeg-compose] ${jobId}: composing ${orderedClips.length} clips (workspace ${workspaceId})`
+      `[ffmpeg-compose] ${jobId}: composing ${orderedClips.length} clips (workspace ${workspaceId})${
+        voiceoverAudioUrl ? " + voiceover" : ""
+      }`
     );
 
     const { cdnUrl } = await composeFinalVideo({
@@ -267,11 +323,12 @@ async function processComposeJob(
       jobId,
       aspectRatio,
       clipUrls: orderedClips.map((c) => c.assetUrl!),
+      voiceoverAudioUrl,
     });
 
     await jobRef.update({
       status: "complete",
-      finalAssets: [{ aspectRatio, assetId: `whiteboard-${jobId}-final`, assetUrl: cdnUrl }],
+      finalAssets: [{ aspectRatio, assetId: `${workflow}-${jobId}-final`, assetUrl: cdnUrl }],
       updatedAt: FieldValue.serverTimestamp(),
     });
 

@@ -151,4 +151,12 @@ export const resolvers = {
   higgsfieldApiKey(h: Headers): string {
     return resolve("HIGGSFIELD_API_KEY", "HIGGSFIELD_API_KEY", "x-higgsfield-key", h);
   },
+  /**
+   * ElevenLabs TTS API key. Required for the Real Estate Video Studio
+   * voiceover stage. Provision a key at https://elevenlabs.io → Profile
+   * → API Keys, then set ELEVENLABS_API_KEY in the server environment.
+   */
+  elevenLabsApiKey(h: Headers): string {
+    return resolve("ELEVENLABS_API_KEY", "ELEVENLABS_API_KEY", "x-elevenlabs-key", h);
+  },
 };

@@ -49,14 +49,21 @@ export class GeminiFlashLiteImageProvider implements ImageGenProvider {
   async generate(input: GenerateInput): Promise<GenerateOutput> {
     enforceResolutionCap(this.id, input.aspectRatio);
     const ratio = getAspectRatio(input.aspectRatio);
+    const refUrls = input.referenceImageUrls?.filter((u) => u && u.length > 0) ?? [];
+    // Reference-chained generation: image parts first, text instruction
+    // last. Matches OpenAI / Gemini multimodal message shape. Used by
+    // reference-chained workflows (e.g. Real Estate Video Studio) to
+    // anchor successive generations on one or more prior images.
+    const content: Array<Record<string, unknown>> = [
+      ...refUrls.map((url) => ({ type: "image_url", image_url: { url } })),
+      { type: "text", text: input.prompt },
+    ];
     const body = {
       model: MODEL,
       messages: [
         {
           role: "user",
-          content: [
-            { type: "text", text: input.prompt },
-          ],
+          content,
         },
       ],
       modalities: ["image", "text"],

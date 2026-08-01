@@ -47,9 +47,18 @@ export class GeminiFlashImageProvider implements ImageGenProvider {
   async generate(input: GenerateInput): Promise<GenerateOutput> {
     enforceResolutionCap(this.id, input.aspectRatio);
     const ratio = getAspectRatio(input.aspectRatio);
+    const refUrls = input.referenceImageUrls?.filter((u) => u && u.length > 0) ?? [];
+    // Reference-chained generation: image parts first, text instruction
+    // last. Matches OpenAI / Gemini multimodal message shape. The image
+    // parts are the visual anchor (e.g. "preserve the same house") and
+    // the text part describes the new shot.
+    const content: Array<Record<string, unknown>> = [
+      ...refUrls.map((url) => ({ type: "image_url", image_url: { url } })),
+      { type: "text", text: input.prompt },
+    ];
     const body = {
       model: MODEL,
-      messages: [{ role: "user", content: [{ type: "text", text: input.prompt }] }],
+      messages: [{ role: "user", content }],
       modalities: ["image", "text"],
       // 1024px long edge (1K). The cap is enforced centrally by
       // enforceResolutionCap() — if a caller asks for 2K we never reach

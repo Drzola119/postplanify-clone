@@ -54,18 +54,45 @@ const cartoonRequestSchema = baseVideoRequestSchema.extend({
   sourceImageUrl: z.string().url().optional(),
 });
 
-// Placeholder schemas for later milestones — validated for structure only in M1
-const realEstateRequestSchema = baseVideoRequestSchema.extend({
+// ─── Real Estate Video Studio (mode-discriminated) ────────────────────────────
+//
+// Two input modes converge on the same Stage 2 (keyframe-to-video clips):
+//   - "ai-generated": property description + style preset → LLM produces
+//     a shot plan, then Nano Banana reference-chains the photos.
+//   - "my-photos":    user uploads their own listing photos; they ARE
+//     the shot sequence (no image generation).
+//
+// Language defaults to French because this workflow targets Algeria
+// (see spec §9): Darja isn't supported by any TTS vendor, MSA reads as
+// formal/news-anchor, and French is the genuine language of business
+// and upscale real-estate marketing there.
+
+const realEstateLanguageSchema = z.enum(["fr", "en", "ar"]);
+const realEstateVoiceoverSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    voiceId: z.string().min(1).max(128).optional(),
+    script: z.string().max(1200).optional(),
+  })
+  .default({ enabled: false });
+
+const realEstateAiGeneratedSchema = baseVideoRequestSchema.extend({
   workflow: z.literal("real-estate"),
-  headline: z.string().min(1).max(200),
-  priceText: z.string().max(50).optional(),
-  features: z.array(z.string().max(100)).max(5).optional(),
-  photoAssetIds: z.array(z.string()).min(1).max(12),
-  voiceoverMode: z.enum(["none", "auto", "custom"]).default("none"),
-  musicTrackId: z.string().optional(),
-  brandOverlay: z.boolean().default(true),
-  /** Hard cap: 90s total — ~12 clips × 7s each */
-  totalDurationSec: z.number().max(90).optional(),
+  mode: z.literal("ai-generated"),
+  propertyDescription: z.string().min(10).max(600),
+  styleId: z.string().min(1).max(64),
+  shotCount: z.number().int().min(5).max(10).default(10),
+  language: realEstateLanguageSchema.default("fr"),
+  voiceover: realEstateVoiceoverSchema,
+});
+
+const realEstateMyPhotosSchema = baseVideoRequestSchema.extend({
+  workflow: z.literal("real-estate"),
+  mode: z.literal("my-photos"),
+  photoAssetIds: z.array(z.string()).min(2).max(12),
+  headline: z.string().max(200).optional(),
+  language: realEstateLanguageSchema.default("fr"),
+  voiceover: realEstateVoiceoverSchema,
 });
 
 const whiteboardRequestSchema = baseVideoRequestSchema.extend({
@@ -89,16 +116,24 @@ const viralRequestSchema = baseVideoRequestSchema.extend({
 });
 
 // ─── Main discriminated union ───────────────────────────────────────────────────
+//
+// Real Estate flattens its two modes directly into the outer union — Zod's
+// `z.discriminatedUnion` requires each option to be a plain ZodObject, not
+// a nested discriminated union. We keep `mode` as the secondary
+// discriminator inside each real-estate option.
 
 export const videoGenerateRequestSchema = z.discriminatedUnion("workflow", [
   cartoonRequestSchema,
-  realEstateRequestSchema,
+  realEstateAiGeneratedSchema,
+  realEstateMyPhotosSchema,
   whiteboardRequestSchema,
   viralRequestSchema,
 ]);
 
 export type VideoGenerateRequest = z.infer<typeof videoGenerateRequestSchema>;
 export type CartoonRequest = z.infer<typeof cartoonRequestSchema>;
-export type RealEstateRequest = z.infer<typeof realEstateRequestSchema>;
+export type RealEstateAiGeneratedRequest = z.infer<typeof realEstateAiGeneratedSchema>;
+export type RealEstateMyPhotosRequest = z.infer<typeof realEstateMyPhotosSchema>;
+export type RealEstateRequest = RealEstateAiGeneratedRequest | RealEstateMyPhotosRequest;
 export type WhiteboardRequest = z.infer<typeof whiteboardRequestSchema>;
 export type ViralRequest = z.infer<typeof viralRequestSchema>;
