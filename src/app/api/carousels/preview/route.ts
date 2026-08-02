@@ -48,6 +48,11 @@ export async function POST(request: NextRequest) {
         niche: parsed.data.niche,
         tone: parsed.data.tone,
         ctaKeyword: parsed.data.ctaKeyword,
+        slideCount: (parsed.data.slideCount ?? 5) as
+          | 5
+          | 7
+          | 10
+          | 15,
         outputLanguage: parsed.data.outputLanguage ?? "en",
       },
       groqApiKey

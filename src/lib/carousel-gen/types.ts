@@ -10,8 +10,21 @@
  * (carousel-media-card.tsx) is built on top of these shapes.
  */
 
+/**
+ * The five canonical slide roles. The carousel skeleton always opens
+ * with Hook, always closes with CTA, and uses Value / Stakes / Receipts
+ * between. For dynamic slide counts (5/7/10/15) the middle roles repeat
+ * — extra slides are typed as one of the five canonical roles (most
+ * commonly "value") so the layout / prompt machinery keeps working
+ * without forking.
+ */
 export type SlideType = "hook" | "stakes" | "value" | "receipts" | "cta";
 
+/**
+ * The original 5-role order. Used as the canonical layout map and as the
+ * default 5-slide skeleton. For dynamic counts the workflow iterates
+ * over `script.slides` directly, not this array.
+ */
 export const SLIDE_ORDER: SlideType[] = [
   "hook",
   "stakes",
@@ -21,11 +34,62 @@ export const SLIDE_ORDER: SlideType[] = [
 ];
 
 /**
- * The fixed 5-slide skeleton. Every carousel runs against this exact
- * structure — style descriptors and copy vary; the slide roles do not.
- * Hard cap per spec v2 §1; do not flex.
+ * Allowed slide counts the wizard offers. Defaults to 5 for backward
+ * compatibility. The 5-role skeleton stays intact; longer decks repeat
+ * middle roles (stakes/value/receipts) so layouts and prompts still map
+ * cleanly. The wizard enforces this set client-side; the API validates
+ * via `slideCount` plus `slides.length` agreement.
  */
-export const SLIDE_COUNT = 5 as const;
+export const ALLOWED_SLIDE_COUNTS = [5, 7, 10, 15] as const;
+export type AllowedSlideCount = (typeof ALLOWED_SLIDE_COUNTS)[number];
+export const DEFAULT_SLIDE_COUNT: AllowedSlideCount = 5;
+
+/** Legacy alias for code paths that read the constant. */
+export const SLIDE_COUNT: AllowedSlideCount = 5;
+
+/**
+ * Map any slide index to its role. For the 5-skeleton positions
+ * (0=Hook, 1=Stakes, 2=Value, 3=Receipts, 4=CTA) this returns the
+ * literal role; for extension slides it returns a sensible default
+ * (value for middle positions, cta for the last position). The wizard
+ * also generates `slide.sectionLabel` so the UI can show the user a
+ * human label like "Slide 6 — Value 2".
+ */
+export function coreSlideRole(index: number, total: number): SlideType {
+  if (index === 0) return "hook";
+  if (index === total - 1) return "cta";
+  // For 5-slide carousels the original 5-role skeleton applies.
+  if (total === 5) {
+    if (index === 1) return "stakes";
+    if (index === 2) return "value";
+    if (index === 3) return "receipts";
+    return "value";
+  }
+  // For longer decks: Hook, Stakes, then value-heavy middle, then
+  // Receipts in the second-to-last slot, then CTA at the end.
+  const secondToLast = total - 2;
+  if (index === 1) return "stakes";
+  if (index === secondToLast) return "receipts";
+  return "value";
+}
+
+/** Human label for a section (used by the wizard to title each slide row). */
+export function sectionLabel(index: number, total: number): string {
+  const core = coreSlideRole(index, total);
+  if (total === 5) return core.charAt(0).toUpperCase() + core.slice(1);
+  if (core === "hook" || core === "cta") {
+    return core.charAt(0).toUpperCase() + core.slice(1);
+  }
+  if (core === "stakes") return "Stakes";
+  if (core === "receipts") return "Receipts";
+  // value middle slides get a numbered suffix so the wizard can label
+  // each row distinctly (Value 2, Value 3, ...).
+  let valueOrdinal = 0;
+  for (let i = 0; i <= index; i++) {
+    if (coreSlideRole(i, total) === "value") valueOrdinal++;
+  }
+  return valueOrdinal <= 1 ? "Value" : `Value ${valueOrdinal - 1}`;
+}
 
 /**
  * One row in a script's slides[] array — exactly one per skeleton role,
@@ -33,13 +97,17 @@ export const SLIDE_COUNT = 5 as const;
  * (before images exist) and the persisted job doc (after).
  */
 export interface CarouselSlideScript {
-  /** 0-based index in SLIDE_ORDER (0=Hook, 4=CTA). */
+  /** 0-based index in `script.slides[]` (0=Hook, last=CTA). */
   index: number;
   type: SlideType;
   /** Short headline — must read verbatim on the rendered image. */
   headline: string;
   /** Optional supporting line (≤12 words). */
   body?: string;
+  /** Optional background image (data URL or CDN URL) for this slide. */
+  backgroundUrl?: string;
+  /** Background image opacity (0–100). Defaults to 0 (no bg shown). */
+  backgroundOpacity?: number;
 }
 
 export interface CarouselScript {
@@ -51,8 +119,10 @@ export interface CarouselScript {
   tone?: string;
   /** One keyword to comment ("Comment OPEN"). Echoed back for the CTA slide. */
   ctaKeyword: string;
-  /** Exactly 5 slides, always in SLIDE_ORDER. */
+  /** Exactly `slideCount` slides. */
   slides: CarouselSlideScript[];
+  /** Number of slides in this deck. Always matches `slides.length`. */
+  slideCount: AllowedSlideCount;
   /** Output language for ON-IMAGE text. Independent of UI locale. */
   outputLanguage: "en" | "fr" | "ar";
 }
@@ -68,6 +138,24 @@ export interface LayoutVariant {
   description: string;
   /** When true, prompts must include the safe-zone text-instruction. */
   requiresSafeZone?: boolean;
+}
+
+/** The three high-level layout picks the wizard offers as clickable cards. */
+export type LayoutVariantId = "centered" | "split" | "bold-headline";
+
+/** Map a LayoutVariantId to the per-role LayoutVariant objects. */
+export interface LayoutVariantSet {
+  id: LayoutVariantId;
+  label: string;
+  description: string;
+  /** Returns the LayoutVariant to use for each of the 5 roles. */
+  resolve: () => {
+    hook: LayoutVariant;
+    stakes: LayoutVariant;
+    value: LayoutVariant;
+    receipts: LayoutVariant;
+    cta: LayoutVariant;
+  };
 }
 
 /**
@@ -124,6 +212,10 @@ export interface CarouselJobSlideRecord {
   width?: number;
   height?: number;
   errorMessage?: string;
+  /** Background image URL set via F6 — passed through to render output. */
+  backgroundUrl?: string;
+  /** Background image opacity (0–100). */
+  backgroundOpacity?: number;
 }
 
 export type CarouselJobStatus =
@@ -160,7 +252,7 @@ export interface CarouselJobDoc {
    * picks a custom palette/typography/layout that isn't in the
    * server-side CAROUSEL_STYLES registry. */
   styleSnapshot?: CarouselStyle;
-  /** Always length 5, joined to script.slides by index. */
+  /** Always length script.slides.length, joined by index. */
   slides: CarouselJobSlideRecord[];
   /** Total cost of all slide generations, summed at completion. */
   costUsd: number;
@@ -170,6 +262,8 @@ export interface CarouselJobDoc {
   error?: string;
   /** M4: vision-model consistency verdict over the 5 generated slides. */
   visionQa?: CarouselVisionQa;
+  /** F9: optional Firestore carousel record id this job was saved under. */
+  carouselId?: string;
   createdAt: unknown;
   updatedAt?: unknown;
 }

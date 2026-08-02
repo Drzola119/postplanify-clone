@@ -8,6 +8,16 @@
 
 import "server-only";
 import { z } from "zod";
+import { ALLOWED_SLIDE_COUNTS, type AllowedSlideCount } from "@/lib/carousel-gen/types";
+
+const allowedSlideCountSchema = z
+  .number()
+  .int()
+  .refine(
+    (n): n is AllowedSlideCount =>
+      (ALLOWED_SLIDE_COUNTS as readonly number[]).includes(n),
+    "slideCount must be 5, 7, 10, or 15"
+  );
 
 export const carouselSlideTypeSchema = z.enum([
   "hook",
@@ -25,6 +35,7 @@ export const carouselPreviewRequestSchema = z.object({
   niche: z.string().max(80).optional(),
   tone: z.string().max(80).optional(),
   ctaKeyword: z.string().min(1).max(40),
+  slideCount: allowedSlideCountSchema.default(5),
   outputLanguage: carouselOutputLanguageSchema.default("en"),
 });
 
@@ -49,10 +60,12 @@ export const carouselBrandAnalyzeRequestSchema = z
 
 /** One slide the user is committing after preview + edits. */
 const carouselScriptSlideSchema = z.object({
-  index: z.number().int().min(0).max(4),
+  index: z.number().int().min(0).max(49),
   type: carouselSlideTypeSchema,
   headline: z.string().min(1).max(200),
   body: z.string().max(200).optional(),
+  backgroundUrl: z.string().url().max(2048).optional(),
+  backgroundOpacity: z.number().int().min(0).max(100).optional(),
 });
 
 /**
@@ -89,10 +102,11 @@ export const carouselGenerateRequestSchema = z.object({
   niche: z.string().max(80).optional(),
   tone: z.string().max(80).optional(),
   ctaKeyword: z.string().min(1).max(40),
+  slideCount: allowedSlideCountSchema,
   outputLanguage: carouselOutputLanguageSchema.default("en"),
   styleId: z.string().min(1).max(64),
   /** M2+: when the user builds a style client-side, send the snapshot.
    * Server prefers this over getCarouselStyle(styleId). */
   styleSnapshot: carouselStyleSnapshotSchema.optional(),
-  slides: z.array(carouselScriptSlideSchema).length(5),
+  slides: z.array(carouselScriptSlideSchema).min(5).max(15),
 });

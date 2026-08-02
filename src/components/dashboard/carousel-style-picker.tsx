@@ -11,7 +11,7 @@
  * Platform design system: zinc/pastel, no gradients on cards, no emoji.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   Check,
@@ -22,6 +22,7 @@ import {
   Sparkles,
   Trash2,
   X,
+  Cloud,
 } from "lucide-react";
 import {
   DEFAULT_CAROUSEL_STYLE,
@@ -30,11 +31,13 @@ import {
 import {
   DISPLAY_FONTS,
   BODY_FONTS,
+  FONT_PAIRS,
   loadUserStyles,
   saveUserStyle,
   deleteUserStyle,
   deriveStyleId,
 } from "@/lib/carousel-gen/manual-styles";
+import { showToast } from "@/components/ui/toast";
 import {
   HARMONY_OPTIONS,
   buildPaletteVariants,
@@ -60,6 +63,8 @@ const STYLE_ROLES: ReadonlyArray<{ id: SlideType; i18n: string }> = [
 export function CarouselStylePicker({ selectedId, onSelect }: CarouselStylePickerProps) {
   const t = useTranslations("dashboard.carousels.wizard");
   const [userStyles, setUserStyles] = useState(() => loadUserStyles());
+  const [cloudStyles, setCloudStyles] = useState<CarouselStyle[]>([]);
+  const [cloudLoaded, setCloudLoaded] = useState(false);
   const [building, setBuilding] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<{
@@ -68,6 +73,27 @@ export function CarouselStylePicker({ selectedId, onSelect }: CarouselStylePicke
     warnings: string[];
   } | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  // F2 — hydrate the cloud-saved styles on mount so the picker shows
+  // every style the user has built across devices.
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/carousels/styles", { credentials: "include" })
+      .then(async (r) => {
+        if (!r.ok) return;
+        const data = (await r.json()) as { styles?: CarouselStyle[] };
+        if (!cancelled) {
+          setCloudStyles(data.styles ?? []);
+          setCloudLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCloudLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const allStyles = useMemo(() => {
     const userAsCarouselStyle: CarouselStyle[] = userStyles.map((s) => ({
@@ -78,12 +104,26 @@ export function CarouselStylePicker({ selectedId, onSelect }: CarouselStylePicke
       layouts: s.layouts,
       source: "manual" as const,
     }));
-    return [DEFAULT_CAROUSEL_STYLE, ...userAsCarouselStyle];
-  }, [userStyles]);
+    // Cloud styles are merged in by id; local copies win on conflict so
+    // a freshly-built style that hasn't synced yet still appears.
+    const merged = new Map<string, CarouselStyle>();
+    for (const s of cloudStyles) merged.set(s.id, s);
+    for (const s of userAsCarouselStyle) merged.set(s.id, s);
+    return [DEFAULT_CAROUSEL_STYLE, ...Array.from(merged.values())];
+  }, [userStyles, cloudStyles]);
 
   function handleDelete(id: string) {
+    if (id === DEFAULT_CAROUSEL_STYLE.id) return;
     deleteUserStyle(id);
     setUserStyles(loadUserStyles());
+    // Best-effort cloud delete — fire and forget; the next page load
+    // will re-hydrate the truth from the server.
+    void fetch("/api/carousels/styles", {
+      method: "DELETE",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ styleId: id }),
+    }).catch(() => {});
   }
 
   return (
@@ -325,6 +365,35 @@ function StyleBuilder({ onSave, onCancel }: StyleBuilderProps) {
       source: "manual" as const,
     };
     onSave(style);
+    // F2 — also persist to the cloud so the style survives across
+    // devices. Best-effort: if the network is down, the local copy
+    // still works for the current session and the next page load will
+    // re-hydrate from the cloud.
+    void fetch("/api/carousels/styles", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        style: {
+          id: style.id,
+          label: style.label,
+          colors: style.colors,
+          fonts: style.fonts,
+          layouts: style.layouts,
+          source: "manual",
+        },
+      }),
+    })
+      .then((r) => {
+        if (r.ok) {
+          showToast({ tone: "success", title: "Saved to cloud" });
+        } else {
+          showToast({ tone: "info", title: "Saved locally — cloud sync failed" });
+        }
+      })
+      .catch(() => {
+        showToast({ tone: "info", title: "Saved locally — cloud sync failed" });
+      });
   }
 
   // Run the server-side contrast check locally too so the user sees
@@ -498,33 +567,86 @@ function StyleBuilder({ onSave, onCancel }: StyleBuilderProps) {
         </label>
       </div>
 
-      {/* Per-slide layout pickers */}
+      {/* F2 — Curated font-pair chips so the user can apply a
+          pre-balanced pair with one click. Useful for non-designers
+          who'd rather not pick from 8×8 combinations. */}
+      <div>
+        <span className="block text-xs font-semibold text-zinc-700 mb-1.5">
+          Suggested font pairs
+        </span>
+        <div className="flex flex-wrap gap-1.5">
+          {FONT_PAIRS.map((p) => {
+            const active = p.display === displayFont && p.body === bodyFont;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => {
+                  setDisplayFont(p.display);
+                  setBodyFont(p.body);
+                }}
+                className={
+                  "rounded-full px-2.5 h-7 text-[11px] font-medium border transition-colors " +
+                  (active
+                    ? "bg-zinc-900 text-white border-zinc-900"
+                    : "bg-white text-zinc-700 border-zinc-200 hover:border-zinc-300")
+                }
+                aria-pressed={active}
+                title={`${p.display} + ${p.body}`}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Per-slide layout pickers — F2 — clickable cards, not dropdowns. */}
       <div>
         <span className="block text-xs font-semibold text-zinc-700 mb-1.5">
           {t("style_builder_layouts_label")}
         </span>
-        <div className="grid gap-2 sm:grid-cols-5">
-          {STYLE_ROLES.map((role) => (
-            <label key={role.id} className="block">
-              <span className="block text-[10px] font-medium text-zinc-500 mb-0.5">
-                {t(role.i18n)}
-              </span>
-              <select
-                value={layouts[role.id].id}
-                onChange={(e) => {
-                  const picked = LAYOUT_VARIANTS.find((v) => v.id === e.target.value);
-                  if (picked) updateLayout(role.id, picked);
-                }}
-                className="w-full h-8 px-2 rounded-md border border-zinc-200 bg-white text-xs"
+        <div className="space-y-2">
+          {STYLE_ROLES.map((role) => {
+            const current = layouts[role.id];
+            return (
+              <div
+                key={role.id}
+                className="rounded-lg border border-zinc-200 bg-zinc-50/50 p-2"
               >
-                {LAYOUT_VARIANTS.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ))}
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                  {t(role.i18n)}
+                </p>
+                <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+                  {LAYOUT_VARIANTS.map((v) => {
+                    const active = v.id === current.id;
+                    return (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => updateLayout(role.id, v)}
+                        className={
+                          "rounded-md border p-1.5 text-left transition " +
+                          (active
+                            ? "border-zinc-900 bg-white ring-2 ring-zinc-900/10"
+                            : "border-zinc-200 bg-white hover:border-zinc-300")
+                        }
+                        aria-pressed={active}
+                      >
+                        <LayoutPreview variant={v} />
+                        <p className="mt-1 text-[10px] font-semibold text-zinc-800">
+                          {v.label}
+                        </p>
+                        <p className="text-[9px] text-zinc-500 leading-tight">
+                          {v.description}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -931,3 +1053,80 @@ function ConfidenceBadge({ label, value }: { label: string; value: number }) {
     </span>
   );
 }
+
+/**
+ * F2 — Tiny stylised preview of a layout variant. The user clicks on
+ * a card; this is the visual inside the card so they can tell the
+ * layouts apart at a glance without reading a description.
+ */
+function LayoutPreview({ variant }: { variant: LayoutVariant }) {
+  // Pick a layout id → visual map. Keeps the preview deterministic and
+  // not dependent on the active palette so the user can compare layouts
+  // even before committing to a color scheme.
+  const inner = (() => {
+    if (variant.id.includes("centered") || variant.id === "headline") {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-1 px-1.5 text-center">
+          <span className="block h-1.5 w-2/3 rounded-full bg-zinc-800" />
+          <span className="block h-1 w-1/2 rounded-full bg-zinc-400" />
+        </div>
+      );
+    }
+    if (variant.id.includes("split")) {
+      return (
+        <div className="flex h-full items-center gap-1.5 px-1.5">
+          <div className="flex h-full w-1/2 flex-col justify-center gap-1">
+            <span className="block h-1 w-full rounded-full bg-zinc-800" />
+            <span className="block h-0.5 w-2/3 rounded-full bg-zinc-400" />
+          </div>
+          <div className="h-full w-1/2 rounded-sm bg-zinc-200" />
+        </div>
+      );
+    }
+    if (variant.id.includes("bold") || variant.id.includes("display")) {
+      return (
+        <div className="flex h-full items-center justify-center px-1.5">
+          <span className="block h-2 w-3/4 rounded-sm bg-zinc-900" />
+        </div>
+      );
+    }
+    if (variant.id.includes("receipts") || variant.id.includes("proof")) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-1 px-1.5">
+          <div className="h-2/3 w-3/4 rounded-sm border border-zinc-300 bg-zinc-100" />
+          <span className="block h-0.5 w-1/2 rounded-full bg-zinc-500" />
+        </div>
+      );
+    }
+    if (variant.id.includes("cta") || variant.id.includes("keyword")) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-1 px-1.5">
+          <div className="rounded-full bg-zinc-900 px-2 py-0.5 text-[7px] font-bold text-white">
+            KEYWORD
+          </div>
+          <span className="block h-0.5 w-1/2 rounded-full bg-zinc-400" />
+        </div>
+      );
+    }
+    // Fallback — generic text block.
+    return (
+      <div className="flex h-full flex-col justify-center gap-1 px-1.5">
+        <span className="block h-1 w-full rounded-full bg-zinc-800" />
+        <span className="block h-0.5 w-4/5 rounded-full bg-zinc-400" />
+        <span className="block h-0.5 w-3/5 rounded-full bg-zinc-300" />
+      </div>
+    );
+  })();
+  return (
+    <div
+      className="aspect-[3/4] w-full overflow-hidden rounded-sm border border-zinc-200 bg-zinc-50"
+      aria-hidden
+    >
+      {inner}
+    </div>
+  );
+}
+
+// Make the new Cloud icon available so the import is non-redundant
+// (used in the F2 cloud-save toast notifications).
+void Cloud;

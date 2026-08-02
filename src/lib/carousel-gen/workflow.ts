@@ -34,7 +34,6 @@ import type {
   CarouselStyle,
   SlideType,
 } from "./types";
-import { SLIDE_ORDER } from "./types";
 import { createLogger } from "@/lib/log";
 
 const logger = createLogger("carousel-gen:workflow");
@@ -165,7 +164,7 @@ export async function runCarouselWorkflow(args: RunCarouselArgs): Promise<RunCar
     }
   }
 
-  const finalStatus = failed === 0 ? "complete" : failed === SLIDE_ORDER.length ? "failed" : "complete";
+  const finalStatus = failed === 0 ? "complete" : failed === args.script.slides.length ? "failed" : "complete";
   await args.jobRef.update({
     status: finalStatus,
     costUsd: round4(totalCost),

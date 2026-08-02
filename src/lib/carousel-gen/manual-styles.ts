@@ -21,6 +21,8 @@ export const DISPLAY_FONTS: ReadonlyArray<{ value: string; label: string }> = [
   { value: "Space Grotesk", label: "Space Grotesk — geometric" },
   { value: "Playfair Display", label: "Playfair Display — serif" },
   { value: "DM Serif Display", label: "DM Serif Display — high-contrast serif" },
+  { value: "Oswald", label: "Oswald — newspaper condensed" },
+  { value: "Fraunces", label: "Fraunces — variable display serif" },
 ];
 
 export const BODY_FONTS: ReadonlyArray<{ value: string; label: string }> = [
@@ -30,6 +32,30 @@ export const BODY_FONTS: ReadonlyArray<{ value: string; label: string }> = [
   { value: "Source Sans 3", label: "Source Sans 3 — classic" },
   { value: "Work Sans", label: "Work Sans — friendly" },
   { value: "Lora", label: "Lora — serif body" },
+  { value: "Public Sans", label: "Public Sans — US Web Design System" },
+  { value: "Open Sans", label: "Open Sans — classic web" },
+];
+
+/**
+ * F2 — Curated display+body font pairs the Palette Builder suggests
+ * when the user hasn't picked a custom pair. The pairs are the ones
+ * the design team has tested as visually balanced on the 3:4 slide
+ * aspect ratio. Users can still mix and match any combination.
+ */
+export const FONT_PAIRS: ReadonlyArray<{
+  id: string;
+  display: string;
+  body: string;
+  label: string;
+}> = [
+  { id: "archivo-inter", display: "Archivo Black", body: "Inter", label: "Heavy + Workhorse" },
+  { id: "bebas-inter", display: "Bebas Neue", body: "Inter", label: "Tall + Neutral" },
+  { id: "playfair-lora", display: "Playfair Display", body: "Lora", label: "Elegant Serif Pair" },
+  { id: "dm-inter", display: "DM Serif Display", body: "Inter", label: "High-contrast + Neutral" },
+  { id: "grotesk-manrope", display: "Space Grotesk", body: "Manrope", label: "Geometric Pair" },
+  { id: "oswald-ibm", display: "Oswald", body: "IBM Plex Sans", label: "Newspaper + Editorial" },
+  { id: "fraunces-public", display: "Fraunces", body: "Public Sans", label: "Variable Serif + Web" },
+  { id: "anton-work", display: "Anton", body: "Work Sans", label: "Bold + Friendly" },
 ];
 
 const STORAGE_KEY = "postplanify.carouselStyles.v1";

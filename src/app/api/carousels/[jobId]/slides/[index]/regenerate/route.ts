@@ -40,9 +40,9 @@ export async function POST(
 
     const { jobId, index: indexStr } = await params;
     const index = Number.parseInt(indexStr, 10);
-    if (!jobId || !Number.isFinite(index) || index < 0 || index > 4) {
+    if (!jobId || !Number.isFinite(index) || index < 0 || index > 14) {
       return NextResponse.json(
-        { error: "Invalid jobId or slide index (must be 0-4)" },
+        { error: "Invalid jobId or slide index (must be 0-14)" },
         { status: 400 }
       );
     }
