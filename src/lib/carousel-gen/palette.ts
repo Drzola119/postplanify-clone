@@ -10,7 +10,7 @@
  * picker feels like "find the right variant of this color" rather
  * than "pick a new color from scratch four times."
  *
- * Accessibility: validatePaletteContrast() in prompt-builder.ts can
+ * Accessibility: validatePaletteContrast() in palette-contrast.ts can
  * warn if a generated palette fails the WCAG delta checks at submit
  * time. The math here is conservative (background = near-white tint
  * of base, primary = dark version of base) so most combos pass.

@@ -14,7 +14,6 @@
  * §3.4 (layout variants per slide role).
  */
 
-import "server-only";
 import type { CarouselStyle, LayoutVariant } from "./types";
 
 /**

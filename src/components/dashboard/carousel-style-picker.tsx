@@ -40,7 +40,7 @@ import {
   buildPaletteVariants,
   type PaletteHarmony,
 } from "@/lib/carousel-gen/palette";
-import { validatePaletteContrast } from "@/lib/carousel-gen/prompt-builder";
+import { validatePaletteContrast } from "@/lib/carousel-gen/palette-contrast";
 import type { CarouselStyle, LayoutVariant, SlideType } from "@/lib/carousel-gen/types";
 import type { BrandAnalysis } from "@/lib/carousel-gen/brand-analyzer";
 

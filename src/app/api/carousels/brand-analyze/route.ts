@@ -14,7 +14,7 @@ import { NextRequest } from "next/server";
 import { requireSession } from "@/lib/auth/session-context";
 import { analyzeBrand, analyzeBrandFromImage } from "@/lib/carousel-gen/brand-analyzer";
 import { DEFAULT_CAROUSEL_STYLE } from "@/lib/carousel-gen/styles";
-import { validatePaletteContrast } from "@/lib/carousel-gen/prompt-builder";
+import { validatePaletteContrast } from "@/lib/carousel-gen/palette-contrast";
 import type { CarouselStyle } from "@/lib/carousel-gen/types";
 import { carouselBrandAnalyzeRequestSchema } from "@/lib/validation/carousel-gen";
 import { jsonError, jsonOk, parseBody } from "@/lib/validation/helpers";

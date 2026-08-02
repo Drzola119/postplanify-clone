@@ -13,7 +13,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { adminDb, getCurrentUser } from "@/lib/firebase/admin";
 import { getCarouselStyle } from "@/lib/carousel-gen/styles";
 import { runCarouselWorkflow } from "@/lib/carousel-gen/workflow";
-import { validatePaletteContrast } from "@/lib/carousel-gen/prompt-builder";
+import { validatePaletteContrast } from "@/lib/carousel-gen/palette-contrast";
 import type { CarouselJobDoc, CarouselJobSlideRecord, CarouselStyle } from "@/lib/carousel-gen/types";
 import { carouselGenerateRequestSchema } from "@/lib/validation/carousel-gen";
 import { jsonError, jsonOk, parseBody } from "@/lib/validation/helpers";
