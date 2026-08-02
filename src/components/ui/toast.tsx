@@ -43,6 +43,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <ToastContext.Provider value={{ toast, dismiss }}>
+      <ToastBridge toast={toast} />
       {children}
       <div className="pointer-events-none fixed bottom-4 right-4 z-[100] flex w-[360px] max-w-[calc(100vw-32px)] flex-col gap-2">
         {toasts.map((t) => (
@@ -103,4 +104,36 @@ export function useToast() {
     return { toast: () => "", dismiss: () => {} };
   }
   return ctx;
+}
+
+/**
+ * Mounts the provider's `toast` function onto `window.__postplanifyToast`
+ * so the imperative `showToast` shim can call it from any module — no
+ * need to thread the hook through every component. Cleans up on unmount
+ * so HMR or strict-mode double-render doesn't leak two callbacks.
+ */
+function ToastBridge({ toast }: { toast: (t: Omit<Toast, "id">) => string }) {
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const w = window as unknown as { __postplanifyToast?: (t: Omit<Toast, "id">) => string };
+    w.__postplanifyToast = toast;
+    return () => {
+      if (w.__postplanifyToast === toast) w.__postplanifyToast = undefined;
+    };
+  }, [toast]);
+  return null;
+}
+
+/**
+ * Imperative toast shim — useful in event handlers, callbacks, and
+ * module-level code that isn't a React component. Looks up the
+ * mounted provider on the global window, falls back to console.warn
+ * if the provider hasn't mounted yet (during SSR or in tests).
+ */
+export function showToast(t: { title: string; description?: string; tone?: ToastTone; duration?: number }): string {
+  if (typeof window === "undefined") return "";
+  const w = window as unknown as { __postplanifyToast?: (t: Omit<Toast, "id">) => string };
+  if (typeof w.__postplanifyToast === "function") return w.__postplanifyToast(t);
+  if (typeof console !== "undefined") console.warn(`[toast] ${t.title}`);
+  return "";
 }
