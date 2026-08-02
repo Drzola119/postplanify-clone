@@ -62,6 +62,25 @@ service cloud.firestore {
         allow update, delete: if isEditor(workspaceId);
       }
 
+      match /carousels/{carouselId} {
+        allow read: if isMember(workspaceId);
+        allow create: if isEditor(workspaceId);
+        allow update, delete: if isEditor(workspaceId);
+
+        // Revision history — same permission shape as the parent doc.
+        match /versions/{versionId} {
+          allow read: if isMember(workspaceId);
+          allow create: if isEditor(workspaceId);
+          allow update, delete: if isEditor(workspaceId);
+        }
+      }
+
+      match /carouselJobs/{jobId} {
+        allow read: if isMember(workspaceId);
+        allow create: if isEditor(workspaceId);
+        allow update, delete: if isEditor(workspaceId);
+      }
+
       match /drafts/{draftId} {
         allow read, write: if isMember(workspaceId)
                             && resource.data.authorUid == uid();

@@ -32,6 +32,13 @@ const saveCarouselSchema = z.object({
   /** Optional per-slide style info so the analytics page can chart by style. */
   styleId: z.string().max(64).optional(),
   slideCount: z.number().int().min(1).max(20).optional(),
+  /** Feature A: post back-link (the post that scheduled this carousel, if any). */
+  postId: z.string().min(1).max(64).optional(),
+  /** Feature C: A/B variant metadata. A creator pre-seeds these so the
+   * duplicate's variantLabel stays deterministic ("A" is always the
+   * original the user duplicated from). */
+  variantGroupId: z.string().min(1).max(64).optional(),
+  variantLabel: z.enum(["A", "B"]).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -90,6 +97,9 @@ export async function POST(request: NextRequest) {
     };
     if (body.scheduledAt) payload.scheduledAt = new Date(body.scheduledAt);
     if (body.publishedAt) payload.publishedAt = new Date(body.publishedAt);
+    if (body.postId) payload.postId = body.postId;
+    if (body.variantGroupId) payload.variantGroupId = body.variantGroupId;
+    if (body.variantLabel) payload.variantLabel = body.variantLabel;
 
     if (existing.empty) {
       payload.createdAt = FieldValue.serverTimestamp();
