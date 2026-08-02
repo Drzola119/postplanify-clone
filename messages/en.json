@@ -967,6 +967,8 @@
         "previewing_label": "Drafting script…",
         "regenerate_script_button": "Regenerate script",
         "commit_button": "Generate slides",
+        "estimated_cost_label": "Estimated cost:",
+        "estimated_cost_hint": "5 slides × GPT-Image-2. Actual spend may vary with retries.",
         "committing_label": "Starting generation…",
         "use_in_post_button": "Use in a post",
         "regenerate_slide_button": "Regenerate slide",

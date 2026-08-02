@@ -20,7 +20,7 @@
  * Platform design system: zinc/pastel, no gradients on cards, no emoji.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   Loader2,
@@ -44,6 +44,7 @@ import {
 } from "@/lib/carousel-gen/types";
 import { DEFAULT_CAROUSEL_STYLE } from "@/lib/carousel-gen/styles";
 import { OUTPUT_LANGUAGE_LABELS, type OutputLanguage } from "@/lib/i18n/types";
+import { estimateCarouselCostUsd } from "@/lib/image-gen/cost";
 
 interface CarouselWizardProps {
   /** M1: passed through from the page that mounted the wizard. M2+:
@@ -146,6 +147,12 @@ export function CarouselWizard({ styleId: initialStyleId }: CarouselWizardProps)
 
   const canPreview =
     topic.trim().length >= 3 && ctaKeyword.trim().length >= 1;
+
+  // Cost estimate surfaced next to the Generate slides button. Pure
+  // client math — the real cost comes back from the workflow's totalCostUsd
+  // and lands in job.costUsd after generation. This estimate just gives
+  // the user a number to weigh before they commit.
+  const estimatedCostUsd = useMemo(() => estimateCarouselCostUsd(SLIDE_COUNT), []);
 
   async function handlePreview() {
     if (!canPreview) return;
@@ -434,6 +441,13 @@ export function CarouselWizard({ styleId: initialStyleId }: CarouselWizardProps)
                   )}
                   {committing ? t("committing_label") : t("commit_button")}
                 </button>
+              </div>
+              <div className="mt-2 rounded-lg bg-zinc-50 border border-zinc-200 p-3 text-xs text-zinc-700">
+                <span className="font-semibold">{t("estimated_cost_label")}</span>{" "}
+                <span className="font-mono">~${estimatedCostUsd.toFixed(2)}</span>
+                <span className="ms-2 text-zinc-500">
+                  {t("estimated_cost_hint")}
+                </span>
               </div>
             </Panel>
           ) : null}

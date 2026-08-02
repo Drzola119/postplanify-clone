@@ -969,6 +969,8 @@
         "previewing_label": "جاري كتابة النص…",
         "regenerate_script_button": "أعد توليد النص",
         "commit_button": "ولّد الشرائح",
+        "estimated_cost_label": "التكلفة المقدّرة:",
+        "estimated_cost_hint": "5 شرائح × GPT-Image-2. قد تختلف التكلفة الفعلية مع إعادة المحاولة.",
         "committing_label": "بدء…",
         "use_in_post_button": "استخدم في منشور",
         "regenerate_slide_button": "أعد توليد الشريحة",

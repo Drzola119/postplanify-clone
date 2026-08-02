@@ -1,4 +1,3 @@
-import "server-only";
 import type { OutputLanguage } from "../i18n/types";
 
 /**
