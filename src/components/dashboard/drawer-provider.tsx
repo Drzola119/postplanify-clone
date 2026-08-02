@@ -2,7 +2,17 @@
 
 import * as React from "react";
 
-type DrawerKey = "labels" | "hashtags" | "schedule" | null;
+/**
+ * Drawer key union. The provider does NOT render any panels itself —
+ * it just tracks which key is active, and individual drawer panels
+ * (e.g. LabelsDrawer, HashtagsDrawer, ScheduleDrawer, HistoryDrawer)
+ * mount themselves in their parent route and conditionally render
+ * based on `active === "their-key"`.
+ *
+ * Phase 2 added "history" so the Carousel Studio's revision timeline
+ * can share the same drawer plumbing the rest of the dashboard uses.
+ */
+type DrawerKey = "labels" | "hashtags" | "schedule" | "history" | null;
 
 interface DrawerContextValue {
   openDrawer: (key: Exclude<DrawerKey, null>) => void;

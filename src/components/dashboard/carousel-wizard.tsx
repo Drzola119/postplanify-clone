@@ -46,6 +46,8 @@ import { Panel, Field, Meta } from "@/components/dashboard/wizard-kit";
 import { CarouselStylePicker } from "@/components/dashboard/carousel-style-picker";
 import { ScheduleModal } from "@/components/dashboard/schedule-modal";
 import { UnsplashDialog } from "@/components/dashboard/unsplash-dialog";
+import { CarouselHistoryDrawer } from "@/components/dashboard/carousel-history-drawer";
+import { useDrawer } from "@/components/dashboard/drawer-provider";
 import { showToast } from "@/components/ui/toast";
 import {
   ALLOWED_SLIDE_COUNTS,
@@ -59,6 +61,11 @@ import {
 import { DEFAULT_CAROUSEL_STYLE } from "@/lib/carousel-gen/styles";
 import { OUTPUT_LANGUAGE_LABELS, type OutputLanguage } from "@/lib/i18n/types";
 import { estimateCarouselCostUsd } from "@/lib/image-gen/cost";
+import {
+  buildVersionEventFromScript,
+  isSameVersionEvent,
+  type PendingVersionEvent,
+} from "@/lib/carousel-gen/version-events";
 
 interface CarouselWizardProps {
   /** M1: passed through from the page that mounted the wizard. M2+:
@@ -132,6 +139,7 @@ export function CarouselWizard({
   prefill,
 }: CarouselWizardProps) {
   const t = useTranslations("dashboard.carousels.wizard");
+  const { openDrawer } = useDrawer();
 
   const [step, setStep] = useState<StepKey>("step1");
 
@@ -192,6 +200,16 @@ export function CarouselWizard({
   /** F8: export progress for the toast. */
   const [exporting, setExporting] = useState<null | "pdf" | "zip">(null);
 
+  // Phase 2 Feature B — revision history. The wizard keeps a queue of
+  // version events (initial-generate / ai-regenerate / translate /
+  // manual-edit) and flushes them to /api/carousels/versions/create
+  // once the carousel has a Firestore id (i.e. after the user
+  // schedules the deck and the save endpoint returns a carouselId).
+  const pendingVersionsRef = useRef<PendingVersionEvent[]>([]);
+  const lastVersionSnapshotRef = useRef<PendingVersionEvent | null>(null);
+  const manualEditTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const carouselIdRef = useRef<string | null>(null);
+
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -202,6 +220,76 @@ export function CarouselWizard({
   }, []);
 
   useEffect(() => () => stopPolling(), [stopPolling]);
+
+  /**
+   * Phase 2 Feature B — queue a version event for later persistence.
+   * The first call with a given content snapshot wins; subsequent
+   * events with the same content are skipped so we don't pollute the
+   * timeline with no-op rows.
+   */
+  const queueVersionEvent = useCallback(
+    (event: PendingVersionEvent) => {
+      if (isSameVersionEvent(lastVersionSnapshotRef.current, event)) return;
+      lastVersionSnapshotRef.current = event;
+      pendingVersionsRef.current.push(event);
+    },
+    []
+  );
+
+  /**
+   * Flush queued version events to the server. Called from the
+   * schedule flow once /api/carousels/save returns a carouselId.
+   * Each call is best-effort — failures are logged to the console
+   * but don't block the user from completing the schedule flow.
+   */
+  const flushPendingVersions = useCallback(
+    async (carouselId: string) => {
+      const events = pendingVersionsRef.current.slice();
+      if (events.length === 0) return;
+      for (const event of events) {
+        try {
+          const res = await fetch("/api/carousels/versions/create", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ carouselId, ...event }),
+          });
+          if (!res.ok) {
+            const data = (await res.json().catch(() => ({}))) as {
+              error?: { message?: string };
+            };
+            throw new Error(data.error?.message ?? "Version create failed");
+          }
+        } catch (err) {
+          // Swallow per-event failures so one bad event doesn't
+          // poison the rest of the timeline.
+          console.warn("carousels.version.create failed", err);
+        }
+      }
+      pendingVersionsRef.current = [];
+    },
+    []
+  );
+
+  /**
+   * Debounced "manual edit" event — called from the slide-row onBlur
+   * and from step navigation. Coalesces rapid typing into a single
+   * version row per "edit session".
+   */
+  const scheduleManualEditSnapshot = useCallback(() => {
+    if (manualEditTimerRef.current) {
+      clearTimeout(manualEditTimerRef.current);
+    }
+    manualEditTimerRef.current = setTimeout(() => {
+      manualEditTimerRef.current = null;
+      setScript((curr) => {
+        if (!curr) return curr;
+        const event = buildVersionEventFromScript(curr, "manual-edit");
+        queueVersionEvent(event);
+        return curr;
+      });
+    }, 500);
+  }, [queueVersionEvent]);
 
   const canPreview =
     topic.trim().length >= 3 && ctaKeyword.trim().length >= 1;
@@ -245,6 +333,14 @@ export function CarouselWizard({
       setOriginalScript(data.script);
       setSlideUndo({});
       setStep("step3");
+      // Phase 2 Feature B — record the initial script as the first
+      // version. Subsequent events (ai-regenerate, translate, manual
+      // edits) append on top.
+      queueVersionEvent(
+        buildVersionEventFromScript(data.script, "initial-generate", {
+          label: "Initial draft",
+        })
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Preview failed");
     } finally {
@@ -256,6 +352,15 @@ export function CarouselWizard({
     if (!script) return;
     setCommitting(true);
     setError(null);
+    // Phase 2 Feature B — capture any pending manual-edit snapshot
+    // before we leave step 3, so the version timeline includes every
+    // text tweak the user made up to the moment they hit Generate.
+    if (manualEditTimerRef.current) {
+      clearTimeout(manualEditTimerRef.current);
+      manualEditTimerRef.current = null;
+    }
+    const pending = buildVersionEventFromScript(script, "manual-edit");
+    queueVersionEvent(pending);
     try {
       // M2+: include the full style snapshot when the user picked a
       // custom palette. The server validates it and persists it on
@@ -383,12 +488,20 @@ export function CarouselWizard({
       }
       const data = (await res.json()) as { slide: CarouselSlideScript };
       setSlideUndo((prev) => ({ ...prev, [index]: script.slides[index] }));
-      setScript({
+      const nextScript: CarouselScript = {
         ...script,
         slides: script.slides.map((s) =>
           s.index === index ? { ...data.slide, index } : s
         ),
-      });
+      };
+      setScript(nextScript);
+      // Phase 2 Feature B — record the AI rewrite as a version with
+      // the targeted slide index.
+      queueVersionEvent(
+        buildVersionEventFromScript(nextScript, "ai-regenerate", {
+          editedBySlideIndex: index,
+        })
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Rewrite failed");
     } finally {
@@ -437,6 +550,12 @@ export function CarouselWizard({
       const data = (await res.json()) as { script: CarouselScript };
       if (!originalScript) setOriginalScript(script);
       setScript(data.script);
+      // Phase 2 Feature B — record the translated script as a version.
+      queueVersionEvent(
+        buildVersionEventFromScript(data.script, "translate", {
+          label: `Translated to ${targetLanguage.toUpperCase()}`,
+        })
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Translate failed");
     } finally {
@@ -622,6 +741,7 @@ export function CarouselWizard({
                     key={slide.index}
                     slide={slide}
                     onChange={(patch) => updateSlide(slide.index, patch)}
+                    onBlur={scheduleManualEditSnapshot}
                     roleLabel={t(ROLE_KEYS[slide.type])}
                     slideNOfMLabel={t("slide_n_of_m", {
                       n: slide.index + 1,
@@ -662,19 +782,34 @@ export function CarouselWizard({
                     translating={translating}
                   />
                 </div>
-                <button
-                  type="button"
-                  onClick={handleCommit}
-                  disabled={committing}
-                  className="inline-flex items-center gap-2 h-10 px-5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-semibold disabled:opacity-50"
-                >
-                  {committing ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Wand2 className="size-4" />
-                  )}
-                  {committing ? t("committing_label") : t("commit_button")}
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Phase 2 Feature B — history button. Only enabled
+                      once the carousel is saved (has a Firestore id);
+                      the wizard keeps the queue client-side until then
+                      so a fresh wizard run shows an empty timeline. */}
+                  {carouselIdRef.current ? (
+                    <button
+                      type="button"
+                      onClick={() => openDrawer("history")}
+                      className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm font-medium hover:bg-zinc-50"
+                    >
+                      History
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={handleCommit}
+                    disabled={committing}
+                    className="inline-flex items-center gap-2 h-10 px-5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-semibold disabled:opacity-50"
+                  >
+                    {committing ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Wand2 className="size-4" />
+                    )}
+                    {committing ? t("committing_label") : t("commit_button")}
+                  </button>
+                </div>
               </div>
               <div className="mt-2 rounded-lg bg-zinc-50 border border-zinc-200 p-3 text-xs text-zinc-700">
                 <span className="font-semibold">{t("estimated_cost_label")}</span>{" "}
@@ -883,7 +1018,7 @@ export function CarouselWizard({
               const completedSlides = job.slides
                 .filter((s) => s.status === "complete")
                 .map((s) => s.assetUrl);
-              await fetch("/api/carousels/save", {
+              const saveRes = await fetch("/api/carousels/save", {
                 method: "POST",
                 credentials: "include",
                 headers: { "Content-Type": "application/json" },
@@ -895,6 +1030,18 @@ export function CarouselWizard({
                   mediaUrls: completedSlides,
                 }),
               });
+              // Phase 2 Feature B — flush pending version events now
+              // that we have a carouselId. Best-effort: the user's
+              // schedule flow is not blocked if a version write fails.
+              if (saveRes.ok) {
+                const saveData = (await saveRes
+                  .json()
+                  .catch(() => ({}))) as { carouselId?: string };
+                if (saveData.carouselId) {
+                  carouselIdRef.current = saveData.carouselId;
+                  await flushPendingVersions(saveData.carouselId);
+                }
+              }
               // Navigate to the composer with the first slide pre-attached.
               // The composer also reads from the user's media library, so
               // the rest of the deck is one click away in the media tab.
@@ -931,6 +1078,13 @@ export function CarouselWizard({
           onClose={() => setFullPreviewOpen(false)}
         />
       ) : null}
+
+      {/* Phase 2 Feature B — revision history drawer. Mounts but
+          renders nothing until the user has saved the carousel. */}
+      <CarouselHistoryDrawer
+        carouselId={carouselIdRef.current}
+        carouselTitle={script?.topic}
+      />
     </div>
   );
 }
@@ -938,6 +1092,7 @@ export function CarouselWizard({
 function ScriptRow({
   slide,
   onChange,
+  onBlur,
   roleLabel,
   slideNOfMLabel,
   onRegenerateText,
@@ -949,6 +1104,11 @@ function ScriptRow({
 }: {
   slide: CarouselSlideScript;
   onChange: (patch: Partial<CarouselSlideScript>) => void;
+  /**
+   * Phase 2 Feature B — called when the user tabs out of a slide
+   * field. Triggers a debounced "manual-edit" version snapshot.
+   */
+  onBlur?: () => void;
   roleLabel: string;
   slideNOfMLabel: string;
   /** F3 — AI text regeneration for this single slide. */
@@ -1002,12 +1162,14 @@ function ScriptRow({
         type="text"
         value={slide.headline}
         onChange={(e) => onChange({ headline: e.target.value })}
+        onBlur={onBlur}
         className="mt-2 w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
       />
       <input
         type="text"
         value={slide.body ?? ""}
         onChange={(e) => onChange({ body: e.target.value || undefined })}
+        onBlur={onBlur}
         placeholder="(optional)"
         className="mt-2 w-full h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
       />
