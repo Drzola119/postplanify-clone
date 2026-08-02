@@ -303,6 +303,33 @@ export interface WorkspaceDoc {
   imageGenLastProvider?: string;
   /** Estimated USD cost of the most recent generation. */
   imageGenLastCostUsd?: number;
+
+  // --- Carousel Studio quota counters (M1+) ---
+  // Mirrors imageGen/videoGen below. Enforced by `src/lib/billing/quota.ts`.
+  /** Total successful carousel generations, never reset. */
+  carouselGenUsedLifetime?: number;
+  /** Successful generations in the current `carouselGenMonth` bucket. */
+  carouselGenUsedThisMonth?: number;
+  /** USD spent on carousel generations in the current month bucket. */
+  carouselGenCostThisMonthUsd?: number;
+  /** YYYY-MM bucket the carousel monthly counters are scoped to. */
+  carouselGenMonth?: string;
+  /** Server timestamp of the most recent successful carousel generation. */
+  carouselGenLastUsedAt?: Date;
+  /** Provider that served the most recent carousel generation. */
+  carouselGenLastProvider?: string;
+
+  // --- Video Studio quota counters (M1+) ---
+  // video-gen/usage.ts has been writing these fields for some time, but
+  // they were never declared on the schema — typed here so WorkspaceDoc
+  // is the single source of truth. Quota ENFORCEMENT on video is a
+  // fast-follow; today only the counters are kept accurate.
+  videoGenUsedLifetime?: number;
+  videoGenSecondsThisMonth?: number;
+  videoGenCostThisMonthUsd?: number;
+  videoGenMonth?: string;
+  videoGenLastUsedAt?: Date;
+  videoGenLastProvider?: string;
 }
 
 export interface LinkInBioDoc {

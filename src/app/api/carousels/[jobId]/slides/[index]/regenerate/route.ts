@@ -16,9 +16,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb, getCurrentUser } from "@/lib/firebase/admin";
 import type { CarouselJobDoc } from "@/lib/carousel-gen/types";
 import { regenerateOneSlide } from "@/lib/carousel-gen/workflow";
+import { checkQuota, recordUsage } from "@/lib/billing/quota";
 import { createLogger } from "@/lib/log";
 
 const logger = createLogger("api:carousels:regenerate");
+
+/**
+ * Pre-flight cost estimate for a single-slide regenerate. A regenerate
+ * is a real billed API call — must be counted against the workspace
+ * quota, not silently treated as "just one slide" / free.
+ */
+const ESTIMATED_REGENERATE_COST_USD = 0.25;
 
 export async function POST(
   req: NextRequest,
@@ -71,6 +79,24 @@ export async function POST(
       uid: user.uid,
     });
 
+    // Quota check — a regenerate costs the same as a fresh slide for the
+    // purposes of the cap; bounce before doing any work if the workspace
+    // has already blown its budget for the month.
+    const quota = await checkQuota(
+      workspaceId,
+      "carousel",
+      ESTIMATED_REGENERATE_COST_USD
+    );
+    if (!quota.allowed) {
+      logger.warn("Carousel regenerate rejected by quota", {
+        jobId,
+        index,
+        uid: user.uid,
+        reason: quota.reason,
+      });
+      return NextResponse.json({ error: quota.reason }, { status: 402 });
+    }
+
     try {
       const out = await regenerateOneSlide({
         jobRef,
@@ -81,6 +107,7 @@ export async function POST(
         slideIndex: index,
         headers: req.headers,
       });
+      void recordUsage(workspaceId, "carousel", out.costUsd);
       return NextResponse.json(
         { ok: true, slideIndex: index, ...out },
         { status: 200 }

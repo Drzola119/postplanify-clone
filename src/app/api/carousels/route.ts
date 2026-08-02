@@ -17,9 +17,20 @@ import { validatePaletteContrast } from "@/lib/carousel-gen/palette-contrast";
 import type { CarouselJobDoc, CarouselJobSlideRecord, CarouselStyle } from "@/lib/carousel-gen/types";
 import { carouselGenerateRequestSchema } from "@/lib/validation/carousel-gen";
 import { jsonError, jsonOk, parseBody } from "@/lib/validation/helpers";
+import { checkQuota, recordUsage } from "@/lib/billing/quota";
 import { createLogger } from "@/lib/log";
 
 const logger = createLogger("api:carousels");
+
+/**
+ * Worst-case pre-flight cost estimate for one carousel. Used by
+ * checkQuota so a request gets bounced before we spend the money if it
+ * would obviously blow past the cap. Slightly higher than the realistic
+ * ceiling (5 slides × $0.10) so a normal retry doesn't trip the gate.
+ * The real cost is recorded via recordUsage() after the workflow
+ * returns.
+ */
+const ESTIMATED_CAROUSEL_COST_USD = 0.75;
 
 export async function POST(request: NextRequest) {
   // Two auth paths exist in this codebase — try the lighter one first.
@@ -58,6 +69,21 @@ export async function POST(request: NextRequest) {
   }
 
   if (!adminDb) return jsonError(503, "Database not configured");
+
+  // Quota check — reject before doing any work that costs money.
+  const quota = await checkQuota(
+    session.workspaceId,
+    "carousel",
+    ESTIMATED_CAROUSEL_COST_USD
+  );
+  if (!quota.allowed) {
+    logger.warn("Carousel request rejected by quota", {
+      workspaceId: session.workspaceId,
+      uid: session.uid,
+      reason: quota.reason,
+    });
+    return jsonError(402, quota.reason);
+  }
 
   const jobRef = adminDb
     .collection("workspaces")
@@ -113,6 +139,8 @@ export async function POST(request: NextRequest) {
   // Run the workflow in the background. The wizard polls /api/carousels/[jobId]
   // for live progress. We don't await this — the response should return
   // immediately with the job id so the client can move into polling mode.
+  // On success we record the real cost against the workspace's quota; on
+  // crash we still patch the job doc but don't record any usage.
   void runCarouselWorkflow({
     jobRef,
     workspaceId: session.workspaceId,
@@ -120,17 +148,21 @@ export async function POST(request: NextRequest) {
     styleId: body.styleId,
     script: jobDoc.script,
     headers: request.headers,
-  }).catch((err) => {
-    logger.error("Carousel workflow crashed", {
-      jobId: jobRef.id,
-      error: err instanceof Error ? err.message : String(err),
+  })
+    .then((result) => {
+      void recordUsage(session.workspaceId, "carousel", result.totalCostUsd);
+    })
+    .catch((err) => {
+      logger.error("Carousel workflow crashed", {
+        jobId: jobRef.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      void jobRef.update({
+        status: "failed",
+        error: err instanceof Error ? err.message : String(err),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     });
-    void jobRef.update({
-      status: "failed",
-      error: err instanceof Error ? err.message : String(err),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-  });
 
   return jsonOk({ jobId: jobRef.id, status: "scripting" }, 202);
 }
