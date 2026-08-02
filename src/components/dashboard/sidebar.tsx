@@ -34,6 +34,7 @@ import {
   Send,
   Sparkles,
   Clapperboard,
+  Layers,
 } from "lucide-react";
 import { ACTIVE_WORKSPACE_STORAGE_KEY } from "@/lib/security/storage-keys";
 import { cn } from "@/lib/utils";
@@ -150,6 +151,7 @@ export function DashboardSidebar() {
     { label: t("nav.social_inbox"), href: "/dashboard/inbox", icon: Inbox },
     { label: t("nav.media_library"), href: "/dashboard/assets", icon: ImageIcon },
     { label: t("nav.infographics"), href: "/dashboard/infographics", icon: Sparkles },
+    { label: t("nav.carousels"), href: "/dashboard/carousels", icon: Layers },
     { label: "Videos", href: "/dashboard/videos", icon: Clapperboard },
   ];
 
