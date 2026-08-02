@@ -23,6 +23,7 @@
 import "server-only";
 import { FieldValue } from "firebase-admin/firestore";
 import { generateInfographic, ImageGenExhaustedError } from "@/lib/image-gen";
+import { PROVIDER_IDS, type ProviderId } from "@/lib/image-gen/types";
 import { buildStyleLockPrompt, buildRegeneratePrompt } from "./prompt-builder";
 import { getCarouselStyle } from "./styles";
 import { runVisionQaPass } from "./vision-qa";
@@ -31,6 +32,7 @@ import type {
   CarouselJobSlideRecord,
   CarouselScript,
   CarouselStyle,
+  SlideType,
 } from "./types";
 import { SLIDE_ORDER } from "./types";
 import { createLogger } from "@/lib/log";
@@ -120,6 +122,7 @@ export async function runCarouselWorkflow(args: RunCarouselArgs): Promise<RunCar
         workspaceId: args.workspaceId,
         uid: args.uid,
         slideIndex: slide.index,
+        slideType: slide.type,
         previousAssetUrl,
         headers: args.headers,
       });
@@ -259,6 +262,7 @@ export async function regenerateOneSlide(args: RegenerateSlideArgs): Promise<Reg
       workspaceId: args.workspaceId,
       uid: args.uid,
       slideIndex: args.slideIndex,
+      slideType: slide.type,
       previousAssetUrl: hookAssetUrl,
       headers: args.headers,
     });
@@ -307,8 +311,38 @@ interface GenerateOneSlideArgs {
   workspaceId: string;
   uid: string;
   slideIndex: number;
+  slideType: SlideType;
   previousAssetUrl: string;
   headers?: Headers;
+}
+
+/**
+ * Resolve which image-gen provider serves a given slide. The Hook slide
+ * can be overridden via `CAROUSEL_HOOK_PROVIDER` env var so we can
+ * compare GPT-Image-2 (the default, which silently ignores reference
+ * images today) against providers that actually read reference images
+ * (e.g. gemini-flash-image) on live output before deciding permanently.
+ *
+ * Every other slide role always uses GPT-Image-2 — there's no
+ * comparable A/B lever and changing them would break the reference
+ * chain the spec relies on.
+ *
+ * Internal testing lever, not a user-facing setting. Invalid values
+ * (typo'd env var, deprecated provider id) fall back to gpt-image-2
+ * with a warning so a misconfiguration doesn't brick generation.
+ */
+function resolveCarouselProvider(slideType: SlideType): ProviderId {
+  if (slideType !== "hook") return "gpt-image-2";
+  const raw = process.env.CAROUSEL_HOOK_PROVIDER?.trim();
+  if (!raw) return "gpt-image-2";
+  if ((PROVIDER_IDS as readonly string[]).includes(raw)) {
+    return raw as ProviderId;
+  }
+  logger.warn(
+    "CAROUSEL_HOOK_PROVIDER is set to an unknown provider — falling back to gpt-image-2",
+    { configured: raw, allowed: PROVIDER_IDS }
+  );
+  return "gpt-image-2";
 }
 
 /**
@@ -335,7 +369,7 @@ async function generateOneSlideWithRetries(
       const out = await generateInfographic({
         workspaceId: args.workspaceId,
         uid: args.uid,
-        provider: "gpt-image-2",
+        provider: resolveCarouselProvider(args.slideType),
         prompt: args.prompt,
         aspectRatio: "3:4",
         // Reference-chaining: GPT-Image-2 currently ignores this silently,
