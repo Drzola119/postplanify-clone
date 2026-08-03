@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
 import {
@@ -91,7 +91,16 @@ const MAX_FILES = 10;
 export default function CreatePostPage() {
   const t = useTranslations("createPost");
   const { toast, dismiss } = useToast();
-  const { getIdToken } = useAuth();
+  const { getIdToken, user } = useAuth();
+
+  // Per-user context for draft storage. Bucketing localStorage by the user's
+  // Firebase UID keeps two users on the same device from seeing each other's
+  // drafts; the bearer token mirrors the latest draft to the server.
+  const draftCtx = useMemo(() => ({ uid: user?.uid ?? null }), [user?.uid]);
+  const withIdToken = useCallback(async () => {
+    const idToken = await getIdToken();
+    return { uid: draftCtx.uid, idToken };
+  }, [draftCtx.uid, getIdToken]);
 
   // Detect ?draft=<id> from /dashboard/posts/drafts → Continue button.
   // Restore the full draft state (media metadata, per-platform captions, accounts,
@@ -102,7 +111,7 @@ export default function CreatePostPage() {
     const params = new URLSearchParams(window.location.search);
     const id = params.get("draft");
     if (!id) return;
-    const record = loadDraft(id);
+    const record = loadDraft(id, draftCtx.uid);
     if (record) {
       setDraftId(id);
       setCaptions(record.captions ?? {});
@@ -471,7 +480,7 @@ export default function CreatePostPage() {
     toast({ title: t("resetTitle"), description: t("resetDescription"), tone: "info" });
   }
 
-  function handleSaveDraft() {
+  async function handleSaveDraft() {
     const id = draftId ?? newDraftId();
     const record: DraftRecord = {
       id,
@@ -518,7 +527,7 @@ export default function CreatePostPage() {
       customCoverUrl,
       frameCoverUrl,
     };
-    saveDraft(record);
+    saveDraft(record, await withIdToken());
     setDraftId(id);
     toast({
       title: t("draftSaved"),
@@ -682,7 +691,7 @@ export default function CreatePostPage() {
         }
         if (draftId) {
           const removedId = draftId;
-          deleteDraft(removedId);
+          await deleteDraft(removedId, await withIdToken());
           setDraftId(null);
         }
         if (!scheduledAt) startOver();
@@ -786,7 +795,7 @@ export default function CreatePostPage() {
       // the Drafts page doesn't keep showing it after the user has moved on.
       if (draftId) {
         const removedId = draftId;
-        deleteDraft(removedId);
+        await deleteDraft(removedId, await withIdToken());
         setDraftId(null);
       }
       if (!scheduledAt) startOver();

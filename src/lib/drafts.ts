@@ -1,6 +1,6 @@
 // Local + server draft persistence layer.
 //
-// Primary path: localStorage (one key per workspace) so the Drafts page can
+// Primary path: localStorage (one key per user UID) so the Drafts page can
 // list them and the Create page can restore them on Continue. NOTE: mediaItems
 // are stored as a metadata-only summary; actual files are not persisted
 // (no File API in localStorage) — URLs are kept when they are remote (cdnUrl)
@@ -11,9 +11,18 @@
 // remains the source of truth for snappy UX; the server copy is a sync target.
 
 import type { PlatformId } from "./platforms";
+import { getPlatform } from "./platforms";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
 
-const DRAFTS_KEY = "postplanify.drafts.v1";
+const DRAFTS_KEY_PREFIX = "postplanify.drafts.v1";
+
+/** Build a per-user storage key so multiple users on the same device don't
+ *  share drafts. Falls back to a shared key when no UID is provided (e.g.
+ *  during SSR or before Firebase resolves). */
+function storageKey(uid?: string | null): string {
+  if (uid && uid.length > 0) return `${DRAFTS_KEY_PREFIX}.${uid}`;
+  return `${DRAFTS_KEY_PREFIX}.anon`;
+}
 
 export interface DraftMediaItem {
   kind: "image" | "video";
@@ -66,10 +75,10 @@ export interface DraftRecord {
   workspaceId?: string;
 }
 
-function readAll(): Record<string, DraftRecord> {
+function readAll(uid?: string | null): Record<string, DraftRecord> {
   if (typeof window === "undefined") return {};
   try {
-    const raw = window.localStorage.getItem(DRAFTS_KEY);
+    const raw = window.localStorage.getItem(storageKey(uid));
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     return typeof parsed === "object" && parsed ? (parsed as Record<string, DraftRecord>) : {};
@@ -78,91 +87,139 @@ function readAll(): Record<string, DraftRecord> {
   }
 }
 
-function writeAll(all: Record<string, DraftRecord>) {
+function writeAll(all: Record<string, DraftRecord>, uid?: string | null) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(DRAFTS_KEY, JSON.stringify(all));
+    window.localStorage.setItem(storageKey(uid), JSON.stringify(all));
   } catch {
     // quota exceeded — drop oldest, retry once
     const entries = Object.entries(all).sort((a, b) => a[1].updatedAt - b[1].updatedAt);
     if (entries.length > 1) {
       const { [entries[0][0]]: _drop, ...rest } = all;
       try {
-        window.localStorage.setItem(DRAFTS_KEY, JSON.stringify(rest));
+        window.localStorage.setItem(storageKey(uid), JSON.stringify(rest));
       } catch {}
     }
   }
 }
 
-async function syncToServer(record: DraftRecord): Promise<void> {
+/** Build auth-aware headers for /api/drafts. The bearer idToken is mandatory
+ *  for the server-side `requireSession()` guard; override headers let local
+ *  dev injected keys (upload-post, n8n, bunny) flow through. */
+function buildHeaders(idToken: string | null, extra: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = { ...extra, ...getOverrideHeaders() };
+  if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+  return headers;
+}
+
+/** Primary caption for the draft — the longest per-platform caption, or the
+ *  flat fallback. Empty string when nothing was typed; tagUsers is *not* a
+ *  caption and must not leak into the row preview. */
+function primaryCaption(record: DraftRecord): string {
+  let best = "";
+  for (const v of Object.values(record.captions ?? {})) {
+    if (typeof v === "string" && v.length > best.length) best = v;
+  }
+  return best || record.firstComment || "";
+}
+
+async function syncToServer(record: DraftRecord, idToken: string | null): Promise<void> {
   try {
-    const headers = new Headers({ "Content-Type": "application/json" });
-    const overrides = getOverrideHeaders();
-    Object.entries(overrides).forEach(([k, v]) => headers.set(k, v));
-    await fetch("/api/drafts", {
+    // The `selected` field on the server schema is a Record (per-platform
+    // caption map), but the legacy client code was sending `record.captions`
+    // under that key — which made the next GET render the wrong platforms.
+    // The platforms list belongs on the top-level `platforms` field, and the
+    // per-platform captions map belongs on `selected`. Send both correctly.
+    const caption = primaryCaption(record);
+    const payload = {
+      id: record.id,
+      caption,
+      platforms: record.selected,
+      mediaItems: record.mediaItems
+        .filter((m) => m.cdnUrl || m.remoteUrl)
+        .map((m) => ({
+          id: m.localId ?? m.cdnUrl ?? m.remoteUrl ?? "media",
+          url: m.cdnUrl ?? m.remoteUrl ?? "",
+          type: m.kind,
+          name: m.name,
+        })),
+      sameForAll: record.sameForAll,
+      selected: record.captions,
+      collaborators: record.collaborators.map((c) => ({ uid: c, handle: c, status: "invited" })),
+      customCoverUrl: record.customCoverUrl ?? undefined,
+      frameCoverUrl: record.frameCoverUrl ?? undefined,
+      tagUsers: record.tagUsers ? record.tagUsers.split(/[\s,]+/).filter(Boolean) : [],
+      community: record.community || undefined,
+      quoteTweetUrl: record.quoteTweet || undefined,
+      firstComment: record.firstComment || undefined,
+    };
+    const res = await fetch("/api/drafts", {
       method: "POST",
-      headers,
-      credentials: "same-origin",
-      body: JSON.stringify({
-        id: record.id,
-        caption: Object.values(record.captions)[0] ?? "",
-        platforms: record.selected,
-        mediaItems: record.mediaItems
-          .filter((m) => m.cdnUrl || m.remoteUrl)
-          .map((m) => ({
-            id: m.localId ?? m.cdnUrl ?? m.remoteUrl ?? "media",
-            url: m.cdnUrl ?? m.remoteUrl ?? "",
-            type: m.kind,
-            name: m.name,
-          })),
-        sameForAll: record.sameForAll,
-        selected: record.captions,
-        collaborators: record.collaborators.map((c) => ({ uid: c, handle: c, status: "invited" })),
-        customCoverUrl: record.customCoverUrl ?? undefined,
-        frameCoverUrl: record.frameCoverUrl ?? undefined,
-        tagUsers: record.tagUsers ? record.tagUsers.split(/[\s,]+/).filter(Boolean) : [],
-        community: record.community || undefined,
-        quoteTweetUrl: record.quoteTweet || undefined,
-      }),
+      headers: buildHeaders(idToken, { "Content-Type": "application/json" }),
+      credentials: "include",
+      body: JSON.stringify(payload),
     });
+    if (!res.ok) {
+      // Surface a soft warning so the UI can show a toast — local copy is
+      // still authoritative for offline UX, but the user should know the
+      // server mirror diverged.
+      if (typeof window !== "undefined") {
+        const w = window as unknown as { __postplanifyDraftSyncError?: (id: string) => void };
+        if (typeof w.__postplanifyDraftSyncError === "function") {
+          w.__postplanifyDraftSyncError(record.id);
+        }
+      }
+    }
   } catch {
-    // Best-effort sync; local copy is authoritative for offline UX.
+    // Network failure — best-effort sync, same as before; local copy wins.
   }
 }
 
-export function saveDraft(record: DraftRecord): void {
-  const all = readAll();
+export function saveDraft(record: DraftRecord, opts: { uid?: string | null; idToken?: string | null } = {}): void {
+  const uid = opts.uid ?? null;
+  const all = readAll(uid);
   all[record.id] = { ...record, updatedAt: Date.now() };
-  writeAll(all);
-  void syncToServer(all[record.id]);
+  writeAll(all, uid);
+  void syncToServer(all[record.id], opts.idToken ?? null);
 }
 
-export function loadDraft(id: string): DraftRecord | null {
-  const all = readAll();
-  return all[id] ?? null;
+export function loadDraft(id: string, uid?: string | null): DraftRecord | null {
+  return readAll(uid)[id] ?? null;
 }
 
-export function listDrafts(): DraftRecord[] {
-  const all = readAll();
-  return Object.values(all).sort((a, b) => b.updatedAt - a.updatedAt);
+export function listDrafts(uid?: string | null): DraftRecord[] {
+  return Object.values(readAll(uid)).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-export function deleteDraft(id: string): void {
-  const all = readAll();
+export async function deleteDraft(
+  id: string,
+  opts: { uid?: string | null; idToken?: string | null } = {},
+): Promise<{ ok: boolean }> {
+  const uid = opts.uid ?? null;
+  const all = readAll(uid);
   delete all[id];
-  writeAll(all);
-  if (typeof window !== "undefined") {
-    const headers = new Headers();
-    const overrides = getOverrideHeaders();
-    Object.entries(overrides).forEach(([k, v]) => headers.set(k, v));
-    void fetch(`/api/drafts/${encodeURIComponent(id)}`, {
+  writeAll(all, uid);
+  if (typeof window === "undefined") return { ok: true };
+  try {
+    const res = await fetch(`/api/drafts/${encodeURIComponent(id)}`, {
       method: "DELETE",
-      headers,
-      credentials: "same-origin",
-    }).catch(() => undefined);
+      headers: buildHeaders(opts.idToken ?? null),
+      credentials: "include",
+    });
+    return { ok: res.ok };
+  } catch {
+    return { ok: false };
   }
 }
 
 export function newDraftId(): string {
   return `draft-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** Resolve a display handle for one of the seed platforms in
+ *  `src/lib/platforms.ts`. Used to populate the legacy `handle` field on
+ *  accounts in the drafts table when the workspace doesn't have a connected
+ *  account yet. */
+export function defaultHandleFor(platformId: string): string {
+  return getPlatform(platformId)?.handle ?? "";
 }

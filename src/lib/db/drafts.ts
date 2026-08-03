@@ -16,6 +16,10 @@ export interface DraftListItem {
   caption: string;
   platforms: PlatformId[];
   mediaCount: number;
+  /** First media URL (if any) — used by the table to render a thumbnail. */
+  firstMediaUrl?: string;
+  /** First media kind: "image" | "video". Empty when there are no media. */
+  firstMediaType?: "image" | "video";
   updatedAt: string;
   createdAt: string;
 }
@@ -65,14 +69,17 @@ export async function deleteDraft(workspaceId: string, draftId: string): Promise
 }
 
 function serialize(workspaceId: string, id: string, data: DraftDoc): DraftListItem {
+  const items = data.mediaItems ?? [];
+  const first = items[0];
   return {
     id,
     workspaceId,
     caption: data.caption ?? "",
     platforms: data.platforms ?? [],
-    mediaCount: (data.mediaItems ?? []).length,
+    mediaCount: items.length,
+    firstMediaUrl: first?.url || undefined,
+    firstMediaType: first?.type,
     updatedAt: toIso(data.updatedAt),
     createdAt: toIso(data.createdAt),
   };
 }
-
