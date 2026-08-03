@@ -31,7 +31,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { PLATFORMS, type PlatformId } from "@/lib/platforms";
 import { needsOutpainting } from "@/lib/images/platform-ratios";
-import { loadDraft, saveDraft, newDraftId, type DraftRecord } from "@/lib/drafts";
+import { loadDraft, saveDraft, deleteDraft, newDraftId, type DraftRecord } from "@/lib/drafts";
 import {
   type PlatformAdvancedOptions,
   type FieldSpec,
@@ -61,7 +61,7 @@ import { ComposerModeSelector, type ComposerMode } from "@/components/dashboard/
 import { CarouselMediaCard, type CarouselItem } from "@/components/dashboard/carousel-media-card";
 import { TrialReelCard, type TrialReelMode, type TrialReelFile } from "@/components/dashboard/trial-reel-card";
 import { DocumentUploadCard, type DocumentFile } from "@/components/dashboard/document-upload-card";
-import { MetadataRulesPanel, type MetadataRules } from "@/components/dashboard/metadata-rules-panel";
+import { MetadataRulesPanel, type MetadataRules, type MetadataMergeMode } from "@/components/dashboard/metadata-rules-panel";
 
 type MediaTab = "media" | "paste";
 type MediaItem = {
@@ -114,6 +114,24 @@ export default function CreatePostPage() {
       setCollaborators(record.collaborators ?? []);
       setCustomCoverUrl(record.customCoverUrl ?? null);
       setFrameCoverUrl(record.frameCoverUrl ?? null);
+      setFirstComments(record.firstComments ?? {});
+      setAltTexts(record.altTexts ?? {});
+      if (record.advancedByPlatform) setAdvancedByPlatform(record.advancedByPlatform);
+      if (record.metadataRules) {
+        const r = record.metadataRules;
+        const validMode: MetadataMergeMode = r.mode === "prioritize" || r.mode === "replace_hashtags" ? r.mode : "append";
+        setMetadataRules({
+          enabled: r.enabled,
+          hashtags: r.hashtags ?? [],
+          ctaLine: r.ctaLine ?? "",
+          mode: validMode,
+          startDate: r.startDate ?? "",
+          endDate: r.endDate ?? "",
+        });
+      }
+      if (record.composerMode) setComposerMode(record.composerMode);
+      if (record.documentTitle) setDocumentTitle(record.documentTitle);
+      if (record.trialMode) setTrialMode(record.trialMode as TrialReelMode);
       // Restore media items that have remote URLs (cdn/remote). Local object URLs
       // cannot survive a page reload, so items without one are dropped with a hint.
       const restoredMedia: MediaItem[] = [];
@@ -192,12 +210,18 @@ export default function CreatePostPage() {
   const [captions, setCaptions] = useState<Record<string, string>>({});
   const [sameForAll, setSameForAll] = useState(false);
 
+  // Per-account first comments
+  const [firstComments, setFirstComments] = useState<Record<string, string>>({});
+
   // Community + quote tweet (X-specific)
   const [community, setCommunity] = useState("profile");
   const [quoteTweet, setQuoteTweet] = useState("");
 
   // Tag Users (shown when media uploaded)
   const [tagUsers, setTagUsers] = useState("");
+
+  /** Per-media-item alt text (keyed by media id). */
+  const [altTexts, setAltTexts] = useState<Record<string, string>>({});
 
   // Per-platform advanced publishing options (Feature 1).
   // Keyed by PlatformId; defaults are seeded lazily so the user only
@@ -267,12 +291,65 @@ export default function CreatePostPage() {
   const [outpaintPhase, setOutpaintPhase] = useState<
     "idle" | "generating" | "delivering"
   >("idle");
-  const [firstComments, setFirstComments] = useState<Record<string, string>>({});
 
   const selectedPlatforms = useMemo(
     () => PLATFORMS.filter((p) => selected.has(p.id)),
     [selected]
   );
+
+  // Mode-switch reset: when the user picks a new composer mode we drop the
+  // previous mode's media + clear stale captions/options keyed by no-longer-
+  // selected platforms. Without this, switching Trial Reel → Standard leaves
+  // a Reel file in state and a publish gate that can't see it (#13/#14/#16).
+  const prevModeRef = useRef<ComposerMode>(composerMode);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const prev = prevModeRef.current;
+    if (prev === composerMode) return;
+    prevModeRef.current = composerMode;
+    // Drop the previous mode's file (we can't restore it after mode switch).
+    if (prev === "carousel") {
+      for (const c of carouselItems) URL.revokeObjectURL(c.previewUrl);
+      setCarouselItems([]);
+    } else if (prev === "trial_reel") {
+      if (trialReelFile) URL.revokeObjectURL(trialReelFile.previewUrl);
+      setTrialReelFile(null);
+    } else if (prev === "document") {
+      setDocumentFile(null);
+      setDocumentTitle("");
+    } else {
+      // prev === "standard": drop the standard media items
+      for (const m of mediaItems) URL.revokeObjectURL(m.url);
+      setMediaItems([]);
+      setActiveMedia(0);
+    }
+    // Drop mode-specific alt texts (keyed by media id).
+    setAltTexts({});
+    // Prune captions/options/firstComments for no-longer-selected platforms.
+    setSelected((currentSelected) => {
+      const allowed = composerMode === "trial_reel"
+        ? new Set<PlatformId>(["instagram"])
+        : composerMode === "document"
+        ? new Set<PlatformId>(["linkedin"])
+        : new Set<PlatformId>(PLATFORMS.map((p) => p.id));
+      // Keep current selection if it still fits; otherwise fall back to the mode's default.
+      const fitsMode = Array.from(currentSelected).every((id) => allowed.has(id));
+      const next = fitsMode ? currentSelected : (
+        composerMode === "trial_reel" ? new Set<PlatformId>(["instagram"])
+        : composerMode === "document" ? new Set<PlatformId>(["linkedin"])
+        : new Set<PlatformId>(PLATFORMS.map((p) => p.id))
+      );
+      const allowedIds = new Set(Array.from(next));
+      setCaptions((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k === "__all" || allowedIds.has(k as PlatformId))));
+      setFirstComments((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k === "__all" || allowedIds.has(k as PlatformId))));
+      setAdvancedByPlatform((prev) => {
+        const out: typeof prev = {};
+        for (const [k, v] of Object.entries(prev)) if (allowedIds.has(k as PlatformId)) out[k as PlatformId] = v;
+        return out;
+      });
+      return next;
+    });
+  }, [composerMode]);
 
   const onlyImage = mediaItems.length > 0 && mediaItems.every((m) => m.kind === "image");
   const hasVideo = mediaItems.some((m) => m.kind === "video");
@@ -364,6 +441,8 @@ export default function CreatePostPage() {
   function startOver() {
     // Revoke any leftover object URLs to avoid memory leaks.
     for (const m of mediaItems) if (m.url) URL.revokeObjectURL(m.url);
+    for (const c of carouselItems) if (c.previewUrl) URL.revokeObjectURL(c.previewUrl);
+    if (trialReelFile?.previewUrl) URL.revokeObjectURL(trialReelFile.previewUrl);
     setSelected(new Set());
     setCaptions({});
     setSameForAll(false);
@@ -377,6 +456,11 @@ export default function CreatePostPage() {
     setQuoteTweet("");
     setCommunity("profile");
     setDraftId(null);
+    setFirstComments({});
+    setAltTexts({});
+    setAdvancedByPlatform({});
+    setMetadataRules({ enabled: false, hashtags: [], ctaLine: "", mode: "append", startDate: "", endDate: "" });
+    setRulesOpen(false);
     // Reset mode-specific state
     setComposerMode("standard");
     setCarouselItems([]);
@@ -384,7 +468,6 @@ export default function CreatePostPage() {
     setTrialMode("TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED");
     setDocumentFile(null);
     setDocumentTitle("");
-    setFirstComments({});
     toast({ title: t("resetTitle"), description: t("resetDescription"), tone: "info" });
   }
 
@@ -401,13 +484,32 @@ export default function CreatePostPage() {
       tagUsers,
       selected: Array.from(selected),
       collaborators,
-      firstComment: sameForAll ? (firstComments.__all ?? "") : (firstComments[Array.from(selected)[0] ?? PLATFORMS[0].id] ?? ""),
+      firstComments,
+      altTexts,
+      advancedByPlatform,
+      metadataRules,
+      composerMode,
+      trialMode,
+      documentTitle,
+      carouselItems: carouselItems.map((c) => ({
+        cdnUrl: c.cdnUrl ?? "",
+        name: c.file?.name ?? "carousel",
+        kind: c.kind,
+      })),
+      trialReelFile: trialReelFile
+        ? { cdnUrl: trialReelFile.cdnUrl ?? "", name: trialReelFile.file?.name ?? "trial-reel" }
+        : undefined,
+      documentFile: documentFile
+        ? {
+            cdnUrl: documentFile.cdnUrl ?? "",
+            name: documentFile.file?.name ?? "document",
+            mimeType: documentFile.file.type,
+          }
+        : undefined,
       mediaItems: mediaItems.map((m) => ({
         kind: m.kind,
         cdnUrl: m.cdnUrl,
-        // cdnUrl present means uploaded and persistable; otherwise it's a local object URL.
-        // We do NOT persist blob/object URLs.
-        remoteUrl: m.cdnUrl ? undefined : undefined,
+        remoteUrl: undefined,
         localId: m.id,
         name: m.name,
         mime: m.kind === "video" ? "video/*" : "image/*",
@@ -434,13 +536,52 @@ export default function CreatePostPage() {
     return cap.trim();
   }
 
+  /**
+   * Apply campaign metadata rules (hashtags + CTA) to a caption string.
+   * Honours the active window so out-of-window posts publish unmodified.
+   * Returns the unmodified caption when rules are disabled or out of window.
+   */
+  function applyMetadataRules(caption: string): string {
+    if (!metadataRules.enabled) return caption;
+    const now = Date.now();
+    if (metadataRules.startDate) {
+      const start = Date.parse(metadataRules.startDate);
+      if (Number.isFinite(start) && now < start) return caption;
+    }
+    if (metadataRules.endDate) {
+      const end = Date.parse(metadataRules.endDate) + 24 * 60 * 60 * 1000 - 1;
+      if (Number.isFinite(end) && now > end) return caption;
+    }
+    const tags = metadataRules.hashtags.map((t) =>
+      t.startsWith("#") ? t : `#${t}`
+    );
+    const tagStr = tags.join(" ").trim();
+    const cta = metadataRules.ctaLine.trim();
+    const parts: string[] = [];
+    if (metadataRules.mode === "prioritize") {
+      if (tagStr) parts.push(tagStr);
+      if (cta) parts.push(cta);
+      parts.push(caption);
+    } else if (metadataRules.mode === "replace_hashtags") {
+      parts.push(caption);
+      if (cta) parts.push(cta);
+      if (tagStr) parts.push(tagStr);
+    } else {
+      // append
+      parts.push(caption);
+      if (cta) parts.push(cta);
+      if (tagStr) parts.push(tagStr);
+    }
+    return parts.filter(Boolean).join("\n\n");
+  }
+
   async function publishPost(scheduledAt: Date | null) {
     const platforms = Array.from(selected);
     if (platforms.length === 0) {
       toast({ title: t("pickAccount"), tone: "warning" });
       return;
     }
-    const caption = captionForCurrent();
+    const caption = applyMetadataRules(captionForCurrent());
     if (!caption) {
       toast({ title: t("captionEmpty"), tone: "warning" });
       return;
@@ -479,9 +620,30 @@ export default function CreatePostPage() {
       readyMediaUrls = [documentFile.cdnUrl];
     }
 
-    const firstCommentText = sameForAll
-      ? (firstComments.__all ?? "")
-      : (firstComments[platforms[0] ?? PLATFORMS[0].id] ?? "");
+    // Per-platform first comments: keep all entries whose key is currently
+    // selected, plus "__all" for same-for-all.
+    const firstCommentByPlatform: Record<string, string> = {};
+    for (const [k, v] of Object.entries(firstComments)) {
+      if (!v || !v.trim()) continue;
+      if (k === "__all") { firstCommentByPlatform.__all = v; continue; }
+      if (selected.has(k as PlatformId)) firstCommentByPlatform[k] = v;
+    }
+
+    // Per-platform alt text: keyed by active media id; the publish worker
+    // applies it to the upload-post.com `alt` field per destination.
+    const altTextByPlatform: Record<string, string> = {};
+    for (const [mediaId, txt] of Object.entries(altTexts)) {
+      if (!txt || !txt.trim()) continue;
+      // The worker expects per-platform mapping; mirror the same id for now
+      // (alt is per-image, not per-platform — single key covers it).
+      const cleanMediaId = mediaId.startsWith("restored-") ? "primary" : mediaId;
+      if (!altTextByPlatform[cleanMediaId]) altTextByPlatform[cleanMediaId] = txt.trim();
+    }
+
+    const tagUsersList = tagUsers
+      .split(/[\s,]+/)
+      .map((u) => u.replace(/^@/, "").trim())
+      .filter(Boolean);
 
     // ── Outpainting branch (image only, standard mode, multi-ratio) ─────
     // When the user uploads a single image to multiple platforms that
@@ -503,19 +665,33 @@ export default function CreatePostPage() {
           sourceMediaUrl: readyMediaUrls[0]!,
           platforms,
           caption,
-          firstComment: firstCommentText.trim() || undefined,
+          firstCommentByPlatform,
+          quoteTweetUrl: quoteTweet.trim() || undefined,
+          community,
+          tagUsers: tagUsersList,
+          feedType,
+          altTextByPlatform,
           scheduledAt,
-          mediaType: composerMode,
+          // Outpaint always operates on a single source image, regardless of
+          // composer mode. The engine uses this to decide per-ratio strategy.
+          mediaType: "image",
         });
         if (!outpaintResult.ok) {
           // Error toast already shown inside the helper.
           return;
+        }
+        if (draftId) {
+          const removedId = draftId;
+          deleteDraft(removedId);
+          setDraftId(null);
         }
         if (!scheduledAt) startOver();
         return;
       }
 
       // ── Standard single-shot publish (video / carousel / single-ratio) ─
+      // Translate feedType into per-platform advanced options so IG/FB
+      // pick up STORIES vs FEED; leave it implicit for other platforms.
       const platformOptions = sameForAll
         ? Object.fromEntries(
             platforms.map((p) => {
@@ -526,6 +702,10 @@ export default function CreatePostPage() {
               if (composerMode === "trial_reel" && p === "instagram") {
                 opts.instagram_media_type = "REELS";
                 opts.instagram_share_mode = trialMode;
+              }
+              if (feedType === "story") {
+                if (p === "instagram") opts.instagram_media_type = "STORIES";
+                if (p === "facebook") opts.facebook_media_type = "STORIES";
               }
               return [p, opts];
             })
@@ -539,6 +719,10 @@ export default function CreatePostPage() {
               if (composerMode === "trial_reel" && p === "instagram") {
                 opts.instagram_media_type = "REELS";
                 opts.instagram_share_mode = trialMode;
+              }
+              if (feedType === "story") {
+                if (p === "instagram") opts.instagram_media_type = "STORIES";
+                if (p === "facebook") opts.facebook_media_type = "STORIES";
               }
               return [p, opts];
             })
@@ -556,8 +740,26 @@ export default function CreatePostPage() {
           mediaUrls: readyMediaUrls,
           scheduledAt: scheduledAt ? scheduledAt.toISOString() : null,
           advancedByPlatform: platformOptions,
-          firstComment: firstCommentText.trim() || undefined,
+          firstComment: sameForAll ? (firstCommentByPlatform.__all ?? undefined) : undefined,
+          firstCommentByPlatform,
+          quoteTweetUrl: quoteTweet.trim() || undefined,
+          community: community === "profile" ? undefined : community,
+          tagUsers: tagUsersList.length > 0 ? tagUsersList : undefined,
+          feedType,
+          altTextByPlatform,
           mediaType: composerMode,
+          frameCoverUrl: frameCoverUrl ?? undefined,
+          customCoverUrl: customCoverUrl ?? undefined,
+          collaborators: collaborators.length > 0 ? collaborators : undefined,
+          ...(composerMode === "carousel"
+            ? { carouselItems: readyMediaUrls.map((url) => ({ url })) }
+            : {}),
+          ...(composerMode === "trial_reel" && trialReelFile
+            ? { trialReel: { url: trialReelFile.cdnUrl ?? readyMediaUrls[0]! } }
+            : {}),
+          ...(composerMode === "document" && documentFile
+            ? { document: { url: documentFile.cdnUrl ?? readyMediaUrls[0]!, title: documentTitle, mimeType: documentFile.file.type } }
+            : {}),
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -580,6 +782,13 @@ export default function CreatePostPage() {
           : t("jobSent", { id: data.jobId?.slice(0, 8) ?? "?" }),
         tone: "success",
       });
+      // Drafts are local-only scratch — drop the one we just published so
+      // the Drafts page doesn't keep showing it after the user has moved on.
+      if (draftId) {
+        const removedId = draftId;
+        deleteDraft(removedId);
+        setDraftId(null);
+      }
       if (!scheduledAt) startOver();
     } catch (err) {
       toast({
@@ -590,6 +799,96 @@ export default function CreatePostPage() {
       } finally {
       setSubmitting(false);
       setOutpaintPhase("idle");
+    }
+  }
+
+  /**
+   * Take a cropped data URL produced by the CropModal, upload it to the
+   * CDN, and splice the new URL into the active media item so subsequent
+   * publish + alt-text edits target the cropped image.
+   */
+  async function applyCroppedImage(dataUrl: string, mediaId: string) {
+    const file = dataUrlToFile(dataUrl, `cropped_${Date.now()}.jpg`);
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("folder", "posts");
+    const uploadId = toast({
+      title: t("cropApplied"),
+      description: "Uploading cropped image…",
+      tone: "info",
+    });
+    try {
+      const res = await fetch("/api/media/upload", {
+        method: "POST",
+        body: fd,
+        headers: getOverrideHeaders(),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        url?: string;
+        error?: string;
+      };
+      if (!res.ok || !data.ok || !data.url) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      setMediaItems((prev) =>
+        prev.map((m) => (m.id === mediaId ? { ...m, cdnUrl: data.url, url: data.url!, remoteUrl: undefined } : m))
+      );
+      dismiss(uploadId);
+      toast({ title: t("cropApplied"), tone: "success" });
+    } catch (err) {
+      dismiss(uploadId);
+      toast({
+        title: t("cropApplied"),
+        description: err instanceof Error ? err.message : "Upload failed",
+        tone: "error",
+      });
+    }
+  }
+
+  /**
+   * Take a video-frame data URL captured by the CoverImageModal, upload it
+   * to the CDN, and store the CDN URL as frameCoverUrl so the publish
+   * pipeline can attach it as a custom cover to the underlying video.
+   * (Plain data URLs aren't reachable by upload-post.com, so we persist
+   * the CDN URL only.)
+   */
+  async function applyFrameCover(dataUrl: string) {
+    const file = dataUrlToFile(dataUrl, `frame_${Date.now()}.jpg`);
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("folder", "posts");
+    const uploadId = toast({
+      title: t("cover.frameUpdated"),
+      description: "Uploading cover frame…",
+      tone: "info",
+    });
+    try {
+      const res = await fetch("/api/media/upload", {
+        method: "POST",
+        body: fd,
+        headers: getOverrideHeaders(),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        url?: string;
+        error?: string;
+      };
+      if (!res.ok || !data.ok || !data.url) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      setFrameCoverUrl(data.url);
+      setCoverModalOpen(false);
+      dismiss(uploadId);
+      toast({ title: t("cover.frameUpdated"), tone: "success" });
+    } catch (err) {
+      setCoverModalOpen(false);
+      dismiss(uploadId);
+      toast({
+        title: t("cover.frameUpdated"),
+        description: err instanceof Error ? err.message : "Upload failed",
+        tone: "error",
+      });
     }
   }
 
@@ -607,7 +906,12 @@ export default function CreatePostPage() {
     sourceMediaUrl: string;
     platforms: string[];
     caption: string;
-    firstComment?: string;
+    firstCommentByPlatform?: Record<string, string>;
+    quoteTweetUrl?: string;
+    community?: string;
+    tagUsers?: string[];
+    feedType?: "feed" | "story";
+    altTextByPlatform?: Record<string, string>;
     scheduledAt: Date | null;
     mediaType: string;
   }): Promise<{ ok: boolean; postId?: string; results?: unknown[] }> {
@@ -615,10 +919,21 @@ export default function CreatePostPage() {
       sourceMediaUrl,
       platforms,
       caption,
-      firstComment,
+      firstCommentByPlatform,
+      quoteTweetUrl,
+      community,
+      tagUsers,
+      feedType,
+      altTextByPlatform,
       scheduledAt,
       mediaType,
     } = args;
+
+    // Flatten per-platform first comments to a single string for the
+    // engine's "first_comment" slot (the engine doesn't yet support a
+    // per-platform map). Pick the same key the UI uses for `sameForAll`.
+    const firstCommentText = firstCommentByPlatform?.__all
+      ?? (platforms.length > 0 ? firstCommentByPlatform?.[platforms[0]!] : undefined);
 
     const idToken = await getIdToken();
     if (!idToken) {
@@ -798,7 +1113,13 @@ export default function CreatePostPage() {
           caption,
           hashtags: extractHashtags(caption),
           scheduledAt: scheduledAt ? scheduledAt.toISOString() : null,
-          firstComment,
+          firstComment: firstCommentText,
+          firstCommentByPlatform,
+          quoteTweetUrl,
+          community,
+          tagUsers,
+          feedType,
+          altTextByPlatform,
           mediaType,
           sourceMediaUrl,
         }),
@@ -976,13 +1297,32 @@ export default function CreatePostPage() {
     const target = mediaItems.find((m) => m.id === id);
     if (target?.url) URL.revokeObjectURL(target.url);
     if (target?.storedPath) {
-      // Fire-and-forget delete on Bunny. If it fails we still drop the row locally —
-      // an orphan in the user's storage folder isn't harmful.
+      // Best-effort delete on Bunny. If it fails we still drop the row
+      // locally — an orphan in the user's storage folder isn't harmful —
+      // but we surface a warning so the user can retry from the media
+      // library if they care about storage hygiene.
       void fetch("/api/media/delete", {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getOverrideHeaders() },
         body: JSON.stringify({ storedPath: target.storedPath }),
-      }).catch(() => {});
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            const err = (await res.json().catch(() => null)) as { error?: string } | null;
+            toast({
+              title: "Failed to delete file",
+              description: err?.error ?? "File removed locally, but CDN cleanup failed.",
+              tone: "warning",
+            });
+          }
+        })
+        .catch(() => {
+          toast({
+            title: "Failed to delete file",
+            description: "File removed locally, but CDN cleanup failed.",
+            tone: "warning",
+          });
+        });
     }
     setMediaItems((prev) => {
       const idx = prev.findIndex((m) => m.id === id);
@@ -1351,6 +1691,7 @@ export default function CreatePostPage() {
           <PlatformTileBar
             selected={selected}
             onToggle={toggleAccount}
+            lockedPlatforms={composerMode === "trial_reel" ? new Set<PlatformId>(["instagram"]) : composerMode === "document" ? new Set<PlatformId>(["linkedin"]) : undefined}
             getPreviewProps={(id) => {
               const active = mediaItems[activeMedia];
               const mediaUrl = active ? active.cdnUrl ?? active.url : null;
@@ -1401,8 +1742,12 @@ export default function CreatePostPage() {
                   return new Set([...prev].filter((id) => compatible.has(id)));
                 });
               } else {
-                // standard — restore all platforms
-                setSelected(new Set(PLATFORMS.map((p) => p.id)));
+                // standard — restore platforms the workspace actually has connected
+                // (fall back to all when accounts haven't loaded yet so we don't lock out
+                // the user on a slow /api/social-accounts/list response).
+                const fallback = new Set(PLATFORMS.map((p) => p.id));
+                const restored = connectedPlatforms.size > 0 ? connectedPlatforms : fallback;
+                setSelected(new Set(restored));
               }
             }}
           />
@@ -1647,10 +1992,8 @@ export default function CreatePostPage() {
         open={coverModalOpen}
         videoUrl={isVideoActive ? activeMediaItem.url : null}
         onClose={() => setCoverModalOpen(false)}
-        onApply={(dataUrl) => {
-          setFrameCoverUrl(dataUrl);
-          setCoverModalOpen(false);
-          toast({ title: t("cover.frameUpdated"), tone: "success" });
+        onApply={async (dataUrl) => {
+          await applyFrameCover(dataUrl);
         }}
       />
 
@@ -1671,9 +2014,9 @@ export default function CreatePostPage() {
         open={cropModalOpen}
         onClose={() => setCropModalOpen(false)}
         imageUrl={activeMediaItem?.kind === "image" ? activeMediaItem.url : null}
-        onApply={() => {
-          setCropModalOpen(false);
-          toast({ title: t("cropApplied"), tone: "success" });
+        onApply={async (dataUrl) => {
+          if (!activeMediaItem || activeMediaItem.kind !== "image") return;
+          await applyCroppedImage(dataUrl, activeMediaItem.id ?? "primary");
         }}
       />
 
@@ -1681,7 +2024,21 @@ export default function CreatePostPage() {
         open={altTextModalOpen}
         onClose={() => setAltTextModalOpen(false)}
         imageUrl={activeMediaItem?.kind === "image" ? activeMediaItem.url : null}
+        initialValue={
+          activeMediaItem
+            ? altTexts[activeMediaItem.id ?? "primary"] ?? ""
+            : ""
+        }
         onSave={(value) => {
+          if (activeMediaItem) {
+            const key = activeMediaItem.id ?? "primary";
+            setAltTexts((prev) => {
+              const next = { ...prev };
+              if (value) next[key] = value;
+              else delete next[key];
+              return next;
+            });
+          }
           toast({
             title: value ? t("altTextSaved") : t("altTextCleared"),
             tone: "success",
@@ -2216,6 +2573,37 @@ async function fetchAsFile(
   const mime = blob.type || fallbackMime;
   const name = guessFileName(url, fallbackName, mime);
   return new File([blob], name, { type: mime });
+}
+
+/**
+ * Convert a canvas data URL into a File so the upload route can ingest it.
+ * Used by the CropModal (image crops) and the CoverImageModal (video frame
+ * captures) to ferry in-browser renderings into the CDN pipeline.
+ */
+function dataUrlToFile(dataUrl: string, fallbackName: string): File {
+  const [meta, b64] = dataUrl.split(",");
+  const mimeMatch = meta.match(/data:([^;]+)(?:;base64)?/);
+  const mime = mimeMatch?.[1] ?? "image/jpeg";
+  const isBase64 = /;base64/.test(meta);
+  const ext = mime.includes("png")
+    ? "png"
+    : mime.includes("webp")
+    ? "webp"
+    : mime.includes("gif")
+    ? "gif"
+    : "jpg";
+  const name = /\.([a-z0-9]{2,5})$/i.test(fallbackName)
+    ? fallbackName
+    : `${fallbackName.replace(/\.[^.]+$/, "")}.${ext}`;
+  if (isBase64) {
+    const binary = atob(b64 ?? "");
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new File([bytes], name, { type: mime });
+  }
+  const decoded = decodeURIComponent(b64 ?? "");
+  const bytes = new TextEncoder().encode(decoded);
+  return new File([bytes], name, { type: mime });
 }
 
 function guessFileName(url: string, fallback: string, mime: string): string {

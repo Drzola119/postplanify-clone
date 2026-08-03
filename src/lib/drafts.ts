@@ -42,6 +42,27 @@ export interface DraftRecord {
   customCoverUrl: string | null;
   frameCoverUrl: string | null;
   firstComment?: string;
+  /** Per-platform first comments (preferred over the flat `firstComment`). */
+  firstComments?: Record<string, string>;
+  /** Per-platform alt text keyed by mediaItem id. */
+  altTexts?: Record<string, string>;
+  /** Composer mode + mode-specific state, restored as-is. */
+  composerMode?: "standard" | "carousel" | "trial_reel" | "document";
+  carouselItems?: Array<{ cdnUrl: string; name: string; kind: "image" | "video" }>;
+  trialReelFile?: { cdnUrl: string; name: string };
+  trialMode?: string;
+  documentFile?: { cdnUrl: string; name: string; mimeType: string };
+  documentTitle?: string;
+  /** Per-platform advanced options snapshot. */
+  advancedByPlatform?: Record<string, Record<string, string | number | boolean | string[] | undefined>>;
+  metadataRules?: {
+    enabled: boolean;
+    hashtags: string[];
+    ctaLine: string;
+    mode: string;
+    startDate: string;
+    endDate: string;
+  };
   workspaceId?: string;
 }
 

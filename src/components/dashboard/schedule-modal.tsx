@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Calendar, Clock, Globe, Sparkles } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,8 @@ const TIMEZONES = [
   { id: "Asia/Dubai", label: "(UTC+04:00) Dubai" },
   { id: "Asia/Tokyo", label: "(UTC+09:00) Tokyo" },
 ];
+
+const MAX_FUTURE_DAYS = 365;
 
 function pad(n: number): string {
   return n.toString().padStart(2, "0");
@@ -57,11 +59,23 @@ export function ScheduleModal({ open, onClose, onConfirm }: ScheduleModalProps) 
   const [time, setTime] = useState("09:00");
   const [timezone, setTimezone] = useState("America/New_York");
   const [view, setView] = useState({ year: 0, month: 0 });
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    setError(null);
     const d = new Date();
     setNow(d);
+    // Detect the user's system timezone so the default pick matches their
+    // wall-clock; otherwise racing the TZ dropdown is confusing.
+    let detectedTz = "America/New_York";
+    try {
+      const guess = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (guess && TIMEZONES.some((tz) => tz.id === guess)) detectedTz = guess;
+    } catch {
+      /* SSR / unsupported — fall back to ET default */
+    }
+    setTimezone(detectedTz);
     const tomorrow = new Date(d);
     tomorrow.setDate(d.getDate() + 1);
     tomorrow.setHours(9, 0, 0, 0);
@@ -70,19 +84,52 @@ export function ScheduleModal({ open, onClose, onConfirm }: ScheduleModalProps) 
     setTime("09:00");
   }, [open]);
 
-  const cells = (() => {
+  const cells = useMemo(() => {
     if (!view.year) return [];
     return buildCalendar(view.year, view.month);
-  })();
+  }, [view.year, view.month]);
+
+  /**
+   * Build the absolute Date the user picked, treated as a wall-clock in
+   * the chosen timezone. The browser has no direct timezone-conversion
+   * API, so we round-trip via the short-format `formatToParts` to read
+   * the offset and flip the local fields to UTC.
+   */
+  const scheduledDate = useMemo<Date | null>(() => {
+    if (!date) return null;
+    const [hh, mm] = time.split(":").map((s) => parseInt(s, 10));
+    if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+    // Build a fake-UTC wall-clock matching the user's pick.
+    const y = date.getFullYear();
+    const m = date.getMonth();
+    const d = date.getDate();
+    const utcFake = new Date(Date.UTC(y, m, d, hh, mm, 0, 0));
+    // Find the offset for the chosen timezone at that wall-clock instant.
+    const tzNow = new Date(utcFake.toLocaleString("en-US", { timeZone: timezone }));
+    const offsetMs = utcFake.getTime() - tzNow.getTime();
+    return new Date(utcFake.getTime() + offsetMs);
+  }, [date, time, timezone]);
+
+  const isPast = useMemo(() => {
+    if (!now || !scheduledDate) return false;
+    return scheduledDate.getTime() <= now.getTime();
+  }, [now, scheduledDate]);
+
+  const isTooFar = useMemo(() => {
+    if (!now || !scheduledDate) return false;
+    return scheduledDate.getTime() - now.getTime() > MAX_FUTURE_DAYS * 24 * 60 * 60 * 1000;
+  }, [now, scheduledDate]);
 
   function isSameDay(a: Date, b: Date | null) {
     if (!b) return false;
     return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
   }
 
-  function isPast(d: Date) {
+  function isPastDay(d: Date) {
     if (!now) return false;
-    return d.getTime() < now.getTime();
+    const startOfDay = new Date(d);
+    startOfDay.setHours(0, 0, 0, 0);
+    return startOfDay.getTime() < new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   }
 
   function shiftMonth(delta: number) {
@@ -113,14 +160,24 @@ export function ScheduleModal({ open, onClose, onConfirm }: ScheduleModalProps) 
     setDate(d);
     setTime(toLocalTimeString(d));
     setView({ year: d.getFullYear(), month: d.getMonth() });
+    setError(null);
   }
 
   function confirm() {
-    if (!date) return;
-    const [hh, mm] = time.split(":").map((s) => parseInt(s, 10));
-    const combined = new Date(date);
-    combined.setHours(hh, mm, 0, 0);
-    onConfirm(combined);
+    if (!scheduledDate) {
+      setError("Pick a date and time first.");
+      return;
+    }
+    if (isPast) {
+      setError("Scheduled time must be in the future.");
+      return;
+    }
+    if (isTooFar) {
+      setError(`Scheduling more than ${MAX_FUTURE_DAYS} days ahead isn't supported.`);
+      return;
+    }
+    setError(null);
+    onConfirm(scheduledDate);
   }
 
   const dayLabels = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -149,7 +206,7 @@ export function ScheduleModal({ open, onClose, onConfirm }: ScheduleModalProps) 
           <button
             type="button"
             onClick={confirm}
-            disabled={!date}
+            disabled={!date || !scheduledDate}
             className="inline-flex items-center justify-center gap-2 rounded-md bg-zinc-950 hover:bg-zinc-800 text-white px-4 h-9 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Sparkles className="size-3.5" />
@@ -218,13 +275,13 @@ export function ScheduleModal({ open, onClose, onConfirm }: ScheduleModalProps) 
                     return <div key={i} className="aspect-square" />;
                   }
                   const selected = isSameDay(c.date, date);
-                  const past = isPast(c.date);
+                  const past = isPastDay(c.date);
                   const today = now ? isSameDay(c.date, now) : false;
                   return (
                     <button
                       key={i}
                       type="button"
-                      onClick={() => !past && setDate(c.date)}
+                      onClick={() => { if (!past) { setDate(c.date); setError(null); } }}
                       disabled={past}
                       className={cn(
                         "aspect-square inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors",
@@ -254,7 +311,7 @@ export function ScheduleModal({ open, onClose, onConfirm }: ScheduleModalProps) 
               <input
                 type="time"
                 value={time}
-                onChange={(e) => setTime(e.target.value)}
+                onChange={(e) => { setTime(e.target.value); setError(null); }}
                 className="w-full rounded-md border border-zinc-200 bg-white px-3 h-10 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950/10 focus:border-zinc-300"
               />
             </div>
@@ -274,13 +331,21 @@ export function ScheduleModal({ open, onClose, onConfirm }: ScheduleModalProps) 
               </select>
             </div>
             <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-xs space-y-1">
-              <p className="text-zinc-500">Selected</p>
+              <p className="text-zinc-500">Will publish</p>
               <p className="font-medium text-zinc-900">
-                {date ? date.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" }) : "—"}
+                {scheduledDate
+                  ? scheduledDate.toLocaleString(undefined, {
+                      weekday: "long", year: "numeric", month: "long", day: "numeric",
+                      hour: "numeric", minute: "2-digit", timeZoneName: "short",
+                    })
+                  : "—"}
               </p>
-              <p className="text-zinc-600">
-                {time} {TIMEZONES.find((t) => t.id === timezone)?.label.match(/\(UTC[+-]\d{2}:\d{2}\)/)?.[0]}
-              </p>
+              {isPast ? (
+                <p className="text-red-600">Selected time is in the past — pick a future time.</p>
+              ) : isTooFar ? (
+                <p className="text-red-600">More than {MAX_FUTURE_DAYS} days ahead.</p>
+              ) : null}
+              {error ? <p className="text-red-600">{error}</p> : null}
             </div>
           </div>
         </div>

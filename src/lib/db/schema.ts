@@ -58,11 +58,27 @@ export interface PostDoc {
   scheduledAt?: Date | string;
   publishedAt?: Date | string;
   firstComment?: string;
+  /** Per-platform first comments (preferred over the flat `firstComment`). */
+  firstCommentByPlatform?: Record<string, string>;
+  /** Per-platform alt text keyed by platform id. */
+  altTextByPlatform?: Record<string, string>;
   altText: string[];
   collaborators: Array<{ uid: string; handle: string; status?: "invited" | "accepted" | "declined" }>;
   community?: string;
   quoteTweetUrl?: string;
   threadRootId?: string;
+  /** Tag-users payload: either a shared string or per-platform list. */
+  tagUsers?: string | string[] | Record<string, string[]>;
+  /** Feed vs Story placement hint, when the post targets a story slot. */
+  feedType?: "feed" | "story";
+  /** Carousel / Trial Reel / Document items so the worker can dispatch correctly. */
+  carouselItems?: Array<{ url: string }>;
+  trialReel?: { url: string };
+  document?: { url: string; title: string; mimeType: string };
+  /** CDN URL of the user-picked video frame cover. */
+  frameCoverUrl?: string;
+  /** CDN URL of a custom cover image (e.g. uploaded separately for a video post). */
+  customCoverUrl?: string;
   workerId?: string;
   claimedAt?: Date;
   failureReason?: string;

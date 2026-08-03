@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Info, X } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 
@@ -16,18 +16,31 @@ export function CollaboratorsModal({ open, onClose, collaborators, onSave }: Col
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  // Re-sync the modal's draft list with the latest parent state every time
+  // it opens. Otherwise stale entries persist across saves.
+  useEffect(() => {
+    if (open) {
+      setList(collaborators);
+      setInput("");
+      setError(null);
+    }
+  }, [open, collaborators]);
+
   const atMax = list.length >= 3;
-  const valid = input.trim().length > 0 && !input.includes(" ") && !input.includes("@");
+  const cleanInput = input.trim().replace(/^@+/, "");
+  const valid = cleanInput.length > 0 && !cleanInput.includes(" ") && !cleanInput.includes("@");
 
   function add() {
     if (!valid) {
-      if (input.includes("@") || input.includes(" ")) {
-        setError("Username must not contain spaces or @ symbol");
-      }
+      setError("Username must not contain spaces or @ symbol");
       return;
     }
     if (atMax) return;
-    setList([...list, input.trim()]);
+    if (list.includes(cleanInput)) {
+      setError("Already added");
+      return;
+    }
+    setList([...list, cleanInput]);
     setInput("");
     setError(null);
   }
@@ -106,6 +119,10 @@ export function CollaboratorsModal({ open, onClose, collaborators, onSave }: Col
             Add
           </button>
         </div>
+
+        {error ? (
+          <p className="text-xs text-red-600">{error}</p>
+        ) : null}
 
         {list.length > 0 ? (
           <div className="space-y-2">

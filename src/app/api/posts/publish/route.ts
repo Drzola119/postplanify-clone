@@ -18,9 +18,31 @@ const publishPayloadSchema = z.object({
   mediaUrls: z.array(z.string().min(1)).min(1),
   scheduledAt: z.string().nullable().optional(),
   firstComment: z.string().optional(),
+  /** Per-platform first comments; supersedes `firstComment` when present. */
+  firstCommentByPlatform: z.record(z.string(), z.string()).optional(),
   quoteTweetUrl: z.string().optional(),
   community: z.string().optional(),
   mediaType: z.string().optional(),
+  /** Tag-users payload keyed by platform (or "__all" for shared). */
+  tagUsers: z.union([z.string(), z.array(z.string())]).optional(),
+  /** Feed vs Story placement hint (e.g. "story" for IG/FB stories). */
+  feedType: z.enum(["feed", "story"]).optional(),
+  /** Per-platform alt-text payload keyed by platform. */
+  altTextByPlatform: z.record(z.string(), z.string()).optional(),
+  /** List of carousel/trial/document mode-specific items so n8n can dispatch correctly. */
+  carouselItems: z.array(z.object({ url: z.string().min(1) }).passthrough()).optional(),
+  trialReel: z.object({ url: z.string().min(1) }).passthrough().optional(),
+  document: z.object({
+    url: z.string().min(1),
+    title: z.string().min(1),
+    mimeType: z.string().min(1),
+  }).passthrough().optional(),
+  /** CDN URL of a frame the user picked from a video. Optional. */
+  frameCoverUrl: z.string().url().optional(),
+  /** CDN URL of a custom cover image (e.g. uploaded for a video post). Optional. */
+  customCoverUrl: z.string().url().optional(),
+  /** Instagram collaborator usernames (max 3). */
+  collaborators: z.array(z.string().min(1)).max(3).optional(),
   advancedByPlatform: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -36,9 +58,19 @@ interface PublishPayload {
   mediaUrls: string[];
   scheduledAt?: string | null;
   firstComment?: string;
+  firstCommentByPlatform?: Record<string, string>;
   quoteTweetUrl?: string;
   community?: string;
   mediaType?: string;
+  tagUsers?: string | string[];
+  feedType?: "feed" | "story";
+  altTextByPlatform?: Record<string, string>;
+  carouselItems?: Array<{ url: string }>;
+  trialReel?: { url: string };
+  document?: { url: string; title: string; mimeType: string };
+  frameCoverUrl?: string;
+  customCoverUrl?: string;
+  collaborators?: string[];
   /** Per-platform advanced options keyed by platform id. */
   advancedByPlatform?: Record<string, Record<string, string | number | boolean | string[] | undefined>>;
 }
@@ -89,8 +121,18 @@ export async function POST(request: Request) {
       status: isScheduled ? "scheduled" : "queued",
       scheduledAt: isScheduled ? new Date(body.scheduledAt!) : undefined,
       firstComment: body.firstComment,
+      firstCommentByPlatform: body.firstCommentByPlatform,
       quoteTweetUrl: body.quoteTweetUrl,
       community: body.community,
+      tagUsers: body.tagUsers,
+      feedType: body.feedType,
+      altTextByPlatform: body.altTextByPlatform,
+      carouselItems: body.carouselItems,
+      trialReel: body.trialReel,
+      document: body.document,
+      frameCoverUrl: body.frameCoverUrl,
+      customCoverUrl: body.customCoverUrl,
+      collaborators: body.collaborators?.map((c) => ({ uid: c, handle: c, status: "invited" as const })),
     });
   } catch (err) {
     // Firestore unavailable — fall back to stateless publish so the existing
@@ -111,6 +153,18 @@ export async function POST(request: Request) {
     scheduledAt: body.scheduledAt ?? null,
     advancedByPlatform: body.advancedByPlatform ?? {},
     firstComment: body.firstComment,
+    firstCommentByPlatform: body.firstCommentByPlatform,
+    quoteTweetUrl: body.quoteTweetUrl,
+    community: body.community,
+    tagUsers: body.tagUsers,
+    feedType: body.feedType,
+    altTextByPlatform: body.altTextByPlatform,
+    carouselItems: body.carouselItems,
+    trialReel: body.trialReel,
+    document: body.document,
+    frameCoverUrl: body.frameCoverUrl,
+    customCoverUrl: body.customCoverUrl,
+    collaborators: body.collaborators,
     mediaType: body.mediaType,
   };
 

@@ -18,6 +18,13 @@ const ALLOWED_MIME = new Set([
   "video/mp4",
   "video/quicktime",
   "video/webm",
+  // Document composer uploads (LinkedIn-only mode).
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
 ]);
 
 export const runtime = "nodejs";
@@ -84,8 +91,9 @@ export async function POST(request: Request) {
     });
 
     let assetId: string | null = null;
+    let workspaceId: string | null = null;
     try {
-      const workspaceId = await ensureDefaultWorkspace(user.uid, user.email);
+      workspaceId = await ensureDefaultWorkspace(user.uid, user.email);
       assetId = await createAsset(workspaceId, user.uid, {
         url: cdnUrl,
         storedPath,
@@ -109,9 +117,14 @@ export async function POST(request: Request) {
       size: file.size,
       contentType: file.type,
       assetId,
+      uid: user.uid,
+      workspaceId,
     });
   } catch (err) {
+    // Surface the failure category so the client can react (retry vs. invalid creds).
     const msg = err instanceof Error ? err.message : "Upload failed";
-    return NextResponse.json({ error: msg }, { status: 502 });
+    log.error("[media/upload] upload failed", { err: msg, uid: user.uid });
+    const status = /invalid|key|auth|unauthor/i.test(msg) ? 401 : 502;
+    return NextResponse.json({ error: msg, code: status === 401 ? "auth" : "upload_failed" }, { status });
   }
 }

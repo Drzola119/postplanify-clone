@@ -23,7 +23,13 @@ const deliverPayloadSchema = z.object({
   hashtags: z.string().optional(),
   scheduledAt: z.string().nullable().optional(),
   firstComment: z.string().optional(),
+  firstCommentByPlatform: z.record(z.string(), z.string()).optional(),
+  quoteTweetUrl: z.string().optional(),
+  community: z.string().optional(),
+  tagUsers: z.union([z.string(), z.array(z.string())]).optional(),
+  feedType: z.enum(["feed", "story"]).optional(),
   mediaType: z.string().optional(),
+  altTextByPlatform: z.record(z.string(), z.string()).optional(),
   advancedByPlatform: z.record(z.string(), z.unknown()).optional(),
   sourceMediaUrl: z.string().optional(),
 });
@@ -43,6 +49,12 @@ interface DeliverPayload {
   hashtags?: string;
   scheduledAt?: string | null;
   firstComment?: string;
+  firstCommentByPlatform?: Record<string, string>;
+  quoteTweetUrl?: string;
+  community?: string;
+  tagUsers?: string | string[];
+  feedType?: "feed" | "story";
+  altTextByPlatform?: Record<string, string>;
   mediaType?: string;
   advancedByPlatform?: Record<string, Record<string, string | number | boolean | string[] | undefined>>;
   sourceMediaUrl?: string;
@@ -253,6 +265,12 @@ export async function POST(request: NextRequest) {
       status: "queued",
       scheduledAt: safeBody.scheduledAt ? new Date(safeBody.scheduledAt) : undefined,
       firstComment: safeBody.firstComment,
+      firstCommentByPlatform: safeBody.firstCommentByPlatform,
+      quoteTweetUrl: safeBody.quoteTweetUrl,
+      community: safeBody.community,
+      tagUsers: safeBody.tagUsers,
+      feedType: safeBody.feedType,
+      altTextByPlatform: safeBody.altTextByPlatform,
     });
   } catch (err) {
     // Firestore unavailable — fall back to stateless delivery so the

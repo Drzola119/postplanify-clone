@@ -31,6 +31,12 @@ interface PlatformTileBarProps {
   onToggle: (id: PlatformId) => void;
   className?: string;
   getPreviewProps: (id: PlatformId) => Omit<PreviewProps, "platform">;
+  /**
+   * Platforms that should be visible-but-disabled. Used by composer modes
+   * (trial_reel → instagram only, document → linkedin only) so the user
+   * can't deselect the one platform the mode requires.
+   */
+  lockedPlatforms?: Set<PlatformId>;
 }
 
 export function PlatformTileBar({
@@ -38,17 +44,23 @@ export function PlatformTileBar({
   onToggle,
   className,
   getPreviewProps,
+  lockedPlatforms,
 }: PlatformTileBarProps) {
   return (
     <div className={cn("flex items-center gap-2", className)}>
       {PLATFORMS.map((p) => {
         const isSelected = selected.has(p.id);
+        const isLocked = lockedPlatforms?.has(p.id) ?? false;
         return (
           <Tile
             key={p.id}
             platform={p}
             selected={isSelected}
-            onToggle={() => onToggle(p.id)}
+            locked={isLocked}
+            onToggle={() => {
+              if (isLocked) return;
+              onToggle(p.id);
+            }}
             getPreviewProps={getPreviewProps}
           />
         );
@@ -60,11 +72,13 @@ export function PlatformTileBar({
 function Tile({
   platform,
   selected,
+  locked,
   onToggle,
   getPreviewProps,
 }: {
   platform: PlatformMeta;
   selected: boolean;
+  locked: boolean;
   onToggle: () => void;
   getPreviewProps: (id: PlatformId) => Omit<PreviewProps, "platform">;
 }) {
@@ -86,10 +100,14 @@ function Tile({
             type="button"
             onClick={onToggle}
             aria-label={platform.name}
+            disabled={locked}
+            title={locked ? `${platform.name} is required for this composer mode` : undefined}
             className={cn(
               "inline-flex items-center justify-center transition-all duration-150 ease-out",
               "hover:scale-108 active:scale-94",
-              selected
+              locked
+                ? "opacity-90 cursor-not-allowed"
+                : selected
                 ? "shadow-[0_2px_6px_rgba(0,0,0,0.18),0_1px_2px_rgba(0,0,0,0.12)]"
                 : "grayscale opacity-35 shadow-none"
             )}
