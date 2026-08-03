@@ -39,6 +39,10 @@ import {
 } from "@/lib/carousel-gen/manual-styles";
 import { showToast } from "@/components/ui/toast";
 import {
+  CarouselLayoutPreviewCard,
+  type PreviewPalette,
+} from "@/components/dashboard/carousel-layout-preview";
+import {
   HARMONY_OPTIONS,
   buildPaletteVariants,
   type PaletteHarmony,
@@ -52,12 +56,12 @@ export interface CarouselStylePickerProps {
   onSelect: (style: CarouselStyle) => void;
 }
 
-const STYLE_ROLES: ReadonlyArray<{ id: SlideType; i18n: string }> = [
-  { id: "hook", i18n: "layout_role_hook" },
-  { id: "stakes", i18n: "layout_role_stakes" },
-  { id: "value", i18n: "layout_role_value" },
-  { id: "receipts", i18n: "layout_role_receipts" },
-  { id: "cta", i18n: "layout_role_cta" },
+const STYLE_ROLES: ReadonlyArray<{ id: SlideType; i18n: string; helper: string }> = [
+  { id: "hook", i18n: "layout_role_hook", helper: "Best for the opening slide" },
+  { id: "stakes", i18n: "layout_role_stakes", helper: "Best for proof and data points" },
+  { id: "value", i18n: "layout_role_value", helper: "Best for teaching or explaining" },
+  { id: "receipts", i18n: "layout_role_receipts", helper: "Best for testimonials and results" },
+  { id: "cta", i18n: "layout_role_cta", helper: "Best for the final slide" },
 ];
 
 export function CarouselStylePicker({ selectedId, onSelect }: CarouselStylePickerProps) {
@@ -601,7 +605,9 @@ function StyleBuilder({ onSave, onCancel }: StyleBuilderProps) {
         </div>
       </div>
 
-      {/* Per-slide layout pickers — F2 — clickable cards, not dropdowns. */}
+      {/* Per-slide layout pickers — F2 — premium styled previews using
+          the live palette so each layout reads distinctly and the user
+          sees the chosen palette applied instantly. */}
       <div>
         <span className="block text-xs font-semibold text-zinc-700 mb-1.5">
           {t("style_builder_layouts_label")}
@@ -609,38 +615,45 @@ function StyleBuilder({ onSave, onCancel }: StyleBuilderProps) {
         <div className="space-y-2">
           {STYLE_ROLES.map((role) => {
             const current = layouts[role.id];
+            const previewPalette: PreviewPalette = active
+              ? {
+                  primary: active.primary,
+                  background: active.background,
+                  accent: active.accent,
+                  displayFont,
+                  bodyFont,
+                }
+              : {
+                  primary: "#18181b",
+                  background: "#fafafa",
+                  accent: "#f59e0b",
+                  displayFont,
+                  bodyFont,
+                };
             return (
               <div
                 key={role.id}
                 className="rounded-lg border border-zinc-200 bg-zinc-50/50 p-2"
               >
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                  {t(role.i18n)}
-                </p>
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-700">
+                    {t(role.i18n)}
+                  </p>
+                  <p className="text-[10px] leading-tight text-zinc-500">
+                    {role.helper}
+                  </p>
+                </div>
                 <div className="mt-1.5 grid grid-cols-3 gap-1.5">
                   {LAYOUT_VARIANTS.map((v) => {
-                    const active = v.id === current.id;
+                    const isActive = v.id === current.id;
                     return (
-                      <button
+                      <CarouselLayoutPreviewCard
                         key={v.id}
-                        type="button"
-                        onClick={() => updateLayout(role.id, v)}
-                        className={
-                          "rounded-md border p-1.5 text-left transition " +
-                          (active
-                            ? "border-zinc-900 bg-white ring-2 ring-zinc-900/10"
-                            : "border-zinc-200 bg-white hover:border-zinc-300")
-                        }
-                        aria-pressed={active}
-                      >
-                        <LayoutPreview variant={v} />
-                        <p className="mt-1 text-[10px] font-semibold text-zinc-800">
-                          {v.label}
-                        </p>
-                        <p className="text-[9px] text-zinc-500 leading-tight">
-                          {v.description}
-                        </p>
-                      </button>
+                        variant={v}
+                        selected={isActive}
+                        onPick={() => updateLayout(role.id, v)}
+                        palette={previewPalette}
+                      />
                     );
                   })}
                 </div>
@@ -1051,79 +1064,6 @@ function ConfidenceBadge({ label, value }: { label: string; value: number }) {
       {label}
       <span className="font-mono">{pct}%</span>
     </span>
-  );
-}
-
-/**
- * F2 — Tiny stylised preview of a layout variant. The user clicks on
- * a card; this is the visual inside the card so they can tell the
- * layouts apart at a glance without reading a description.
- */
-function LayoutPreview({ variant }: { variant: LayoutVariant }) {
-  // Pick a layout id → visual map. Keeps the preview deterministic and
-  // not dependent on the active palette so the user can compare layouts
-  // even before committing to a color scheme.
-  const inner = (() => {
-    if (variant.id.includes("centered") || variant.id === "headline") {
-      return (
-        <div className="flex h-full flex-col items-center justify-center gap-1 px-1.5 text-center">
-          <span className="block h-1.5 w-2/3 rounded-full bg-zinc-800" />
-          <span className="block h-1 w-1/2 rounded-full bg-zinc-400" />
-        </div>
-      );
-    }
-    if (variant.id.includes("split")) {
-      return (
-        <div className="flex h-full items-center gap-1.5 px-1.5">
-          <div className="flex h-full w-1/2 flex-col justify-center gap-1">
-            <span className="block h-1 w-full rounded-full bg-zinc-800" />
-            <span className="block h-0.5 w-2/3 rounded-full bg-zinc-400" />
-          </div>
-          <div className="h-full w-1/2 rounded-sm bg-zinc-200" />
-        </div>
-      );
-    }
-    if (variant.id.includes("bold") || variant.id.includes("display")) {
-      return (
-        <div className="flex h-full items-center justify-center px-1.5">
-          <span className="block h-2 w-3/4 rounded-sm bg-zinc-900" />
-        </div>
-      );
-    }
-    if (variant.id.includes("receipts") || variant.id.includes("proof")) {
-      return (
-        <div className="flex h-full flex-col items-center justify-center gap-1 px-1.5">
-          <div className="h-2/3 w-3/4 rounded-sm border border-zinc-300 bg-zinc-100" />
-          <span className="block h-0.5 w-1/2 rounded-full bg-zinc-500" />
-        </div>
-      );
-    }
-    if (variant.id.includes("cta") || variant.id.includes("keyword")) {
-      return (
-        <div className="flex h-full flex-col items-center justify-center gap-1 px-1.5">
-          <div className="rounded-full bg-zinc-900 px-2 py-0.5 text-[7px] font-bold text-white">
-            KEYWORD
-          </div>
-          <span className="block h-0.5 w-1/2 rounded-full bg-zinc-400" />
-        </div>
-      );
-    }
-    // Fallback — generic text block.
-    return (
-      <div className="flex h-full flex-col justify-center gap-1 px-1.5">
-        <span className="block h-1 w-full rounded-full bg-zinc-800" />
-        <span className="block h-0.5 w-4/5 rounded-full bg-zinc-400" />
-        <span className="block h-0.5 w-3/5 rounded-full bg-zinc-300" />
-      </div>
-    );
-  })();
-  return (
-    <div
-      className="aspect-[3/4] w-full overflow-hidden rounded-sm border border-zinc-200 bg-zinc-50"
-      aria-hidden
-    >
-      {inner}
-    </div>
   );
 }
 

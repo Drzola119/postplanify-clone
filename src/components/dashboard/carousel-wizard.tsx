@@ -44,6 +44,10 @@ import {
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Panel, Field, Meta } from "@/components/dashboard/wizard-kit";
 import { CarouselStylePicker } from "@/components/dashboard/carousel-style-picker";
+import {
+  CarouselStylePreviewMock,
+  ROLE_PREVIEW_CONFIGS,
+} from "@/components/dashboard/carousel-layout-preview";
 import { ScheduleModal } from "@/components/dashboard/schedule-modal";
 import { UnsplashDialog } from "@/components/dashboard/unsplash-dialog";
 import { CarouselHistoryDrawer } from "@/components/dashboard/carousel-history-drawer";
@@ -1542,12 +1546,7 @@ function LivePreviewPanel({
   renderedSlides: JobPollResponse["slides"] | undefined;
 }) {
   if (!script || script.slides.length === 0) {
-    return (
-      <div className="mt-3 rounded-xl border border-dashed border-zinc-200 bg-zinc-50/50 p-6 text-center text-xs text-zinc-500">
-        <ImageIcon className="mx-auto mb-2 size-5 text-zinc-400" />
-        Your slides will appear here as soon as you generate a script.
-      </div>
-    );
+    return <EmptyStyleMockPreview style={style} />;
   }
 
   return (
@@ -1564,6 +1563,45 @@ function LivePreviewPanel({
           />
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Right-panel placeholder when no script has been generated yet.
+ * Renders 5 mini mocked slides — one per role — using the active
+ * palette + fonts so the user gets a "live" feel for their style
+ * choices before pressing Generate.
+ */
+function EmptyStyleMockPreview({ style }: { style: CarouselStyle }) {
+  const palette = {
+    primary: style.colors.primary,
+    background: style.colors.background,
+    accent: style.colors.accent,
+    displayFont: style.fonts.display,
+    bodyFont: style.fonts.body,
+  };
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50/50 p-3 text-center text-[11px] text-zinc-500">
+        <ImageIcon className="mx-auto mb-1.5 size-4 text-zinc-400" />
+        Your slides will appear here as soon as you generate a script.
+        Below is a live preview of how your style will look.
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {ROLE_PREVIEW_CONFIGS.map(({ role, config }) => (
+          <div key={role} className="space-y-1">
+            <CarouselStylePreviewMock
+              palette={palette}
+              headline={config.sampleHeadline}
+              body={config.sampleBody}
+            />
+            <p className="text-center text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+              {role}
+            </p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
