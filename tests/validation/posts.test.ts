@@ -22,8 +22,18 @@ describe("validation/posts - platformIdSchema", () => {
 });
 
 describe("validation/posts - postStatusSchema", () => {
-  it("accepts all 7 statuses", () => {
-    ["draft", "queued", "scheduled", "publishing", "published", "failed", "archived"].forEach((s) => {
+  it("accepts all 9 statuses", () => {
+    [
+      "draft",
+      "queued",
+      "scheduled",
+      "publishing",
+      "published",
+      "partially_published",
+      "failed",
+      "archived",
+      "paused",
+    ].forEach((s) => {
       expect(postStatusSchema.safeParse(s).success).toBe(true);
     });
   });

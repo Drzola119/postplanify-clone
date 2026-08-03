@@ -1,6 +1,15 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
+import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
@@ -14,6 +23,12 @@ import {
   Trophy,
   Trash2,
   Download,
+  Copy,
+  RefreshCw,
+  RotateCcw,
+  Loader2,
+  Search,
+  X as XIcon,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
@@ -21,232 +36,183 @@ import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
 import { PageHelp } from "@/components/dashboard/help/page-help";
 import { getHelpConfig } from "@/lib/help/content";
 import { toCsv, downloadCsv } from "@/lib/csv";
+import { useToast } from "@/components/ui/toast";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Modal } from "@/components/ui/modal";
+import { useAuth } from "@/contexts/AuthContext";
+import { getOverrideHeaders } from "@/lib/security/client-overrides";
+import {
+  comparePostsChronologically,
+  fmtISO,
+  formatInZone,
+  groupPostsByDay,
+  isSameDay,
+  monthGridStart,
+  normalizePlatforms,
+  normalizeStatus,
+  parseISODate,
+  postMatchesFilters,
+  weekBounds,
+  type CalendarPost,
+  type CalendarPlatform,
+  type PostFilters,
+} from "@/lib/posts/calendar";
 
-// ===== TYPES =====
-type PostStatus = "scheduled" | "published" | "draft" | "failed" | "pending";
-type Platform =
-  | "instagram"
-  | "twitter"
-  | "tiktok"
-  | "linkedin"
-  | "facebook"
-  | "threads"
-  | "youtube"
-  | "pinterest"
-  | "bluesky";
+type ViewMode = "weekly" | "monthly" | "list";
+type MediaKindFilter = "any" | "text" | "image" | "video";
+type StatusFilterValue = "all" | CalendarPost["status"];
+type PlatformFilterValue = "all" | CalendarPlatform;
 
-interface CalendarPost {
-  id: string;
-  date: string; // ISO YYYY-MM-DD
-  time?: string; // HH:MM
-  caption: string;
-  status: PostStatus;
-  thumbnail?: string;
-  platforms: Platform[];
-  accountName?: string;
-}
-
-interface ApiPost {
-  id: string;
-  caption?: string;
-  status?: string;
-  platforms?: string[];
-  mediaUrls?: string[];
-  scheduledAt?: string;
-  publishedAt?: string;
-  createdAt?: string;
-}
-
-// ===== PLATFORM ICONS (color + glyph) =====
-const PLATFORM_LABELS: Record<Platform, string> = {
+const PLATFORM_LABELS: Record<CalendarPlatform, string> = {
+  bluesky: "Bluesky",
   instagram: "Instagram",
-  twitter: "Twitter/X",
   tiktok: "TikTok",
-  linkedin: "LinkedIn",
-  facebook: "Facebook",
-  threads: "Threads",
   youtube: "YouTube",
   pinterest: "Pinterest",
-  bluesky: "Bluesky",
+  twitter: "Twitter/X",
+  linkedin: "LinkedIn",
+  threads: "Threads",
+  facebook: "Facebook",
+  discord: "Discord",
+  telegram: "Telegram",
+  google_business: "Google Business",
 };
 
-// ===== STATUS CONFIG =====
-const STATUS_META: Record<PostStatus, { bg: string; text: string; border: string; label: string }> = {
+const STATUS_META: Record<CalendarPost["status"], { bg: string; text: string; border: string; label: string }> = {
+  draft: { bg: "bg-amber-500/10", text: "text-amber-700", border: "border-amber-500", label: "Draft" },
+  queued: { bg: "bg-sky-500/10", text: "text-sky-700", border: "border-sky-500", label: "Queued" },
   scheduled: {
     bg: "bg-emerald-500/10 dark:bg-emerald-500/15",
     text: "text-emerald-700 dark:text-emerald-300",
     border: "border-emerald-500 dark:border-emerald-400/20",
     label: "Scheduled",
   },
+  publishing: { bg: "bg-blue-500/10", text: "text-blue-700", border: "border-blue-500", label: "Publishing" },
   published: { bg: "bg-zinc-100", text: "text-zinc-700", border: "border-zinc-300", label: "Published" },
-  draft: { bg: "bg-amber-500/10", text: "text-amber-700", border: "border-amber-500", label: "Draft" },
+  partially_published: { bg: "bg-violet-500/10", text: "text-violet-700", border: "border-violet-500", label: "Partially published" },
   failed: { bg: "bg-red-500/10", text: "text-red-700", border: "border-red-500", label: "Failed" },
-  pending: { bg: "bg-amber-500/10", text: "text-amber-700", border: "border-amber-400", label: "Pending" },
+  archived: { bg: "bg-zinc-100", text: "text-zinc-500", border: "border-zinc-300", label: "Archived" },
+  paused: { bg: "bg-orange-500/10", text: "text-orange-700", border: "border-orange-500", label: "Paused" },
 };
 
-function todayOffset(days: number) {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-// ===== SAMPLE DATA =====
-const SAMPLE_POSTS: CalendarPost[] = [
-  {
-    id: "p1",
-    date: todayOffset(0),
-    time: "10:44",
-    caption: "Your full reminder that cats do not need a gym membership...",
-    status: "scheduled",
-    thumbnail: "https://cdn.postplanify.com/posts/all-types/8e44be67-9b3f-4a61-96c8-708fd3131a0c/ba9a528b-b3e7-41b5-979d-18b6773bd130/1782207863335-ya5f2h3vz-0.jpg",
-    platforms: ["bluesky", "twitter", "pinterest"],
-    accountName: "nicklorance.bsky.social",
-  },
-  {
-    id: "p2",
-    date: todayOffset(0),
-    time: "10:44",
-    caption: "Productivity lessons from a black cat and a remote cat!...",
-    status: "scheduled",
-    thumbnail: "https://cdn.postplanify.com/posts/all-types/8e44be67-9b3f-4a61-96c8-708fd3131a0c/ba9a528b-b3e7-41b5-979d-18b6773bd130/1782207863335-ya5f2h3vz-1.jpg",
-    platforms: ["instagram", "twitter", "pinterest"],
-    accountName: "nicklorance7",
-  },
-  {
-    id: "p3",
-    date: todayOffset(4),
-    time: "19:00",
-    caption: "Saturday night content",
-    status: "scheduled",
-    thumbnail: "https://cdn.postplanify.com/posts/all-types/8e44be67-9b3f-4a61-96c8-708fd3131a0c/sample-3.jpg",
-    platforms: ["tiktok", "instagram", "facebook", "tiktok", "tiktok", "threads"],
-    accountName: "nick_lorance",
-  },
-];
-
-// ===== HELPERS =====
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const PAGE_SIZE = 50;
+const DELETE_CONCURRENCY = 3;
 
-function startOfMonth(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), 1);
-}
 function addDays(d: Date, n: number): Date {
   const x = new Date(d);
   x.setDate(x.getDate() + n);
   return x;
 }
-function isSameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-}
-function fmtISO(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
+
 function monthLabel(d: Date): string {
   return d.toLocaleString("en-US", { month: "long", year: "numeric" });
 }
 
-// Find the Monday of the week containing the 1st of the month
-function monthGridStart(d: Date): Date {
-  const first = startOfMonth(d);
-  // JS getDay(): 0=Sun..6=Sat. Monday=1
-  const dow = first.getDay();
-  const offset = dow === 0 ? -6 : 1 - dow;
-  return addDays(first, offset);
+function weekRangeLabel(d: Date): string {
+  const { start, end } = weekBounds(d);
+  const endInclusive = addDays(end, -1);
+  const fmt = (x: Date) => x.toLocaleString("en-US", { month: "short", day: "numeric" });
+  return `${fmt(start)} - ${fmt(endInclusive)}, ${endInclusive.getFullYear()}`;
 }
 
-// ===== VIEW MODES =====
-type ViewMode = "weekly" | "monthly" | "list";
+function formatLongDateTime(iso: string | undefined, timeZone: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    timeZone,
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(d);
+}
+
+function platformMeta(p: CalendarPlatform): { id: CalendarPlatform; name: string; handle: string; avatar: null; charLimit: number; borderClass: string; textClass: string; icon: string } {
+  return {
+    id: p,
+    name: PLATFORM_LABELS[p] ?? p,
+    handle: "",
+    avatar: null,
+    charLimit: 0,
+    borderClass: "",
+    textClass: "",
+    icon: "",
+  };
+}
+
+function statusMetaOf(s: CalendarPost["status"]) {
+  return STATUS_META[s] ?? STATUS_META.draft;
+}
+
+function isActionable(status: CalendarPost["status"]): boolean {
+  return status === "draft" || status === "scheduled" || status === "queued" || status === "paused" || status === "failed";
+}
+
+function canRetry(status: CalendarPost["status"]): boolean {
+  return status === "failed" || status === "paused";
+}
+
+function canDuplicate(status: CalendarPost["status"]): boolean {
+  return status === "published" || status === "scheduled" || status === "failed" || status === "draft" || status === "paused" || status === "archived";
+}
+
+function mediaKindFromUrl(u: string): "image" | "video" | "other" {
+  if (/\.(jpe?g|png|gif|webp|bmp|heic|heif)(\?|$)/i.test(u)) return "image";
+  if (/\.(mp4|mov|webm|m4v)(\?|$)/i.test(u)) return "video";
+  return "other";
+}
+
+function accountLabelForPost(post: CalendarPost): string | undefined {
+  if (post.profile) return post.profile;
+  if (post.platforms[0]) return PLATFORM_LABELS[post.platforms[0]];
+  return undefined;
+}
 
 export default function PostsCalendarPage() {
   const t = useTranslations("dashboard");
+  const router = useRouter();
+  const { getIdToken } = useAuth();
+  const { toast } = useToast();
+
   const [view, setView] = useState<ViewMode>("monthly");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedPost, setSelectedPost] = useState<CalendarPost | null>(null);
-  const [posts, setPosts] = useState<CalendarPost[]>(SAMPLE_POSTS);
-  const [postsVersion, setPostsVersion] = useState(0);
-  const today = new Date();
 
-  const refetchPosts = useCallback(async () => {
+  // Data
+  const [posts, setPosts] = useState<CalendarPost[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // Filters
+  const [draftSearch, setDraftSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [draftMediaKind, setDraftMediaKind] = useState<MediaKindFilter>("any");
+  const [appliedMediaKind, setAppliedMediaKind] = useState<MediaKindFilter>("any");
+  const [draftStatus, setDraftStatus] = useState<StatusFilterValue>("all");
+  const [appliedStatus, setAppliedStatus] = useState<StatusFilterValue>("all");
+  const [draftPlatform, setDraftPlatform] = useState<PlatformFilterValue>("all");
+  const [appliedPlatform, setAppliedPlatform] = useState<PlatformFilterValue>("all");
+  const [draftFromDate, setDraftFromDate] = useState("");
+  const [draftToDate, setDraftToDate] = useState("");
+  const [appliedFromDate, setAppliedFromDate] = useState("");
+  const [appliedToDate, setAppliedToDate] = useState("");
+
+  // Timezone (display-only)
+  const [timeZone, setTimeZone] = useState<string>("UTC");
+  useEffect(() => {
     try {
-      const res = await fetch("/api/posts", { credentials: "include" });
-      if (!res.ok) return;
-      const data = (await res.json()) as { posts?: ApiPost[] };
-      const mapped = (data.posts ?? []).map<CalendarPost>((p) => {
-        const d = new Date(p.scheduledAt ?? p.publishedAt ?? p.createdAt ?? Date.now());
-        return {
-          id: p.id,
-          date: fmtISO(d),
-          time: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
-          caption: p.caption ?? "",
-          status: (p.status ?? "draft") as PostStatus,
-          thumbnail: p.mediaUrls?.[0],
-          platforms: (p.platforms ?? []) as Platform[],
-          accountName: undefined,
-        };
-      });
-      if (mapped.length > 0) setPosts(mapped);
+      const guess = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (guess) setTimeZone(guess);
     } catch {
-      // offline — keep current
+      // SSR — keep UTC
     }
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/posts", { credentials: "include" });
-        if (!res.ok) return;
-        const data = (await res.json()) as { posts?: ApiPost[] };
-        if (cancelled) return;
-        const mapped = (data.posts ?? []).map<CalendarPost>((p) => {
-          const d = new Date(p.scheduledAt ?? p.publishedAt ?? p.createdAt ?? Date.now());
-          return {
-            id: p.id,
-            date: fmtISO(d),
-            time: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
-            caption: p.caption ?? "",
-            status: (p.status ?? "draft") as PostStatus,
-            thumbnail: p.mediaUrls?.[0],
-            platforms: (p.platforms ?? []) as Platform[],
-            accountName: undefined,
-          };
-        });
-        if (mapped.length > 0) setPosts(mapped);
-      } catch {
-        // offline — keep seed
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [postsVersion]);
-
-  const handleBulkDelete = useCallback(async (ids: string[]) => {
-    if (ids.length === 0) return;
-    const idSet = new Set(ids);
-    const snapshot = posts;
-    setPosts((prev) => prev.filter((p) => !idSet.has(p.id)));
-    try {
-      const results = await Promise.allSettled(
-        ids.map((id) =>
-          fetch(`/api/posts/${id}`, { method: "DELETE", credentials: "include" })
-        )
-      );
-      const failed = results.filter((r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value.ok));
-      if (failed.length > 0) {
-        setPosts(snapshot);
-        window.alert(
-          `Could not delete ${failed.length} post${failed.length === 1 ? "" : "s"}. Please try again.`
-        );
-        return;
-      }
-    } catch {
-      setPosts(snapshot);
-      window.alert("Bulk delete failed. Please try again.");
-    }
-  }, [posts]);
-
-  // Responsive: auto-switch to List view on narrow viewports (matches live PostPlanify behavior at <1280px)
+  // Resize: auto-switch to List on narrow viewports
   useEffect(() => {
     const handleResize = () => {
       if (typeof window !== "undefined" && window.innerWidth < 1280 && view !== "list") {
@@ -258,19 +224,115 @@ export default function PostsCalendarPage() {
     return () => window.removeEventListener("resize", handleResize);
   }, [view]);
 
-  // Lock body scroll when modal open
-  useEffect(() => {
-    if (selectedPost) {
-      document.body.style.overflow = "hidden";
-      const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setSelectedPost(null); };
-      window.addEventListener("keydown", onKey);
-      return () => {
-        document.body.style.overflow = "";
-        window.removeEventListener("keydown", onKey);
-      };
-    }
-  }, [selectedPost]);
+  // ── Data loading (paginated) ────────────────────────────────────────
+  const loadingRef = useRef(false);
+  const loadPosts = useCallback(
+    async (opts: { cursor?: string; append: boolean; reason: "initial" | "refresh" | "paginate" }) => {
+      if (loadingRef.current) return;
+      loadingRef.current = true;
+      try {
+        if (opts.reason === "initial") setLoading(true);
+        else if (opts.reason === "refresh") setRefreshing(true);
+        setLoadError(null);
 
+        const idToken = await getIdToken();
+        const params = new URLSearchParams();
+        params.set("pageSize", String(PAGE_SIZE));
+        if (opts.cursor) params.set("cursor", opts.cursor);
+
+        const res = await fetch(`/api/posts?${params.toString()}`, {
+          credentials: "include",
+          cache: "no-store",
+          headers: {
+            ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+            ...getOverrideHeaders(),
+          },
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          setLoadError(`Failed to load posts (${res.status}${text ? `: ${text}` : ""})`);
+          if (!opts.append) setPosts([]);
+          return;
+        }
+        const data = (await res.json()) as { posts?: Array<Record<string, unknown>>; nextCursor?: string | null };
+        const incoming = (data.posts ?? []).map((raw) => normalizeApiPost(raw));
+
+        setPosts((prev) => {
+          if (!opts.append) return incoming;
+          const seen = new Set(prev.map((p) => p.id));
+          const merged = prev.slice();
+          for (const p of incoming) if (!seen.has(p.id)) merged.push(p);
+          return merged;
+        });
+        setNextCursor(data.nextCursor ?? null);
+        setHasMore(Boolean(data.nextCursor));
+      } catch (err) {
+        setLoadError(err instanceof Error ? err.message : "Network error");
+      } finally {
+        loadingRef.current = false;
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [getIdToken]
+  );
+
+  useEffect(() => {
+    void loadPosts({ append: false, reason: "initial" });
+  }, [loadPosts, reloadKey]);
+
+  // ── Filters: derived visible posts ──────────────────────────────────
+  const appliedFilters: PostFilters = useMemo(
+    () => ({
+      search: appliedSearch.trim() || undefined,
+      mediaKind: appliedMediaKind,
+      status: appliedStatus,
+      platform: appliedPlatform,
+      fromDate: appliedFromDate || undefined,
+      toDate: appliedToDate || undefined,
+    }),
+    [appliedSearch, appliedMediaKind, appliedStatus, appliedPlatform, appliedFromDate, appliedToDate]
+  );
+
+  const visiblePosts = useMemo(() => {
+    const list = posts.filter((p) => postMatchesFilters(p, appliedFilters));
+    return list.sort(comparePostsChronologically);
+  }, [posts, appliedFilters]);
+
+  const postsByDay = useMemo(() => groupPostsByDay(visiblePosts), [visiblePosts]);
+
+  const filterIsDirty =
+    draftSearch !== appliedSearch ||
+    draftMediaKind !== appliedMediaKind ||
+    draftStatus !== appliedStatus ||
+    draftPlatform !== appliedPlatform ||
+    draftFromDate !== appliedFromDate ||
+    draftToDate !== appliedToDate;
+
+  const applyFilters = () => {
+    setAppliedSearch(draftSearch);
+    setAppliedMediaKind(draftMediaKind);
+    setAppliedStatus(draftStatus);
+    setAppliedPlatform(draftPlatform);
+    setAppliedFromDate(draftFromDate);
+    setAppliedToDate(draftToDate);
+  };
+  const clearFilters = () => {
+    setDraftSearch("");
+    setDraftMediaKind("any");
+    setDraftStatus("all");
+    setDraftPlatform("all");
+    setDraftFromDate("");
+    setDraftToDate("");
+    setAppliedSearch("");
+    setAppliedMediaKind("any");
+    setAppliedStatus("all");
+    setAppliedPlatform("all");
+    setAppliedFromDate("");
+    setAppliedToDate("");
+  };
+
+  // ── Date navigation ────────────────────────────────────────────────
   const goPrev = () => {
     if (view === "monthly") setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
     else if (view === "weekly") setCurrentDate(addDays(currentDate, -7));
@@ -281,79 +343,313 @@ export default function PostsCalendarPage() {
     else if (view === "weekly") setCurrentDate(addDays(currentDate, 7));
     else setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   };
-  const goToday = () => setCurrentDate(today);
+  const goToday = () => setCurrentDate(new Date());
 
-  const handleExport = () => {
-    const csv = toCsv(
-      posts.map((p) => ({
-        id: p.id,
-        date: p.date,
-        time: p.time ?? "",
-        caption: p.caption,
-        status: p.status,
-        platforms: (p.platforms ?? []).join("|"),
-        thumbnail: p.thumbnail ?? "",
-      }))
-    );
-    downloadCsv(`posts-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+  // ── Selection / list actions ───────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [actionId, setActionId] = useState<string | null>(null);
+
+  // Drop selection entries that no longer exist after a refetch
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const live = new Set(posts.map((p) => p.id));
+      const next = new Set<string>();
+      for (const id of prev) if (live.has(id)) next.add(id);
+      return next.size === prev.size ? prev : next;
+    });
+  }, [posts]);
+
+  const authedFetch = useCallback(
+    async (input: string, init: RequestInit = {}) => {
+      const idToken = await getIdToken();
+      const headers: Record<string, string> = {
+        ...(init.headers as Record<string, string> | undefined),
+        ...getOverrideHeaders(),
+        ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+      };
+      return fetch(input, { ...init, credentials: "include", headers });
+    },
+    [getIdToken]
+  );
+
+  const deleteIds = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0) return { ok: 0, failed: 0 };
+      const idKey = (id: string) => `pp.bulkdelete.${id}.${Date.now()}`;
+      let ok = 0;
+      const failed: string[] = [];
+
+      // Bounded worker pool so a 100-row selection doesn't 100x /api/posts
+      const queue = ids.slice();
+      const workers = Array.from({ length: Math.min(DELETE_CONCURRENCY, queue.length) }, async () => {
+        while (queue.length > 0) {
+          const id = queue.shift();
+          if (!id) break;
+          try {
+            const res = await authedFetch(`/api/posts/${encodeURIComponent(id)}`, {
+              method: "DELETE",
+              headers: { "Idempotency-Key": idKey(id) },
+            });
+            if (res.ok) ok += 1;
+            else failed.push(id);
+          } catch {
+            failed.push(id);
+          }
+        }
+      });
+      await Promise.all(workers);
+      return { ok, failed: failed.length };
+    },
+    [authedFetch]
+  );
+
+  const handleSingleDelete = async () => {
+    if (!confirmDeleteId) return;
+    const id = confirmDeleteId;
+    setConfirmDeleteId(null);
+    setBusy(true);
+    try {
+      const res = await deleteIds([id]);
+      if (res.failed > 0) {
+        toast({ title: "Delete failed", description: "Please try again.", tone: "error" });
+        return;
+      }
+      setPosts((prev) => prev.filter((p) => p.id !== id));
+      setSelectedPost((cur) => (cur?.id === id ? null : cur));
+      toast({ title: "Post deleted", tone: "success" });
+    } finally {
+      setBusy(false);
+    }
   };
+
+  const handleBulkDelete = async () => {
+    setConfirmBulk(false);
+    if (selectedIds.size === 0) return;
+    setBusy(true);
+    const ids = Array.from(selectedIds);
+    const result = await deleteIds(ids);
+    if (result.failed > 0) {
+      setPosts((prev) => prev.filter((p) => !ids.includes(p.id) || result.failed === 0));
+      toast({
+        title: `Deleted ${result.ok}, ${result.failed} failed`,
+        description: "Failed items were kept; please retry.",
+        tone: "warning",
+      });
+    } else {
+      setPosts((prev) => prev.filter((p) => !ids.includes(p.id)));
+      toast({ title: `Deleted ${result.ok} post${result.ok === 1 ? "" : "s"}`, tone: "success" });
+    }
+    setSelectedIds(new Set());
+    setBusy(false);
+  };
+
+  const handleDuplicate = useCallback(
+    async (post: CalendarPost) => {
+      if (!canDuplicate(post.status)) return;
+      setActionId(post.id);
+      try {
+        const res = await authedFetch(`/api/posts/scheduled/${encodeURIComponent(post.id)}/duplicate`, { method: "POST" });
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as { error?: string };
+          toast({ title: "Duplicate failed", description: data.error ?? `HTTP ${res.status}`, tone: "error" });
+          return;
+        }
+        toast({ title: "Post duplicated", description: "A new draft has been created.", tone: "success" });
+        setReloadKey((k) => k + 1);
+      } finally {
+        setActionId(null);
+      }
+    },
+    [authedFetch, toast]
+  );
+
+  const handleRetry = useCallback(
+    async (post: CalendarPost) => {
+      if (!canRetry(post.status)) return;
+      setActionId(post.id);
+      try {
+        const res = await authedFetch(`/api/posts/scheduled/${encodeURIComponent(post.id)}/retry`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clearReason: true }),
+        });
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as { error?: string };
+          toast({ title: "Retry failed", description: data.error ?? `HTTP ${res.status}`, tone: "error" });
+          return;
+        }
+        toast({ title: "Retry queued", description: "The post is re-scheduled.", tone: "success" });
+        setReloadKey((k) => k + 1);
+      } finally {
+        setActionId(null);
+      }
+    },
+    [authedFetch, toast]
+  );
+
+  const handleCreateForDate = useCallback(
+    (day: Date) => {
+      const iso = fmtISO(day);
+      router.push(`/dashboard/posts/create?date=${iso}`);
+    },
+    [router]
+  );
+
+  // ── CSV export ─────────────────────────────────────────────────────
+  const handleExport = () => {
+    const rows = visiblePosts.map((p) => {
+      const { date, time } = formatInZone(p.scheduledAt ?? p.publishedAt ?? p.createdAt, timeZone);
+      return {
+        id: p.id,
+        date,
+        time,
+        status: p.status,
+        platforms: p.platforms.join("|"),
+        caption: p.caption,
+      };
+    });
+    downloadCsv(`posts-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows));
+  };
+
+  const today = new Date();
 
   return (
     <div className="w-full p-3 lg:p-6 flex-1 min-h-0 flex flex-col h-full gap-4">
       {/* ===== TOOLBAR ===== */}
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 flex-shrink-0">
         <div className="flex flex-wrap items-center gap-2">
-          {/* Type filter icons */}
-          <div className="flex items-center gap-1">
-            <ToolIconBtn ariaLabel={t("posts.calendar.filter_text")}><TextIcon /></ToolIconBtn>
-            <ToolIconBtn ariaLabel={t("posts.calendar.filter_image")}><ImageIcon /></ToolIconBtn>
-            <ToolIconBtn ariaLabel={t("posts.calendar.filter_video")}><VideoIcon /></ToolIconBtn>
+          <MediaKindSelector value={draftMediaKind} onChange={setDraftMediaKind} />
+          <FilterPill
+            label={
+              draftPlatform === "all"
+                ? t("posts.calendar.filter_all_accounts")
+                : PLATFORM_LABELS[draftPlatform] ?? draftPlatform
+            }
+            onClick={() => {
+              const order: PlatformFilterValue[] = [
+                "all",
+                "bluesky",
+                "instagram",
+                "tiktok",
+                "youtube",
+                "pinterest",
+                "twitter",
+                "linkedin",
+                "threads",
+                "facebook",
+              ];
+              const idx = order.indexOf(draftPlatform);
+              setDraftPlatform(order[(idx + 1) % order.length] ?? "all");
+            }}
+          />
+          <FilterPill
+            label={
+              draftStatus === "all"
+                ? t("posts.calendar.filter_all_status")
+                : statusMetaOf(draftStatus as CalendarPost["status"]).label
+            }
+            onClick={() => {
+              const order: StatusFilterValue[] = [
+                "all",
+                "draft",
+                "scheduled",
+                "queued",
+                "publishing",
+                "published",
+                "partially_published",
+                "paused",
+                "failed",
+                "archived",
+              ];
+              const idx = order.indexOf(draftStatus);
+              setDraftStatus(order[(idx + 1) % order.length] ?? "all");
+            }}
+          />
+          <DateRangePill from={draftFromDate} to={draftToDate} onChange={(f, t) => { setDraftFromDate(f); setDraftToDate(t); }} />
+          <FilterPill label={t("posts.calendar.filter_all_labels")} onClick={() => toast({ title: "Labels", description: "Label filtering is not yet available.", tone: "info" })} />
+          <div className="relative">
+            <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <input
+              type="search"
+              value={draftSearch}
+              onChange={(e) => setDraftSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") applyFilters();
+              }}
+              placeholder={t("posts.calendar.search_placeholder", { defaultValue: "Search captions…" })}
+              aria-label={t("posts.calendar.search_label", { defaultValue: "Search captions" })}
+              className="inline-flex items-center rounded-md border border-input bg-background pl-7 pr-2 h-9 text-xs w-48 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+            />
           </div>
-
-          <FilterPill label={t("posts.calendar.filter_all_accounts")} showCheck />
-          <FilterPill label={t("posts.calendar.filter_all_status")} />
-          <FilterPill label={t("posts.calendar.filter_all_approvals")} />
-          <FilterPill label={t("posts.calendar.filter_all_labels")} />
         </div>
 
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handleExport}
-            className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-8 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+            disabled={visiblePosts.length === 0}
+            className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-8 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
           >
             <Download className="size-3.5" />
             {t("posts.calendar.export_csv")}
           </button>
-          <TimezonePill />
+          <TimezonePill value={timeZone} onChange={setTimeZone} />
           <ViewModeSwitch view={view} onChange={setView} />
         </div>
       </div>
 
-      {/* ===== APPLY + NOTIFICATIONS ROW ===== */}
-      <div className="flex items-center gap-2">
+      {/* ===== APPLY + ACTIONS ROW ===== */}
+      <div className="flex items-center gap-2 flex-wrap">
         <button
           type="button"
+          onClick={applyFilters}
+          disabled={!filterIsDirty}
           className="inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground rounded-md text-xs h-9 px-3"
         >
           <FilterIcon className="size-3.5" />
           {t("posts.calendar.apply")}
         </button>
-        <button
-          type="button"
-          className="relative inline-flex items-center justify-center size-8 rounded-md border border-input bg-background shadow-sm hover:bg-accent"
-          aria-label="Notifications"
-        >
-          <Bell className="size-4 text-zinc-500" />
-          <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">
-            11
-          </span>
-        </button>
+        {filterIsDirty && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="inline-flex items-center justify-center gap-1.5 rounded-md text-xs h-9 px-3 hover:bg-accent text-muted-foreground"
+          >
+            <XIcon className="size-3.5" />
+            {t("posts.calendar.clear_filters", { defaultValue: "Clear" })}
+          </button>
+        )}
+        <span className="text-xs text-muted-foreground">
+          {visiblePosts.length} {visiblePosts.length === 1 ? "post" : "posts"}
+        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setReloadKey((k) => k + 1)}
+            disabled={refreshing}
+            aria-label="Refresh"
+            className="relative inline-flex items-center justify-center size-8 rounded-md border border-input bg-background shadow-sm hover:bg-accent disabled:opacity-50"
+          >
+            {refreshing ? <Loader2 className="size-4 animate-spin text-zinc-500" /> : <RotateCcw className="size-4 text-zinc-500" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => toast({ title: "Notifications", description: "The notifications drawer will land in a follow-up release.", tone: "info" })}
+            className="relative inline-flex items-center justify-center size-8 rounded-md border border-input bg-background shadow-sm hover:bg-accent"
+            aria-label="Notifications"
+          >
+            <Bell className="size-4 text-zinc-500" />
+          </button>
+        </div>
       </div>
 
       {/* ===== CALENDAR CONTAINER ===== */}
       <div className="w-full overflow-hidden flex-1 min-h-0 rounded-xl border border-zinc-200 bg-card flex flex-col">
-        {/* Calendar header (month label + nav) */}
+        {/* Calendar header */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-zinc-200 flex-shrink-0">
           <div className="flex items-center gap-3">
             <CalIcon className="size-4 text-zinc-500" />
@@ -365,7 +661,11 @@ export default function PostsCalendarPage() {
               if (!cfg) return null;
               return <PageHelp config={cfg} align="left" buttonClassName="rounded-md" />;
             })()}
-            <button className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground text-xs h-8 px-3 font-medium">
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard/reports")}
+              className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground text-xs h-8 px-3 font-medium"
+            >
               <span aria-hidden>📊</span>
               Reporting
               <ChevronDown className="size-3.5" />
@@ -374,6 +674,7 @@ export default function PostsCalendarPage() {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => router.push("/dashboard/settings")}
               className="inline-flex items-center justify-center size-9 rounded-full bg-amber-400 hover:bg-amber-500 text-white shadow-sm"
               aria-label="Upgrade"
             >
@@ -406,268 +707,255 @@ export default function PostsCalendarPage() {
         </div>
 
         {/* Calendar body */}
-        {view === "monthly" && <MonthView currentDate={currentDate} today={today} posts={posts} onPostClick={setSelectedPost} />}
-        {view === "weekly" && <WeekView currentDate={currentDate} today={today} posts={posts} onPostClick={setSelectedPost} />}
-        {view === "list" && (
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center p-12 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin mr-2" />
+            Loading posts…
+          </div>
+        ) : loadError ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-12 gap-3 text-sm">
+            <p className="text-red-600">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => setReloadKey((k) => k + 1)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50"
+            >
+              <RefreshCw className="size-3.5" />
+              Retry
+            </button>
+          </div>
+        ) : view === "monthly" ? (
+          <MonthView currentDate={currentDate} today={today} postsByDay={postsByDay} onPostClick={setSelectedPost} onCreate={handleCreateForDate} timeZone={timeZone} />
+        ) : view === "weekly" ? (
+          <WeekView currentDate={currentDate} today={today} postsByDay={postsByDay} onPostClick={setSelectedPost} timeZone={timeZone} />
+        ) : (
           <ListView
             currentDate={currentDate}
-            posts={posts}
-            onPostClick={setSelectedPost}
-            onBulkDelete={handleBulkDelete}
+            posts={visiblePosts}
+            selected={selectedIds}
+            onToggleOne={(id) =>
+              setSelectedIds((prev) => {
+                const next = new Set(prev);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                return next;
+              })
+            }
+            onToggleAll={(ids, select) =>
+              setSelectedIds((prev) => {
+                if (select) {
+                  const next = new Set(prev);
+                  for (const id of ids) next.add(id);
+                  return next;
+                }
+                const next = new Set(prev);
+                for (const id of ids) next.delete(id);
+                return next;
+              })
+            }
+            onPostClick={(p) => setSelectedPost(p)}
+            onDeleteOne={(id) => setConfirmDeleteId(id)}
+            onDeleteBulk={() => setConfirmBulk(true)}
+            onRetry={(p) => void handleRetry(p)}
+            onDuplicate={(p) => void handleDuplicate(p)}
+            onCreate={handleCreateForDate}
+            onPrev={goPrev}
+            onNext={goNext}
+            busy={busy}
+            timeZone={timeZone}
+            hasMore={hasMore}
+            onLoadMore={() => loadPosts({ cursor: nextCursor ?? undefined, append: true, reason: "paginate" })}
+            loadingMore={loadingRef.current}
           />
         )}
       </div>
 
-      {selectedPost && <PostDetailsModal post={selectedPost} onClose={() => setSelectedPost(null)} />}
+      {selectedPost && (
+        <PostDetailsModal
+          post={selectedPost}
+          onClose={() => setSelectedPost(null)}
+          onRetry={(p) => void handleRetry(p)}
+          onDuplicate={(p) => void handleDuplicate(p)}
+          onDelete={(id) => setConfirmDeleteId(id)}
+          actionId={actionId}
+          timeZone={timeZone}
+        />
+      )}
+
+      <ConfirmDialog
+        open={Boolean(confirmDeleteId)}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={() => void handleSingleDelete()}
+        title="Delete post"
+        description="This will permanently remove the post. This cannot be undone."
+        confirmLabel={busy ? "Deleting…" : "Delete"}
+        cancelLabel="Cancel"
+        tone="destructive"
+      />
+      <ConfirmDialog
+        open={confirmBulk}
+        onClose={() => setConfirmBulk(false)}
+        onConfirm={() => void handleBulkDelete()}
+        title={`Delete ${selectedIds.size} posts`}
+        description="These posts will be permanently removed. This cannot be undone."
+        confirmLabel={busy ? "Deleting…" : "Delete all"}
+        cancelLabel="Cancel"
+        tone="destructive"
+      />
     </div>
   );
 }
 
-// ===== POST DETAILS MODAL =====
-function PostDetailsModal({ post, onClose }: { post: CalendarPost; onClose: () => void }) {
-  const t = useTranslations("dashboard");
-  const status = STATUS_META[post.status];
-  const primaryPlatform = post.platforms[0];
-  const platformLabel = PLATFORM_LABELS[primaryPlatform] ?? primaryPlatform;
+// ─── View-specific renderers ───────────────────────────────────────────
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 animate-in fade-in-0" onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        onClick={(e) => e.stopPropagation()}
-        className="relative bg-card border border-zinc-200 shadow-lg rounded-lg w-full max-w-[1180px] max-h-[90vh] flex flex-col animate-in fade-in-0 zoom-in-95"
-      >
-        {/* Header */}
-        <div className="px-6 pt-6 pb-2">
-          <div className="flex flex-col space-y-1.5 text-left">
-            <h2 className="text-lg font-semibold leading-none tracking-tight flex items-center space-x-2">
-              <span className="mr-2 inline-flex items-center justify-center size-5 rounded-full bg-green-500/15">
-                <Check className="size-3 text-green-600" />
-              </span>
-              <span>{t("posts.calendar.post_details")}</span>
-            </h2>
-            <p className="text-sm text-muted-foreground">{t("posts.calendar.post_details_subtitle")}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t("posts.calendar.close")}
-            className="absolute right-4 top-4 inline-flex items-center justify-center size-6 rounded hover:bg-zinc-100 text-zinc-500"
-          >
-            <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Body: 2 columns */}
-        <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
-          {/* Left: Post content */}
-          <div className="flex-1 min-w-0 overflow-auto px-6 pb-6">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className={cn(
-                    "inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium",
-                    status.bg, status.text, status.border
-                  )}>
-                    {post.status.toUpperCase()}
-                  </span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <PlatformAvatar platform={{ id: primaryPlatform, name: platformLabel, handle: "", avatar: null, charLimit: 0, borderClass: "", textClass: "", icon: "" }} size={16} rounded="sm" />
-                  <a className="text-sm font-medium hover:underline" href="#">{post.accountName}</a>
-                </div>
-              </div>
-
-              <div className="space-y-6 mt-6">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <h3 className="text-sm font-medium text-muted-foreground">{t("posts.calendar.scheduled_for")}</h3>
-                    <p className="text-sm mt-1">{t("posts.calendar.not_scheduled")}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-muted-foreground">{t("posts.calendar.published_at")}</h3>
-                    <p className="text-sm mt-1">Jun 23, 2026, 10:44 AM</p>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground">{t("posts.calendar.caption")}</h3>
-                  <p className="text-sm whitespace-pre-wrap mt-1">{post.caption}</p>
-                </div>
-
-                {post.thumbnail && (
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-medium text-muted-foreground">{t("posts.calendar.media")} (1)</h3>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 mt-2">
-                      <div className="relative rounded-md overflow-hidden border bg-muted">
-                        <div className="w-full h-full flex items-center justify-center aspect-video">
-                          <img alt="" className="w-full h-full object-contain" src={post.thumbnail} />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="text-xs border rounded-md divide-y">
-                  <DetailRow label={t("posts.calendar.privacy_level")} value="PUBLIC_TO_EVERYONE" />
-                  <DetailRow label={t("posts.calendar.disable_duet")} value="❌" />
-                  <DetailRow label={t("posts.calendar.disable_comment")} value="❌" />
-                  <DetailRow label={t("posts.calendar.disable_stitch")} value="❌" />
-                  <DetailRow label={t("posts.calendar.draft_post")} value="❌" />
-                  <DetailRow label={t("posts.calendar.auto_add_music")} value="❌" />
-                  <DetailRow label={t("posts.calendar.title")} value="my cute cat" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Right: Discussion panel */}
-          <div className="w-full lg:w-[320px] border-t lg:border-t-0 lg:border-l border-zinc-200 flex flex-col bg-card">
-            <div className="px-4 pt-4 pb-3 border-b border-zinc-200">
-              <h3 className="text-sm font-semibold flex items-center gap-2">
-                <ChatIcon />
-                {t("posts.calendar.discussion")}
-              </h3>
-            </div>
-            <div className="flex-1 flex items-center justify-center p-6">
-              <div className="text-center">
-                <div className="mx-auto size-12 rounded-full bg-zinc-100 flex items-center justify-center mb-3">
-                  <ChatIcon className="size-6 text-zinc-400" />
-                </div>
-                <p className="text-sm font-semibold">{t("posts.calendar.premium_feature")}</p>
-                <p className="text-xs text-muted-foreground mt-1">{t("posts.calendar.discussion_desc")}</p>
-                <button className="mt-3 inline-flex items-center rounded-md bg-zinc-900 text-white px-3 h-8 text-xs font-medium hover:bg-zinc-800">
-                  {t("posts.calendar.upgrade_premium")}
-                </button>
-                <p className="text-[11px] text-muted-foreground mt-3 flex items-center justify-center gap-1">
-                  <RedirectIcon /> Redirects to Stripe
-                </p>
-              </div>
-            </div>
-            <div className="border-t border-zinc-200 p-3">
-              <div className="flex items-center gap-2">
-                <input
-                  className="flex-1 rounded-md border border-zinc-200 bg-background px-3 h-9 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
-                  placeholder={t("posts.calendar.comment_placeholder")}
-                />
-                <button className="size-9 rounded-md bg-zinc-100 hover:bg-zinc-200 inline-flex items-center justify-center text-zinc-500" aria-label={t("posts.calendar.send")}>
-                  <SendIcon />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex">
-      <span className="font-medium py-1.5 pl-3 pr-3 border-r w-1/2">{label}</span>
-      <span className="py-1.5 pl-3 pr-3 w-1/2 text-right">{value}</span>
-    </div>
-  );
-}
-
-function ChatIcon({ className = "size-4" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-    </svg>
-  );
-}
-function RedirectIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="size-3" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" />
-    </svg>
-  );
-}
-function SendIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="size-4" fill="currentColor">
-      <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-    </svg>
-  );
-}
-
-// ===== SUB COMPONENTS =====
-function ToolIconBtn({ children, ariaLabel }: { children: React.ReactNode; ariaLabel: string }) {
+function MediaKindSelector({ value, onChange }: { value: MediaKindFilter; onChange: (v: MediaKindFilter) => void }) {
+  const order: MediaKindFilter[] = ["any", "text", "image", "video"];
+  const idx = order.indexOf(value);
+  const next = order[(idx + 1) % order.length] ?? "any";
+  const label = value === "any" ? "All media" : value === "text" ? "Text only" : value === "image" ? "Images" : "Videos";
   return (
     <button
       type="button"
-      aria-label={ariaLabel}
-      className="inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent text-xs h-8 w-8 p-0 rounded-lg transition-all duration-150 text-muted-foreground hover:text-foreground"
+      onClick={() => onChange(next)}
+      aria-label={`Media: ${label}`}
+      className={cn(
+        "inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border border-input bg-background shadow-sm hover:bg-accent text-xs h-8 px-3 rounded-lg",
+        value !== "any" && "text-foreground"
+      )}
     >
-      {children}
+      {value === "image" ? <ImageIcon /> : value === "video" ? <VideoIcon /> : value === "text" ? <TextIcon /> : <TextIcon />}
+      <span className="hidden lg:inline">{label}</span>
     </button>
   );
 }
 
-function FilterPill({ label, showCheck }: { label: string; showCheck?: boolean }) {
+function FilterPill({ label, onClick }: { label: string; onClick?: () => void }) {
   return (
     <button
       type="button"
-      className="inline-flex items-center gap-2 whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground rounded-md px-3 h-9 justify-between text-xs"
+      onClick={onClick}
+      className="inline-flex items-center gap-2 whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground rounded-md px-3 h-9 text-xs"
     >
       <span className="truncate">{label}</span>
-      {showCheck ? <Check className="ml-2 h-3 w-3 shrink-0 opacity-50" /> : <ChevronDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />}
+      <ChevronDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
     </button>
   );
 }
 
-function TimezonePill() {
-  const [tz, setTz] = useState("UTC");
-  useEffect(() => {
-    setTz(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
-  }, []);
+function DateRangePill({ from, to, onChange }: { from: string; to: string; onChange: (f: string, t: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const label =
+    from || to ? `${from || "…"} → ${to || "…"}` : "Any date";
   return (
-    <button
-      type="button"
-      className="inline-flex items-center gap-2 whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground rounded-md px-3 h-9 justify-between text-xs min-w-[180px]"
-    >
-      <span className="flex items-center gap-2">
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-2 whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground rounded-md px-3 h-9 text-xs"
+      >
+        <span className="truncate">{label}</span>
+        <ChevronDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 right-0 w-64 rounded-md border bg-card shadow-lg p-3 space-y-2">
+          <label className="block text-[11px] font-medium text-muted-foreground">From</label>
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => onChange(e.target.value, to)}
+            className="w-full rounded-md border border-input bg-background px-2 h-8 text-xs"
+          />
+          <label className="block text-[11px] font-medium text-muted-foreground">To</label>
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => onChange(from, e.target.value)}
+            className="w-full rounded-md border border-input bg-background px-2 h-8 text-xs"
+          />
+          <div className="flex justify-between pt-1">
+            <button type="button" onClick={() => { onChange("", ""); setOpen(false); }} className="text-xs text-muted-foreground hover:underline">
+              Clear
+            </button>
+            <button type="button" onClick={() => setOpen(false)} className="text-xs font-medium text-foreground hover:underline">
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TimezonePill({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const common = [
+    "UTC",
+    Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    "America/Los_Angeles",
+    "America/New_York",
+    "Europe/London",
+    "Europe/Paris",
+  ].filter((v, i, arr) => arr.indexOf(v) === i);
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Timezone"
+        className="inline-flex items-center gap-2 whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground rounded-md px-3 h-9 text-xs min-w-[180px]"
+      >
         <GlobeIcon />
-        {tz}
-      </span>
-      <ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
-    </button>
+        {value}
+        <ChevronDown className="ml-auto h-3 w-3 shrink-0 opacity-50" />
+      </button>
+      {open && (
+        <div className="absolute right-0 z-30 mt-1 w-56 rounded-md border bg-card shadow-lg p-1 max-h-72 overflow-y-auto">
+          {common.map((tz) => (
+            <button
+              key={tz}
+              type="button"
+              onClick={() => { onChange(tz); setOpen(false); }}
+              className={cn(
+                "w-full text-left text-xs rounded-sm px-2 py-1.5 hover:bg-accent",
+                tz === value && "bg-accent"
+              )}
+            >
+              {tz}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
 function ViewModeSwitch({ view, onChange }: { view: ViewMode; onChange: (v: ViewMode) => void }) {
   const t = useTranslations("dashboard");
-  const buttons: { mode: ViewMode; aria: string; icon: React.ReactNode }[] = [
-    { mode: "weekly", aria: t("posts.calendar.weekly_view"), icon: <WeekIcon /> },
-    { mode: "monthly", aria: t("posts.calendar.monthly_view"), icon: <MonthIcon /> },
-    { mode: "list", aria: t("posts.calendar.list_view"), icon: <ListIcon /> },
+  const buttons: { mode: ViewMode; aria: string; icon: React.ReactNode; label: string }[] = [
+    { mode: "weekly", aria: t("posts.calendar.weekly_view"), icon: <WeekIcon />, label: t("posts.calendar.weekly_view", { defaultValue: "Week" }) },
+    { mode: "monthly", aria: t("posts.calendar.monthly_view"), icon: <MonthIcon />, label: t("posts.calendar.monthly") },
+    { mode: "list", aria: t("posts.calendar.list_view"), icon: <ListIcon />, label: t("posts.calendar.list_view", { defaultValue: "List" }) },
   ];
   return (
-    <div className="flex items-center gap-0.5 p-0.5 bg-muted rounded-lg">
+    <div className="flex items-center gap-0.5 p-0.5 bg-muted rounded-lg" role="tablist" aria-label="View mode">
       {buttons.map((b) => {
         const active = view === b.mode;
         return (
           <button
             key={b.mode}
             type="button"
+            role="tab"
+            aria-selected={active}
             aria-label={b.aria}
-            aria-pressed={active}
             onClick={() => onChange(b.mode)}
             className={cn(
-              "inline-flex items-center justify-center whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:text-accent-foreground h-7 gap-1.5 rounded-md text-xs font-medium",
+              "inline-flex items-center justify-center whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:text-accent-foreground h-7 gap-1.5 rounded-md text-xs font-medium",
               b.mode === "monthly" ? "px-2.5" : "w-7 px-0",
               active ? "bg-background shadow-sm hover:bg-background text-foreground" : "hover:bg-accent text-muted-foreground"
             )}
           >
             {b.icon}
-            {b.mode === "monthly" && <span>{t("posts.calendar.monthly")}</span>}
+            {b.mode === "monthly" && <span>{b.label}</span>}
           </button>
         );
       })}
@@ -675,28 +963,35 @@ function ViewModeSwitch({ view, onChange }: { view: ViewMode; onChange: (v: View
   );
 }
 
-// ===== MONTH VIEW =====
-function MonthView({ currentDate, today, posts, onPostClick }: { currentDate: Date; today: Date; posts: CalendarPost[]; onPostClick: (p: CalendarPost) => void }) {
+function MonthView({
+  currentDate,
+  today,
+  postsByDay,
+  onPostClick,
+  onCreate,
+  timeZone,
+}: {
+  currentDate: Date;
+  today: Date;
+  postsByDay: Record<string, CalendarPost[]>;
+  onPostClick: (p: CalendarPost) => void;
+  onCreate: (day: Date) => void;
+  timeZone: string;
+}) {
   const start = monthGridStart(currentDate);
-  const days = useMemo(() => Array.from({ length: 35 }, (_, i) => addDays(start, i)), [start]);
+  const days = useMemo(() => Array.from({ length: 42 }, (_, i) => addDays(start, i)), [start]);
   const month = currentDate.getMonth();
-
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* Day headers (sticky) */}
       <div className="grid grid-cols-7 border-b bg-background flex-shrink-0 sticky top-0 z-40">
         {DAYS.map((d) => (
-          <div
-            key={d}
-            className="px-3 py-2 text-xs font-semibold text-muted-foreground text-center border-r last:border-r-0 border-zinc-200"
-          >
+          <div key={d} className="px-3 py-2 text-xs font-semibold text-muted-foreground text-center border-r last:border-r-0 border-zinc-200">
             {d}
           </div>
         ))}
       </div>
-      {/* Week rows */}
       <div className="flex-1 overflow-y-auto">
-        {Array.from({ length: 5 }).map((_, weekIdx) => (
+        {Array.from({ length: 6 }).map((_, weekIdx) => (
           <div key={weekIdx} className="grid grid-cols-7 border-b last:border-b-0 flex-1 min-h-[150px]">
             {days.slice(weekIdx * 7, weekIdx * 7 + 7).map((day, i) => (
               <DayCell
@@ -704,8 +999,10 @@ function MonthView({ currentDate, today, posts, onPostClick }: { currentDate: Da
                 day={day}
                 isCurrentMonth={day.getMonth() === month}
                 isToday={isSameDay(day, today)}
-                posts={posts}
+                dayPosts={postsByDay[fmtISO(day)] ?? []}
                 onPostClick={onPostClick}
+                onCreate={onCreate}
+                timeZone={timeZone}
               />
             ))}
           </div>
@@ -715,10 +1012,24 @@ function MonthView({ currentDate, today, posts, onPostClick }: { currentDate: Da
   );
 }
 
-function DayCell({ day, isCurrentMonth, isToday, posts, onPostClick }: { day: Date; isCurrentMonth: boolean; isToday: boolean; posts: CalendarPost[]; onPostClick?: (p: CalendarPost) => void }) {
+function DayCell({
+  day,
+  isCurrentMonth,
+  isToday,
+  dayPosts,
+  onPostClick,
+  onCreate,
+  timeZone,
+}: {
+  day: Date;
+  isCurrentMonth: boolean;
+  isToday: boolean;
+  dayPosts: CalendarPost[];
+  onPostClick: (p: CalendarPost) => void;
+  onCreate: (day: Date) => void;
+  timeZone: string;
+}) {
   const t = useTranslations("dashboard");
-  const iso = fmtISO(day);
-  const dayPosts = posts.filter((p) => p.date === iso);
   return (
     <div
       className={cn(
@@ -726,24 +1037,11 @@ function DayCell({ day, isCurrentMonth, isToday, posts, onPostClick }: { day: Da
         !isCurrentMonth && "bg-muted/30"
       )}
     >
-      {/* Day number row */}
       <div className="flex items-center gap-1 mb-2 flex-shrink-0">
         <span className={cn("text-sm font-medium flex-shrink-0", isCurrentMonth ? "text-foreground" : "text-muted-foreground")}>
           {day.getDate()}
         </span>
-        {/* Tag button (lucide-tag) */}
-        {isCurrentMonth && (
-          <div className="flex-1 flex flex-wrap items-center gap-0.5 min-w-0 overflow-hidden">
-            <button
-              className="w-4 h-4 ml-0.5 flex items-center justify-center rounded-full text-muted-foreground/60 hover:text-foreground hover:bg-primary/10 hover:scale-110 transition-all flex-shrink-0"
-              aria-label={t("posts.calendar.add_label")}
-            >
-              <TagIcon className="w-2.5 h-2.5" />
-            </button>
-          </div>
-        )}
-        {/* Status badge */}
-        {dayPosts.length > 0 && (
+        {isCurrentMonth && dayPosts.length > 0 && (
           <div className="flex items-center space-x-0.5 flex-shrink-0">
             <div className="w-4 h-4 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center">
               <span className="text-[9px] font-medium text-green-600">{dayPosts.length}</span>
@@ -752,17 +1050,16 @@ function DayCell({ day, isCurrentMonth, isToday, posts, onPostClick }: { day: Da
         )}
       </div>
 
-      {/* Post cards */}
       <div className="flex-1 overflow-y-auto space-y-1 min-h-0">
         {dayPosts.map((p) => (
-          <EventCard key={p.id} post={p} onClick={() => onPostClick?.(p)} />
+          <EventCard key={p.id} post={p} onClick={() => onPostClick(p)} timeZone={timeZone} />
         ))}
       </div>
 
-      {/* "+" add button */}
       {isCurrentMonth && (
         <button
           type="button"
+          onClick={() => onCreate(day)}
           className="absolute bottom-1.5 right-1.5 inline-flex items-center justify-center size-6 rounded-full bg-blue-600 hover:bg-blue-700 text-white opacity-0 group-hover:opacity-100 transition-opacity"
           aria-label={t("posts.calendar.create_post")}
         >
@@ -770,7 +1067,6 @@ function DayCell({ day, isCurrentMonth, isToday, posts, onPostClick }: { day: Da
         </button>
       )}
 
-      {/* Today highlight on right edge */}
       {isToday && (
         <div className="absolute top-1.5 right-1.5 size-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold">
           {day.getDate()}
@@ -780,69 +1076,71 @@ function DayCell({ day, isCurrentMonth, isToday, posts, onPostClick }: { day: Da
   );
 }
 
-function EventCard({ post, onClick }: { post: CalendarPost; onClick?: () => void }) {
-  const status = STATUS_META[post.status];
+function EventCard({ post, onClick, timeZone }: { post: CalendarPost; onClick: () => void; timeZone: string }) {
+  const meta = statusMetaOf(post.status);
+  const { time } = formatInZone(post.scheduledAt ?? post.publishedAt ?? post.createdAt, timeZone);
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onClick();
+    }
+  };
   return (
     <div
-      draggable={true}
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={onKey}
       className={cn(
-        "text-xs rounded px-1.5 py-1 transition-all flex items-center justify-between border flex-shrink-0 relative z-10 overflow-visible cursor-pointer hover:shadow-sm",
-        status.bg,
-        status.border,
-        status.text
+        "text-xs rounded px-1.5 py-1 transition-all flex items-center justify-between border flex-shrink-0 relative z-10 overflow-visible cursor-pointer hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/20",
+        meta.bg,
+        meta.border,
+        meta.text
       )}
     >
       <div className="flex items-center space-x-1 min-w-0">
-        {/* Thumbnail */}
-        {post.thumbnail && (
-          <img
-            alt=""
-            className="w-4 h-4 rounded-sm object-cover flex-shrink-0 hidden lg:block"
-            src={post.thumbnail}
-          />
+        {post.mediaUrls[0] && (
+          <img alt="" className="w-4 h-4 rounded-sm object-cover flex-shrink-0 hidden lg:block" src={post.mediaUrls[0]} />
         )}
-        {/* Platform icons */}
         <div className="flex items-center space-x-0.5">
-          {post.platforms.slice(0, 6).map((p, i) => (
-            <PlatformAvatar key={i} platform={{ id: p, name: PLATFORM_LABELS[p] ?? p, handle: "", avatar: null, charLimit: 0, borderClass: "", textClass: "", icon: "" }} size={14} rounded="sm" />
+          {post.platforms.slice(0, 4).map((p) => (
+            <PlatformAvatar key={p} platform={platformMeta(p)} size={14} rounded="sm" />
           ))}
         </div>
-        {/* Time + caption preview */}
         <div className="flex items-center gap-1 min-w-0">
-          {post.time && <span className="text-[10px] font-semibold whitespace-nowrap">{post.time}</span>}
+          {time && <span className="text-[10px] font-semibold whitespace-nowrap">{time}</span>}
           <span className="truncate text-[10px]">{post.caption.slice(0, 14)}</span>
         </div>
       </div>
-      {/* Status checkmark */}
       {post.status === "scheduled" && <Check className="size-3 ml-auto shrink-0 opacity-80" />}
     </div>
   );
 }
 
-// ===== WEEK VIEW =====
-function WeekView({ currentDate, today, posts, onPostClick }: { currentDate: Date; today: Date; posts: CalendarPost[]; onPostClick: (p: CalendarPost) => void }) {
-  // Monday of week containing currentDate
-  const dow = currentDate.getDay();
-  const offset = dow === 0 ? -6 : 1 - dow;
-  const weekStart = addDays(currentDate, offset);
-  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+function WeekView({
+  currentDate,
+  today,
+  postsByDay,
+  onPostClick,
+  timeZone,
+}: {
+  currentDate: Date;
+  today: Date;
+  postsByDay: Record<string, CalendarPost[]>;
+  onPostClick: (p: CalendarPost) => void;
+  timeZone: string;
+}) {
+  const { start } = weekBounds(currentDate);
+  const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
   const hours = Array.from({ length: 24 }, (_, i) => i);
-
-  // Posts by day
-  const postsByDay: Record<string, CalendarPost[]> = {};
-  posts.forEach((p) => {
-    if (!postsByDay[p.date]) postsByDay[p.date] = [];
-    postsByDay[p.date].push(p);
-  });
-
   return (
     <div className="flex-1 overflow-auto min-h-0">
       <div className="grid grid-cols-[60px_repeat(7,minmax(0,1fr))] min-w-[800px]">
-        {/* Header row */}
         <div className="sticky top-0 z-30 bg-background border-r border-b border-zinc-200" />
         {days.map((d, i) => {
           const isToday = isSameDay(d, today);
+          const iso = fmtISO(d);
+          const count = (postsByDay[iso] ?? []).length;
           return (
             <div
               key={i}
@@ -860,20 +1158,18 @@ function WeekView({ currentDate, today, posts, onPostClick }: { currentDate: Dat
               >
                 {d.getDate()}
               </div>
-              {postsByDay[fmtISO(d)]?.length > 0 && (
+              {count > 0 && (
                 <div className="absolute top-2 right-2">
                   <span className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-green-500/10 border border-green-500/30 text-[9px] font-medium text-green-600">
-                    {postsByDay[fmtISO(d)].length}
+                    {count}
                   </span>
                 </div>
               )}
             </div>
           );
         })}
-
-        {/* Hour rows */}
         {hours.map((h) => (
-          <FragmentRow key={h} hour={h} days={days} postsByDay={postsByDay} today={today} onPostClick={onPostClick} />
+          <FragmentRow key={h} hour={h} days={days} postsByDay={postsByDay} today={today} onPostClick={onPostClick} timeZone={timeZone} />
         ))}
       </div>
     </div>
@@ -886,12 +1182,14 @@ function FragmentRow({
   postsByDay,
   today,
   onPostClick,
+  timeZone,
 }: {
   hour: number;
   days: Date[];
   postsByDay: Record<string, CalendarPost[]>;
   today: Date;
   onPostClick: (p: CalendarPost) => void;
+  timeZone: string;
 }) {
   return (
     <Fragment>
@@ -902,6 +1200,12 @@ function FragmentRow({
       {days.map((d, i) => {
         const iso = fmtISO(d);
         const isToday = isSameDay(d, today);
+        const slots = (postsByDay[iso] ?? []).filter((p) => {
+          const { time } = formatInZone(p.scheduledAt ?? p.publishedAt ?? p.createdAt, timeZone);
+          if (!time) return false;
+          const h = parseInt(time.split(":")[0] ?? "", 10);
+          return h === hour;
+        });
         return (
           <div
             key={i}
@@ -910,13 +1214,9 @@ function FragmentRow({
               isToday && "bg-blue-50/30"
             )}
           >
-            {/* Posts for this hour */}
-            {(postsByDay[iso] || [])
-              .filter((p) => p.time && parseInt(p.time.split(":")[0], 10) === hour)
-              .map((p) => (
-                <WeekEventCard key={p.id} post={p} onClick={() => onPostClick(p)} />
-              ))}
-            {/* Current time line */}
+            {slots.map((p) => (
+              <WeekEventCard key={p.id} post={p} onClick={() => onPostClick(p)} timeZone={timeZone} />
+            ))}
             {isToday && hour === today.getHours() && (
               <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 pointer-events-none">
                 <div className="absolute -left-1 -top-1.5 size-3 rounded-full bg-blue-600" />
@@ -933,80 +1233,93 @@ function FragmentRow({
   );
 }
 
-function WeekEventCard({ post, onClick }: { post: CalendarPost; onClick?: () => void }) {
-  const status = STATUS_META[post.status];
+function WeekEventCard({ post, onClick, timeZone }: { post: CalendarPost; onClick: () => void; timeZone: string }) {
+  const meta = statusMetaOf(post.status);
+  const { time } = formatInZone(post.scheduledAt ?? post.publishedAt ?? post.createdAt, timeZone);
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onClick();
+    }
+  };
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={onKey}
       className={cn(
-        "rounded px-1.5 py-1 border flex items-center gap-1 text-[10px] cursor-pointer hover:shadow-sm",
-        status.bg,
-        status.border,
-        status.text
+        "rounded px-1.5 py-1 border flex items-center gap-1 text-[10px] cursor-pointer hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/20",
+        meta.bg,
+        meta.border,
+        meta.text
       )}
     >
-      {post.thumbnail && <img alt="" className="w-3 h-3 rounded-sm object-cover" src={post.thumbnail} />}
+      {post.mediaUrls[0] && <img alt="" className="w-3 h-3 rounded-sm object-cover" src={post.mediaUrls[0]} />}
       <div className="flex items-center gap-0.5">
-        {post.platforms.slice(0, 2).map((p, i) => (
-          <PlatformAvatar key={i} platform={{ id: p, name: PLATFORM_LABELS[p] ?? p, handle: "", avatar: null, charLimit: 0, borderClass: "", textClass: "", icon: "" }} size={14} rounded="sm" />
+        {post.platforms.slice(0, 2).map((p) => (
+          <PlatformAvatar key={p} platform={platformMeta(p)} size={14} rounded="sm" />
         ))}
       </div>
-      {post.time && <span className="font-semibold">{post.time}</span>}
+      {time && <span className="font-semibold">{time}</span>}
       <Check className="size-2.5 ml-auto opacity-80" />
     </div>
   );
 }
 
-// ===== LIST VIEW =====
-function ListView({ currentDate, posts, onPostClick, onBulkDelete }: { currentDate: Date; posts: CalendarPost[]; onPostClick: (p: CalendarPost) => void; onBulkDelete: (ids: string[]) => Promise<void> }) {
+function ListView({
+  currentDate,
+  posts,
+  selected,
+  onToggleOne,
+  onToggleAll,
+  onPostClick,
+  onDeleteOne,
+  onDeleteBulk,
+  onRetry,
+  onDuplicate,
+  onCreate,
+  onPrev,
+  onNext,
+  busy,
+  timeZone,
+  hasMore,
+  onLoadMore,
+  loadingMore,
+}: {
+  currentDate: Date;
+  posts: CalendarPost[];
+  selected: Set<string>;
+  onToggleOne: (id: string) => void;
+  onToggleAll: (ids: string[], select: boolean) => void;
+  onPostClick: (p: CalendarPost) => void;
+  onDeleteOne: (id: string) => void;
+  onDeleteBulk: () => void;
+  onRetry: (p: CalendarPost) => void;
+  onDuplicate: (p: CalendarPost) => void;
+  onCreate: (day: Date) => void;
+  onPrev: () => void;
+  onNext: () => void;
+  busy: boolean;
+  timeZone: string;
+  hasMore: boolean;
+  onLoadMore: () => void;
+  loadingMore: boolean;
+}) {
   const t = useTranslations("dashboard");
   const monthName = currentDate.toLocaleString("en-US", { month: "long", year: "numeric" });
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [busy, setBusy] = useState(false);
-
-  const listRows = posts
-    .filter((p) => {
-      const d = new Date(p.date);
-      return d.getMonth() === currentDate.getMonth() && d.getFullYear() === currentDate.getFullYear();
-    })
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .map((p) => ({
-      ...p,
-      dateLabel: `${p.date}T${p.time ?? "00:00"}`.replace(/-/g, " ").slice(0, 16),
-    }));
-
-  const allSelected = listRows.length > 0 && listRows.every((r) => selected.has(r.id));
-  const someSelected = !allSelected && listRows.some((r) => selected.has(r.id));
-
-  const toggleAll = () => {
-    if (allSelected) setSelected(new Set());
-    else setSelected(new Set(listRows.map((r) => r.id)));
-  };
-
-  const toggleOne = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const handleBulkDelete = async () => {
-    if (selected.size === 0) return;
-    if (!confirm(`Delete ${selected.size} selected post${selected.size === 1 ? "" : "s"}? This cannot be undone.`)) return;
-    setBusy(true);
-    try {
-      await onBulkDelete(Array.from(selected));
-      setSelected(new Set());
-    } finally {
-      setBusy(false);
-    }
-  };
+  const monthFiltered = posts.filter((p) => {
+    const stamp = p.scheduledAt ?? p.publishedAt ?? p.createdAt;
+    if (!stamp) return false;
+    const d = new Date(stamp);
+    return d.getMonth() === currentDate.getMonth() && d.getFullYear() === currentDate.getFullYear();
+  });
+  const allSelected = monthFiltered.length > 0 && monthFiltered.every((r) => selected.has(r.id));
+  const someSelected = !allSelected && monthFiltered.some((r) => selected.has(r.id));
 
   return (
     <div className="flex-1 overflow-auto min-h-0">
-      <div className="px-4 py-3 flex items-center justify-between border-b border-zinc-200 sticky top-0 bg-card z-30">
+      <div className="px-4 py-3 flex items-center justify-between border-b border-zinc-200 sticky top-0 bg-card z-30 gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -1016,172 +1329,434 @@ function ListView({ currentDate, posts, onPostClick, onBulkDelete }: { currentDa
             ref={(el) => {
               if (el) el.indeterminate = someSelected;
             }}
-            onChange={toggleAll}
+            onChange={() => onToggleAll(monthFiltered.map((r) => r.id), !allSelected)}
           />
           <h3 className="text-sm font-semibold">{monthName}</h3>
-          <span className="text-xs text-muted-foreground">{listRows.length} posts</span>
+          <span className="text-xs text-muted-foreground">
+            {monthFiltered.length} post{monthFiltered.length === 1 ? "" : "s"}
+          </span>
           {selected.size > 0 && (
-            <button
-              type="button"
-              onClick={handleBulkDelete}
-              disabled={busy}
-              className="ml-2 inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
-            >
-              <Trash2 className="size-3.5" />
-              {busy ? t("posts.calendar.deleting") : `Delete ${selected.size}`}
-            </button>
+            <>
+              <span className="text-xs text-muted-foreground">•</span>
+              <span className="text-xs">{selected.size} selected</span>
+              <button
+                type="button"
+                onClick={onDeleteBulk}
+                disabled={busy}
+                className="ml-2 inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+              >
+                <Trash2 className="size-3.5" />
+                {busy ? "Deleting…" : `Delete ${selected.size}`}
+              </button>
+            </>
           )}
+          <button
+            type="button"
+            onClick={() => onCreate(new Date())}
+            className="ml-2 inline-flex items-center gap-1.5 rounded-md bg-zinc-950 hover:bg-zinc-800 text-white px-2.5 py-1 text-xs font-medium"
+          >
+            <Plus className="size-3.5" />
+            New post
+          </button>
         </div>
         <div className="flex items-center gap-1">
-          <button className="size-8 rounded-md hover:bg-zinc-100 inline-flex items-center justify-center" aria-label={t("posts.calendar.previous")}>
+          <button
+            type="button"
+            onClick={onPrev}
+            className="size-8 rounded-md hover:bg-zinc-100 inline-flex items-center justify-center"
+            aria-label="Previous month"
+          >
             <ChevronLeft className="size-4" />
           </button>
-          <button className="size-8 rounded-md hover:bg-zinc-100 inline-flex items-center justify-center" aria-label={t("posts.calendar.next")}>
+          <button
+            type="button"
+            onClick={onNext}
+            className="size-8 rounded-md hover:bg-zinc-100 inline-flex items-center justify-center"
+            aria-label="Next month"
+          >
             <ChevronRight className="size-4" />
           </button>
         </div>
       </div>
-      <table className="w-full text-sm">
-        <thead className="sticky top-[57px] bg-card z-20">
-          <tr className="border-b border-zinc-200 text-xs text-muted-foreground">
-            <th className="w-10 px-3 py-2" />
-            <th className="text-left px-3 py-2 font-medium">{t("posts.calendar.caption")}</th>
-            <th className="text-left px-3 py-2 font-medium">Account</th>
-            <th className="text-left px-3 py-2 font-medium">{t("posts.calendar.status")}</th>
-            <th className="text-left px-3 py-2 font-medium">{t("posts.calendar.date")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {listRows.map((row) => {
-            const status = STATUS_META[row.status];
-            const isSelected = selected.has(row.id);
-            return (
-              <tr
-                key={row.id}
-                className={cn("border-b border-zinc-100 hover:bg-zinc-50 cursor-pointer", isSelected && "bg-blue-50/60")}
-                onClick={() => onPostClick(row)}
-              >
-                <td className="px-3 py-2">
-                  <input
-                    type="checkbox"
-                    className="size-4 rounded border-zinc-300"
-                    checked={isSelected}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={() => toggleOne(row.id)}
-                  />
-                </td>
-                <td className="px-3 py-2">
-                  <div className="flex items-start gap-2">
-                    {row.thumbnail && (
-                      <img alt="" className="w-10 h-10 rounded object-cover shrink-0" src={row.thumbnail} />
-                    )}
-                    <p className="line-clamp-2 text-[13px] text-zinc-900">{row.caption}</p>
-                  </div>
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap">
-                  <div className="flex items-center gap-1.5">
-                    {row.platforms.slice(0, 1).map((p, i) => (
-            <PlatformAvatar key={i} platform={{ id: p, name: PLATFORM_LABELS[p] ?? p, handle: "", avatar: null, charLimit: 0, borderClass: "", textClass: "", icon: "" }} size={14} rounded="sm" />
-                    ))}
-                    <span className="text-xs text-zinc-700">{row.accountName}</span>
-                  </div>
-                </td>
-                <td className="px-3 py-2">
-                  <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium border", status.bg, status.border, status.text)}>
-                    {status.label}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-xs text-zinc-600 whitespace-nowrap">{row.dateLabel}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      {monthFiltered.length === 0 ? (
+        <div className="p-12 text-center text-sm text-muted-foreground">
+          No posts in {monthName} match your filters.
+        </div>
+      ) : (
+        <table className="w-full text-sm">
+          <thead className="sticky top-[57px] bg-card z-20">
+            <tr className="border-b border-zinc-200 text-xs text-muted-foreground">
+              <th className="w-10 px-3 py-2" />
+              <th className="text-left px-3 py-2 font-medium">{t("posts.calendar.caption")}</th>
+              <th className="text-left px-3 py-2 font-medium">Account</th>
+              <th className="text-left px-3 py-2 font-medium">{t("posts.calendar.status")}</th>
+              <th className="text-left px-3 py-2 font-medium">{t("posts.calendar.date")}</th>
+              <th className="text-right px-3 py-2 font-medium w-44">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {monthFiltered.map((row) => {
+              const meta = statusMetaOf(row.status);
+              const isSelected = selected.has(row.id);
+              const { date, time } = formatInZone(row.scheduledAt ?? row.publishedAt ?? row.createdAt, timeZone);
+              const acct = accountLabelForPost(row);
+              return (
+                <tr
+                  key={row.id}
+                  className={cn("border-b border-zinc-100 hover:bg-zinc-50 cursor-pointer", isSelected && "bg-blue-50/60")}
+                  onClick={() => onPostClick(row)}
+                >
+                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      className="size-4 rounded border-zinc-300"
+                      checked={isSelected}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() => onToggleOne(row.id)}
+                      aria-label={`Select ${row.id}`}
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-start gap-2">
+                      {row.mediaUrls[0] && (
+                        <img alt="" className="w-10 h-10 rounded object-cover shrink-0" src={row.mediaUrls[0]} />
+                      )}
+                      <p className="line-clamp-2 text-[13px] text-zinc-900">{row.caption || <span className="italic text-muted-foreground">No caption</span>}</p>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <div className="flex items-center gap-1.5">
+                      {row.platforms.slice(0, 1).map((p) => (
+                        <PlatformAvatar key={p} platform={platformMeta(p)} size={14} rounded="sm" />
+                      ))}
+                      <span className="text-xs text-zinc-700">{acct ?? "—"}</span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium border", meta.bg, meta.border, meta.text)}>
+                      {meta.label}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-xs text-zinc-600 whitespace-nowrap">{date} {time}</td>
+                  <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                    <div className="inline-flex items-center gap-1">
+                      {canRetry(row.status) && (
+                        <button
+                          type="button"
+                          onClick={() => onRetry(row)}
+                          className="size-7 inline-flex items-center justify-center rounded-md border border-zinc-200 hover:bg-zinc-50"
+                          aria-label="Retry"
+                          title="Retry"
+                        >
+                          <RefreshCw className="size-3.5" />
+                        </button>
+                      )}
+                      {canDuplicate(row.status) && (
+                        <button
+                          type="button"
+                          onClick={() => onDuplicate(row)}
+                          className="size-7 inline-flex items-center justify-center rounded-md border border-zinc-200 hover:bg-zinc-50"
+                          aria-label="Duplicate"
+                          title="Duplicate"
+                        >
+                          <Copy className="size-3.5" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onDeleteOne(row.id)}
+                        className="size-7 inline-flex items-center justify-center rounded-md border border-red-200 text-red-700 hover:bg-red-50"
+                        aria-label="Delete"
+                        title="Delete"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+      {hasMore && (
+        <div className="p-3 text-center">
+          <button
+            type="button"
+            onClick={onLoadMore}
+            disabled={loadingMore}
+            className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
+          >
+            {loadingMore ? <Loader2 className="size-3.5 animate-spin" /> : null}
+            {loadingMore ? "Loading…" : "Load more"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-function todayLabel() {
-  const d = new Date();
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) + " 8:4";
+// ─── POST DETAILS MODAL ────────────────────────────────────────────────
+
+function PostDetailsModal({
+  post,
+  onClose,
+  onRetry,
+  onDuplicate,
+  onDelete,
+  actionId,
+  timeZone,
+}: {
+  post: CalendarPost;
+  onClose: () => void;
+  onRetry: (p: CalendarPost) => void;
+  onDuplicate: (p: CalendarPost) => void;
+  onDelete: (id: string) => void;
+  actionId: string | null;
+  timeZone: string;
+}) {
+  const t = useTranslations("dashboard");
+  const meta = statusMetaOf(post.status);
+  const scheduledLabel = post.scheduledAt ? formatLongDateTime(post.scheduledAt, timeZone) : t("posts.calendar.not_scheduled");
+  const publishedLabel = post.publishedAt ? formatLongDateTime(post.publishedAt, timeZone) : "—";
+
+  const account = accountLabelForPost(post);
+  const mediaCount = post.mediaUrls?.length ?? 0;
+
+  const youtubeFields = post.platforms.includes("youtube");
+  const pinterestFields = post.platforms.includes("pinterest");
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="xl"
+      title={t("posts.calendar.post_details")}
+      description={t("posts.calendar.post_details_subtitle")}
+    >
+      <div className="flex flex-col lg:flex-row gap-4">
+        <div className="flex-1 min-w-0 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={cn("inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium", meta.bg, meta.text, meta.border)}>
+                {meta.label}
+              </span>
+              {post.postIn && (
+                <span className="inline-flex items-center rounded-full border border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-700">
+                  {post.postIn === "story" ? "Story" : "Feed"}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {post.platforms.map((p) => (
+                <span key={p} className="inline-flex items-center gap-1.5 text-xs text-zinc-700">
+                  <PlatformAvatar platform={platformMeta(p)} size={14} rounded="sm" />
+                  {PLATFORM_LABELS[p] ?? p}
+                </span>
+              ))}
+              {account && <span className="text-xs text-muted-foreground">• {account}</span>}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Scheduled for</h3>
+              <p className="text-sm mt-1">{scheduledLabel}</p>
+            </div>
+            <div>
+              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Published at</h3>
+              <p className="text-sm mt-1">{publishedLabel}</p>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Caption</h3>
+            <p className="text-sm whitespace-pre-wrap mt-1">
+              {post.caption || <span className="italic text-muted-foreground">No caption</span>}
+            </p>
+          </div>
+
+          {post.failureReason && post.status === "failed" && (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+              <p className="font-semibold">Last failure</p>
+              <p className="mt-0.5">{post.failureReason}</p>
+            </div>
+          )}
+
+          {mediaCount > 0 && (
+            <div>
+              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Media ({mediaCount})
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
+                {post.mediaUrls.map((u, i) => {
+                  const kind = mediaKindFromUrl(u);
+                  return (
+                    <div key={i} className="relative rounded-md overflow-hidden border bg-muted aspect-square">
+                      {kind === "video" ? (
+                        <video src={u} className="w-full h-full object-contain" controls preload="metadata" />
+                      ) : (
+                        <img alt="" className="w-full h-full object-contain" src={u} />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {(post.firstComment || post.community || post.quoteTweetUrl || post.hashtags?.length || post.labels?.length) ? (
+            <div className="text-xs border rounded-md divide-y">
+              {post.firstComment && <DetailRow label="First comment" value={post.firstComment} />}
+              {post.community && <DetailRow label="Community" value={post.community} />}
+              {post.quoteTweetUrl && <DetailRow label="Quote tweet" value={post.quoteTweetUrl} />}
+              {post.hashtags && post.hashtags.length > 0 && <DetailRow label="Hashtags" value={post.hashtags.join(" ")} />}
+              {post.labels && post.labels.length > 0 && <DetailRow label="Labels" value={post.labels.join(", ")} />}
+            </div>
+          ) : null}
+
+          {youtubeFields && (post.youtubeTitle || post.youtubeTags || typeof post.autoAddMusic === "boolean") ? (
+            <div className="text-xs border rounded-md divide-y">
+              {post.youtubeTitle && <DetailRow label="Title" value={post.youtubeTitle} />}
+              {post.youtubeTags && <DetailRow label="Tags" value={post.youtubeTags} />}
+              {typeof post.autoAddMusic === "boolean" && (
+                <DetailRow label="Auto-add music" value={post.autoAddMusic ? "✅" : "❌"} />
+              )}
+            </div>
+          ) : null}
+
+          {pinterestFields && post.pinterestBoard ? (
+            <div className="text-xs border rounded-md divide-y">
+              <DetailRow label="Board" value={post.pinterestBoard} />
+            </div>
+          ) : null}
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t mt-2">
+            {canRetry(post.status) && (
+              <button
+                type="button"
+                onClick={() => onRetry(post)}
+                disabled={actionId === post.id}
+                className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-9 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
+              >
+                {actionId === post.id ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+                Retry
+              </button>
+            )}
+            {canDuplicate(post.status) && (
+              <button
+                type="button"
+                onClick={() => onDuplicate(post)}
+                disabled={actionId === post.id}
+                className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-9 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
+              >
+                {actionId === post.id ? <Loader2 className="size-3.5 animate-spin" /> : <Copy className="size-3.5" />}
+                Duplicate
+              </button>
+            )}
+            {isActionable(post.status) && (
+              <button
+                type="button"
+                onClick={() => onDelete(post.id)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 text-red-700 px-3 h-9 text-xs font-medium hover:bg-red-100"
+              >
+                <Trash2 className="size-3.5" />
+                Delete
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="w-full lg:w-[300px] flex-shrink-0 flex flex-col border-t lg:border-t-0 lg:border-l border-zinc-200 -mx-5 lg:mx-0 px-5 lg:px-0 lg:pl-4">
+          <div className="px-4 pt-4 pb-3 border-b border-zinc-200">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <ChatIcon />
+              {t("posts.calendar.discussion")}
+            </h3>
+          </div>
+          <div className="flex-1 flex items-center justify-center p-6">
+            <div className="text-center">
+              <div className="mx-auto size-12 rounded-full bg-zinc-100 flex items-center justify-center mb-3">
+                <ChatIcon className="size-6 text-zinc-400" />
+              </div>
+              <p className="text-sm font-semibold">{t("posts.calendar.premium_feature")}</p>
+              <p className="text-xs text-muted-foreground mt-1">{t("posts.calendar.discussion_desc")}</p>
+              <a
+                href="/dashboard/settings"
+                className="mt-3 inline-flex items-center rounded-md bg-zinc-900 text-white px-3 h-8 text-xs font-medium hover:bg-zinc-800"
+              >
+                {t("posts.calendar.upgrade_premium")}
+              </a>
+              <p className="text-[11px] text-muted-foreground mt-3 flex items-center justify-center gap-1">
+                <RedirectIcon /> Upgrade in settings
+              </p>
+            </div>
+          </div>
+          <div className="border-t border-zinc-200 p-3">
+            <div className="flex items-center gap-2">
+              <input
+                disabled
+                aria-label="Discussion disabled"
+                className="flex-1 rounded-md border border-zinc-200 bg-zinc-50 px-3 h-9 text-sm text-muted-foreground cursor-not-allowed"
+                placeholder={t("posts.calendar.comment_placeholder")}
+              />
+              <button
+                disabled
+                aria-label="Send (disabled in this build)"
+                className="size-9 rounded-md bg-zinc-100 text-zinc-400 inline-flex items-center justify-center cursor-not-allowed"
+              >
+                <SendIcon />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
 }
 
-const LIST_SAMPLE: (CalendarPost & { dateLabel: string })[] = [
-  {
-    id: "l1",
-    date: todayOffset(0),
-    dateLabel: todayLabel(),
-    caption: "Why you bought a tennis ball for fitness. Your cat likes hustle sideways...",
-    status: "scheduled",
-    platforms: ["twitter"],
-    accountName: "nicklorance7",
-  },
-  {
-    id: "l2",
-    date: todayOffset(0),
-    dateLabel: todayLabel(),
-    caption: "Ever seen a house panther descend quietly? 👀 This little shadow match has everything...",
-    status: "published",
-    platforms: ["instagram"],
-    accountName: "nicklorance7",
-  },
-  {
-    id: "l3",
-    date: todayOffset(0),
-    dateLabel: todayLabel(),
-    caption: "Your daily reminder that cats do not need a gym membership...",
-    status: "published",
-    platforms: ["bluesky"],
-    accountName: "nicklorance.bsky.social",
-  },
-  {
-    id: "l4",
-    date: todayOffset(0),
-    dateLabel: todayLabel(),
-    caption: "A tennis ball entered his kitchen. The tiny panther chose violence...",
-    status: "published",
-    platforms: ["twitter"],
-    accountName: "nicklorance.bsky.social",
-  },
-  {
-    id: "l5",
-    date: todayOffset(0),
-    dateLabel: todayLabel(),
-    caption: "Productivity lessons from a black cat and a remote cat! Focus on one target...",
-    status: "published",
-    platforms: ["linkedin"],
-    accountName: "nicklorance7",
-  },
-  {
-    id: "l6",
-    date: todayOffset(0),
-    dateLabel: todayLabel(),
-    caption: "Not in the dramatic, but the cat in one paw away from a sports documentary...",
-    status: "published",
-    platforms: ["tiktok"],
-    accountName: "nicklorance7",
-  },
-  {
-    id: "l7",
-    date: todayOffset(0),
-    dateLabel: todayLabel(),
-    caption: "Watch cat play time, approved by one very serious dog partner...",
-    status: "published",
-    platforms: ["pinterest"],
-    accountName: "nicklorance7",
-  },
-  {
-    id: "l8",
-    date: todayOffset(0),
-    dateLabel: todayLabel(),
-    caption: "The panther no tennis ball. Kitchen floor edition. The ball is trying really...",
-    status: "draft",
-    platforms: ["instagram"],
-    accountName: "nicklorance.life",
-  },
-];
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex">
+      <span className="font-medium py-1.5 pl-3 pr-3 border-r w-1/2">{label}</span>
+      <span className="py-1.5 pl-3 pr-3 w-1/2 text-right break-words">{value}</span>
+    </div>
+  );
+}
 
-// ===== ICONS =====
+// ─── API normalization ────────────────────────────────────────────────
+
+function normalizeApiPost(raw: Record<string, unknown>): CalendarPost {
+  const id = typeof raw.id === "string" ? raw.id : "";
+  return {
+    id,
+    workspaceId: typeof raw.workspaceId === "string" ? raw.workspaceId : undefined,
+    status: normalizeStatus(raw.status),
+    caption: typeof raw.caption === "string" ? raw.caption : "",
+    platforms: normalizePlatforms(raw.platforms),
+    mediaUrls: Array.isArray(raw.mediaUrls) ? raw.mediaUrls.filter((u): u is string => typeof u === "string") : [],
+    scheduledAt: typeof raw.scheduledAt === "string" ? raw.scheduledAt : undefined,
+    publishedAt: typeof raw.publishedAt === "string" ? raw.publishedAt : undefined,
+    createdAt: typeof raw.createdAt === "string" ? raw.createdAt : new Date().toISOString(),
+    updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : undefined,
+    hashtags: Array.isArray(raw.hashtags) ? raw.hashtags.filter((s): s is string => typeof s === "string") : [],
+    labels: Array.isArray(raw.labels) ? raw.labels.filter((s): s is string => typeof s === "string") : [],
+    firstComment: typeof raw.firstComment === "string" ? raw.firstComment : undefined,
+    community: typeof raw.community === "string" ? raw.community : undefined,
+    quoteTweetUrl: typeof raw.quoteTweetUrl === "string" ? raw.quoteTweetUrl : undefined,
+    threadRootId: typeof raw.threadRootId === "string" ? raw.threadRootId : undefined,
+    postIn: raw.postIn === "story" || raw.postIn === "feed" ? raw.postIn : undefined,
+    youtubeTitle: typeof raw.youtubeTitle === "string" ? raw.youtubeTitle : undefined,
+    youtubeTags: typeof raw.youtubeTags === "string" ? raw.youtubeTags : undefined,
+    pinterestBoard: typeof raw.pinterestBoard === "string" ? raw.pinterestBoard : undefined,
+    autoAddMusic: typeof raw.autoAddMusic === "boolean" ? raw.autoAddMusic : undefined,
+    profile: typeof raw.profile === "string" ? raw.profile : undefined,
+    failureReason: typeof raw.failureReason === "string" ? raw.failureReason : undefined,
+  };
+}
+
+// ─── Icons ─────────────────────────────────────────────────────────────
+
 function TextIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
@@ -1240,13 +1815,24 @@ function ListIcon() {
     </svg>
   );
 }
-
-// ===== HELPERS =====
-function weekRangeLabel(d: Date): string {
-  const dow = d.getDay();
-  const offset = dow === 0 ? -6 : 1 - dow;
-  const start = addDays(d, offset);
-  const end = addDays(start, 6);
-  const fmt = (x: Date) => x.toLocaleString("en-US", { month: "short", day: "numeric" });
-  return `${fmt(start)} - ${fmt(end)}, ${end.getFullYear()}`;
+function ChatIcon({ className = "size-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+function RedirectIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-3" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" />
+    </svg>
+  );
+}
+function SendIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-4" fill="currentColor">
+      <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+    </svg>
+  );
 }

@@ -22,8 +22,10 @@ export const postStatusSchema = z.enum([
   "scheduled",
   "publishing",
   "published",
+  "partially_published",
   "failed",
   "archived",
+  "paused",
 ]);
 
 export const postCollaboratorSchema = z.object({

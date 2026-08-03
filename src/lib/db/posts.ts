@@ -34,13 +34,27 @@ export interface PostListItem {
   updatedAt: string;
   hashtags: string[];
   labels: string[];
+  firstComment?: string;
+  community?: string;
+  quoteTweetUrl?: string;
+  threadRootId?: string;
+  postIn?: "feed" | "story";
+  youtubeTitle?: string;
+  youtubeTags?: string;
+  pinterestBoard?: string;
+  autoAddMusic?: boolean;
+  profile?: string;
+  failureReason?: string;
 }
 
 export async function listPosts(workspaceId: string, filters: ListPostsFilters = {}): Promise<{ items: PostListItem[]; nextCursor: string | null }> {
   const coll = collection(workspaceId);
   const pageSize = Math.min(Math.max(filters.pageSize ?? 25, 1), 100);
 
-  let q = coll.orderBy("createdAt", "desc").limit(pageSize);
+  let q = coll
+    .orderBy("createdAt", "desc")
+    .where("deletedAt", "==", null)
+    .limit(pageSize);
   if (filters.status) {
     if (Array.isArray(filters.status)) {
       q = q.where("status", "in", filters.status);
@@ -49,6 +63,14 @@ export async function listPosts(workspaceId: string, filters: ListPostsFilters =
     }
   }
   if (filters.platform) q = q.where("platforms", "array-contains", filters.platform);
+  if (filters.cursor) {
+    try {
+      const cursorSnap = await coll.doc(filters.cursor).get();
+      if (cursorSnap.exists) q = q.startAfter(cursorSnap);
+    } catch {
+      // bad cursor — fall back to first page
+    }
+  }
 
   const snap = await q.get();
   const items = snap.docs.map((d: { id: string; data: () => unknown }) => serialize(workspaceId, d.id, d.data() as PostDoc));
@@ -73,7 +95,10 @@ export async function listPostsHistory(
 
   // Order by publishedAt (when present) descending. For failed posts that
   // never published, fall back to createdAt in the client filter below.
-  let q = coll.orderBy("publishedAt", "desc").limit(pageSize);
+  let q = coll
+    .where("deletedAt", "==", null)
+    .orderBy("publishedAt", "desc")
+    .limit(pageSize);
   if (filters.status) {
     q = q.where("status", "==", filters.status);
   } else {
@@ -190,6 +215,7 @@ export async function bulkCreatePosts(
 export async function listScheduledDue(workspaceId: string, now: Date): Promise<PostListItem[]> {
   const coll = collection(workspaceId);
   const q = coll
+    .where("deletedAt", "==", null)
     .where("status", "in", ["queued", "scheduled"])
     .where("scheduledAt", "<=", now)
     .limit(50);
@@ -232,7 +258,10 @@ export async function markFailed(workspaceId: string, postId: string, reason: st
 export async function resetStuckClaims(workspaceId: string, olderThanMs: number): Promise<number> {
   const coll = collection(workspaceId);
   const threshold = new Date(Date.now() - olderThanMs);
-  const q = coll.where("status", "==", "publishing").where("claimedAt", "<=", threshold);
+  const q = coll
+    .where("deletedAt", "==", null)
+    .where("status", "==", "publishing")
+    .where("claimedAt", "<=", threshold);
   const snap = await q.get();
   const batch = adminDb!.batch();
   let count = 0;
@@ -259,6 +288,17 @@ function serialize(workspaceId: string, id: string, data: PostDoc): PostListItem
     mediaUrls: data.mediaUrls ?? [],
     hashtags: data.hashtags ?? [],
     labels: data.labels ?? [],
+    firstComment: data.firstComment,
+    community: data.community,
+    quoteTweetUrl: data.quoteTweetUrl,
+    threadRootId: data.threadRootId,
+    postIn: data.postIn,
+    youtubeTitle: data.youtubeTitle,
+    youtubeTags: data.youtubeTags,
+    pinterestBoard: data.pinterestBoard,
+    autoAddMusic: data.autoAddMusic,
+    profile: data.profile,
+    failureReason: data.failureReason,
     scheduledAt: data.scheduledAt ? toIso(data.scheduledAt) : undefined,
     publishedAt: data.publishedAt ? toIso(data.publishedAt) : undefined,
     createdAt: toIso(data.createdAt),
@@ -276,6 +316,7 @@ export async function countPublishedPosts(
   try {
     let q = adminDb
       .collection(`workspaces/${workspaceId}/posts`)
+      .where("deletedAt", "==", null)
       .where("status", "==", "published")
       .where("publishedAt", ">=", from)
       .where("publishedAt", "<=", to);
@@ -289,5 +330,3 @@ export async function countPublishedPosts(
     return 0;
   }
 }
-
-
