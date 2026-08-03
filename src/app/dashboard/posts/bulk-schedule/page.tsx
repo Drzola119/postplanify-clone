@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import {
   Upload,
   UploadCloud,
@@ -11,16 +11,24 @@ import {
   ChevronDown,
   Plus,
   ImagePlus,
+  Undo2,
+  Download,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PLATFORMS, getPlatform, type PlatformId } from "@/lib/platforms";
 import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
 import { PageHelp } from "@/components/dashboard/help/page-help";
 import { getHelpConfig } from "@/lib/help/content";
+import { useToast } from "@/components/ui/toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { getOverrideHeaders } from "@/lib/security/client-overrides";
+import { parseCsv, normalizePlatforms, normalizeHashtags } from "@/lib/bulk-schedule/csv";
 
-type BulkItem = {
+type BulkItemSource = "upload" | "csv";
+
+type BulkItemBase = {
   id: string;
-  file: File;
   url: string;
   kind: "image" | "video";
   name: string;
@@ -37,10 +45,42 @@ type BulkItem = {
   autoAddMusic: boolean;
   community: boolean;
   profile: string;
+  hashtags: string[];
+  uploadStatus: "uploading" | "ready" | "error";
+  uploadError?: string;
+  uploadProgress?: number;
 };
+
+type UploadedBulkItem = BulkItemBase & {
+  source: "upload";
+  file: File;
+  /** Local object URL for preview; revoked on remove/unmount. */
+  previewUrl: string;
+  /** Stored path on CDN, used for cleanup. */
+  storedPath?: string;
+};
+
+type CsvBulkItem = BulkItemBase & {
+  source: "csv";
+  /** Remote media URL from the CSV's mediaurl column. */
+  mediaUrl: string;
+};
+
+type BulkItem = UploadedBulkItem | CsvBulkItem;
 
 const MAX_FILES = 20;
 const MAX_FILE_BYTES = 100 * 1024 * 1024;
+const MAX_BULK_PAYLOAD_FILES = 100;
+const MAX_FUTURE_DAYS = 365;
+const ACCEPTED_MIME_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+] as const;
 
 const TIMEZONES = [
   { id: "Africa/Lagos", label: "Africa/Lagos" },
@@ -60,6 +100,8 @@ const INTERVALS = [
   { id: "14d", label: "Every 2 weeks" },
   { id: "30d", label: "Monthly" },
 ];
+
+const STORAGE_KEY = "pp.bulk-schedule.draft.v1";
 
 function todayISO(): string {
   const d = new Date();
@@ -98,140 +140,255 @@ function splitDateTime(dt: string): { date: string; time: string } {
 }
 
 /**
- * Minimal RFC4180-ish CSV parser. Supports quoted fields with embedded
- * commas/newlines and `""` escapes. Returns { headers, rows }.
+ * Convert a wall-clock date+time in the chosen timezone to a UTC Date.
+ * The browser has no direct timezone-conversion API, so we round-trip via
+ * `toLocaleString` to read the offset and flip the local fields to UTC.
  */
-function parseCsv(text: string): { headers: string[]; rows: string[][] } {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cur = "";
-  let inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') {
-          cur += '"';
-          i++;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        cur += c;
-      }
-    } else {
-      if (c === '"') {
-        inQuotes = true;
-      } else if (c === ",") {
-        row.push(cur);
-        cur = "";
-      } else if (c === "\n" || c === "\r") {
-        if (cur !== "" || row.length > 0) {
-          row.push(cur);
-          rows.push(row);
-          row = [];
-          cur = "";
-        }
-        if (c === "\r" && text[i + 1] === "\n") i++;
-      } else {
-        cur += c;
-      }
+function wallClockToUTC(date: string, time: string, timezone: string): Date | null {
+  const [hh, mm] = time.split(":").map((s) => parseInt(s, 10));
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+  const [y, m, d] = date.split("-").map((s) => parseInt(s, 10));
+  if (Number.isNaN(y) || Number.isNaN(m) || Number.isNaN(d)) return null;
+  const utcFake = new Date(Date.UTC(y, m - 1, d, hh, mm, 0, 0));
+  const tzNow = new Date(utcFake.toLocaleString("en-US", { timeZone: timezone }));
+  const offsetMs = utcFake.getTime() - tzNow.getTime();
+  return new Date(utcFake.getTime() + offsetMs);
+}
+
+function pickCharLimitFor(item: BulkItem): number {
+  // Pick the strictest limit among selected platforms (matches upload-post behaviour).
+  let min = 2200;
+  for (const id of item.accountIds) {
+    const p = PLATFORMS.find((pl) => pl.id === id);
+    if (p && p.charLimit < min) min = p.charLimit;
+  }
+  return min;
+}
+
+interface ValidationIssue {
+  itemId: string;
+  message: string;
+}
+
+function validateItems(items: BulkItem[]): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const now = Date.now();
+  for (const it of items) {
+    if (!it.caption.trim()) {
+      issues.push({ itemId: it.id, message: "Caption is required" });
+    }
+    if (it.accountIds.length === 0) {
+      issues.push({ itemId: it.id, message: "No platforms selected" });
+    }
+    if (it.accountIds.includes("youtube") && !it.youtubeTitle.trim()) {
+      issues.push({ itemId: it.id, message: "YouTube title is required" });
+    }
+    if (it.accountIds.includes("pinterest") && !it.pinterestBoard.trim()) {
+      issues.push({ itemId: it.id, message: "Pinterest board is required" });
+    }
+    if (it.source === "upload" && it.uploadStatus !== "ready") {
+      issues.push({ itemId: it.id, message: "Still uploading to CDN" });
+    }
+    if (it.source === "upload" && !it.url.startsWith("https://")) {
+      issues.push({ itemId: it.id, message: "Media not on CDN" });
+    }
+    const scheduled = Date.parse(it.scheduledAt);
+    if (Number.isNaN(scheduled)) {
+      issues.push({ itemId: it.id, message: "Invalid scheduled time" });
+    } else if (scheduled <= now + 60_000) {
+      issues.push({ itemId: it.id, message: "Scheduled time must be in the future" });
+    } else if (scheduled - now > MAX_FUTURE_DAYS * 24 * 60 * 60 * 1000) {
+      issues.push({ itemId: it.id, message: `More than ${MAX_FUTURE_DAYS} days ahead` });
     }
   }
-  if (cur !== "" || row.length > 0) {
-    row.push(cur);
-    rows.push(row);
-  }
-  const headers = (rows.shift() ?? []).map((h) => h.trim().toLowerCase());
-  return { headers, rows: rows.filter((r) => r.some((c) => c.trim() !== "")) };
+  return issues;
 }
 
-const PLATFORM_ALIASES: Record<string, PlatformId> = {
-  twitter: "twitter",
-  x: "twitter",
-  instagram: "instagram",
-  ig: "instagram",
-  facebook: "facebook",
-  fb: "facebook",
-  tiktok: "tiktok",
-  youtube: "youtube",
-  yt: "youtube",
-  linkedin: "linkedin",
-  threads: "threads",
-  pinterest: "pinterest",
-  bluesky: "bluesky",
-  bsky: "bluesky",
-};
-
-function normalizePlatforms(raw: string): PlatformId[] {
-  const out = new Set<PlatformId>();
-  for (const tok of raw.split(/[,|/;]/).map((s) => s.trim().toLowerCase()).filter(Boolean)) {
-    const mapped = PLATFORM_ALIASES[tok];
-    if (mapped) out.add(mapped);
-  }
-  return Array.from(out);
+/** Persist only CSV items + scheduler settings — uploaded files aren't serializable. */
+interface PersistedDraft {
+  csvItems: CsvBulkItem[];
+  accounts: PlatformId[];
+  startDate: string;
+  startTime: string;
+  postsPerDay: number;
+  interval: string;
+  timezone: string;
 }
 
-function normalizeHashtags(raw: string): string[] {
-  return raw
-    .split(/[,|;\s]+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0)
-    .map((s) => (s.startsWith("#") ? s : `#${s}`));
+function loadPersistedDraft(): PersistedDraft | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as PersistedDraft) : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePersistedDraft(draft: PersistedDraft): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
+  } catch {
+    // Quota / private mode — ignore.
+  }
+}
+
+function clearPersistedDraft(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 export default function BulkSchedulePage() {
   const t = useTranslations("dashboard");
+  const { toast } = useToast();
+  const { getIdToken } = useAuth();
   const [items, setItems] = useState<BulkItem[]>([]);
   const [startDate, setStartDate] = useState<string>(todayISO());
   const [startTime, setStartTime] = useState<string>(defaultTime());
   const [postsPerDay, setPostsPerDay] = useState<number>(1);
   const [interval, setInterval] = useState<string>("1d");
-  const [timezone, setTimezone] = useState<string>("Africa/Lagos");
+  const [timezone, setTimezone] = useState<string>("America/New_York");
   const [tzOpen, setTzOpen] = useState(false);
   const [accounts, setAccounts] = useState<Set<PlatformId>>(new Set());
   const [dragging, setDragging] = useState(false);
   const [csvBusy, setCsvBusy] = useState(false);
   const [scheduleBusy, setScheduleBusy] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [undoStack, setUndoStack] = useState<Array<{ kind: "remove"; item: BulkItem; index: number }>>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addMoreInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
+  const tzRef = useRef<HTMLDivElement>(null);
+  const hydratedRef = useRef(false);
 
+  // Auto-detect timezone on first mount; fall back to a value from the list
+  // so the dropdown's label matches the user's wall-clock.
   useEffect(() => {
-    setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    try {
+      const guess = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (guess && TIMEZONES.some((tz) => tz.id === guess)) {
+        setTimezone(guess);
+      } else {
+        setTimezone("America/New_York");
+      }
+    } catch {
+      setTimezone("America/New_York");
+    }
   }, []);
 
-  // Close dropdowns on Escape
+  // Restore persisted CSV draft + scheduler settings (uploaded files are not
+  // serializable since their preview URL is a blob: tied to the File object).
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
+    const persisted = loadPersistedDraft();
+    if (!persisted) return;
+    setStartDate(persisted.startDate);
+    setStartTime(persisted.startTime);
+    setPostsPerDay(persisted.postsPerDay);
+    setInterval(persisted.interval);
+    setTimezone(persisted.timezone);
+    setAccounts(new Set(persisted.accounts));
+    if (persisted.csvItems.length > 0) {
+      setItems(persisted.csvItems);
+    }
+  }, []);
+
+  // Persist on changes (skip the very first render to avoid clobbering).
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    savePersistedDraft({
+      csvItems: items.filter((it): it is CsvBulkItem => it.source === "csv"),
+      accounts: Array.from(accounts),
+      startDate,
+      startTime,
+      postsPerDay,
+      interval,
+      timezone,
+    });
+  }, [items, accounts, startDate, startTime, postsPerDay, interval, timezone]);
+
+  // Close TZ dropdown on outside click + Escape.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
+      if (e.key === "Escape") setTzOpen(false);
+    }
+    function onClick(e: MouseEvent) {
+      if (tzRef.current && !tzRef.current.contains(e.target as Node)) {
         setTzOpen(false);
       }
     }
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onClick);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onClick);
+    };
   }, []);
 
-  function toggleAccount(id: PlatformId) {
+  // Revoke blob URLs on unmount so we don't leak memory across navigations.
+  useEffect(() => {
+    return () => {
+      setItems((prev) => {
+        for (const it of prev) {
+          if (it.source === "upload") URL.revokeObjectURL(it.previewUrl);
+        }
+        return prev;
+      });
+    };
+  }, []);
+
+  const toggleAccount = useCallback((id: PlatformId) => {
     setAccounts((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }
+  }, []);
 
-  function pickFiles() {
-    fileInputRef.current?.click();
-  }
+  const pickFiles = () => fileInputRef.current?.click();
+  const pickMoreFiles = () => addMoreInputRef.current?.click();
+  const pickCsvFile = () => csvInputRef.current?.click();
 
-  function pickMoreFiles() {
-    addMoreInputRef.current?.click();
-  }
-
-  function pickCsvFile() {
-    csvInputRef.current?.click();
+  /**
+   * Upload a single file to the CDN. Returns the CDN URL (or null on failure).
+   * Surfaces errors via toast so silent skips are no longer possible.
+   */
+  async function uploadFile(file: File): Promise<{ url: string; storedPath?: string } | null> {
+    const idToken = await getIdToken();
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("folder", "posts");
+    try {
+      const res = await fetch("/api/media/upload", {
+        method: "POST",
+        body: fd,
+        headers: {
+          ...getOverrideHeaders(),
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+        },
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        url?: string;
+        storedPath?: string;
+        error?: string;
+      };
+      if (!res.ok || !data.ok || !data.url) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      return { url: data.url, storedPath: data.storedPath };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Upload failed";
+      toast({ title: "Upload failed", description: `${file.name}: ${msg}`, tone: "error" });
+      return null;
+    }
   }
 
   async function handleCsvFile(file: File) {
@@ -239,9 +396,8 @@ export default function BulkSchedulePage() {
     try {
       const text = await file.text();
       const { headers, rows } = parseCsv(text);
-      const errors: string[] = [];
       if (headers.length === 0 || rows.length === 0) {
-        window.alert(t("posts.bulkSchedule.csv_empty"));
+        toast({ title: t("posts.bulkSchedule.csv_empty"), tone: "error" });
         return;
       }
       const capIdx = headers.indexOf("caption");
@@ -250,10 +406,11 @@ export default function BulkSchedulePage() {
       const hashtagsIdx = headers.indexOf("hashtags");
       const mediaIdx = headers.indexOf("mediaurl");
       if (capIdx < 0) {
-        window.alert(t("posts.bulkSchedule.csv_missing_column"));
+        toast({ title: t("posts.bulkSchedule.csv_missing_column"), tone: "error" });
         return;
       }
-      const newItems: BulkItem[] = [];
+      const newItems: CsvBulkItem[] = [];
+      const errors: string[] = [];
       for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
         const caption = (r[capIdx] ?? "").trim();
@@ -261,20 +418,32 @@ export default function BulkSchedulePage() {
           errors.push(`Row ${i + 2}: missing caption`);
           continue;
         }
-        let platforms = platformsIdx >= 0 ? normalizePlatforms(r[platformsIdx] ?? "") : [];
+        let platforms: PlatformId[] = (platformsIdx >= 0
+          ? (normalizePlatforms(r[platformsIdx] ?? "") as PlatformId[])
+          : []);
         if (platforms.length === 0) platforms = Array.from(accounts);
         if (platforms.length === 0) {
           errors.push(`Row ${i + 2}: no platforms (add a "platforms" column or select accounts above)`);
           continue;
         }
-        const scheduledAt = (scheduledIdx >= 0 ? r[scheduledIdx] : "").trim() || nowLocalDateTime(i);
+        const rawScheduled = (scheduledIdx >= 0 ? r[scheduledIdx] : "").trim();
+        const scheduledAt = rawScheduled || nowLocalDateTime(i);
+        if (rawScheduled && Number.isNaN(Date.parse(rawScheduled))) {
+          errors.push(`Row ${i + 2}: invalid scheduledAt "${rawScheduled}"`);
+          continue;
+        }
         const { date, time } = splitDateTime(scheduledAt);
         const hashtags = hashtagsIdx >= 0 ? normalizeHashtags(r[hashtagsIdx] ?? "") : [];
         const mediaUrl = mediaIdx >= 0 ? (r[mediaIdx] ?? "").trim() : "";
+        if (mediaUrl && !/^https?:\/\//i.test(mediaUrl)) {
+          errors.push(`Row ${i + 2}: mediaurl must be http(s) (got "${mediaUrl.slice(0, 40)}")`);
+          continue;
+        }
         newItems.push({
-          id: `csv-${Date.now()}-${i}`,
-          file: undefined as unknown as File,
+          id: `csv-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+          source: "csv",
           url: mediaUrl,
+          mediaUrl,
           kind: "image",
           name: `CSV row ${i + 2}`,
           size: 0,
@@ -291,7 +460,9 @@ export default function BulkSchedulePage() {
           community: false,
           profile: "Default",
           hashtags,
-        } as BulkItem & { hashtags?: string[] });
+          uploadStatus: mediaUrl ? "ready" : "error",
+          uploadError: mediaUrl ? undefined : "Add a mediaurl column or upload media files",
+        });
       }
       setItems((prev) => {
         const remaining = Math.max(0, MAX_FILES - prev.length);
@@ -299,12 +470,23 @@ export default function BulkSchedulePage() {
       });
       const inserted = Math.min(newItems.length, MAX_FILES);
       if (errors.length > 0) {
-        window.alert(t("posts.bulkSchedule.csv_imported_skipped", { n: inserted, m: errors.length }));
+        toast({
+          title: t("posts.bulkSchedule.csv_imported_skipped", { n: inserted, m: errors.length }),
+          description: errors.slice(0, 3).join("\n"),
+          tone: "warning",
+        });
       } else if (inserted > 0) {
-        window.alert(t("posts.bulkSchedule.csv_imported", { n: inserted }));
+        toast({
+          title: t("posts.bulkSchedule.csv_imported", { n: inserted }),
+          tone: "success",
+        });
       }
     } catch (e) {
-      window.alert(t("posts.bulkSchedule.csv_read_error", { error: e instanceof Error ? e.message : String(e) }));
+      toast({
+        title: t("posts.bulkSchedule.csv_read_error"),
+        description: e instanceof Error ? e.message : String(e),
+        tone: "error",
+      });
     } finally {
       setCsvBusy(false);
     }
@@ -312,40 +494,69 @@ export default function BulkSchedulePage() {
 
   async function handleScheduleAll() {
     if (items.length === 0 || scheduleBusy) return;
+    const issues = validateItems(items);
+    if (issues.length > 0) {
+      toast({
+        title: "Can't schedule yet",
+        description: `${issues.length} item(s) need attention: ${issues.slice(0, 3).map((i) => i.message).join("; ")}`,
+        tone: "error",
+      });
+      return;
+    }
+    const readyItems = items.slice(0, MAX_BULK_PAYLOAD_FILES);
     setScheduleBusy(true);
+    const idempotencyKey = crypto.randomUUID();
     try {
-      const itemsToSend = items
-        .filter((it) => Array.isArray(it.accountIds) && it.accountIds.length > 0 && it.caption.trim())
-        .slice(0, 100);
-      if (itemsToSend.length === 0) {
-        window.alert(t("posts.bulkSchedule.none_ready"));
-        return;
-      }
+      const idToken = await getIdToken();
       const payload = {
-        items: itemsToSend.map((it) => ({
+        items: readyItems.map((it) => ({
           caption: it.caption,
           platforms: it.accountIds,
           mediaUrls: it.url ? [it.url] : [],
           scheduledAt: it.scheduledAt ? new Date(it.scheduledAt).toISOString() : undefined,
-          hashtags: (it as BulkItem & { hashtags?: string[] }).hashtags ?? [],
+          hashtags: it.hashtags ?? [],
           status: "scheduled" as const,
+          postIn: it.postIn,
+          youtubeTitle: it.youtubeTitle || undefined,
+          youtubeTags: it.youtubeTags || undefined,
+          pinterestBoard: it.pinterestBoard || undefined,
+          autoAddMusic: it.autoAddMusic,
+          community: it.community || undefined,
+          profile: it.profile,
         })),
       };
       const res = await fetch("/api/posts/bulk", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+          ...getOverrideHeaders(),
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+        },
         credentials: "include",
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? `Bulk schedule failed (${res.status})`);
+        throw new Error(body.error?.message ?? body.error ?? `Bulk schedule failed (${res.status})`);
       }
-      const data = (await res.json()) as { count?: number; ids?: string[] };
-      window.alert(t("posts.bulkSchedule.scheduled_n", { n: data.count ?? itemsToSend.length }));
-      setItems([]);
+      const data = (await res.json()) as { count?: number; ids?: string[]; ok?: boolean };
+      const n = data.count ?? readyItems.length;
+      // Revoke local blob URLs before clearing state.
+      setItems((prev) => {
+        for (const it of prev) {
+          if (it.source === "upload") URL.revokeObjectURL(it.previewUrl);
+        }
+        return [];
+      });
+      toast({ title: t("posts.bulkSchedule.scheduled_n", { n }), tone: "success" });
+      clearPersistedDraft();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : t("posts.bulkSchedule.bulk_failed"));
+      toast({
+        title: t("posts.bulkSchedule.bulk_failed"),
+        description: e instanceof Error ? e.message : undefined,
+        tone: "error",
+      });
     } finally {
       setScheduleBusy(false);
     }
@@ -365,20 +576,39 @@ export default function BulkSchedulePage() {
     if (files.length > 0) handleFiles(files);
   }
 
-  function handleFiles(files: File[]) {
+  async function handleFiles(files: File[]) {
     const remaining = Math.max(0, MAX_FILES - items.length);
+    if (files.length > remaining) {
+      toast({
+        title: "Too many files",
+        description: `You can only add ${remaining} more file(s) (limit is ${MAX_FILES}).`,
+        tone: "warning",
+      });
+    }
     const accepted = files.slice(0, remaining);
-    const newItems: BulkItem[] = [];
+    const skipped: string[] = [];
+    const newItems: UploadedBulkItem[] = [];
+    let counter = 0;
     for (const file of accepted) {
-      if (file.size > MAX_FILE_BYTES) continue;
+      if (file.size > MAX_FILE_BYTES) {
+        skipped.push(`${file.name} (${formatBytes(file.size)} > ${MAX_FILE_BYTES / 1024 / 1024}MB)`);
+        continue;
+      }
+      if (file.type && !ACCEPTED_MIME_TYPES.includes(file.type as (typeof ACCEPTED_MIME_TYPES)[number])) {
+        skipped.push(`${file.name} (unsupported type: ${file.type})`);
+        continue;
+      }
       const isVideo = file.type.startsWith("video/");
       const kind: "image" | "video" = isVideo ? "video" : "image";
-      const dt = nowLocalDateTime(newItems.length === 0 ? 0 : Math.floor(newItems.length / Math.max(1, postsPerDay)));
+      const dt = nowLocalDateTime(counter === 0 ? 0 : Math.floor(counter / Math.max(1, postsPerDay)));
       const { date, time } = splitDateTime(dt);
+      const previewUrl = URL.createObjectURL(file);
       newItems.push({
-        id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        source: "upload",
         file,
-        url: URL.createObjectURL(file),
+        previewUrl,
+        url: previewUrl,
         kind,
         name: file.name,
         size: file.size,
@@ -394,17 +624,67 @@ export default function BulkSchedulePage() {
         autoAddMusic: false,
         community: false,
         profile: "Default",
+        hashtags: [],
+        uploadStatus: "uploading",
+      });
+      counter++;
+    }
+    if (skipped.length > 0) {
+      toast({
+        title: "Skipped files",
+        description: skipped.slice(0, 3).join("\n"),
+        tone: "warning",
       });
     }
     if (newItems.length === 0) return;
     setItems((prev) => [...prev, ...newItems]);
+    // Upload each to the CDN in parallel (cap concurrency to 3).
+    const CONCURRENCY = 3;
+    let cursor = 0;
+    async function worker() {
+      while (cursor < newItems.length) {
+        const idx = cursor++;
+        const item = newItems[idx];
+        const result = await uploadFile(item.file);
+        setItems((prev) =>
+          prev.map((it) => {
+            if (it.id !== item.id) return it;
+            if (it.source !== "upload") return it;
+            return {
+              ...it,
+              url: result?.url ?? it.previewUrl,
+              storedPath: result?.storedPath,
+              uploadStatus: result ? "ready" : "error",
+              uploadError: result ? undefined : "CDN upload failed",
+            };
+          })
+        );
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, newItems.length) }, () => worker()));
   }
 
   function removeItem(id: string) {
     setItems((prev) => {
-      const target = prev.find((i) => i.id === id);
-      if (target) URL.revokeObjectURL(target.url);
+      const idx = prev.findIndex((i) => i.id === id);
+      if (idx < 0) return prev;
+      const target = prev[idx];
+      if (target.source === "upload") URL.revokeObjectURL(target.previewUrl);
+      setUndoStack((s) => [...s, { kind: "remove", item: target, index: idx }]);
       return prev.filter((i) => i.id !== id);
+    });
+  }
+
+  function undoRemove() {
+    setUndoStack((s) => {
+      if (s.length === 0) return s;
+      const last = s[s.length - 1];
+      setItems((prev) => {
+        const next = [...prev];
+        next.splice(last.index, 0, last.item);
+        return next;
+      });
+      return s.slice(0, -1);
     });
   }
 
@@ -412,9 +692,11 @@ export default function BulkSchedulePage() {
     setItems((prev) =>
       prev.map((i) => {
         if (i.id !== id) return i;
-        const updated = { ...i, ...patch };
+        const updated = { ...i, ...patch } as BulkItem;
         if (patch.scheduledDate !== undefined || patch.scheduledTime !== undefined) {
-          updated.scheduledAt = `${patch.scheduledDate ?? i.scheduledDate}T${(patch.scheduledTime ?? i.scheduledTime).slice(0, 5)}`;
+          const date = (patch.scheduledDate ?? i.scheduledDate) as string;
+          const time = (patch.scheduledTime ?? i.scheduledTime) as string;
+          (updated as BulkItemBase).scheduledAt = `${date}T${time.slice(0, 5)}`;
         }
         return updated;
       })
@@ -422,99 +704,222 @@ export default function BulkSchedulePage() {
   }
 
   function applySchedule() {
+    if (items.length === 0) {
+      toast({ title: "No items to schedule", tone: "warning" });
+      return;
+    }
+    const utc = wallClockToUTC(startDate, startTime, timezone);
+    if (!utc) {
+      toast({ title: "Invalid date or time", tone: "error" });
+      return;
+    }
     setItems((prev) => {
       const ppd = Math.max(1, postsPerDay);
       const intervalDays = parseInt(interval, 10) || 1;
       return prev.map((item, idx) => {
         const dayOffset = Math.floor(idx / ppd) * intervalDays;
         const slotOffset = idx % ppd;
-        const d = new Date(`${startDate}T${startTime}`);
-        d.setDate(d.getDate() + dayOffset);
-        d.setMinutes(d.getMinutes() + slotOffset * 30);
-        const y = d.getFullYear();
-        const m = (d.getMonth() + 1).toString().padStart(2, "0");
-        const day = d.getDate().toString().padStart(2, "0");
-        const hh = d.getHours().toString().padStart(2, "0");
-        const mm = d.getMinutes().toString().padStart(2, "0");
+        const d = new Date(utc);
+        d.setUTCDate(d.getUTCDate() + dayOffset);
+        d.setUTCMinutes(d.getUTCMinutes() + slotOffset * 30);
+        const y = d.getUTCFullYear();
+        const m = (d.getUTCMonth() + 1).toString().padStart(2, "0");
+        const day = d.getUTCDate().toString().padStart(2, "0");
+        const hh = d.getUTCHours().toString().padStart(2, "0");
+        const mm = d.getUTCMinutes().toString().padStart(2, "0");
         const dt = `${y}-${m}-${day}T${hh}:${mm}`;
         const { date, time } = splitDateTime(dt);
         return { ...item, scheduledAt: dt, scheduledDate: date, scheduledTime: time };
       });
     });
+    toast({ title: "Schedule applied to all items", tone: "success" });
   }
 
   function applyAccountsToAll() {
+    if (accounts.size === 0) {
+      toast({ title: "Pick at least one account first", tone: "warning" });
+      return;
+    }
     setItems((prev) => prev.map((item) => ({ ...item, accountIds: Array.from(accounts) })));
+    toast({ title: "Accounts applied to all items", tone: "success" });
+  }
+
+  async function scheduleSingle(itemId: string) {
+    const target = items.find((i) => i.id === itemId);
+    if (!target) return;
+    const issues = validateItems([target]);
+    if (issues.length > 0) {
+      toast({
+        title: "Can't schedule this post yet",
+        description: issues[0].message,
+        tone: "error",
+      });
+      return;
+    }
+    setScheduleBusy(true);
+    const idempotencyKey = crypto.randomUUID();
+    try {
+      const idToken = await getIdToken();
+      const payload = {
+        items: [
+          {
+            caption: target.caption,
+            platforms: target.accountIds,
+            mediaUrls: target.url ? [target.url] : [],
+            scheduledAt: new Date(target.scheduledAt).toISOString(),
+            hashtags: target.hashtags ?? [],
+            status: "scheduled" as const,
+            postIn: target.postIn,
+            youtubeTitle: target.youtubeTitle || undefined,
+            youtubeTags: target.youtubeTags || undefined,
+            pinterestBoard: target.pinterestBoard || undefined,
+            autoAddMusic: target.autoAddMusic,
+            community: target.community || undefined,
+            profile: target.profile,
+          },
+        ],
+      };
+      const res = await fetch("/api/posts/bulk", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+          ...getOverrideHeaders(),
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+        },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error?.message ?? body.error ?? `HTTP ${res.status}`);
+      }
+      // Remove the scheduled item from the local list.
+      setItems((prev) => {
+        const target2 = prev.find((p) => p.id === itemId);
+        if (target2?.source === "upload") URL.revokeObjectURL(target2.previewUrl);
+        return prev.filter((p) => p.id !== itemId);
+      });
+      toast({ title: "Post scheduled", tone: "success" });
+    } catch (e) {
+      toast({
+        title: "Schedule failed",
+        description: e instanceof Error ? e.message : undefined,
+        tone: "error",
+      });
+    } finally {
+      setScheduleBusy(false);
+    }
   }
 
   async function aiGenerateForAll() {
     const itemsToProcess = items.filter((item) => !item.caption.trim());
-    if (itemsToProcess.length === 0) return;
-
+    if (itemsToProcess.length === 0) {
+      toast({ title: "All captions already filled", tone: "info" });
+      return;
+    }
     setGenerating(true);
     let success = 0;
-    for (const item of itemsToProcess) {
-      try {
-        let imageUrl: string | undefined;
-        let videoTitle: string | undefined;
-
-        if (item.kind === "image") {
-          const blob = await fetch(item.url).then((r) => r.blob());
-          imageUrl = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
+    const failed: string[] = [];
+    const CONCURRENCY = 3;
+    let cursor = 0;
+    async function worker() {
+      while (cursor < itemsToProcess.length) {
+        const idx = cursor++;
+        const item = itemsToProcess[idx];
+        try {
+          let imageUrl: string | undefined;
+          let videoTitle: string | undefined;
+          if (item.kind === "image") {
+            // For uploaded items, send the CDN URL directly so the AI route
+            // can fetch it. For CSV items without a mediaUrl, fall back to the
+            // filename as a hint.
+            if (item.source === "upload") {
+              imageUrl = item.url.startsWith("https://") ? item.url : undefined;
+            } else if (item.mediaUrl) {
+              imageUrl = item.mediaUrl;
+            }
+          } else {
+            videoTitle = item.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+          }
+          const idToken = await getIdToken();
+          const res = await fetch("/api/ai/caption", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...getOverrideHeaders(),
+              ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+            },
+            body: JSON.stringify({
+              tone: "default",
+              includeHashtags: true,
+              useEmojis: true,
+              extra: "",
+              imageUrl,
+              videoTitle,
+            }),
           });
-        } else {
-          videoTitle = item.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+          const data = (await res.json().catch(() => ({}))) as {
+            ok?: boolean;
+            caption?: string;
+            error?: string;
+          };
+          if (res.ok && data.ok && data.caption) {
+            setItems((prev) =>
+              prev.map((it) => (it.id === item.id ? { ...it, caption: data.caption!.trim() } : it))
+            );
+            success++;
+          } else {
+            failed.push(`${item.name}: ${data.error ?? `HTTP ${res.status}`}`);
+          }
+        } catch (err) {
+          failed.push(`${item.name}: ${err instanceof Error ? err.message : "unknown"}`);
         }
-
-        const res = await fetch("/api/ai/caption", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            tone: "default",
-            includeHashtags: true,
-            useEmojis: true,
-            extra: "",
-            imageUrl,
-            videoTitle,
-          }),
-        });
-
-        const data = (await res.json().catch(() => ({}))) as {
-          ok?: boolean;
-          caption?: string;
-          error?: string;
-        };
-
-        if (res.ok && data.ok && data.caption) {
-          setItems((prev) =>
-            prev.map((it) =>
-              it.id === item.id ? { ...it, caption: data.caption!.trim() } : it
-            )
-          );
-          success++;
-        }
-      } catch {
-        // skip failed items
       }
     }
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, itemsToProcess.length) }, () => worker()));
     setGenerating(false);
-    window.alert(t("posts.bulkSchedule.ai_generated", { n: success, m: itemsToProcess.length }));
+    toast({
+      title: t("posts.bulkSchedule.ai_generated", { n: success, m: itemsToProcess.length }),
+      description: failed.length > 0 ? `Failed: ${failed.slice(0, 3).join("; ")}` : undefined,
+      tone: failed.length > 0 ? "warning" : "success",
+    });
   }
 
   function clearAll() {
-    items.forEach((i) => URL.revokeObjectURL(i.url));
-    setItems([]);
+    setItems((prev) => {
+      for (const it of prev) {
+        if (it.source === "upload") URL.revokeObjectURL(it.previewUrl);
+      }
+      return [];
+    });
     setAccounts(new Set());
+    setUndoStack([]);
+    clearPersistedDraft();
+    toast({ title: "Cleared all items", tone: "info" });
+  }
+
+  function downloadCsvTemplate() {
+    const template = [
+      "caption,platforms,scheduledAt,hashtags,mediaUrl",
+      '"Hello world from Instagram!","instagram,facebook",2026-09-01T09:00,"#hello,#world",https://cdn.example.com/photo.jpg',
+      '"Check out our latest","twitter,linkedin",2026-09-02T10:30,"#launch",',
+    ].join("\n");
+    const blob = new Blob([template], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "bulk-schedule-template.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   const accountsArr = useMemo(() => Array.from(accounts), [accounts]);
 
   return (
-    <div className="p-6 pb-32">
+    <div className="p-6 pb-40">
       {/* Header row: title + Learn (left) + Date Scheduler (right) */}
       <div className="flex flex-wrap items-start justify-between gap-4 mb-3">
         <div>
@@ -572,7 +977,7 @@ export default function BulkSchedulePage() {
             </select>
           </SchedulerField>
           <SchedulerField label={t("posts.bulkSchedule.timezone")}>
-            <div className="relative">
+            <div className="relative" ref={tzRef}>
               <button
                 type="button"
                 onClick={() => setTzOpen((v) => !v)}
@@ -586,7 +991,7 @@ export default function BulkSchedulePage() {
               {tzOpen ? (
                 <ul
                   role="listbox"
-                  className="absolute right-0 top-full mt-1 z-30 w-[200px] max-h-[260px] overflow-y-auto rounded-md border border-zinc-200 bg-white shadow-lg p-1"
+                  className="absolute right-0 top-full mt-1 z-30 w-[220px] max-h-[260px] overflow-y-auto rounded-md border border-zinc-200 bg-white shadow-lg p-1"
                 >
                   {TIMEZONES.map((tz) => (
                     <li key={tz.id}>
@@ -623,7 +1028,7 @@ export default function BulkSchedulePage() {
 
       {/* AI Captions top button */}
       {items.length > 0 ? (
-        <div className="mb-4">
+        <div className="mb-4 flex items-center justify-between flex-wrap gap-2">
           <button
             type="button"
             onClick={aiGenerateForAll}
@@ -633,6 +1038,16 @@ export default function BulkSchedulePage() {
             <Sparkles className="size-4" />
             {generating ? t("posts.bulkSchedule.generating") : t("posts.bulkSchedule.generate_ai_captions", { n: items.length })}
           </button>
+          {undoStack.length > 0 ? (
+            <button
+              type="button"
+              onClick={undoRemove}
+              className="inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 h-9 text-xs font-medium hover:bg-zinc-50"
+            >
+              <Undo2 className="size-3.5" />
+              Undo remove ({undoStack.length})
+            </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -699,6 +1114,7 @@ export default function BulkSchedulePage() {
                       onClick={clearAll}
                       className="inline-flex items-center gap-1 px-2 h-7 text-xs font-medium text-red-600 hover:bg-red-50 rounded-md"
                     >
+                      <Trash2 className="size-3" />
                       {t("posts.bulkSchedule.clear_all")}
                     </button>
                   </div>
@@ -713,11 +1129,25 @@ export default function BulkSchedulePage() {
                       e.preventDefault();
                       setDragging(true);
                     }}
-                    onDragLeave={() => setDragging(false)}
+                    onDragEnter={(e) => {
+                      e.preventDefault();
+                      setDragging(true);
+                    }}
+                    onDragLeave={(e) => {
+                      // Only flip off when the cursor actually leaves the drop target.
+                      if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                      setDragging(false);
+                    }}
                     onDrop={onDrop}
                     onClick={pickFiles}
                     role="button"
                     tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        pickFiles();
+                      }
+                    }}
                     className={cn(
                       "rounded-lg border-2 border-dashed p-6 text-center cursor-pointer transition-colors",
                       dragging ? "border-blue-500 bg-blue-50/40" : "border-zinc-300 hover:bg-zinc-50"
@@ -731,10 +1161,18 @@ export default function BulkSchedulePage() {
                       {t("posts.bulkSchedule.drop_zone_footnote", { maxSize: Math.round(MAX_FILE_BYTES / 1024 / 1024) })}
                     </p>
                   </div>
-                  <div className="mt-3 flex items-center justify-between rounded-md border border-zinc-200 bg-zinc-50/50 px-3 py-2">
-                    <p className="text-xs text-zinc-600">
+                  <div className="mt-3 flex items-center justify-between gap-2 rounded-md border border-zinc-200 bg-zinc-50/50 px-3 py-2 flex-wrap">
+                    <p className="text-xs text-zinc-600 flex-1 min-w-0">
                       <span className="font-medium">{t("posts.bulkSchedule.csv_hint")}</span>
                     </p>
+                    <button
+                      type="button"
+                      onClick={downloadCsvTemplate}
+                      className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 h-7 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                    >
+                      <Download className="size-3.5" />
+                      Template
+                    </button>
                     <button
                       type="button"
                       onClick={pickCsvFile}
@@ -767,20 +1205,41 @@ export default function BulkSchedulePage() {
                     {items.map((item, idx) => (
                       <div
                         key={item.id}
-                        className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-zinc-50"
+                        className={cn(
+                          "flex items-center gap-2 p-1.5 rounded-lg hover:bg-zinc-50",
+                          item.uploadStatus === "error" && "bg-red-50/50"
+                        )}
                       >
                         <div className="relative size-9 flex-shrink-0 rounded bg-zinc-100 overflow-hidden">
                           {item.kind === "image" ? (
-                            // eslint-disable-next-line @next/next/no-img-element -- user-uploaded object URL
-                            <img src={item.url} alt={item.name} className="w-full h-full object-cover" />
+                            // eslint-disable-next-line @next/next/no-img-element -- CDN URL or local blob preview
+                            <img src={item.source === "upload" ? item.previewUrl : item.url} alt={item.name} className="w-full h-full object-cover" />
                           ) : (
-                            <video src={item.url} className="w-full h-full object-cover" />
+                            <video src={item.source === "upload" ? item.previewUrl : item.url} className="w-full h-full object-cover" />
                           )}
+                          {item.source === "upload" && item.uploadStatus === "uploading" ? (
+                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                              <span className="size-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                            </div>
+                          ) : null}
+                          {item.source === "upload" && item.uploadStatus === "error" ? (
+                            <div className="absolute inset-0 bg-red-500/50 flex items-center justify-center">
+                              <X className="size-3.5 text-white" />
+                            </div>
+                          ) : null}
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-medium truncate">{item.name}</p>
                           <p className="text-[10px] text-zinc-500">
-                            {formatBytes(item.size)} • Image #{idx + 1}
+                            {item.source === "upload" && item.uploadStatus === "uploading"
+                              ? "Uploading…"
+                              : item.source === "upload" && item.uploadStatus === "error"
+                              ? "Upload failed"
+                              : null}
+                            {item.source === "upload" && item.uploadStatus === "ready" ? formatBytes(item.size) : ""}
+                            {item.source === "csv" ? "CSV" : ""}
+                            {" • "}
+                            {item.kind === "image" ? "Image" : "Video"} #{idx + 1}
                           </p>
                         </div>
                         <button
@@ -799,13 +1258,26 @@ export default function BulkSchedulePage() {
                       e.preventDefault();
                       setDragging(true);
                     }}
-                    onDragLeave={() => setDragging(false)}
+                    onDragEnter={(e) => {
+                      e.preventDefault();
+                      setDragging(true);
+                    }}
+                    onDragLeave={(e) => {
+                      if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                      setDragging(false);
+                    }}
                     onDrop={onAddMoreDrop}
                     onClick={pickMoreFiles}
                     role="button"
                     tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        pickMoreFiles();
+                      }
+                    }}
                     className={cn(
-                      "rounded-lg border-2 border-dashed p-4 text-center cursor-pointer transition-colors",
+                      "rounded-lg border-2 border-dashed p-6 text-center cursor-pointer transition-colors",
                       dragging ? "border-blue-500 bg-blue-50/40" : "border-zinc-300 hover:bg-zinc-50"
                     )}
                   >
@@ -822,7 +1294,7 @@ export default function BulkSchedulePage() {
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept="image/jpeg,image/png,video/mp4,video/quicktime"
+                accept={ACCEPTED_MIME_TYPES.join(",")}
                 className="hidden"
                 onChange={(e) => {
                   const files = Array.from(e.target.files ?? []);
@@ -834,7 +1306,7 @@ export default function BulkSchedulePage() {
                 ref={addMoreInputRef}
                 type="file"
                 multiple
-                accept="image/jpeg,image/png,video/mp4,video/quicktime"
+                accept={ACCEPTED_MIME_TYPES.join(",")}
                 className="hidden"
                 onChange={(e) => {
                   const files = Array.from(e.target.files ?? []);
@@ -868,6 +1340,7 @@ export default function BulkSchedulePage() {
             onUpdateItem={updateItem}
             onRemove={removeItem}
             onApplyAccountsToAll={applyAccountsToAll}
+            onScheduleSingle={scheduleSingle}
           />
         )}
       </div>
@@ -966,15 +1439,7 @@ function StepCard({ n, title, desc }: { n: number; title: string; desc: string }
   );
 }
 
-function TipCard({
-  icon,
-  title,
-  desc,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  desc: string;
-}) {
+function TipCard({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
   return (
     <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm p-4 flex items-start gap-3">
       <div className="size-8 rounded-lg bg-zinc-100 inline-flex items-center justify-center flex-shrink-0">
@@ -995,6 +1460,7 @@ interface PostsListProps {
   onUpdateItem: (id: string, patch: Partial<BulkItem>) => void;
   onRemove: (id: string) => void;
   onApplyAccountsToAll: () => void;
+  onScheduleSingle: (itemId: string) => void;
 }
 
 function PostsList({
@@ -1004,6 +1470,7 @@ function PostsList({
   onUpdateItem,
   onRemove,
   onApplyAccountsToAll,
+  onScheduleSingle,
 }: PostsListProps) {
   const t = useTranslations("dashboard");
   return (
@@ -1033,6 +1500,7 @@ function PostsList({
           onToggleAccount={(id) => onToggleAccount(item.id, id)}
           onUpdate={(patch) => onUpdateItem(item.id, patch)}
           onRemove={() => onRemove(item.id)}
+          onScheduleSingle={() => onScheduleSingle(item.id)}
         />
       ))}
     </div>
@@ -1045,12 +1513,14 @@ function PostRow({
   onToggleAccount,
   onUpdate,
   onRemove,
+  onScheduleSingle,
 }: {
   item: BulkItem;
   index: number;
   onToggleAccount: (id: PlatformId) => void;
   onUpdate: (patch: Partial<BulkItem>) => void;
   onRemove: () => void;
+  onScheduleSingle: () => void;
 }) {
   const t = useTranslations("dashboard");
   const hasYouTube = item.accountIds.includes("youtube");
@@ -1061,17 +1531,20 @@ function PostRow({
   const captionLen = item.caption.length;
   const ytTitleLen = item.youtubeTitle.length;
   const ytTagsLen = item.youtubeTags.length;
+  const charLimit = pickCharLimitFor(item);
+  const overLimit = captionLen > charLimit;
+  const previewSrc = item.source === "upload" ? item.previewUrl : item.url;
 
   return (
     <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm overflow-hidden">
-      <div className="grid grid-cols-1 md:grid-cols-[100px_180px_120px_240px] divide-y md:divide-y-0 md:divide-x divide-zinc-200">
+      <div className="grid grid-cols-1 md:grid-cols-[100px_minmax(0,180px)_minmax(0,140px)_minmax(0,1fr)] divide-y md:divide-y-0 md:divide-x divide-zinc-200">
         {/* Column 1: Media preview */}
         <div className="relative bg-zinc-100 aspect-square md:aspect-auto">
           {item.kind === "image" ? (
-            // eslint-disable-next-line @next/next/no-img-element -- user-uploaded object URL
-            <img src={item.url} alt={item.name} className="w-full h-full object-cover" />
+            // eslint-disable-next-line @next/next/no-img-element -- CDN URL or local blob preview
+            <img src={previewSrc} alt={item.name} className="w-full h-full object-cover" />
           ) : (
-            <video src={item.url} className="w-full h-full object-cover" />
+            <video src={previewSrc} className="w-full h-full object-cover" />
           )}
           <span className="absolute top-1 left-1 inline-flex items-center justify-center size-6 rounded bg-zinc-900/80 text-white text-[11px] font-semibold">
             #{index + 1}
@@ -1086,7 +1559,11 @@ function PostRow({
           </button>
           <div className="absolute bottom-1 left-1 right-1 text-[10px] text-white">
             <p className="font-medium truncate">{item.name}</p>
-            <p className="opacity-80">{formatBytes(item.size)}</p>
+            <p className="opacity-80">
+              {item.source === "upload" ? formatBytes(item.size) : "CSV import"}
+              {item.source === "upload" && item.uploadStatus === "uploading" ? " • Uploading…" : ""}
+              {item.source === "upload" && item.uploadStatus === "error" ? " • Upload failed" : ""}
+            </p>
           </div>
         </div>
 
@@ -1150,14 +1627,16 @@ function PostRow({
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs font-semibold tracking-wide text-zinc-700">{t("posts.bulkSchedule.caption_label")}</label>
-              <span className="text-[10px] text-zinc-500">{t("posts.bulkSchedule.char_count", { max: 280 })}</span>
+              <span className={cn("text-[10px]", overLimit ? "text-red-600 font-medium" : "text-zinc-500")}>
+                {captionLen}/{charLimit}
+              </span>
             </div>
             <textarea
               value={item.caption}
               onChange={(e) => onUpdate({ caption: e.target.value })}
               placeholder={t("posts.bulkSchedule.caption_placeholder")}
               rows={3}
-              maxLength={2000}
+              maxLength={2200}
               className="w-full rounded-md border border-zinc-200 bg-white p-2 text-xs placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 focus:border-zinc-300 resize-none"
             />
           </div>
@@ -1203,7 +1682,9 @@ function PostRow({
                 <label className="text-[10px] font-medium text-zinc-700">
                   {t("posts.bulkSchedule.youtube_title")} <span className="text-red-500">{t("posts.bulkSchedule.required")}</span>
                 </label>
-                <span className="text-[10px] text-zinc-500">{ytTitleLen} / 100</span>
+                <span className={cn("text-[10px]", ytTitleLen > 100 ? "text-red-600" : "text-zinc-500")}>
+                  {ytTitleLen} / 100
+                </span>
               </div>
               <input
                 type="text"
@@ -1220,7 +1701,9 @@ function PostRow({
             <div>
               <div className="flex items-center justify-between mb-0.5">
                 <label className="text-[10px] font-medium text-zinc-700">{t("posts.bulkSchedule.youtube_tags")}</label>
-                <span className="text-[10px] text-zinc-500">{ytTagsLen} / 500</span>
+                <span className={cn("text-[10px]", ytTagsLen > 500 ? "text-red-600" : "text-zinc-500")}>
+                  {ytTagsLen} / 500
+                </span>
               </div>
               <input
                 type="text"
@@ -1235,9 +1718,9 @@ function PostRow({
           {/* Pinterest Board */}
           {hasPinterest ? (
             <div>
-                <label className="text-[10px] font-medium text-zinc-700 mb-0.5 block">
-                  {t("posts.bulkSchedule.pinterest_board")} <span className="text-red-500">{t("posts.bulkSchedule.required")}</span>
-                </label>
+              <label className="text-[10px] font-medium text-zinc-700 mb-0.5 block">
+                {t("posts.bulkSchedule.pinterest_board")} <span className="text-red-500">{t("posts.bulkSchedule.required")}</span>
+              </label>
               <select
                 value={item.pinterestBoard}
                 onChange={(e) => onUpdate({ pinterestBoard: e.target.value })}
@@ -1289,6 +1772,17 @@ function PostRow({
               <option value="Business">Business</option>
             </select>
           </div>
+
+          {/* Per-row schedule */}
+          <button
+            type="button"
+            onClick={onScheduleSingle}
+            disabled={item.uploadStatus === "uploading"}
+            className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
+          >
+            <Calendar className="size-3" />
+            Schedule this post
+          </button>
         </div>
       </div>
 

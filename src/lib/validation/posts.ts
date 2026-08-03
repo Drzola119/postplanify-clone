@@ -45,6 +45,15 @@ export const createPostSchema = z.object({
   community: optionalString,
   quoteTweetUrl: optionalString,
   threadRootId: optionalString,
+  /** Feed vs Story placement hint (e.g. "story" for IG/FB stories). */
+  postIn: z.enum(["feed", "story"]).optional(),
+  /** YouTube-only — required when "youtube" is in platforms. */
+  youtubeTitle: optionalString,
+  youtubeTags: optionalString,
+  /** Pinterest-only — required when "pinterest" is in platforms. */
+  pinterestBoard: optionalString,
+  autoAddMusic: z.boolean().optional(),
+  profile: optionalString,
   status: postStatusSchema.optional().default("draft"),
 }).refine(
   (p) => {

@@ -71,6 +71,15 @@ export interface PostDoc {
   tagUsers?: string | string[] | Record<string, string[]>;
   /** Feed vs Story placement hint, when the post targets a story slot. */
   feedType?: "feed" | "story";
+  /** Story-vs-feed placement collected in the bulk composer. */
+  postIn?: "feed" | "story";
+  /** YouTube-only — required when "youtube" is in platforms. */
+  youtubeTitle?: string;
+  youtubeTags?: string;
+  /** Pinterest-only — required when "pinterest" is in platforms. */
+  pinterestBoard?: string;
+  autoAddMusic?: boolean;
+  profile?: string;
   /** Carousel / Trial Reel / Document items so the worker can dispatch correctly. */
   carouselItems?: Array<{ url: string }>;
   trialReel?: { url: string };

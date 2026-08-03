@@ -157,6 +157,64 @@ describe("validation/posts - bulkScheduleSchema", () => {
     );
     expect(result.ok).toBe(false);
   });
+
+  it("accepts new postIn / youtubeTitle / pinterestBoard / autoAddMusic / profile fields", () => {
+    const items = [
+      {
+        caption: "yt post",
+        platforms: ["youtube"],
+        mediaUrls: ["https://cdn.example.com/v.mp4"],
+        postIn: "feed",
+        youtubeTitle: "My Video",
+        youtubeTags: "tag1,tag2",
+        autoAddMusic: true,
+        profile: "Business",
+      },
+      {
+        caption: "pin post",
+        platforms: ["pinterest"],
+        mediaUrls: ["https://cdn.example.com/p.jpg"],
+        postIn: "feed",
+        pinterestBoard: "inspiration",
+        profile: "Default",
+      },
+
+    ];
+    const result = parseValue({ items }, bulkScheduleSchema);
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects postIn outside 'feed'/'story'", () => {
+    const result = parseValue(
+      {
+        items: [
+          {
+            caption: "ok",
+            platforms: ["instagram"],
+            postIn: "reel",
+          },
+        ],
+      },
+      bulkScheduleSchema
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("accepts postIn 'story' for instagram", () => {
+    const result = parseValue(
+      {
+        items: [
+          {
+            caption: "story",
+            platforms: ["instagram"],
+            postIn: "story",
+          },
+        ],
+      },
+      bulkScheduleSchema
+    );
+    expect(result.ok).toBe(true);
+  });
 });
 
 describe("validation/posts - postFiltersSchema", () => {
