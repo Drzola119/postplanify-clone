@@ -1,4 +1,3 @@
-import "server-only";
 import type { PostStatus, PlatformId } from "@/lib/db/schema";
 import { postStatusSchema, platformIdSchema } from "@/lib/validation/posts";
 

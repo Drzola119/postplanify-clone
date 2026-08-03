@@ -1,4 +1,3 @@
-import "server-only";
 import { ZodSchema, ZodError, z } from "zod";
 
 export type ParseResult<T> =
