@@ -7,7 +7,7 @@ import { PPInput } from "@/components/ui/pp-input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { type FieldSpec, type PlatformAdvancedOptions, getVisibleSpecs } from "@/lib/publishing/advanced-options";
 import type { MediaKind } from "@/lib/publishing/capability-matrix";
-import type { PlatformId } from "@/lib/platforms";
+import { getPlatform, type PlatformId } from "@/lib/platforms";
 
 interface AdvancedOptionsPanelProps {
   platform: PlatformId;
@@ -40,6 +40,9 @@ export function AdvancedOptionsPanel({
   const coreSpecs = visible.filter((s) => !s.advanced);
   const advancedSpecs = visible.filter((s) => s.advanced);
   const hasAdvanced = advancedSpecs.length > 0;
+  const platformMeta = getPlatform(platform);
+  const platformColorClass = platformMeta?.textClass ?? "text-zinc-700";
+  const platformBorderClass = platformMeta?.borderClass ?? "border-zinc-200";
 
   return (
     <div className={cn("rounded-lg border border-zinc-200 bg-white overflow-hidden", className)}>
@@ -48,16 +51,20 @@ export function AdvancedOptionsPanel({
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs font-medium text-zinc-700 hover:bg-zinc-50 transition-colors"
+          className={cn(
+            "flex w-full items-center justify-between gap-2 border px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-zinc-50",
+            platformColorClass,
+            platformBorderClass
+          )}
         >
           <span className="inline-flex items-center gap-2">
-            <Settings2 className="size-3.5 text-zinc-500" />
+            <Settings2 className={cn("size-3.5", platformColorClass)} />
             Advanced options for {platformName}
           </span>
           {open ? (
-            <ChevronDown className="size-3.5 text-zinc-500" />
+            <ChevronDown className={cn("size-3.5", platformColorClass)} />
           ) : (
-            <ChevronRight className="size-3.5 text-zinc-500" />
+            <ChevronRight className={cn("size-3.5", platformColorClass)} />
           )}
         </button>
       ) : null}
