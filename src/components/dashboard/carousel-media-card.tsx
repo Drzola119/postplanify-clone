@@ -14,6 +14,10 @@ export interface CarouselItem {
   mimeType: string;
   /** Video duration in seconds (undefined until probed). */
   durationSec?: number;
+  /** False while metadata probe is in progress. Undefined for images. */
+  metadataLoaded?: boolean;
+  /** Error string when metadata probe fails. */
+  metadataError?: string;
   cdnUrl?: string;
   uploadStatus: "pending" | "uploading" | "ready" | "error";
   uploadProgress?: number;

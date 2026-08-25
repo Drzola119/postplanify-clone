@@ -33,6 +33,9 @@ export interface DraftMediaItem {
   localId?: string;
   name?: string;
   mime?: string;
+  durationSec?: number;
+  metadataLoaded?: boolean;
+  metadataError?: string;
 }
 
 export interface DraftRecord {
@@ -57,8 +60,8 @@ export interface DraftRecord {
   altTexts?: Record<string, string>;
   /** Composer mode + mode-specific state, restored as-is. */
   composerMode?: "standard" | "carousel" | "trial_reel" | "document";
-  carouselItems?: Array<{ cdnUrl: string; name: string; kind: "image" | "video" }>;
-  trialReelFile?: { cdnUrl: string; name: string };
+  carouselItems?: Array<{ cdnUrl: string; name: string; kind: "image" | "video"; mimeType?: string; durationSec?: number; metadataLoaded?: boolean; metadataError?: string }>;
+  trialReelFile?: { cdnUrl: string; name: string; mimeType?: string; durationSec?: number; metadataLoaded?: boolean; metadataError?: string };
   trialMode?: string;
   documentFile?: { cdnUrl: string; name: string; mimeType: string };
   documentTitle?: string;

@@ -6,6 +6,7 @@ import { MissingServerSecretError, resolvers } from "@/lib/security/server-confi
 import { createPost, updatePost } from "@/lib/db/posts";
 import { createLogger } from "@/lib/log";
 import { parseBody } from "@/lib/validation/helpers";
+import { buildPublishPayload } from "@/lib/publishing/payload";
 
 const log = createLogger("posts/publish");
 
@@ -15,7 +16,7 @@ const publishPayloadSchema = z.object({
   platforms: z.array(z.string().min(1)).min(1),
   caption: z.string().min(1),
   hashtags: z.string().optional(),
-  mediaUrls: z.array(z.string().min(1)).min(1),
+  mediaUrls: z.array(z.string().min(1)).optional().default([]),
   scheduledAt: z.string().nullable().optional(),
   firstComment: z.string().optional(),
   /** Per-platform first comments; supersedes `firstComment` when present. */
@@ -110,6 +111,35 @@ export async function POST(request: Request) {
   }
   const body = parsed.data;
 
+  // --- Caption validation: enforce per-platform map consistency ---
+  const platformsArr = (body.platforms ?? []) as string[];
+  const captMap = body.captionsByPlatform as Record<string, string> | undefined;
+  const same = Boolean(body.sameForAll);
+  if (captMap) {
+    // Reject unknown platform keys (must be subset of declared platforms + legacy __all)
+    const knownSet = new Set(platformsArr);
+    for (const k of Object.keys(captMap)) {
+      if (k === "__all") continue;
+      if (!knownSet.has(k)) {
+        return NextResponse.json({ error: `Unknown platform key in captionsByPlatform: ${k}` }, { status: 400 });
+      }
+    }
+    if (!same) {
+      for (const p of platformsArr) {
+        const v = captMap[p];
+        if (v == null || v.trim().length === 0) {
+          return NextResponse.json({ error: `Missing caption for platform: ${p}` }, { status: 400 });
+        }
+      }
+    } else {
+      // sameForAll: shared caption must be non-empty (check __all or top-level)
+      const shared = captMap.__all ?? captMap[platformsArr[0]] ?? body.caption;
+      if (!shared || shared.trim().length === 0) {
+        return NextResponse.json({ error: "Missing shared caption" }, { status: 400 });
+      }
+    }
+  }
+
   const uploadPostUsername =
     body.uploadPostUsername?.trim() ||
     process.env.UPLOAD_POST_DEFAULT_USERNAME ||
@@ -141,6 +171,8 @@ export async function POST(request: Request) {
       frameCoverUrl: body.frameCoverUrl,
       customCoverUrl: body.customCoverUrl,
       collaborators: body.collaborators?.map((c) => ({ uid: c, handle: c, status: "invited" as const })),
+      captionsByPlatform: body.captionsByPlatform,
+      sameForAll: body.sameForAll,
     });
   } catch (err) {
     // Firestore unavailable — fall back to stateless publish so the existing
@@ -149,17 +181,18 @@ export async function POST(request: Request) {
     postId = "";
   }
 
-  const payload = {
+  const payload = buildPublishPayload({
     jobId,
     postId,
     userId: uid,
     uploadPostUsername,
     platforms: body.platforms,
     caption: body.caption,
-    hashtags: body.hashtags,
-    mediaUrls: body.mediaUrls,
+    captionsByPlatform: body.captionsByPlatform,
+    sameForAll: body.sameForAll,
+    mediaUrls: body.mediaUrls ?? [],
     scheduledAt: body.scheduledAt ?? null,
-    advancedByPlatform: body.advancedByPlatform ?? {},
+    advancedByPlatform: (body.advancedByPlatform as Record<string, unknown>) ?? {},
     firstComment: body.firstComment,
     firstCommentByPlatform: body.firstCommentByPlatform,
     quoteTweetUrl: body.quoteTweetUrl,
@@ -174,9 +207,8 @@ export async function POST(request: Request) {
     customCoverUrl: body.customCoverUrl,
     collaborators: body.collaborators,
     mediaType: body.mediaType,
-    captionsByPlatform: body.captionsByPlatform,
-    sameForAll: body.sameForAll,
-  };
+    hashtags: body.hashtags,
+  });
 
   try {
     const res = await fetch(n8nUrl, {

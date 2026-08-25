@@ -24,10 +24,24 @@ export async function POST(
   try {
     const newId = await createPost(session.workspaceId, session.uid, {
       caption: source.caption,
+      captionsByPlatform: (source as unknown as { captionsByPlatform?: Record<string,string> }).captionsByPlatform,
+      sameForAll: (source as unknown as { sameForAll?: boolean }).sameForAll,
       platforms: source.platforms,
       mediaUrls: source.mediaUrls,
       hashtags: source.hashtags,
       labels: source.labels,
+      firstComment: (source as unknown as { firstComment?: string }).firstComment,
+      firstCommentByPlatform: (source as unknown as { firstCommentByPlatform?: Record<string,string> }).firstCommentByPlatform,
+      altTextByPlatform: (source as unknown as { altTextByPlatform?: Record<string,string> }).altTextByPlatform,
+      feedType: (source as unknown as { feedType?: string }).feedType as never,
+      carouselItems: (source as unknown as { carouselItems?: Array<{url:string}> }).carouselItems,
+      trialReel: (source as unknown as { trialReel?: {url:string} }).trialReel,
+      document: (source as unknown as { document?: {url:string; title:string; mimeType:string} }).document,
+      frameCoverUrl: (source as unknown as { frameCoverUrl?: string }).frameCoverUrl,
+      customCoverUrl: (source as unknown as { customCoverUrl?: string }).customCoverUrl,
+      collaborators: (source as unknown as { collaborators?: Array<{uid:string; handle:string}> }).collaborators as never,
+      advancedByPlatform: (source as unknown as { advancedByPlatform?: Record<string, unknown> }).advancedByPlatform as never,
+      tagUsers: (source as unknown as { tagUsers?: unknown }).tagUsers as never,
       status: "draft",
     });
     return NextResponse.json({ ok: true, id: newId });

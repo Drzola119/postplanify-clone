@@ -6,6 +6,7 @@ import { deliverWebhook } from "@/lib/webhooks/delivery";
 import { ensureProfile, readProfile } from "@/lib/db/upload-post-profiles";
 import { createLogger } from "@/lib/log";
 import { evaluateAlertRules } from "@/lib/alerts/evaluate";
+import { buildPublishPayload, resolveCaptionsForPayload } from "@/lib/publishing/payload";
 
 const log = createLogger("queue-worker");
 
@@ -99,19 +100,44 @@ async function tickOnce(): Promise<TickResult> {
     const doc = await adminDb.doc(`workspaces/${workspaceId}/posts/${postId}`).get();
     const data = doc.data() ?? {};
     const uploadPostUsername = await resolveUploadPostUsername(workspaceId, apiKey);
+    // Resolve captions with legacy fallback
+    const resolvedCaptions = resolveCaptionsForPayload({
+      caption: data.caption,
+      captionsByPlatform: data.captionsByPlatform,
+      sameForAll: data.sameForAll,
+      platforms: data.platforms,
+    });
     try {
+      const n8nPayload = buildPublishPayload({
+        postId,
+        userId: data.authorUid,
+        uploadPostUsername,
+        platforms: data.platforms ?? [],
+        caption: resolvedCaptions.caption,
+        captionsByPlatform: resolvedCaptions.captionsByPlatform,
+        sameForAll: resolvedCaptions.sameForAll ?? data.sameForAll,
+        mediaUrls: data.mediaUrls ?? [],
+        scheduledAt: null,
+        advancedByPlatform: data.advancedByPlatform as Record<string, unknown> | undefined,
+        firstComment: data.firstComment,
+        firstCommentByPlatform: data.firstCommentByPlatform,
+        altTextByPlatform: data.altTextByPlatform,
+        feedType: data.feedType,
+        carouselItems: data.carouselItems,
+        trialReel: data.trialReel,
+        document: data.document,
+        collaborators: Array.isArray(data.collaborators) ? data.collaborators.map((c: { handle?: string }) => c.handle ?? "") : undefined,
+        frameCoverUrl: data.frameCoverUrl,
+        customCoverUrl: data.customCoverUrl,
+        tagUsers: data.tagUsers,
+        quoteTweetUrl: data.quoteTweetUrl,
+        community: data.community,
+        hashtags: Array.isArray(data.hashtags) ? data.hashtags.join(" ") : undefined,
+      });
       const res = await fetch(n8nUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          postId,
-          userId: data.authorUid,
-          uploadPostUsername,
-          platforms: data.platforms ?? [],
-          caption: data.caption ?? "",
-          mediaUrls: data.mediaUrls ?? [],
-          scheduledAt: null,
-        }),
+        body: JSON.stringify(n8nPayload),
       });
       if (res.ok) {
         await markPublished(workspaceId, postId);

@@ -83,6 +83,8 @@ type MediaItem = {
   durationSec?: number;
   /** False while the browser metadata probe is in progress. Undefined for images. */
   metadataLoaded?: boolean;
+  /** Error string when metadata probe fails. */
+  metadataError?: string;
   /** Per-file upload status (so the UI can show pending / failed without breaking preview). */
   uploadStatus: "uploading" | "ready" | "error";
   uploadError?: string;
@@ -154,6 +156,20 @@ export default function CreatePostPage() {
       (record.mediaItems ?? []).forEach((m, i) => {
         const remote = m.cdnUrl ?? m.remoteUrl;
         if (!remote) { droppedLocal++; return; }
+        const kind = m.kind ?? "image";
+        const isVideo = kind === "video";
+        let durationSec = (m as unknown as { durationSec?: number }).durationSec;
+        let metadataLoaded = (m as unknown as { metadataLoaded?: boolean }).metadataLoaded;
+        let metadataError = (m as unknown as { metadataError?: string }).metadataError;
+        // Backwards compat: old drafts have no metadata fields
+        if (isVideo) {
+          if (durationSec != null) {
+            metadataLoaded = true;
+          } else if (metadataLoaded == null && !metadataError) {
+            // Unknown — will reprobe the remote URL
+            metadataLoaded = false;
+          }
+        }
         restoredMedia.push({
           id: m.localId ?? `restored-${i}-${Date.now()}`,
           url: remote,
@@ -162,14 +178,91 @@ export default function CreatePostPage() {
           size: 0,
           width: 0,
           height: 0,
-          kind: m.kind,
-          mimeType: m.mime ?? (m.kind === "video" ? "video/mp4" : "image/jpeg"),
+          kind,
+          mimeType: m.mime ?? (kind === "video" ? "video/mp4" : "image/jpeg"),
+          durationSec,
+          metadataLoaded: isVideo ? metadataLoaded : undefined,
+          metadataError,
           uploadStatus: "ready",
         });
       });
       if (restoredMedia.length > 0) {
         setMediaItems(restoredMedia);
         setActiveMedia(Math.min(record.activeMedia ?? 0, restoredMedia.length - 1));
+        // Re-probe remote videos whose metadata is still unknown/loading
+        for (const m of restoredMedia) {
+          if (m.kind === "video" && m.metadataLoaded === false && m.url) {
+            probeVideoDuration(m.url, (dur, err) => {
+              setMediaItems((prev) => prev.map((it) => it.id === m.id ? { ...it, durationSec: dur, metadataLoaded: true, metadataError: err } : it));
+            });
+          }
+        }
+      }
+      // Restore carousel / trial reel / document draft state
+      if (record.carouselItems && record.carouselItems.length > 0) {
+        const restoredCarousel: CarouselItem[] = record.carouselItems.filter((c) => c.cdnUrl).map((c, i) => {
+          const isVideo = c.kind === "video";
+          let metadataLoaded = (c as unknown as { metadataLoaded?: boolean }).metadataLoaded;
+          let metadataError = (c as unknown as { metadataError?: string }).metadataError;
+          let durationSec = (c as unknown as { durationSec?: number }).durationSec;
+          if (isVideo && durationSec != null) metadataLoaded = true;
+          else if (isVideo && metadataLoaded == null && !metadataError) metadataLoaded = false;
+          // File is synthetic for restored remote; size unknown
+          const fakeFile = new File([], c.name ?? `carousel-${i}`, { type: c.mimeType ?? (isVideo ? "video/mp4" : "image/jpeg") });
+          return {
+            id: `restored-carousel-${i}-${Date.now()}`,
+            file: fakeFile,
+            previewUrl: c.cdnUrl!,
+            kind: c.kind,
+            mimeType: c.mimeType ?? (isVideo ? "video/mp4" : "image/jpeg"),
+            durationSec,
+            metadataLoaded: isVideo ? metadataLoaded : undefined,
+            metadataError,
+            cdnUrl: c.cdnUrl,
+            uploadStatus: "ready" as const,
+            uploadProgress: 100,
+          };
+        });
+        setCarouselItems(restoredCarousel);
+        for (const c of restoredCarousel) {
+          if (c.kind === "video" && c.metadataLoaded === false && c.previewUrl) {
+            probeVideoDuration(c.previewUrl, (dur, err) => {
+              setCarouselItems((prev) => prev.map((it) => it.id === c.id ? { ...it, durationSec: dur, metadataLoaded: true, metadataError: err } : it));
+            });
+          }
+        }
+      }
+      if (record.trialReelFile?.cdnUrl) {
+        const tr = record.trialReelFile as unknown as { cdnUrl: string; name: string; mimeType?: string; durationSec?: number; metadataLoaded?: boolean; metadataError?: string };
+        const isVideo = true;
+        let metadataLoaded = tr.metadataLoaded;
+        let metadataError = tr.metadataError;
+        let durationSec = tr.durationSec;
+        if (durationSec != null) metadataLoaded = true;
+        else if (metadataLoaded == null && !metadataError) metadataLoaded = false;
+        const fakeFile = new File([], tr.name ?? "trial-reel", { type: tr.mimeType ?? "video/mp4" });
+        const restoredTrial: TrialReelFile = {
+          file: fakeFile,
+          previewUrl: tr.cdnUrl,
+          mimeType: tr.mimeType ?? "video/mp4",
+          durationSec,
+          metadataLoaded,
+          metadataError,
+          cdnUrl: tr.cdnUrl,
+          uploadStatus: "ready",
+          uploadProgress: 100,
+        };
+        setTrialReelFile(restoredTrial);
+        if (restoredTrial.metadataLoaded === false && restoredTrial.previewUrl) {
+          probeVideoDuration(restoredTrial.previewUrl, (dur, err) => {
+            setTrialReelFile((prev) => prev ? { ...prev, durationSec: dur, metadataLoaded: true, metadataError: err } : prev);
+          });
+        }
+      }
+      if (record.documentFile?.cdnUrl) {
+        const df = record.documentFile;
+        const fakeFile = new File([], df.name ?? "document", { type: df.mimeType ?? "application/pdf" });
+        setDocumentFile({ file: fakeFile, cdnUrl: df.cdnUrl, uploadStatus: "ready", uploadProgress: 100 } as unknown as DocumentFile);
       }
       toast({
         title: t("draftRestored"),
@@ -192,6 +285,7 @@ export default function CreatePostPage() {
   const [connectedPlatforms, setConnectedPlatforms] = useState<Set<PlatformId>>(new Set());
   const [accountsLoaded, setAccountsLoaded] = useState(false);
   const [accountsError, setAccountsError] = useState(false);
+  const accountsReqIdRef = useRef(0);
 
   // Ref for focusing the TagUsersInput from the media action row
   const tagUsersRef = useRef<HTMLDivElement | null>(null);
@@ -203,16 +297,18 @@ export default function CreatePostPage() {
   const [remember, setRemember] = useState(true);
 
   useEffect(() => {
+    const reqId = ++accountsReqIdRef.current;
     let cancelled = false;
     (async () => {
       try {
         const res = await fetch("/api/social-accounts/list", { credentials: "include" });
+        if (cancelled || reqId !== accountsReqIdRef.current) return;
         if (!res.ok) {
-          if (!cancelled) setAccountsError(true);
+          setAccountsError(true);
           return;
         }
         const data = (await res.json()) as { ok?: boolean; accounts?: { id: string; platform: string }[] };
-        if (cancelled) return;
+        if (cancelled || reqId !== accountsReqIdRef.current) return;
         if (!data.ok || !data.accounts) {
           setAccountsError(true);
           return;
@@ -222,15 +318,15 @@ export default function CreatePostPage() {
           const pid = acct.platform as PlatformId;
           if (PLATFORMS.some((p) => p.id === pid)) platformIds.add(pid);
         }
-        if (cancelled) return;
+        if (cancelled || reqId !== accountsReqIdRef.current) return;
         setConnectedPlatforms(platformIds);
         setAccountsError(false);
         if (platformIds.size > 0) setSelected(new Set(platformIds));
       } catch {
         // offline / network error
-        if (!cancelled) setAccountsError(true);
+        if (!cancelled && reqId === accountsReqIdRef.current) setAccountsError(true);
       } finally {
-        if (!cancelled) setAccountsLoaded(true);
+        if (!cancelled && reqId === accountsReqIdRef.current) setAccountsLoaded(true);
       }
     })();
     return () => { cancelled = true; };
@@ -253,32 +349,33 @@ export default function CreatePostPage() {
 
   // Retry fetching social accounts after an error.
   const retryAccountsLoad = useCallback(() => {
+    const reqId = ++accountsReqIdRef.current;
     setAccountsError(false);
     setAccountsLoaded(false);
     setConnectedPlatforms(new Set());
-    let cancelled = false;
     (async () => {
       try {
         const res = await fetch("/api/social-accounts/list", { credentials: "include" });
-        if (!res.ok) { if (!cancelled) setAccountsError(true); return; }
+        if (reqId !== accountsReqIdRef.current) return;
+        if (!res.ok) { setAccountsError(true); return; }
         const data = (await res.json()) as { ok?: boolean; accounts?: { id: string; platform: string }[] };
-        if (cancelled || !data.ok || !data.accounts) { if (!cancelled) setAccountsError(true); return; }
+        if (reqId !== accountsReqIdRef.current) return;
+        if (!data.ok || !data.accounts) { setAccountsError(true); return; }
         const platformIds = new Set<PlatformId>();
         for (const acct of data.accounts) {
           const pid = acct.platform as PlatformId;
           if (PLATFORMS.some((p) => p.id === pid)) platformIds.add(pid);
         }
-        if (cancelled) return;
+        if (reqId !== accountsReqIdRef.current) return;
         setConnectedPlatforms(platformIds);
         setAccountsError(false);
         if (platformIds.size > 0) setSelected(new Set(platformIds));
       } catch {
-        if (!cancelled) setAccountsError(true);
+        if (reqId === accountsReqIdRef.current) setAccountsError(true);
       } finally {
-        if (!cancelled) setAccountsLoaded(true);
+        if (reqId === accountsReqIdRef.current) setAccountsLoaded(true);
       }
     })();
-    return () => { cancelled = true; };
   }, []);
   const [feedType, setFeedType] = useState<"feed" | "story">("feed");
 
@@ -466,6 +563,8 @@ export default function CreatePostPage() {
               mimeType: c.mimeType,
               sizeBytes: c.file.size,
               durationSec: c.durationSec,
+              metadataLoaded: c.metadataLoaded,
+              metadataError: c.metadataError,
             }))
           : composerMode === "trial_reel" && trialReelFile
           ? [{
@@ -473,6 +572,8 @@ export default function CreatePostPage() {
               mimeType: trialReelFile.mimeType,
               sizeBytes: trialReelFile.file.size,
               durationSec: trialReelFile.durationSec,
+              metadataLoaded: trialReelFile.metadataLoaded,
+              metadataError: trialReelFile.metadataError,
             }]
           : composerMode === "document" && documentFile
           ? [{
@@ -576,9 +677,13 @@ export default function CreatePostPage() {
         cdnUrl: c.cdnUrl ?? "",
         name: c.file?.name ?? "carousel",
         kind: c.kind,
+        mimeType: c.mimeType,
+        durationSec: c.durationSec,
+        metadataLoaded: c.metadataLoaded,
+        metadataError: c.metadataError,
       })),
       trialReelFile: trialReelFile
-        ? { cdnUrl: trialReelFile.cdnUrl ?? "", name: trialReelFile.file?.name ?? "trial-reel" }
+        ? { cdnUrl: trialReelFile.cdnUrl ?? "", name: trialReelFile.file?.name ?? "trial-reel", mimeType: trialReelFile.mimeType, durationSec: trialReelFile.durationSec, metadataLoaded: trialReelFile.metadataLoaded, metadataError: trialReelFile.metadataError }
         : undefined,
       documentFile: documentFile
         ? {
@@ -594,6 +699,9 @@ export default function CreatePostPage() {
         localId: m.id,
         name: m.name,
         mime: m.mimeType,
+        durationSec: m.durationSec,
+        metadataLoaded: m.metadataLoaded,
+        metadataError: m.metadataError,
       })),
       activeMedia,
       customCoverUrl,
@@ -660,6 +768,12 @@ export default function CreatePostPage() {
     const platforms = Array.from(selected);
     if (platforms.length === 0) {
       toast({ title: t("pickAccount"), tone: "warning" });
+      return;
+    }
+
+    // Do not bypass readiness validation even if called programmatically
+    if (readinessReport.overall === "blocked") {
+      toast({ title: "Requirements not met", description: readinessReport.perPlatform.find((r) => r.severity === "blocked")?.summary ?? "Fix platform requirements before publishing.", tone: "error" });
       return;
     }
 
@@ -856,6 +970,7 @@ export default function CreatePostPage() {
         jobId?: string;
         error?: string;
         results?: Record<string, { ok: boolean; error?: string }>;
+        result?: unknown;
       };
       if (!res.ok || !data.ok) {
         toast({
@@ -865,6 +980,42 @@ export default function CreatePostPage() {
         });
         return;
       }
+      // Handle per-platform results if present (partial publish)
+      const rawResults = (data.results ?? (data.result as { results?: Record<string, { ok: boolean; error?: string }> })?.results) as Record<string, { ok: boolean; error?: string }> | undefined;
+      if (rawResults && typeof rawResults === "object" && Object.keys(rawResults).length > 0) {
+        const entries = Object.entries(rawResults);
+        const succeeded = entries.filter(([, v]) => v.ok).map(([k]) => k);
+        const failed = entries.filter(([, v]) => !v.ok);
+        if (failed.length === 0) {
+          toast({
+            title: scheduledAt ? t("scheduleSuccess") : t("publishSuccess"),
+            description: scheduledAt
+              ? scheduledAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+              : `All ${succeeded.length} platforms published`,
+            tone: "success",
+          });
+          if (draftId) { await deleteDraft(draftId, await withIdToken()); setDraftId(null); }
+          if (!scheduledAt) startOver();
+          return;
+        } else if (succeeded.length > 0) {
+          toast({
+            title: `Partial success: ${succeeded.length}/${entries.length} platforms`,
+            description: `Succeeded: ${succeeded.join(", ")} • Failed: ${failed.map(([k, v]) => `${k}: ${v.error ?? "unknown"}`).join("; ")}`,
+            tone: "warning",
+          });
+          // Preserve state for retry of failed platforms only; do not clear draft
+          return;
+        } else {
+          toast({
+            title: scheduledAt ? t("scheduleFailed") : t("publishFailed"),
+            description: `All platforms failed: ${failed.map(([k, v]) => `${k}: ${v.error ?? "unknown"}`).join("; ")}`,
+            tone: "error",
+          });
+          return;
+        }
+      }
+      // Fallback when n8n does not return per-platform results: treat as all-success
+      // Document limitation: n8n may not return granular results; we show generic success
       toast({
         title: scheduledAt ? t("scheduleSuccess") : t("publishSuccess"),
         description: scheduledAt
@@ -1345,32 +1496,18 @@ export default function CreatePostPage() {
       tone: "info",
     });
 
-    // Probe video durations in parallel with uploads
+    // Probe video durations in parallel with uploads using HTMLVideoElement
     for (const { item } of built) {
       if (item.kind === "video") {
-        const probe = new Audio(item.url); // Audio works for video duration probe too
-        probe.preload = "metadata";
-        probe.onloadedmetadata = () => {
-          const dur = isFinite(probe.duration) ? probe.duration : undefined;
+        probeVideoDuration(item.url, (dur, err) => {
           setMediaItems((prev) =>
             prev.map((m) =>
               m.id === item.id
-                ? { ...m, durationSec: dur, metadataLoaded: true }
+                ? { ...m, durationSec: dur, metadataLoaded: true, metadataError: err }
                 : m
             )
           );
-          probe.src = "";
-        };
-        probe.onerror = () => {
-          // Metadata probe failed — mark as loaded but duration unknown
-          setMediaItems((prev) =>
-            prev.map((m) =>
-              m.id === item.id ? { ...m, metadataLoaded: true } : m
-            )
-          );
-          probe.src = "";
-        };
-        probe.src = item.url;
+        });
       }
     }
 
@@ -1469,6 +1606,9 @@ export default function CreatePostPage() {
         previewUrl,
         kind,
         mimeType,
+        durationSec: undefined,
+        metadataLoaded: kind === "video" ? false : undefined,
+        metadataError: undefined,
         uploadStatus: "uploading",
         uploadProgress: 0,
       };
@@ -1482,6 +1622,17 @@ export default function CreatePostPage() {
       description: t("media.uploading"),
       tone: "info",
     });
+
+    // Probe video durations concurrently without state collisions
+    for (const item of built) {
+      if (item.kind === "video") {
+        probeVideoDuration(item.previewUrl, (dur, err) => {
+          setCarouselItems((prev) =>
+            prev.map((c) => (c.id === item.id ? { ...c, durationSec: dur, metadataLoaded: true, metadataError: err } : c))
+          );
+        });
+      }
+    }
 
     // Upload in parallel
     await Promise.all(
@@ -1539,21 +1690,18 @@ export default function CreatePostPage() {
       file,
       previewUrl,
       mimeType,
+      durationSec: undefined,
+      metadataLoaded: false,
+      metadataError: undefined,
       uploadStatus: "uploading",
       uploadProgress: 0,
     };
     setTrialReelFile(item);
 
-    // Probe duration
-    const probe = new Audio(previewUrl);
-    probe.preload = "metadata";
-    probe.onloadedmetadata = () => {
-      const dur = isFinite(probe.duration) ? probe.duration : undefined;
-      setTrialReelFile((prev) => prev ? { ...prev, durationSec: dur } : null);
-      probe.src = "";
-    };
-    probe.onerror = () => { probe.src = ""; };
-    probe.src = previewUrl;
+    // Probe duration with HTMLVideoElement
+    probeVideoDuration(previewUrl, (dur, err) => {
+      setTrialReelFile((prev) => (prev ? { ...prev, durationSec: dur, metadataLoaded: true, metadataError: err } : null));
+    });
 
     toast({
       title: "Reel added",
@@ -2719,6 +2867,38 @@ function readImageSize(url: string): Promise<{ w: number; h: number }> {
     img.onerror = () => resolve({ w: 0, h: 0 });
     img.src = url;
   });
+}
+
+/**
+ * Probe video duration using HTMLVideoElement. Prefer over `new Audio()` for
+ * reliable metadata events on mp4/quicktime. Cleans up listeners and src after.
+ */
+function probeVideoDuration(url: string, cb: (durationSec?: number, error?: string) => void): void {
+  if (typeof document === "undefined") { cb(undefined, "no_document"); return; }
+  const video = document.createElement("video");
+  video.preload = "metadata";
+  video.muted = true;
+  // Some browsers require playsInline for metadata without autoplay
+  (video as unknown as Record<string, unknown>).playsInline = true;
+  const cleanup = () => {
+    video.removeEventListener("loadedmetadata", onLoaded);
+    video.removeEventListener("error", onError);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (video as any).src = "";
+    video.remove();
+  };
+  const onLoaded = () => {
+    const dur = isFinite(video.duration) ? video.duration : undefined;
+    cleanup();
+    cb(dur, undefined);
+  };
+  const onError = () => {
+    cleanup();
+    cb(undefined, "metadata_failed");
+  };
+  video.addEventListener("loadedmetadata", onLoaded);
+  video.addEventListener("error", onError);
+  video.src = url;
 }
 
 function sleep(ms: number): Promise<void> {

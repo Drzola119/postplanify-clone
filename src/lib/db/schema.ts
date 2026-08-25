@@ -88,6 +88,12 @@ export interface PostDoc {
   frameCoverUrl?: string;
   /** CDN URL of a custom cover image (e.g. uploaded separately for a video post). */
   customCoverUrl?: string;
+  /** Per-platform captions map. Persisted so scheduled queue worker can send correct payload. */
+  captionsByPlatform?: Record<string, string>;
+  /** True when sameForAll mode was used; helps n8n/worker decide payload shape. */
+  sameForAll?: boolean;
+  /** Per-platform advanced options snapshot, persisted so scheduled posts don't drift. */
+  advancedByPlatform?: Record<string, Record<string, unknown>>;
   workerId?: string;
   claimedAt?: Date;
   failureReason?: string;

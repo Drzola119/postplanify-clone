@@ -46,6 +46,8 @@ export interface ReadinessReport {
   readyCount: number;
 }
 
+export type VideoMetadataStatus = "loading" | "ready" | "error" | "unknown";
+
 export interface MediaMeta {
   kind: MediaKind;
   mimeType: string;
@@ -53,6 +55,10 @@ export interface MediaMeta {
   durationSec?: number;
   /** False while browser metadata probe is still running; undefined = probe not started / not applicable. */
   metadataLoaded?: boolean;
+  /** Error string when metadata probe failed. */
+  metadataError?: string;
+  /** Explicit status override; when provided takes precedence over boolean fields. */
+  metadataStatus?: VideoMetadataStatus;
 }
 
 export interface RequirementsInput {
@@ -124,15 +130,20 @@ function checkMediaForPlatform(
     let badBytes = 0;
     let badMime = 0;
     let badDuration = 0;
+    const hasDurationRequirement = req.minDurationSec != null || (req.maxDurationSec != null && req.maxDurationSec > 0 && Number.isFinite(req.maxDurationSec));
     for (const m of media) {
       if (m.kind !== kind) continue;
       if (m.sizeBytes > req.maxBytes) badBytes++;
       if (req.formats.length > 0 && !req.formats.includes(m.mimeType)) badMime++;
       if (kind === "video") {
-        // Only validate duration once metadata has loaded. Skip if still loading.
-        if (m.metadataLoaded === false) continue;
-        if (req.minDurationSec != null && (m.durationSec ?? 0) < req.minDurationSec) badDuration++;
-        if (req.maxDurationSec != null && (m.durationSec ?? 0) > req.maxDurationSec) badDuration++;
+        const status = resolveMetadataStatus(m);
+        if (status === "loading") continue;
+        if (status === "error" || status === "unknown") continue;
+        // status === "ready": validate normally. If metadataStatus is undefined but duration present, treat as ready.
+        // Guard: if duration is still undefined after ready, treat as unknown (handled separately)
+        if (m.durationSec == null) continue;
+        if (req.minDurationSec != null && m.durationSec < req.minDurationSec) badDuration++;
+        if (req.maxDurationSec != null && m.durationSec > req.maxDurationSec) badDuration++;
       }
     }
     if (badBytes > 0) {
@@ -165,16 +176,53 @@ function checkMediaForPlatform(
         actionLabel: "Re-edit video",
       });
     }
-    // Warn about videos whose metadata hasn't loaded yet (duration unknown)
-    const loadingCount = media.filter(
-      (m) => m.kind === kind && m.metadataLoaded === false
-    ).length;
+    // Handle video metadata states: loading / error / unknown
+    const metas = media.filter((m) => m.kind === kind);
+    const loadingCount = metas.filter((m) => resolveMetadataStatus(m) === "loading").length;
+    const errorCount = metas.filter((m) => resolveMetadataStatus(m) === "error").length;
+    const unknownCount = metas.filter((m) => resolveMetadataStatus(m) === "unknown").length;
     if (loadingCount > 0) {
-      issues.push({
-        code: `${kind}_metadata_loading`,
-        severity: "warning",
-        message: `${loadingCount} video${loadingCount === 1 ? "'s" : "s'"} metadata is still loading. Duration will be validated once ready.`,
-      });
+      if (hasDurationRequirement) {
+        issues.push({
+          code: `${kind}_metadata_loading`,
+          severity: "blocked",
+          message: `${loadingCount} video${loadingCount === 1 ? "'s" : "s'"} metadata is still loading. Duration cannot be validated yet.`,
+          actionLabel: "Wait for metadata",
+        });
+      } else {
+        issues.push({
+          code: `${kind}_metadata_loading`,
+          severity: "warning",
+          message: `${loadingCount} video${loadingCount === 1 ? "'s" : "s'"} metadata is still loading. Duration will be validated once ready.`,
+        });
+      }
+    }
+    if (errorCount > 0) {
+      // Metadata probe failed: block if duration is required
+      if (hasDurationRequirement) {
+        issues.push({
+          code: `${kind}_metadata_error`,
+          severity: "blocked",
+          message: `${errorCount} video${errorCount === 1 ? "" : "s"} failed to load metadata. Duration is unknown.`,
+          actionLabel: "Replace video",
+        });
+      } else {
+        issues.push({
+          code: `${kind}_metadata_error`,
+          severity: "warning",
+          message: `${errorCount} video${errorCount === 1 ? "" : "s"} metadata failed to load.`,
+          actionLabel: "Replace video",
+        });
+      }
+    } else if (unknownCount > 0) {
+      if (hasDurationRequirement) {
+        issues.push({
+          code: `${kind}_metadata_unknown`,
+          severity: "blocked",
+          message: `${unknownCount} video${unknownCount === 1 ? "" : "s"} has unknown duration. Add or re-upload the video.`,
+          actionLabel: "Replace video",
+        });
+      }
     }
   }
 
@@ -308,6 +356,21 @@ export function checkRequirements(
     blockedCount > 0 ? "blocked" : warningCount > 0 ? "warning" : "ready";
 
   return { perPlatform, overall, blockedCount, warningCount, readyCount };
+}
+
+function resolveMetadataStatus(m: MediaMeta): VideoMetadataStatus {
+  if (m.metadataStatus) return m.metadataStatus;
+  if (m.metadataError) return "error";
+  if (m.metadataLoaded === false) return "loading";
+  if (m.metadataLoaded === true) {
+    // If we claim ready but have no duration and no error, treat as error/unknown
+    if (m.durationSec == null) return "error";
+    return "ready";
+  }
+  // metadataLoaded undefined
+  if (m.durationSec != null) return "ready";
+  // No metadata info at all: unknown (legacy restored without reprobe)
+  return "unknown";
 }
 
 function blockedReason(issues: ReadinessIssue[]): string {

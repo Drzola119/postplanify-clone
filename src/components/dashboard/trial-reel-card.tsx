@@ -41,6 +41,9 @@ export interface TrialReelFile {
   mimeType: string;
   /** Video duration in seconds (undefined until probed). */
   durationSec?: number;
+  /** False while probe is loading. Undefined for error prior to probe. */
+  metadataLoaded?: boolean;
+  metadataError?: string;
   cdnUrl?: string;
   uploadStatus: "pending" | "uploading" | "ready" | "error";
   uploadProgress?: number;
