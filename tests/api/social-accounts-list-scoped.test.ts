@@ -128,10 +128,10 @@ describe("GET /api/social-accounts/list (workspace-scoped)", () => {
     expect(body.profiles).toHaveLength(1);
     expect(body.profiles[0].username).toBe(mockWorkspaceId);
 
-    // Only connected accounts (Facebook + X, not TikTok which is "" empty string).
+    // Only connected accounts (Facebook + Twitter/X, not TikTok which is "" empty string).
     expect(body.accounts).toHaveLength(2);
     const platforms = body.accounts.map((a: { platform: string }) => a.platform).sort();
-    expect(platforms).toEqual(["facebook", "x"]);
+    expect(platforms).toEqual(["facebook", "twitter"]);
 
     // The fetch URL must include the workspaceId, NOT be the unfiltered list.
     const listCall = fetchSpy.mock.calls[1];

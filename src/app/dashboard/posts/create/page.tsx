@@ -77,6 +77,12 @@ type MediaItem = {
   width: number;
   height: number;
   kind: "image" | "video";
+  /** Actual MIME type from file.type (never fabricated). */
+  mimeType: string;
+  /** Video duration in seconds, populated after metadata probe. */
+  durationSec?: number;
+  /** False while the browser metadata probe is in progress. Undefined for images. */
+  metadataLoaded?: boolean;
   /** Per-file upload status (so the UI can show pending / failed without breaking preview). */
   uploadStatus: "uploading" | "ready" | "error";
   uploadError?: string;
@@ -157,6 +163,7 @@ export default function CreatePostPage() {
           width: 0,
           height: 0,
           kind: m.kind,
+          mimeType: m.mime ?? (m.kind === "video" ? "video/mp4" : "image/jpeg"),
           uploadStatus: "ready",
         });
       });
@@ -184,9 +191,15 @@ export default function CreatePostPage() {
   // Connected accounts fetched from the server (only these should appear in the picker).
   const [connectedPlatforms, setConnectedPlatforms] = useState<Set<PlatformId>>(new Set());
   const [accountsLoaded, setAccountsLoaded] = useState(false);
+  const [accountsError, setAccountsError] = useState(false);
+
+  // Ref for focusing the TagUsersInput from the media action row
+  const tagUsersRef = useRef<HTMLDivElement | null>(null);
 
   // Account selection — initialises to empty; populated after we know what's connected.
   const [selected, setSelected] = useState<Set<PlatformId>>(new Set());
+
+  // Restore "remember" preference from localStorage (scoped by uid).
   const [remember, setRemember] = useState(true);
 
   useEffect(() => {
@@ -194,9 +207,16 @@ export default function CreatePostPage() {
     (async () => {
       try {
         const res = await fetch("/api/social-accounts/list", { credentials: "include" });
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (!cancelled) setAccountsError(true);
+          return;
+        }
         const data = (await res.json()) as { ok?: boolean; accounts?: { id: string; platform: string }[] };
-        if (cancelled || !data.ok || !data.accounts) return;
+        if (cancelled) return;
+        if (!data.ok || !data.accounts) {
+          setAccountsError(true);
+          return;
+        }
         const platformIds = new Set<PlatformId>();
         for (const acct of data.accounts) {
           const pid = acct.platform as PlatformId;
@@ -204,9 +224,56 @@ export default function CreatePostPage() {
         }
         if (cancelled) return;
         setConnectedPlatforms(platformIds);
+        setAccountsError(false);
         if (platformIds.size > 0) setSelected(new Set(platformIds));
       } catch {
-        // offline — fall back to showing all platforms
+        // offline / network error
+        if (!cancelled) setAccountsError(true);
+      } finally {
+        if (!cancelled) setAccountsLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Persist / restore "remember" preference in localStorage scoped by uid.
+  useEffect(() => {
+    if (!draftCtx.uid) return;
+    const key = `remember_accounts:${draftCtx.uid}`;
+    const stored = localStorage.getItem(key);
+    if (stored !== null) setRemember(stored === "true");
+  }, [draftCtx.uid]);
+
+  const handleRememberChange = useCallback((next: boolean) => {
+    setRemember(next);
+    if (draftCtx.uid) {
+      localStorage.setItem(`remember_accounts:${draftCtx.uid}`, String(next));
+    }
+  }, [draftCtx.uid]);
+
+  // Retry fetching social accounts after an error.
+  const retryAccountsLoad = useCallback(() => {
+    setAccountsError(false);
+    setAccountsLoaded(false);
+    setConnectedPlatforms(new Set());
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/social-accounts/list", { credentials: "include" });
+        if (!res.ok) { if (!cancelled) setAccountsError(true); return; }
+        const data = (await res.json()) as { ok?: boolean; accounts?: { id: string; platform: string }[] };
+        if (cancelled || !data.ok || !data.accounts) { if (!cancelled) setAccountsError(true); return; }
+        const platformIds = new Set<PlatformId>();
+        for (const acct of data.accounts) {
+          const pid = acct.platform as PlatformId;
+          if (PLATFORMS.some((p) => p.id === pid)) platformIds.add(pid);
+        }
+        if (cancelled) return;
+        setConnectedPlatforms(platformIds);
+        setAccountsError(false);
+        if (platformIds.size > 0) setSelected(new Set(platformIds));
+      } catch {
+        if (!cancelled) setAccountsError(true);
       } finally {
         if (!cancelled) setAccountsLoaded(true);
       }
@@ -249,7 +316,8 @@ export default function CreatePostPage() {
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [cropModalOpen, setCropModalOpen] = useState(false);
   const [altTextModalOpen, setAltTextModalOpen] = useState(false);
-  const [tagUsersModalOpen, setTagUsersModalOpen] = useState(false);
+  // tagUsersModalOpen removed — TagUsersInput in CaptionsCard is the canonical control.
+  // onOpenTagUsers scrolls to it via a ref (see tagUsersRef below).
 
   // Video cover features
   const [customCoverUrl, setCustomCoverUrl] = useState<string | null>(null);
@@ -395,25 +463,29 @@ export default function CreatePostPage() {
         composerMode === "carousel"
           ? carouselItems.map((c) => ({
               kind: c.kind,
-              mimeType: c.kind === "video" ? "video/mp4" : "image/jpeg",
+              mimeType: c.mimeType,
               sizeBytes: c.file.size,
+              durationSec: c.durationSec,
             }))
           : composerMode === "trial_reel" && trialReelFile
           ? [{
               kind: "video" as const,
-              mimeType: "video/mp4",
+              mimeType: trialReelFile.mimeType,
               sizeBytes: trialReelFile.file.size,
+              durationSec: trialReelFile.durationSec,
             }]
           : composerMode === "document" && documentFile
           ? [{
               kind: "image" as const,
-              mimeType: "image/jpeg",
+              mimeType: documentFile.file.type || "application/pdf",
               sizeBytes: documentFile.file.size,
             }]
           : mediaItems.map((m) => ({
               kind: m.kind,
-              mimeType: m.kind === "image" ? "image/jpeg" : "video/mp4",
+              mimeType: m.mimeType,
               sizeBytes: m.size,
+              durationSec: m.durationSec,
+              metadataLoaded: m.metadataLoaded,
             }));
 
       return checkRequirements(Array.from(selected), {
@@ -426,7 +498,7 @@ export default function CreatePostPage() {
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [captions, mediaItems, carouselItems, trialReelFile, documentFile, advancedByPlatform, selected, composerMediaKind, composerMode]
+    [captions, sameForAll, mediaItems, carouselItems, trialReelFile, documentFile, advancedByPlatform, selected, composerMediaKind, composerMode]
   );
 
   function toggleAccount(id: PlatformId) {
@@ -521,7 +593,7 @@ export default function CreatePostPage() {
         remoteUrl: undefined,
         localId: m.id,
         name: m.name,
-        mime: m.kind === "video" ? "video/*" : "image/*",
+        mime: m.mimeType,
       })),
       activeMedia,
       customCoverUrl,
@@ -590,16 +662,22 @@ export default function CreatePostPage() {
       toast({ title: t("pickAccount"), tone: "warning" });
       return;
     }
-    const caption = applyMetadataRules(captionForCurrent());
-    if (!caption) {
-      toast({ title: t("captionEmpty"), tone: "warning" });
-      return;
+
+    // Build per-platform captions (with metadata rules applied)
+    const captionsByPlatform: Record<string, string> = {};
+    for (const p of platforms) {
+      captionsByPlatform[p] = applyMetadataRules(captionFor(p));
     }
+    // Legacy top-level caption — used by older workers that don't understand captionsByPlatform
+    const caption = sameForAll
+      ? (applyMetadataRules(captions.__all ?? ""))
+      : (captionsByPlatform[platforms[0]] ?? "");
 
     let readyMediaUrls: string[] = [];
     if (composerMode === "standard") {
       const readyMedia = mediaItems.filter((m) => m.cdnUrl);
-      if (readyMedia.length === 0) {
+      // Text-only posts are allowed if no media was uploaded at all
+      if (readyMedia.length === 0 && mediaItems.length > 0) {
         toast({ title: t("uploadMedia"), tone: "warning" });
         return;
       }
@@ -746,6 +824,8 @@ export default function CreatePostPage() {
         body: JSON.stringify({
           platforms,
           caption,
+          captionsByPlatform,
+          sameForAll,
           mediaUrls: readyMediaUrls,
           scheduledAt: scheduledAt ? scheduledAt.toISOString() : null,
           advancedByPlatform: platformOptions,
@@ -775,6 +855,7 @@ export default function CreatePostPage() {
         ok?: boolean;
         jobId?: string;
         error?: string;
+        results?: Record<string, { ok: boolean; error?: string }>;
       };
       if (!res.ok || !data.ok) {
         toast({
@@ -1226,6 +1307,7 @@ export default function CreatePostPage() {
     for (const file of accepted) {
       const localUrl = URL.createObjectURL(file);
       const kind: "image" | "video" = file.type.startsWith("video/") ? "video" : "image";
+      const mimeType = file.type || (kind === "video" ? "video/mp4" : "image/jpeg");
       let width = 0;
       let height = 0;
       if (kind === "image") {
@@ -1243,6 +1325,9 @@ export default function CreatePostPage() {
           width,
           height,
           kind,
+          mimeType,
+          // Videos: start as metadata-loading so the validator doesn't default duration to 0
+          metadataLoaded: kind === "video" ? false : undefined,
           uploadStatus: "uploading",
         },
       });
@@ -1259,6 +1344,35 @@ export default function CreatePostPage() {
       description: t("media.uploading"),
       tone: "info",
     });
+
+    // Probe video durations in parallel with uploads
+    for (const { item } of built) {
+      if (item.kind === "video") {
+        const probe = new Audio(item.url); // Audio works for video duration probe too
+        probe.preload = "metadata";
+        probe.onloadedmetadata = () => {
+          const dur = isFinite(probe.duration) ? probe.duration : undefined;
+          setMediaItems((prev) =>
+            prev.map((m) =>
+              m.id === item.id
+                ? { ...m, durationSec: dur, metadataLoaded: true }
+                : m
+            )
+          );
+          probe.src = "";
+        };
+        probe.onerror = () => {
+          // Metadata probe failed — mark as loaded but duration unknown
+          setMediaItems((prev) =>
+            prev.map((m) =>
+              m.id === item.id ? { ...m, metadataLoaded: true } : m
+            )
+          );
+          probe.src = "";
+        };
+        probe.src = item.url;
+      }
+    }
 
     // Fire uploads in parallel; each one mutates its own item in state by id.
     await Promise.all(
@@ -1348,11 +1462,13 @@ export default function CreatePostPage() {
     const built: CarouselItem[] = accepted.map((file) => {
       const previewUrl = URL.createObjectURL(file);
       const kind = file.type.startsWith("video/") ? "video" : "image";
+      const mimeType = file.type || (kind === "video" ? "video/mp4" : "image/jpeg");
       return {
         id: `carousel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         file,
         previewUrl,
         kind,
+        mimeType,
         uploadStatus: "uploading",
         uploadProgress: 0,
       };
@@ -1417,14 +1533,27 @@ export default function CreatePostPage() {
   }
 
   async function handleTrialReelFile(file: File) {
+    const mimeType = file.type || "video/mp4";
     const previewUrl = URL.createObjectURL(file);
     const item: TrialReelFile = {
       file,
       previewUrl,
+      mimeType,
       uploadStatus: "uploading",
       uploadProgress: 0,
     };
     setTrialReelFile(item);
+
+    // Probe duration
+    const probe = new Audio(previewUrl);
+    probe.preload = "metadata";
+    probe.onloadedmetadata = () => {
+      const dur = isFinite(probe.duration) ? probe.duration : undefined;
+      setTrialReelFile((prev) => prev ? { ...prev, durationSec: dur } : null);
+      probe.src = "";
+    };
+    probe.onerror = () => { probe.src = ""; };
+    probe.src = previewUrl;
 
     toast({
       title: "Reel added",
@@ -1784,7 +1913,11 @@ export default function CreatePostPage() {
               onOpenCollaborators={() => setCollaboratorsModalOpen(true)}
               onOpenCrop={() => setCropModalOpen(true)}
               onOpenAltText={() => setAltTextModalOpen(true)}
-              onOpenTagUsers={() => setTagUsersModalOpen(true)}
+              onOpenTagUsers={() => {
+                tagUsersRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+                const input = tagUsersRef.current?.querySelector("input");
+                input?.focus();
+              }}
               customCoverUrl={customCoverUrl}
               frameCoverUrl={frameCoverUrl}
               onOpenCoverModal={() => setCoverModalOpen(true)}
@@ -1842,13 +1975,15 @@ export default function CreatePostPage() {
             onSelectAll={composerMode === "standard" ? selectAll : undefined}
             onDeselectAll={deselectAll}
             remember={remember}
-            onRememberChange={setRemember}
+            onRememberChange={handleRememberChange}
             feedType={feedType}
             onFeedTypeChange={setFeedType}
             onlyImage={onlyImage}
             composerMode={composerMode}
             connectedPlatforms={connectedPlatforms}
             accountsLoaded={accountsLoaded}
+            accountsError={accountsError}
+            onRetry={retryAccountsLoad}
           />
 
           {isVideoActive && composerMode === "standard" ? (
@@ -1892,6 +2027,7 @@ export default function CreatePostPage() {
           rulesOpen={rulesOpen}
           onRulesOpenChange={setRulesOpen}
           sampleCaption={captionForCurrent()}
+          tagUsersRef={tagUsersRef}
         />
       </div>
 
@@ -2211,6 +2347,7 @@ function MediaCard({
             setDragging={setDragging}
             onDrop={onDrop}
             onPickFiles={onPickFiles}
+            onFiles={onFiles}
             atMax={atMax}
             onUnsplash={onOpenUnsplash}
             onGenerateAI={onOpenGenerateAI}
@@ -2244,6 +2381,7 @@ function EmptyState({
   setDragging,
   onDrop,
   onPickFiles,
+  onFiles,
   atMax,
   onUnsplash,
   onGenerateAI,
@@ -2257,6 +2395,7 @@ function EmptyState({
   setDragging: (b: boolean) => void;
   onDrop: (e: React.DragEvent) => void;
   onPickFiles: () => void;
+  onFiles: (files: File[]) => void;
   atMax: boolean;
   onUnsplash: () => void;
   onGenerateAI: () => void;
@@ -2269,6 +2408,24 @@ function EmptyState({
     { id: "media", label: t("media.tabMedia") },
     { id: "paste", label: t("media.tabPaste") },
   ];
+
+  function handlePaste(e: React.ClipboardEvent) {
+    const items = Array.from(e.clipboardData?.items ?? []);
+    const files: File[] = [];
+    for (const item of items) {
+      if (item.kind === "file") {
+        const f = item.getAsFile();
+        if (f && (f.type.startsWith("image/") || f.type.startsWith("video/"))) {
+          files.push(f);
+        }
+      }
+    }
+    if (files.length > 0) {
+      e.preventDefault();
+      onFiles(files);
+    }
+  }
+
   return (
     <div
       onDragOver={(e) => {
@@ -2277,12 +2434,13 @@ function EmptyState({
       }}
       onDragLeave={() => setDragging(false)}
       onDrop={onDrop}
+      onPaste={handlePaste}
       onClick={() => !atMax && onPickFiles()}
       role="button"
       tabIndex={0}
       aria-disabled={atMax}
       className={cn(
-        "relative border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors",
+        "relative border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-400",
         dragging ? "border-blue-500 bg-blue-50/30" : "border-zinc-300 hover:bg-zinc-50",
         atMax && "opacity-50 cursor-not-allowed pointer-events-none"
       )}
@@ -2777,15 +2935,32 @@ function AccountsCard({
   composerMode = "standard",
   connectedPlatforms,
   accountsLoaded,
-}: AccountsCardProps) {
+  accountsError = false,
+  onRetry,
+}: {
+  selected: Set<PlatformId>;
+  onToggle: (id: PlatformId) => void;
+  onSelectAll?: () => void;
+  onDeselectAll: () => void;
+  remember: boolean;
+  onRememberChange: (v: boolean) => void;
+  feedType: "feed" | "story";
+  onFeedTypeChange: (v: "feed" | "story") => void;
+  onlyImage: boolean;
+  composerMode?: string;
+  connectedPlatforms: Set<PlatformId>;
+  accountsLoaded: boolean;
+  accountsError?: boolean;
+  onRetry?: () => void;
+}) {
   const t = useTranslations("createPost");
   const hasSelection = selected.size > 0;
 
-  // Only show platforms the user has connected (fall back to all if still loading).
+  // Fall back to all PLATFORMS when: not yet loaded, OR fetch errored.
   const visiblePlatforms = useMemo(() => {
-    if (!accountsLoaded) return PLATFORMS;
+    if (!accountsLoaded || accountsError) return PLATFORMS;
     return PLATFORMS.filter((p) => connectedPlatforms.has(p.id));
-  }, [accountsLoaded, connectedPlatforms]);
+  }, [accountsLoaded, accountsError, connectedPlatforms]);
 
   const storyAvailable = useMemo(() => {
     return visiblePlatforms.some((p) => selected.has(p.id) && (p.id === "instagram" || p.id === "facebook"));
@@ -2824,19 +2999,24 @@ function AccountsCard({
               />
               {t("accounts.remember")}
             </label>
+            {/* Control B: disabled until account settings route exists */}
             <button
               type="button"
-              aria-label="Account settings"
-              className="size-7 inline-flex items-center justify-center rounded-md hover:bg-zinc-100 text-zinc-500"
+              disabled
+              aria-label="Account settings (coming soon)"
+              title="Account settings (coming soon)"
+              className="size-7 inline-flex items-center justify-center rounded-md text-zinc-300 cursor-not-allowed"
             >
               <Settings className="size-4" />
             </button>
           </div>
           <div className="flex items-center gap-1">
+            {/* Control F: disabled in modes that lock platform selection */}
             <button
               type="button"
               onClick={onSelectAll}
-              className="inline-flex items-center rounded-md border border-zinc-200 bg-white px-2 h-7 text-xs font-medium hover:bg-zinc-50"
+              disabled={!onSelectAll}
+              className="inline-flex items-center rounded-md border border-zinc-200 bg-white px-2 h-7 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {t("accounts.selectAll")}
             </button>
@@ -2852,12 +3032,28 @@ function AccountsCard({
         </div>
 
         <div className="max-h-64 overflow-y-auto -mx-1 px-1">
-          {visiblePlatforms.length === 0 ? (
+          {/* BUG 6: Show error state with retry button */}
+          {accountsError ? (
+            <div className="flex flex-col items-center justify-center py-6 text-center gap-2">
+              <p className="text-sm font-medium text-red-600">Failed to load connected accounts</p>
+              <p className="text-xs text-zinc-500">Showing all platforms as fallback.</p>
+              {onRetry && (
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-7 text-xs font-medium hover:bg-zinc-50"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          ) : visiblePlatforms.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <p className="text-sm font-medium text-zinc-700">No connected accounts</p>
               <p className="text-xs text-zinc-500 mt-1">Connect social accounts in the Accounts page first.</p>
             </div>
-          ) : (
+          ) : null}
+          {visiblePlatforms.length > 0 && (
           <div className="grid grid-cols-2 gap-2">
             {visiblePlatforms.map((p) => {
               const isSel = selected.has(p.id);
@@ -2905,12 +3101,15 @@ function AccountsCard({
           <div className="pt-3 border-t space-y-2">
             <div className="flex items-center gap-2 text-xs">
               <span className="font-medium">{t("accounts.postIn")}</span>
+              {/* Control E: radio semantics for feed/story — mutually exclusive */}
               <label className="inline-flex items-center gap-1.5 cursor-pointer">
                 <input
-                  type="checkbox"
+                  type="radio"
+                  name="feedType"
+                  value="feed"
                   checked={feedType === "feed"}
                   onChange={() => onFeedTypeChange("feed")}
-                  className="size-4 rounded-sm border-zinc-300 text-emerald-500 focus:ring-emerald-500"
+                  className="size-4 border-zinc-300 text-emerald-500 focus:ring-emerald-500"
                 />
                 {t("accounts.feed")}
               </label>
@@ -2921,11 +3120,13 @@ function AccountsCard({
                 )}
               >
                 <input
-                  type="checkbox"
+                  type="radio"
+                  name="feedType"
+                  value="story"
                   checked={feedType === "story"}
                   onChange={() => onFeedTypeChange("story")}
                   disabled={!storyAvailable}
-                  className="size-4 rounded-sm border-zinc-300 text-emerald-500 focus:ring-emerald-500"
+                  className="size-4 border-zinc-300 text-emerald-500 focus:ring-emerald-500"
                 />
                 {t("accounts.story")}
               </label>
@@ -2970,6 +3171,7 @@ interface CaptionsCardProps {
   rulesOpen: boolean;
   onRulesOpenChange: (open: boolean) => void;
   sampleCaption?: string;
+  tagUsersRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 function CaptionsCard({
@@ -2998,6 +3200,7 @@ function CaptionsCard({
   rulesOpen,
   onRulesOpenChange,
   sampleCaption = "",
+  tagUsersRef,
 }: CaptionsCardProps) {
   const t = useTranslations("createPost");
   const hasActiveRules = metadataRules.enabled && (metadataRules.hashtags.length > 0 || metadataRules.ctaLine);
@@ -3152,7 +3355,7 @@ function CaptionsCard({
 
         {/* Tag Users — sticky at bottom of card (shared across platforms) */}
         {showTagUsers ? (
-          <div className="flex-shrink-0 border-t pt-3">
+          <div ref={tagUsersRef} className="flex-shrink-0 border-t pt-3">
             <TagUsersInput value={tagUsers} onChange={onTagUsersChange} />
           </div>
         ) : null}

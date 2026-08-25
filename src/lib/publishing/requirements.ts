@@ -13,7 +13,6 @@ import {
   CAPABILITY_MATRIX,
   getCapability,
   type MediaKind,
-  type MediaRequirement,
 } from "@/lib/publishing/capability-matrix";
 import type { PlatformAdvancedOptions } from "@/lib/publishing/advanced-options";
 
@@ -52,15 +51,17 @@ export interface MediaMeta {
   mimeType: string;
   sizeBytes: number;
   durationSec?: number;
+  /** False while browser metadata probe is still running; undefined = probe not started / not applicable. */
+  metadataLoaded?: boolean;
 }
 
 export interface RequirementsInput {
-  captionByPlatform: Record<PlatformId, string>;
+  captionByPlatform: Partial<Record<PlatformId, string>>;
   media: MediaMeta[];
   /** Per-platform advanced options (Feature 1). */
   advancedByPlatform?: Partial<Record<PlatformId, PlatformAdvancedOptions>>;
   /** Pre-computed media kind for the post (mixed → prefer video). */
-  composerMediaKind: MediaKind;
+  composerMediaKind?: MediaKind;
   /** Count of posts already published in the rolling 24h window per platform. */
   recent24hCounts?: Partial<Record<PlatformId, number>>;
   /** Override the system date for testing. */
@@ -76,14 +77,16 @@ function checkMediaForPlatform(
   const issues: ReadinessIssue[] = [];
   const cap = getCapability(platform);
 
-  // 0 items
+  // 0 items — only block if the platform does NOT support text-only posts
   if (media.length === 0) {
-    issues.push({
-      code: "missing_media",
-      severity: "blocked",
-      message: `${cap.displayName} requires at least one media file.`,
-      actionLabel: "Add media",
-    });
+    if (!cap.supportsText) {
+      issues.push({
+        code: "missing_media",
+        severity: "blocked",
+        message: `${cap.displayName} requires at least one media file.`,
+        actionLabel: "Add media",
+      });
+    }
     return issues;
   }
 
@@ -126,6 +129,8 @@ function checkMediaForPlatform(
       if (m.sizeBytes > req.maxBytes) badBytes++;
       if (req.formats.length > 0 && !req.formats.includes(m.mimeType)) badMime++;
       if (kind === "video") {
+        // Only validate duration once metadata has loaded. Skip if still loading.
+        if (m.metadataLoaded === false) continue;
         if (req.minDurationSec != null && (m.durationSec ?? 0) < req.minDurationSec) badDuration++;
         if (req.maxDurationSec != null && (m.durationSec ?? 0) > req.maxDurationSec) badDuration++;
       }
@@ -142,7 +147,7 @@ function checkMediaForPlatform(
       issues.push({
         code: `${kind}_wrong_format`,
         severity: "blocked",
-        message: `${badBytes} ${kind} file${badMime === 1 ? "" : "s"} use${badMime === 1 ? "s" : ""} an unsupported format. Allowed: ${req.formats.join(", ")}.`,
+        message: `${badMime} ${kind} file${badMime === 1 ? "" : "s"} use${badMime === 1 ? "s" : ""} an unsupported format. Allowed: ${req.formats.join(", ")}.`,
         actionLabel: "Convert media",
       });
     }
@@ -160,6 +165,17 @@ function checkMediaForPlatform(
         actionLabel: "Re-edit video",
       });
     }
+    // Warn about videos whose metadata hasn't loaded yet (duration unknown)
+    const loadingCount = media.filter(
+      (m) => m.kind === kind && m.metadataLoaded === false
+    ).length;
+    if (loadingCount > 0) {
+      issues.push({
+        code: `${kind}_metadata_loading`,
+        severity: "warning",
+        message: `${loadingCount} video${loadingCount === 1 ? "'s" : "s'"} metadata is still loading. Duration will be validated once ready.`,
+      });
+    }
   }
 
   return issues;
@@ -171,8 +187,20 @@ function checkCaption(
 ): ReadinessIssue[] {
   const issues: ReadinessIssue[] = [];
   const cap = getCapability(platform);
-  const len = charCount(caption);
-  if (len === 0) return issues; // "missing caption" handled at the composer level
+  const trimmed = caption.trim();
+  const len = charCount(trimmed);
+
+  // BUG 2 fix: missing captions are a blocking issue per platform.
+  if (len === 0) {
+    issues.push({
+      code: "missing_caption",
+      severity: "blocked",
+      message: `${cap.displayName} requires a caption.`,
+      actionLabel: "Write caption",
+    });
+    return issues;
+  }
+
   if (len > cap.maxCaptionLength) {
     issues.push({
       code: "caption_too_long",

@@ -191,7 +191,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     supportsVideo: true,
     maxTitleLength: 0,
     maxCaptionLength: 2000,
-    hardCapPer24h: 0,
+    hardCapPer24h: 50,
     requiredTargets: [],
     media: {
       image: { maxBytes: 8 * MB, formats: ["image/jpeg", "image/png", "image/gif", "image/webp"], maxItems: 10 },
@@ -205,7 +205,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     supportsVideo: true,
     maxTitleLength: 0,
     maxCaptionLength: 1024,
-    hardCapPer24h: 0,
+    hardCapPer24h: 50,
     requiredTargets: [],
     media: {
       image: { maxBytes: 10 * MB, formats: ["image/jpeg", "image/png", "image/webp"], maxItems: 10 },
@@ -219,7 +219,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     supportsVideo: true,
     maxTitleLength: 300,
     maxCaptionLength: 40000,
-    hardCapPer24h: 0,
+    hardCapPer24h: 50,
     requiredTargets: [],
     media: {
       image: { maxBytes: 20 * MB, formats: ["image/jpeg", "image/png", "image/gif"], maxItems: 1 },
@@ -233,7 +233,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     supportsVideo: true,
     maxTitleLength: 0,
     maxCaptionLength: 1500,
-    hardCapPer24h: 0,
+    hardCapPer24h: 50,
     requiredTargets: [],
     media: {
       image: { maxBytes: 5 * MB, formats: ["image/jpeg", "image/png"], maxItems: 10 },

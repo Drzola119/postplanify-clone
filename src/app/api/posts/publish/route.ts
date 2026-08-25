@@ -44,6 +44,10 @@ const publishPayloadSchema = z.object({
   /** Instagram collaborator usernames (max 3). */
   collaborators: z.array(z.string().min(1)).max(3).optional(),
   advancedByPlatform: z.record(z.string(), z.unknown()).optional(),
+  /** Per-platform captions (with metadata rules applied). Supersedes top-level caption per platform. */
+  captionsByPlatform: z.record(z.string(), z.string()).optional(),
+  /** True when the user used the same caption for all platforms. */
+  sameForAll: z.boolean().optional(),
 });
 
 export const runtime = "nodejs";
@@ -73,6 +77,10 @@ interface PublishPayload {
   collaborators?: string[];
   /** Per-platform advanced options keyed by platform id. */
   advancedByPlatform?: Record<string, Record<string, string | number | boolean | string[] | undefined>>;
+  /** Per-platform captions (with metadata rules applied). */
+  captionsByPlatform?: Record<string, string>;
+  /** True when the user used the same caption for all platforms. */
+  sameForAll?: boolean;
 }
 
 export async function POST(request: Request) {
@@ -166,6 +174,8 @@ export async function POST(request: Request) {
     customCoverUrl: body.customCoverUrl,
     collaborators: body.collaborators,
     mediaType: body.mediaType,
+    captionsByPlatform: body.captionsByPlatform,
+    sameForAll: body.sameForAll,
   };
 
   try {

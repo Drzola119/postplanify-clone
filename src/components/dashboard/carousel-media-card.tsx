@@ -10,6 +10,10 @@ export interface CarouselItem {
   file: File;
   previewUrl: string;
   kind: "image" | "video";
+  /** Actual MIME type from file.type. */
+  mimeType: string;
+  /** Video duration in seconds (undefined until probed). */
+  durationSec?: number;
   cdnUrl?: string;
   uploadStatus: "pending" | "uploading" | "ready" | "error";
   uploadProgress?: number;
