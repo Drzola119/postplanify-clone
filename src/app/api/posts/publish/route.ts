@@ -115,6 +115,12 @@ export async function POST(request: Request) {
   const platformsArr = (body.platforms ?? []) as string[];
   const captMap = body.captionsByPlatform as Record<string, string> | undefined;
   const same = Boolean(body.sameForAll);
+  if (!same && !captMap) {
+    return NextResponse.json(
+      { error: "captionsByPlatform is required when sameForAll is false" },
+      { status: 400 }
+    );
+  }
   if (captMap) {
     // Reject unknown platform keys (must be subset of declared platforms + legacy __all)
     const knownSet = new Set(platformsArr);
@@ -173,6 +179,7 @@ export async function POST(request: Request) {
       collaborators: body.collaborators?.map((c) => ({ uid: c, handle: c, status: "invited" as const })),
       captionsByPlatform: body.captionsByPlatform,
       sameForAll: body.sameForAll,
+      advancedByPlatform: body.advancedByPlatform as Record<string, Record<string, unknown>> | undefined,
     });
   } catch (err) {
     // Firestore unavailable — fall back to stateless publish so the existing

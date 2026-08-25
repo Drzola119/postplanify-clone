@@ -31,6 +31,7 @@ describe("POST /api/posts/publish caption validation", () => {
         caption: "fallback",
         captionsByPlatform: { instagram: "IG", twitter: "TW" },
         sameForAll: false,
+        advancedByPlatform: { instagram: { instagram_media_type: "REELS" } },
         mediaUrls: ["https://cdn.test/a.jpg"],
       }),
     });
@@ -40,6 +41,7 @@ describe("POST /api/posts/publish caption validation", () => {
     expect(mockCreatePost).toHaveBeenCalledWith("ws1", "uid1", expect.objectContaining({
       captionsByPlatform: { instagram: "IG", twitter: "TW" },
       sameForAll: false,
+      advancedByPlatform: { instagram: { instagram_media_type: "REELS" } },
     }));
     const payload = JSON.parse(String(mockFetch.mock.calls[0][1]?.body ?? "{}"));
     expect(payload.captionsByPlatform).toEqual({ instagram: "IG", twitter: "TW" });
@@ -62,6 +64,23 @@ describe("POST /api/posts/publish caption validation", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toMatch(/Missing caption for platform: twitter/);
+  });
+
+  it("rejects a missing caption map when sameForAll is false", async () => {
+    const { POST } = await import("@/app/api/posts/publish/route");
+    const req = new Request("http://localhost/api/posts/publish", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        platforms: ["instagram"],
+        caption: "fallback",
+        sameForAll: false,
+        mediaUrls: ["https://cdn.test/a.jpg"],
+      }),
+    });
+    const res = await POST(req as never);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/captionsByPlatform is required/);
   });
 
   it("rejects whitespace-only caption", async () => {

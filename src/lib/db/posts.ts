@@ -206,6 +206,9 @@ export async function bulkCreatePosts(
       autoAddMusic: item.autoAddMusic,
       profile: item.profile,
       status: item.status ?? "scheduled",
+      captionsByPlatform: item.captionsByPlatform,
+      sameForAll: item.sameForAll,
+      advancedByPlatform: item.advancedByPlatform,
       createdAt: now,
       updatedAt: now,
     };

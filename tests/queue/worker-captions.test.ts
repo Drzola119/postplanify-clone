@@ -36,6 +36,7 @@ describe("queue/worker captionsByPlatform persistence", () => {
       sameForAll: false,
       platforms: ["instagram", "twitter"],
       mediaUrls: ["https://cdn.test/a.jpg"],
+      advancedByPlatform: { instagram: { instagram_media_type: "REELS" } },
       hashtags: [],
       labels: [],
       altText: [],
@@ -46,7 +47,15 @@ describe("queue/worker captionsByPlatform persistence", () => {
       updatedAt: new Date(),
       deletedAt: null,
     });
-    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 } as Response));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("n8n.test")) {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        success: true,
+        profile: { username: "trustiify_test", created_at: new Date().toISOString(), blocked: false },
+      }), { status: 200 });
+    });
     const origFetch = globalThis.fetch;
     (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch;
     try {
@@ -62,6 +71,7 @@ describe("queue/worker captionsByPlatform persistence", () => {
       expect(body.sameForAll).toBe(false);
       expect(body.caption).toBe("fallback");
       expect(body.mediaUrls).toEqual(["https://cdn.test/a.jpg"]);
+      expect(body.advancedByPlatform).toEqual({ instagram: { instagram_media_type: "REELS" } });
     } finally {
       (globalThis as unknown as { fetch: typeof fetch }).fetch = origFetch;
     }
@@ -85,7 +95,15 @@ describe("queue/worker captionsByPlatform persistence", () => {
       updatedAt: new Date(),
       deletedAt: null,
     });
-    const fetchMock = vi.fn(async () => ({ ok: true, status: 200 } as Response));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("n8n.test")) {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        success: true,
+        profile: { username: "trustiify_test", created_at: new Date().toISOString(), blocked: false },
+      }), { status: 200 });
+    });
     const origFetch = globalThis.fetch;
     (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch;
     try {
