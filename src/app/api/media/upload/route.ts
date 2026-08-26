@@ -124,7 +124,14 @@ export async function POST(request: Request) {
     // Surface the failure category so the client can react (retry vs. invalid creds).
     const msg = err instanceof Error ? err.message : "Upload failed";
     log.error("[media/upload] upload failed", { err: msg, uid: user.uid });
-    const status = /invalid|key|auth|unauthor/i.test(msg) ? 401 : 502;
-    return NextResponse.json({ error: msg, code: status === 401 ? "auth" : "upload_failed" }, { status });
+    const missingConfig = /storage not configured|BUNNY_STORAGE_/i.test(msg);
+    const authFailure = /invalid|key|auth|unauthor/i.test(msg);
+    const status = missingConfig ? 503 : authFailure ? 401 : 502;
+    return NextResponse.json({
+      error: missingConfig
+        ? "Media storage is not configured on the server. Add BUNNY_STORAGE_ZONE, BUNNY_STORAGE_PASSWORD, and BUNNY_CDN_HOSTNAME in Hostinger."
+        : msg,
+      code: missingConfig ? "storage_not_configured" : authFailure ? "auth" : "upload_failed",
+    }, { status });
   }
 }

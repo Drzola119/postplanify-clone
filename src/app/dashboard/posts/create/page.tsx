@@ -1616,6 +1616,11 @@ export default function CreatePostPage() {
                 : m
             )
           );
+          toast({
+            title: "Media upload failed",
+            description: msg,
+            tone: "error",
+          });
         }
       })
     );
