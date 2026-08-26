@@ -77,18 +77,18 @@ export function AccountPreviewCard({
         <span className="text-sm font-medium text-foreground">{platform.name}</span>
         <span className="ml-auto text-xs text-muted-foreground">{counter}</span>
       </div>
-      <div className="relative">
+      <div className="flex flex-col">
         <textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           placeholder={`Write your caption for ${platform.name}...`}
-          className="w-full min-h-[180px] resize-none bg-transparent text-base border-0 focus:outline-none p-3 pb-12 placeholder:text-zinc-400 overflow-y-auto"
+          className="w-full min-h-[180px] resize-none bg-transparent text-base border-0 focus:outline-none p-3 placeholder:text-zinc-400 overflow-y-auto"
         />
         <div
           className={cn(
-            "absolute bottom-0 left-0 right-0 flex items-center gap-0.5 px-2 py-1.5 transition-opacity",
+            "flex flex-wrap items-center gap-0.5 border-t border-zinc-200/70 bg-zinc-50/60 px-2 py-1.5 transition-opacity",
             focused ? "opacity-100" : "opacity-60 hover:opacity-100"
           )}
         >
@@ -117,7 +117,7 @@ export function AccountPreviewCard({
               onClick={() => setShowCommentInput((prev) => !prev)}
               title="First comment"
               className={cn(
-                "inline-flex items-center gap-1 size-7 justify-center rounded-md transition-colors hover:bg-zinc-100 text-zinc-600 px-2 w-auto",
+                "inline-flex items-center gap-1 size-7 justify-center whitespace-nowrap rounded-md transition-colors hover:bg-zinc-100 text-zinc-600 px-2 w-auto",
                 showCommentInput && "bg-zinc-100 text-zinc-950 font-semibold"
               )}
             >

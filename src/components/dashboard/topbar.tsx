@@ -51,7 +51,7 @@ export function DashboardTopbar({ notificationSlot }: DashboardTopbarProps) {
   const auth = useAuth();
 
   return (
-    <header className="fixed top-0 left-0 right-0 lg:left-[240px] h-14 z-30 bg-[var(--color-surface)] border-b border-[var(--color-border)] flex items-center justify-between px-6">
+    <header className="fixed top-0 left-0 right-0 lg:left-[240px] h-14 z-30 bg-[var(--color-surface)] shadow-[0_1px_8px_rgba(0,0,0,0.06)] flex items-center justify-between px-6">
       <span className="text-sm font-semibold text-[var(--color-text)]">{pageTitle}</span>
       <div className="flex items-center gap-2">
         {isAdminUser(auth.user) && (

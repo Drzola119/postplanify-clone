@@ -16,7 +16,7 @@ export const PLATFORM_BRAND_COLORS: Record<string, string> = {
   discord: "#5865F2",
   telegram: "#2AABEE",
   reddit: "#FF4500",
-  googlebusiness: "#4285F4",
+  google_business: "#4285F4",
 };
 
 export const PLATFORM_GRADIENTS: Record<string, string> = {
@@ -37,7 +37,7 @@ const SIMPLE_ICONS_SLUGS: Record<string, string> = {
   discord: "discord",
   telegram: "telegram",
   reddit: "reddit",
-  googlebusiness: "googleforms",
+  google_business: "googleforms",
 };
 
 function iconUrl(id: string): string {

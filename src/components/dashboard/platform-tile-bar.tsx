@@ -16,6 +16,7 @@ const SIMPLE_ICONS_SLUGS: Record<string, string> = {
   bluesky: "bluesky",
   youtube: "youtube",
   pinterest: "pinterest",
+  google_business: "googleforms",
 };
 
 function simpleIconsSlug(id: string): string {

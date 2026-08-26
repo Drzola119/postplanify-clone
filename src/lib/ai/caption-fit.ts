@@ -1,6 +1,8 @@
 import type { PlatformId } from "@/lib/platforms";
 
 const PLATFORM_LIMITS: Partial<Record<PlatformId, number>> = {
+  bluesky: 300,
+  pinterest: 500,
   twitter: 280,
   threads: 500,
 };
