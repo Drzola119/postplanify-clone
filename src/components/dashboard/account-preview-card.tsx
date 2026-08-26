@@ -36,6 +36,7 @@ interface AccountPreviewCardProps {
   advancedOptions?: PlatformAdvancedOptions;
   onAdvancedOptionsChange?: (next: PlatformAdvancedOptions) => void;
   mediaKind?: MediaKind;
+  selectOptions?: Partial<Record<string, Array<{ value: string; label: string }>>>;
 }
 
 // Per-account caption card shown inside the Captions card.
@@ -57,6 +58,7 @@ export function AccountPreviewCard({
   advancedOptions,
   onAdvancedOptionsChange,
   mediaKind,
+  selectOptions,
 }: AccountPreviewCardProps) {
   const [focused, setFocused] = useState(false);
   const [showCommentInput, setShowCommentInput] = useState(() => !!firstComment);
@@ -182,6 +184,7 @@ export function AccountPreviewCard({
             mediaKind={mediaKind}
             value={advancedOptions}
             onChange={onAdvancedOptionsChange}
+            selectOptions={selectOptions}
           />
         </div>
       ) : null}

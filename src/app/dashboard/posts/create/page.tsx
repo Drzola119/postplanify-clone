@@ -284,6 +284,10 @@ export default function CreatePostPage() {
 
   // Connected accounts fetched from the server (only these should appear in the picker).
   const [connectedPlatforms, setConnectedPlatforms] = useState<Set<PlatformId>>(new Set());
+  const [destinationOptions, setDestinationOptions] = useState<{
+    boards: Array<{ value: string; label: string }>;
+    pages: Array<{ value: string; label: string }>;
+  }>({ boards: [], pages: [] });
   const [accountsLoaded, setAccountsLoaded] = useState(false);
   const [accountsError, setAccountsError] = useState(false);
   const accountsReqIdRef = useRef(0);
@@ -308,7 +312,11 @@ export default function CreatePostPage() {
           setAccountsError(true);
           return;
         }
-        const data = (await res.json()) as { ok?: boolean; accounts?: { id: string; platform: string }[] };
+        const data = (await res.json()) as {
+          ok?: boolean;
+          accounts?: { id: string; platform: string; platformUsername?: string | null; displayName?: string | null }[];
+          destinations?: { boards?: { id: string; name: string }[]; pages?: { id: string; name: string }[] };
+        };
         if (cancelled || reqId !== accountsReqIdRef.current) return;
         if (!data.ok || !data.accounts) {
           setAccountsError(true);
@@ -321,6 +329,17 @@ export default function CreatePostPage() {
         }
         if (cancelled || reqId !== accountsReqIdRef.current) return;
         setConnectedPlatforms(platformIds);
+        setDestinationOptions({
+          boards: (data.destinations?.boards ?? []).map((item) => ({ value: item.id, label: item.name })),
+          pages: (data.destinations?.pages ?? []).map((item) => ({ value: item.id, label: item.name })),
+        });
+        const facebookAccount = data.accounts.find((acct) => acct.platform === "facebook" && acct.platformUsername);
+        if (facebookAccount?.platformUsername && !(data.destinations?.pages?.length)) {
+          setDestinationOptions((prev) => ({
+            ...prev,
+            pages: [{ value: facebookAccount.platformUsername!, label: facebookAccount.displayName ?? `Facebook Page (${facebookAccount.platformUsername})` }],
+          }));
+        }
         setAccountsError(false);
         if (platformIds.size > 0) setSelected(new Set(platformIds));
       } catch {
@@ -359,7 +378,11 @@ export default function CreatePostPage() {
         const res = await fetch("/api/social-accounts/list", { credentials: "include" });
         if (reqId !== accountsReqIdRef.current) return;
         if (!res.ok) { setAccountsError(true); return; }
-        const data = (await res.json()) as { ok?: boolean; accounts?: { id: string; platform: string }[] };
+        const data = (await res.json()) as {
+          ok?: boolean;
+          accounts?: { id: string; platform: string; platformUsername?: string | null; displayName?: string | null }[];
+          destinations?: { boards?: { id: string; name: string }[]; pages?: { id: string; name: string }[] };
+        };
         if (reqId !== accountsReqIdRef.current) return;
         if (!data.ok || !data.accounts) { setAccountsError(true); return; }
         const platformIds = new Set<PlatformId>();
@@ -369,6 +392,17 @@ export default function CreatePostPage() {
         }
         if (reqId !== accountsReqIdRef.current) return;
         setConnectedPlatforms(platformIds);
+        setDestinationOptions({
+          boards: (data.destinations?.boards ?? []).map((item) => ({ value: item.id, label: item.name })),
+          pages: (data.destinations?.pages ?? []).map((item) => ({ value: item.id, label: item.name })),
+        });
+        const facebookAccount = data.accounts.find((acct) => acct.platform === "facebook" && acct.platformUsername);
+        if (facebookAccount?.platformUsername && !(data.destinations?.pages?.length)) {
+          setDestinationOptions((prev) => ({
+            ...prev,
+            pages: [{ value: facebookAccount.platformUsername!, label: facebookAccount.displayName ?? `Facebook Page (${facebookAccount.platformUsername})` }],
+          }));
+        }
         setAccountsError(false);
         if (platformIds.size > 0) setSelected(new Set(platformIds));
       } catch {
@@ -531,6 +565,32 @@ export default function CreatePostPage() {
   const activeMediaItem = mediaItems[activeMedia];
   const isVideoActive = activeMediaItem?.kind === "video";
 
+  // YouTube accepts video uploads only. Remove it from the active target set
+  // as soon as an image-only post is loaded so it cannot receive a caption or
+  // block an otherwise valid image publish.
+  useEffect(() => {
+    if (!onlyImage) return;
+    setSelected((current) => {
+      const next = new Set(Array.from(current).filter((id) => !PLATFORMS.find((p) => p.id === id)?.videoOnly));
+      return next.size === current.size ? current : next;
+    });
+  }, [onlyImage]);
+
+  // Select the first API-provided destination once, while preserving a
+  // destination the user has already chosen.
+  useEffect(() => {
+    setAdvancedByPlatform((current) => {
+      const next = { ...current };
+      if (destinationOptions.boards.length > 0 && !next.pinterest?.pinterest_board_id) {
+        next.pinterest = { ...getDefaultOptions("pinterest"), ...next.pinterest, pinterest_board_id: destinationOptions.boards[0].value };
+      }
+      if (destinationOptions.pages.length > 0 && !next.facebook?.facebook_page_id) {
+        next.facebook = { ...getDefaultOptions("facebook"), ...next.facebook, facebook_page_id: destinationOptions.pages[0].value };
+      }
+      return next;
+    });
+  }, [destinationOptions]);
+
   // Media kind for the advanced options panel (Feature 1).
   // Empty state → "text"; mixed media → prefers video for the rules.
   const composerMediaKind: MediaKind =
@@ -613,7 +673,7 @@ export default function CreatePostPage() {
   }
 
   function selectAll() {
-    setSelected(new Set(PLATFORMS.map((p) => p.id)));
+    setSelected(new Set(PLATFORMS.filter((p) => !(onlyImage && p.videoOnly)).map((p) => p.id)));
   }
 
   function deselectAll() {
@@ -1846,6 +1906,7 @@ export default function CreatePostPage() {
     }
 
     setAiGenerating(true);
+    const captionPlatforms = selectedPlatforms.filter((platform) => !(onlyImage && platform.videoOnly));
     const tid = toast({
       title: "Generating captions…",
       description: imageUrl ? "Analyzing image with Groq vision model" : "Drafting from video title",
@@ -1862,7 +1923,7 @@ export default function CreatePostPage() {
           extra: opts.extra,
           imageUrl,
           videoTitle,
-          platforms: selectedPlatforms.map((p) => ({
+          platforms: captionPlatforms.map((p) => ({
             id: p.id,
             name: p.name,
             charLimit: p.charLimit,
@@ -1884,9 +1945,9 @@ export default function CreatePostPage() {
       }
       const caption = data.caption.trim();
       const captionsByPlatform = Object.fromEntries(
-        selectedPlatforms.map((p) => [p.id, fitCaptionForPlatform(caption, p.id)])
+        captionPlatforms.map((p) => [p.id, fitCaptionForPlatform(caption, p.id)])
       ) as Record<PlatformId, string>;
-      const adapted = selectedPlatforms.filter((p) => captionsByPlatform[p.id] !== caption);
+      const adapted = captionPlatforms.filter((p) => captionsByPlatform[p.id] !== caption);
 
       if (sameForAll && adapted.length === 0) {
         setCaptions((prev) => ({ ...prev, __all: caption }));
@@ -1900,7 +1961,7 @@ export default function CreatePostPage() {
         title: t("captionsGenerated"),
         description: adapted.length > 0
           ? `Applied with ${adapted.length} platform-safe version${adapted.length === 1 ? "" : "s"}`
-          : `Applied to ${selectedPlatforms.length} account${selectedPlatforms.length === 1 ? "" : "s"}`,
+          : `Applied to ${captionPlatforms.length} account${captionPlatforms.length === 1 ? "" : "s"}`,
         tone: "success",
       });
       setAiDialogOpen(false);
@@ -2180,6 +2241,10 @@ export default function CreatePostPage() {
           onRulesOpenChange={setRulesOpen}
           sampleCaption={captionForCurrent()}
           tagUsersRef={tagUsersRef}
+          selectOptions={{
+            pinterest_board_id: destinationOptions.boards,
+            facebook_page_id: destinationOptions.pages,
+          }}
         />
       </div>
 
@@ -3348,6 +3413,7 @@ interface CaptionsCardProps {
   onRulesOpenChange: (open: boolean) => void;
   sampleCaption?: string;
   tagUsersRef?: React.RefObject<HTMLDivElement | null>;
+  selectOptions: Partial<Record<string, Array<{ value: string; label: string }>>>;
 }
 
 function CaptionsCard({
@@ -3377,6 +3443,7 @@ function CaptionsCard({
   onRulesOpenChange,
   sampleCaption = "",
   tagUsersRef,
+  selectOptions,
 }: CaptionsCardProps) {
   const t = useTranslations("createPost");
   const hasActiveRules = metadataRules.enabled && (metadataRules.hashtags.length > 0 || metadataRules.ctaLine);
@@ -3483,6 +3550,7 @@ function CaptionsCard({
                 advancedOptions={getAdvancedOptions(platforms[0].id)}
                 onAdvancedOptionsChange={(next) => setAdvancedOptions(platforms[0].id, next)}
                 mediaKind={mediaKind}
+                selectOptions={selectOptions}
               />
             </div>
           ) : platforms.length === 1 ? (
@@ -3501,6 +3569,7 @@ function CaptionsCard({
                 advancedOptions={getAdvancedOptions(platforms[0].id)}
                 onAdvancedOptionsChange={(next) => setAdvancedOptions(platforms[0].id, next)}
                 mediaKind={mediaKind}
+                selectOptions={selectOptions}
               />
             </div>
           ) : (
@@ -3523,6 +3592,7 @@ function CaptionsCard({
                   advancedOptions={getAdvancedOptions(p.id)}
                   onAdvancedOptionsChange={(next) => setAdvancedOptions(p.id, next)}
                   mediaKind={mediaKind}
+                  selectOptions={selectOptions}
                 />
               ))}
             </div>

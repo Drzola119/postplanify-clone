@@ -403,9 +403,8 @@ export const FIELD_SPECS: Record<PlatformId, FieldSpec[]> = {
     {
       key: "pinterest_board_id",
       label: "Board",
-      kind: "text",
-      placeholder: "Board ID",
-      help: "Required. Find it in your Pinterest board URL.",
+      kind: "select",
+      help: "Required. Select a board from your connected Pinterest account.",
     },
     {
       key: "pinterest_content_type",
@@ -536,9 +535,8 @@ export const FIELD_SPECS: Record<PlatformId, FieldSpec[]> = {
     {
       key: "facebook_page_id",
       label: "Page",
-      kind: "text",
-      placeholder: "Page ID",
-      help: "Required. Find it in your Facebook page's About section.",
+      kind: "select",
+      help: "Required. Select the Facebook Page where this post should be published.",
     },
     {
       key: "facebook_media_type",

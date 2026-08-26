@@ -18,6 +18,7 @@ interface AdvancedOptionsPanelProps {
   collapsible?: boolean;
   className?: string;
   defaultOpen?: boolean;
+  selectOptions?: Partial<Record<string, Array<{ value: string; label: string }>>>;
 }
 
 export function AdvancedOptionsPanel({
@@ -29,6 +30,7 @@ export function AdvancedOptionsPanel({
   collapsible = true,
   className,
   defaultOpen = false,
+  selectOptions,
 }: AdvancedOptionsPanelProps) {
   const [open, setOpen] = React.useState(defaultOpen);
   const [showAdvanced, setShowAdvanced] = React.useState(false);
@@ -75,6 +77,7 @@ export function AdvancedOptionsPanel({
               key={spec.key}
               spec={spec}
               value={value[spec.key]}
+              options={selectOptions?.[spec.key]}
               onChange={(v) => onChange({ ...value, [spec.key]: v })}
             />
           ))}
@@ -96,6 +99,7 @@ export function AdvancedOptionsPanel({
                       key={spec.key}
                       spec={spec}
                       value={value[spec.key]}
+                      options={selectOptions?.[spec.key]}
                       onChange={(v) => onChange({ ...value, [spec.key]: v })}
                     />
                   ))}
@@ -112,10 +116,12 @@ export function AdvancedOptionsPanel({
 function FieldRenderer({
   spec,
   value,
+  options,
   onChange,
 }: {
   spec: FieldSpec;
   value: string | number | boolean | string[] | undefined;
+  options?: Array<{ value: string; label: string }>;
   onChange: (v: string | number | boolean | string[] | undefined) => void;
 }) {
   switch (spec.kind) {
@@ -141,7 +147,9 @@ function FieldRenderer({
             onChange={(e) => onChange(e.target.value)}
             className="w-full h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-300"
           >
-            {(spec.options ?? []).map((o) => (
+            {(options ?? spec.options ?? []).length === 0 ? (
+              <option value="">No destinations found — refresh connections</option>
+            ) : (options ?? spec.options ?? []).map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>

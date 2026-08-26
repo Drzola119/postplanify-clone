@@ -98,23 +98,61 @@ function flatten(profile: UploadPostProfile | null): ConnectedAccountDTO[] {
   for (const key of SUPPORTED) {
     const acct = profile.social_accounts[key];
     // Empty string means "not connected" — skip.
-    if (!acct || typeof acct === "string" || (acct as UploadPostAccount).handle === undefined) {
+    if (!acct || typeof acct === "string") {
       continue;
     }
     const a = acct as UploadPostAccount;
-    if (!a.handle) continue;
+    const handle = a.handle ?? a.display_name ?? platformUsernameOf(a);
+    if (!handle) continue;
     out.push({
       id: `${profile.username}:${key}`,
       profileUsername: profile.username,
       platformUsername: platformUsernameOf(a),
       platform: toInternalPlatform(key),
-      handle: a.handle,
+      handle,
       displayName: a.display_name ?? null,
       img: a.social_images || null,
       reauthRequired: !!a.reauth_required,
     });
   }
   return out;
+}
+
+interface UploadPostDestination {
+  id?: string | number;
+  name?: string;
+  title?: string;
+  page_id?: string | number;
+  page_name?: string;
+}
+
+interface UploadPostDestinationsResponse {
+  boards?: UploadPostDestination[];
+  pages?: UploadPostDestination[];
+  facebook_pages?: UploadPostDestination[];
+}
+
+async function fetchDestinations(apiKey: string, profileUsername: string) {
+  const headers = { Authorization: `Apikey ${apiKey}`, Accept: "application/json" };
+  const query = `?profile=${encodeURIComponent(profileUsername)}`;
+  const [boardsRes, pagesRes] = await Promise.all([
+    fetch(`https://api.upload-post.com/api/uploadposts/pinterest/boards${query}`, { headers, cache: "no-store" }).catch(() => null),
+    fetch(`https://api.upload-post.com/api/uploadposts/facebook/pages${query}`, { headers, cache: "no-store" }).catch(() => null),
+  ]);
+  const parse = async (res: Response | null): Promise<UploadPostDestinationsResponse> => {
+    if (!res?.ok) return {};
+    try { return (await res.json()) as UploadPostDestinationsResponse; } catch { return {}; }
+  };
+  const [boardsData, pagesData] = await Promise.all([parse(boardsRes), parse(pagesRes)]);
+  const boards = (boardsData.boards ?? []).map((item) => ({
+    id: String(item.id ?? ""), name: String(item.name ?? item.title ?? item.id ?? ""),
+  })).filter((item) => item.id && item.name);
+  const rawPages = pagesData.pages ?? pagesData.facebook_pages ?? [];
+  const pages = rawPages.map((item) => ({
+    id: String(item.id ?? item.page_id ?? ""),
+    name: String(item.name ?? item.page_name ?? item.title ?? item.id ?? item.page_id ?? ""),
+  })).filter((item) => item.id && item.name);
+  return { boards, pages };
 }
 
 export async function GET(request: Request) {
@@ -198,6 +236,7 @@ export async function GET(request: Request) {
 
     const profile = data.profile ?? null;
     const accounts = flatten(profile);
+    const destinations = profile ? await fetchDestinations(apiKey, profile.username) : { boards: [], pages: [] };
 
     let plan: string | null = null;
     let limit: number | null = null;
@@ -248,6 +287,7 @@ export async function GET(request: Request) {
       profiles: [profileMeta],
       plan,
       limit,
+      destinations,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "upload-post.com request failed";
