@@ -3,7 +3,15 @@ import "server-only";
 const ZONE = process.env.BUNNY_STORAGE_ZONE!;
 const HOSTNAME = process.env.BUNNY_STORAGE_HOSTNAME ?? "storage.bunnycdn.com";
 const PASSWORD = process.env.BUNNY_STORAGE_PASSWORD!;
-const CDN = process.env.BUNNY_CDN_HOSTNAME ?? "https://zzar.b-cdn.net";
+function normalizeCdnBase(value: string | undefined): string {
+  const raw = (value ?? "https://zzar.b-cdn.net").trim();
+  const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  // Hostinger commonly stores a DNS hostname with a final dot; that dot is
+  // valid DNS syntax but must not be part of the public CDN URL hostname.
+  return withScheme.replace(/\/+$/, "").replace(/\.$/, "");
+}
+
+const CDN = normalizeCdnBase(process.env.BUNNY_CDN_HOSTNAME);
 
 const MAX_BYTES = 100 * 1024 * 1024; // 100 MB
 
