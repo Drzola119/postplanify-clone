@@ -30,6 +30,7 @@ import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { PLATFORMS, type PlatformId } from "@/lib/platforms";
+import { fitCaptionForPlatform } from "@/lib/ai/caption-fit";
 import { needsOutpainting } from "@/lib/images/platform-ratios";
 import { loadDraft, saveDraft, deleteDraft, newDraftId, type DraftRecord } from "@/lib/drafts";
 import {
@@ -1882,18 +1883,24 @@ export default function CreatePostPage() {
         return;
       }
       const caption = data.caption.trim();
-      if (sameForAll) {
+      const captionsByPlatform = Object.fromEntries(
+        selectedPlatforms.map((p) => [p.id, fitCaptionForPlatform(caption, p.id)])
+      ) as Record<PlatformId, string>;
+      const adapted = selectedPlatforms.filter((p) => captionsByPlatform[p.id] !== caption);
+
+      if (sameForAll && adapted.length === 0) {
         setCaptions((prev) => ({ ...prev, __all: caption }));
       } else {
-        setCaptions((prev) => {
-          const next = { ...prev };
-          for (const p of selectedPlatforms) next[p.id] = caption;
-          return next;
-        });
+        // Platform-safe variants need separate fields so the user can review
+        // the shortened X/Threads copies before publishing.
+        if (sameForAll) setSameForAll(false);
+        setCaptions((prev) => ({ ...prev, ...captionsByPlatform }));
       }
       toast({
         title: t("captionsGenerated"),
-        description: `Applied to ${selectedPlatforms.length} account${selectedPlatforms.length === 1 ? "" : "s"}`,
+        description: adapted.length > 0
+          ? `Applied with ${adapted.length} platform-safe version${adapted.length === 1 ? "" : "s"}`
+          : `Applied to ${selectedPlatforms.length} account${selectedPlatforms.length === 1 ? "" : "s"}`,
         tone: "success",
       });
       setAiDialogOpen(false);
