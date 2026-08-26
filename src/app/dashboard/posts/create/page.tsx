@@ -612,8 +612,7 @@ export default function CreatePostPage() {
   }
 
   function selectAll() {
-    const targets = connectedPlatforms.size > 0 ? connectedPlatforms : new Set(PLATFORMS.map((p) => p.id));
-    setSelected(new Set(targets));
+    setSelected(new Set(PLATFORMS.map((p) => p.id)));
   }
 
   function deselectAll() {
@@ -2128,8 +2127,6 @@ export default function CreatePostPage() {
             onFeedTypeChange={setFeedType}
             onlyImage={onlyImage}
             composerMode={composerMode}
-            connectedPlatforms={connectedPlatforms}
-            accountsLoaded={accountsLoaded}
             accountsError={accountsError}
             onRetry={retryAccountsLoad}
           />
@@ -2998,8 +2995,6 @@ interface AccountsCardProps {
   onFeedTypeChange: (t: "feed" | "story") => void;
   onlyImage: boolean;
   composerMode?: ComposerMode;
-  connectedPlatforms: Set<PlatformId>;
-  accountsLoaded: boolean;
 }
 
 function CoverSections({
@@ -3113,8 +3108,6 @@ function AccountsCard({
   onFeedTypeChange,
   onlyImage,
   composerMode = "standard",
-  connectedPlatforms,
-  accountsLoaded,
   accountsError = false,
   onRetry,
 }: {
@@ -3128,19 +3121,15 @@ function AccountsCard({
   onFeedTypeChange: (v: "feed" | "story") => void;
   onlyImage: boolean;
   composerMode?: string;
-  connectedPlatforms: Set<PlatformId>;
-  accountsLoaded: boolean;
   accountsError?: boolean;
   onRetry?: () => void;
 }) {
   const t = useTranslations("createPost");
   const hasSelection = selected.size > 0;
 
-  // Fall back to all PLATFORMS when: not yet loaded, OR fetch errored.
-  const visiblePlatforms = useMemo(() => {
-    if (!accountsLoaded || accountsError) return PLATFORMS;
-    return PLATFORMS.filter((p) => connectedPlatforms.has(p.id));
-  }, [accountsLoaded, accountsError, connectedPlatforms]);
+  // Keep every supported platform visible so Select All can include the full
+  // publishing catalog, even when an account has not returned a handle yet.
+  const visiblePlatforms = PLATFORMS;
 
   const storyAvailable = useMemo(() => {
     return visiblePlatforms.some((p) => selected.has(p.id) && (p.id === "instagram" || p.id === "facebook"));
@@ -3265,7 +3254,7 @@ function AccountsCard({
                   />
                   <PlatformAvatar platform={p} size={32} className={cn(disabled && "grayscale")} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{p.handle}</p>
+                    <p className="text-sm font-medium truncate">{p.handle || p.name}</p>
                     {disabledReason ? (
                       <p className="text-[10px] italic text-zinc-400">{disabledReason}</p>
                     ) : null}
