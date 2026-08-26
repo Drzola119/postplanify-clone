@@ -25,6 +25,7 @@ export interface GroqOptions {
   maxTokens?: number;
   topP?: number;
   jsonMode?: boolean;
+  reasoningEffort?: "none" | "default";
 }
 
 export interface GroqResult {
@@ -54,6 +55,7 @@ export async function callGroq(opts: GroqOptions): Promise<GroqResult> {
     stream: false,
   };
   if (opts.jsonMode) body.response_format = { type: "json_object" };
+  if (opts.reasoningEffort) body.reasoning_effort = opts.reasoningEffort;
 
   const res = await fetch(GROQ_ENDPOINT, {
     method: "POST",
@@ -74,12 +76,25 @@ export async function callGroq(opts: GroqOptions): Promise<GroqResult> {
     throw new GroqError(msg, res.status, data);
   }
 
-  const content = data.choices?.[0]?.message?.content?.trim() ?? "";
+  const content = stripReasoning(data.choices?.[0]?.message?.content ?? "");
   if (!content) {
     throw new GroqError("Empty completion from Groq", 502, data);
   }
 
   return { content, model: opts.model, raw: data };
+}
+
+/** Remove hidden reasoning that some reasoning-capable models may emit. */
+export function stripReasoning(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+
+  const thinkStart = trimmed.search(/<(?:think|analysis)>/i);
+  if (thinkStart === -1) return trimmed;
+
+  const thinkEnd = trimmed.search(/<\/(?:think|analysis)>/i);
+  if (thinkEnd === -1) return "";
+  return trimmed.slice(thinkEnd + trimmed.slice(thinkEnd).indexOf(">") + 1).trim();
 }
 
 /** Best-effort JSON extraction from a Groq completion that may include leading prose. */

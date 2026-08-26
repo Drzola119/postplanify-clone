@@ -176,6 +176,7 @@ export async function POST(request: Request) {
       temperature: 0.8,
       maxTokens: 600,
       topP: 0.95,
+      reasoningEffort: "none",
     });
 
     const caption = result.content.trim();

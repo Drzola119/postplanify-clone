@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { callGroq, extractJson, GroqError } from "@/lib/ai/groq";
+import { callGroq, extractJson, GroqError, stripReasoning } from "@/lib/ai/groq";
 
 describe("ai/groq - extractJson", () => {
   it("parses bare JSON", () => {
@@ -17,6 +17,12 @@ describe("ai/groq - extractJson", () => {
   it("returns null on bad input", () => {
     expect(extractJson("not json at all")).toBeNull();
     expect(extractJson("")).toBeNull();
+  });
+
+  it("strips model reasoning blocks", () => {
+    expect(stripReasoning("<think>internal reasoning</think>Ready caption")).toBe("Ready caption");
+    expect(stripReasoning("<think>internal reasoning")).toBe("");
+    expect(stripReasoning("A clean caption")).toBe("A clean caption");
   });
 });
 
