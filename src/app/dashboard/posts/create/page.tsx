@@ -32,6 +32,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { PLATFORMS, type PlatformId } from "@/lib/platforms";
 import { fitCaptionForPlatform } from "@/lib/ai/caption-fit";
 import { needsOutpainting } from "@/lib/images/platform-ratios";
+
+// Outpainting is intentionally opt-in while the legacy Adsify engine is
+// being decoupled from Trustiify. Normal posts must never depend on it.
+const ENABLE_OUTPAINT = process.env.NEXT_PUBLIC_ENABLE_OUTPAINT === "true";
 import { loadDraft, saveDraft, deleteDraft, newDraftId, type DraftRecord } from "@/lib/drafts";
 import {
   type PlatformAdvancedOptions,
@@ -922,6 +926,7 @@ export default function CreatePostPage() {
     // publishes each variant to its platform(s) under the workspace's own
     // upload-post.com profile.
     const canOutpaint =
+      ENABLE_OUTPAINT &&
       composerMode === "standard" &&
       composerMediaKind === "image" &&
       readyMediaUrls.length === 1 &&
