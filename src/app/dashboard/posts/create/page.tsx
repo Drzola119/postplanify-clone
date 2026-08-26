@@ -91,6 +91,12 @@ type MediaItem = {
   uploadError?: string;
 };
 
+/** Return only a URL that can safely be sent to the publishing backend. */
+function uploadedMediaUrl(item: Pick<MediaItem, "url" | "cdnUrl">): string | null {
+  if (item.cdnUrl) return item.cdnUrl;
+  return /^https?:\/\//i.test(item.url) ? item.url : null;
+}
+
 const MAX_FILES = 10;
 
 // Headers are sourced from the centralized client-overrides helper. In
@@ -174,7 +180,7 @@ export default function CreatePostPage() {
         restoredMedia.push({
           id: m.localId ?? `restored-${i}-${Date.now()}`,
           url: remote,
-          cdnUrl: m.cdnUrl,
+          cdnUrl: remote,
           name: m.name ?? "restored",
           size: 0,
           width: 0,
@@ -849,13 +855,15 @@ export default function CreatePostPage() {
 
     let readyMediaUrls: string[] = [];
     if (composerMode === "standard") {
-      const readyMedia = mediaItems.filter((m) => m.cdnUrl);
+      const readyMedia = mediaItems
+        .map((item) => ({ item, url: uploadedMediaUrl(item) }))
+        .filter((entry): entry is { item: MediaItem; url: string } => Boolean(entry.url));
       // Text-only posts are allowed if no media was uploaded at all
       if (readyMedia.length === 0 && mediaItems.length > 0) {
         toast({ title: t("uploadMedia"), tone: "warning" });
         return;
       }
-      readyMediaUrls = readyMedia.map((m) => m.cdnUrl!);
+      readyMediaUrls = readyMedia.map((entry) => entry.url);
     } else if (composerMode === "carousel") {
       const readyCarousel = carouselItems.filter((c) => c.cdnUrl);
       if (readyCarousel.length < 2) {
