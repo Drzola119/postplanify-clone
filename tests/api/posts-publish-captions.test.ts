@@ -174,6 +174,22 @@ describe("POST /api/posts/publish caption validation", () => {
     expect(mockUpdatePost).not.toHaveBeenCalledWith("ws1", "new-post-id", expect.objectContaining({ status: "published" }));
   });
 
+  it("keeps an UploadPost validation error in the 4xx range", async () => {
+    mockPublishToUploadPost.mockRejectedValueOnce(new Error("UploadPost 400: Pinterest title is too long"));
+    const { POST } = await import("@/app/api/posts/publish/route");
+    const response = await POST(new Request("http://localhost/api/posts/publish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        platforms: ["pinterest"],
+        caption: "A valid caption",
+        sameForAll: true,
+      }),
+    }));
+
+    expect(response.status).toBe(400);
+  });
+
   it("accepts Upload-Post success results as explicit delivery confirmation", async () => {
     mockPublishToUploadPost.mockResolvedValueOnce({
       accepted: true,

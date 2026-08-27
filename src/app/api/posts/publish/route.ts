@@ -11,6 +11,12 @@ import { publishToUploadPost } from "@/lib/uploadpost/publisher";
 
 const log = createLogger("posts/publish");
 
+function publishErrorStatus(message: string): number {
+  const match = /^UploadPost\s+(\d{3}):/i.exec(message);
+  const upstreamStatus = match ? Number(match[1]) : 0;
+  return upstreamStatus >= 400 && upstreamStatus < 500 ? upstreamStatus : 502;
+}
+
 const publishPayloadSchema = z.object({
   jobId: z.string().optional(),
   uploadPostUsername: z.string().optional(),
@@ -239,6 +245,6 @@ export async function POST(request: Request) {
     if (postId) {
       await updatePost(workspaceId, postId, { status: "failed", failureReason: msg }).catch(() => undefined);
     }
-    return NextResponse.json({ error: msg, postId }, { status: 502 });
+    return NextResponse.json({ error: msg, postId }, { status: publishErrorStatus(msg) });
   }
 }

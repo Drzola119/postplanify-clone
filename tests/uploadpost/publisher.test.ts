@@ -65,7 +65,7 @@ describe("UploadPost publisher", () => {
       const tiktokTitle = String(form.get("tiktok_title"));
       expect(Array.from(tiktokTitle)).toHaveLength(90);
       expect(tiktokTitle.endsWith("…")).toBe(true);
-      expect(form.get("title")).toBe(caption);
+      expect(Array.from(String(form.get("title")))).toHaveLength(90);
       return new Response(JSON.stringify({
         success: true,
         results: { tiktok: { success: true, post_id: "tt1" } },
@@ -84,6 +84,29 @@ describe("UploadPost publisher", () => {
     });
 
     expect(result.deliveryConfirmed).toBe(true);
+  });
+
+  it("caps the Pinterest title while retaining the full Pin description", async () => {
+    const caption = "P".repeat(370);
+    vi.stubGlobal("fetch", vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const form = init?.body as FormData;
+      expect(Array.from(String(form.get("pinterest_title")))).toHaveLength(100);
+      expect(Array.from(String(form.get("title")))).toHaveLength(100);
+      expect(form.get("pinterest_description")).toBe(caption);
+      return new Response(JSON.stringify({
+        success: true,
+        results: { pinterest: { success: true, post_id: "pin-1" } },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }));
+
+    await publishToUploadPost({
+      apiKey: "key",
+      username: "workspace-profile",
+      platforms: ["pinterest"],
+      caption,
+      mediaUrls: ["https://cdn.test/image.jpg"],
+      mediaType: "image",
+    });
   });
 
   it("does not apply the photo limit to TikTok video titles", async () => {

@@ -166,13 +166,46 @@ function truncateText(value: string, maxCharacters: number): string {
 }
 
 function platformTitle(platform: string, caption: string, endpoint: string): string {
-  // UploadPost/TikTok restricts photo-post titles to 90 characters. Always
-  // provide the platform override so a long shared caption does not fall back
-  // to the unrestricted global title and reject the entire multi-platform job.
-  if (platform === "tiktok" && endpoint.endsWith("/upload_photos")) {
-    return truncateText(caption, 90);
-  }
-  return caption;
+  // Always provide the platform override so a long shared caption does not
+  // fall back to the global title and reject the entire multi-platform job.
+  const photoPost = endpoint.endsWith("/upload_photos");
+  const limits: Record<string, number | undefined> = {
+    tiktok: photoPost ? 90 : undefined,
+    pinterest: 100,
+    youtube: 100,
+    reddit: 300,
+    linkedin: 400,
+    bluesky: 300,
+    threads: 500,
+    instagram: 2200,
+    discord: 2000,
+    telegram: photoPost ? 1024 : undefined,
+  };
+  return limits[platform] ? truncateText(caption, limits[platform]) : caption;
+}
+
+function platformDescription(platform: string, caption: string, endpoint: string): string {
+  const photoPost = endpoint.endsWith("/upload_photos");
+  const limits: Record<string, number | undefined> = {
+    tiktok: photoPost ? 4000 : undefined,
+    pinterest: 500,
+    linkedin: 3000,
+    facebook: 63_206,
+    youtube: 5000,
+    reddit: 5000,
+  };
+  return limits[platform] ? truncateText(caption, limits[platform]) : caption;
+}
+
+function fallbackTitle(input: UploadPostPublishInput, endpoint: string): string {
+  const titles = input.platforms.map((platform) => {
+    const uploadPlatform = toUploadPostPlatform(platform);
+    const caption = input.captionsByPlatform?.[platform] || input.caption;
+    return platformTitle(uploadPlatform, caption, endpoint);
+  });
+  return titles.reduce((shortest, title) =>
+    Array.from(title).length < Array.from(shortest).length ? title : shortest,
+  input.caption);
 }
 
 export async function publishToUploadPost(input: UploadPostPublishInput): Promise<UploadPostPublishResult> {
@@ -184,8 +217,8 @@ export async function publishToUploadPost(input: UploadPostPublishInput): Promis
   const { endpoint, mediaField, mediaValues } = endpointAndMedia(input);
   const form = new FormData();
   form.append("user", input.username);
-  form.append("title", input.document?.title || input.caption);
-  if (input.document) form.append("description", input.caption);
+  form.append("title", input.document?.title || fallbackTitle(input, endpoint));
+  if (input.document || mediaValues.length > 0) form.append("description", input.caption);
   for (const platform of input.platforms) form.append("platform[]", toUploadPostPlatform(platform));
   if (mediaField) for (const url of mediaValues) form.append(mediaField, url);
   form.append("request_id", requestId);
@@ -201,6 +234,9 @@ export async function publishToUploadPost(input: UploadPostPublishInput): Promis
     const uploadPlatform = toUploadPostPlatform(platform);
     const platformCaption = input.captionsByPlatform?.[platform] || input.caption;
     form.append(`${uploadPlatform}_title`, platformTitle(uploadPlatform, platformCaption, endpoint));
+    if (["tiktok", "pinterest", "linkedin", "facebook", "youtube", "reddit"].includes(uploadPlatform)) {
+      form.append(`${uploadPlatform}_description`, platformDescription(uploadPlatform, platformCaption, endpoint));
+    }
     const platformComment = input.firstCommentByPlatform?.[platform];
     if (platformComment && platformComment !== sharedFirstComment) form.append(`${uploadPlatform}_first_comment`, platformComment);
     for (const [key, value] of Object.entries(input.advancedByPlatform?.[platform] || {})) {
