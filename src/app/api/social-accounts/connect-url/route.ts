@@ -53,10 +53,29 @@ export async function GET(request: NextRequest) {
   const origin = reqUrl.origin;
   const redirectUrl = `${origin}/social-connected`;
 
-  const platform = reqUrl.searchParams.get("platform");
-  const specificPlatform = platform && (ALL_PLATFORMS as readonly string[]).includes(platform) ? platform : null;
+  const platformParam = reqUrl.searchParams.get("platform")?.trim().toLowerCase();
+  let specificPlatform: string | null = null;
+  if (platformParam) {
+    if (platformParam === "twitter" || platformParam === "x") {
+      specificPlatform = "x";
+    } else if (platformParam === "google" || platformParam === "google_business") {
+      specificPlatform = "google_business";
+    } else if ((ALL_PLATFORMS as readonly string[]).includes(platformParam)) {
+      specificPlatform = platformParam;
+    }
+  }
+
   const platforms = specificPlatform ? [specificPlatform] : [...ALL_PLATFORMS];
-  const hidePlatformSelector = !!specificPlatform;
+  const hidePlatformSelector = Boolean(specificPlatform);
+
+  const displayPlatformName =
+    specificPlatform === "x" || specificPlatform === "twitter"
+      ? "X (Twitter)"
+      : specificPlatform === "google_business"
+        ? "Google Business"
+        : specificPlatform
+          ? specificPlatform.charAt(0).toUpperCase() + specificPlatform.slice(1)
+          : null;
 
   try {
     const result = await generateConnectUrl(session.workspaceId, apiKey, {
@@ -64,11 +83,11 @@ export async function GET(request: NextRequest) {
       platforms,
       hidePlatformSelector,
       customColor: "#7C3AED", // Match Adsify's purple / professional vibe
-      connectTitle: specificPlatform
-        ? `Connect your ${specificPlatform === "x" ? "X" : specificPlatform === "google_business" ? "Google Business" : specificPlatform.charAt(0).toUpperCase() + specificPlatform.slice(1)} account`
+      connectTitle: displayPlatformName
+        ? `Connect your ${displayPlatformName} account`
         : "Connect your social accounts",
-      connectDescription: specificPlatform
-        ? `Link your ${specificPlatform === "x" ? "X" : specificPlatform === "google_business" ? "Google Business" : specificPlatform.charAt(0).toUpperCase() + specificPlatform.slice(1)} account to start scheduling and publishing.`
+      connectDescription: displayPlatformName
+        ? `Link your ${displayPlatformName} account to start scheduling and publishing.`
         : "Link the social media accounts you want to schedule and publish to from Trustiify.",
       redirectButtonText: "Back to Trustiify",
     });

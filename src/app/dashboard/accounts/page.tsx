@@ -431,17 +431,20 @@ export default function AccountsPage() {
     try {
       const url = new URL("/api/social-accounts/connect-url", window.location.origin);
       if (platformKey) {
-        let key = platformKey.toLowerCase();
+        let key = platformKey.toLowerCase().trim();
         if (key.includes("google")) key = "google_business";
-        else if (key === "youtube") key = "youtube";
-        else if (key === "linkedin") key = "linkedin";
-        else if (key === "facebook") key = "facebook";
-        else if (key === "instagram") key = "instagram";
-        else if (key === "tiktok") key = "tiktok";
-        else if (key === "pinterest") key = "pinterest";
-        else if (key === "threads") key = "threads";
-        else if (key === "bluesky") key = "bluesky";
-        else if (key === "x" || key === "twitter") key = "x";
+        else if (key.includes("twitter") || key === "x" || key.includes("x /")) key = "x";
+        else if (key.includes("youtube")) key = "youtube";
+        else if (key.includes("linkedin")) key = "linkedin";
+        else if (key.includes("facebook")) key = "facebook";
+        else if (key.includes("instagram")) key = "instagram";
+        else if (key.includes("tiktok")) key = "tiktok";
+        else if (key.includes("pinterest")) key = "pinterest";
+        else if (key.includes("threads")) key = "threads";
+        else if (key.includes("bluesky")) key = "bluesky";
+        else if (key.includes("discord")) key = "discord";
+        else if (key.includes("telegram")) key = "telegram";
+        else if (key.includes("reddit")) key = "reddit";
         url.searchParams.set("platform", key);
       }
 
@@ -681,7 +684,7 @@ export default function AccountsPage() {
                     key={p.key}
                     name={p.name}
                     platform={p.platform}
-                    onConnect={() => openConnectPage(p.name)}
+                    onConnect={() => openConnectPage(p.platform)}
                     isComingSoon={false}
                   />
                 ))}
