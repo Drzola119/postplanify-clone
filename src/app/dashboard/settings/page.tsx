@@ -37,19 +37,10 @@ import {
    BRAND SVG COMPONENTS (extracted from live page)
    ============================================================ */
 
+import { BrandIcons } from "@/components/dashboard/brand-icons";
+
 function CanvaLogo({ className }: { className?: string }) {
-  return (
-    <img
-      src="https://cdn.simpleicons.org/canva"
-      alt="Canva"
-      width={48}
-      height={48}
-      className={className}
-      loading="lazy"
-      decoding="async"
-      style={{ width: 48, height: 48 }}
-    />
-  );
+  return <BrandIcons.canva size={48} className={className} />;
 }
 
 function GoogleDriveLogo({ className }: { className?: string }) {

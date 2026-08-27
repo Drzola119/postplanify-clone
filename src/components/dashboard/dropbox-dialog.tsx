@@ -286,16 +286,8 @@ export function DropboxDialog({ open, onClose, onImport }: DropboxDialogProps) {
   );
 }
 
+import { BrandIcons } from "@/components/dashboard/brand-icons";
+
 function DropboxLogo() {
-  return (
-    <img
-      src="https://cdn.simpleicons.org/dropbox"
-      alt="Dropbox"
-      width={20}
-      height={20}
-      className="shrink-0"
-      loading="lazy"
-      decoding="async"
-    />
-  );
+  return <BrandIcons.dropbox size={20} className="shrink-0" />;
 }

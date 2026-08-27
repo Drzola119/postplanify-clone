@@ -202,17 +202,8 @@ export function CanvaDialog({ open, onClose, onImport }: CanvaDialogProps) {
   );
 }
 
+import { BrandIcons } from "@/components/dashboard/brand-icons";
+
 function CanvaLogo() {
-  return (
-    <img
-      src="https://cdn.simpleicons.org/canva"
-      alt="Canva"
-      width={22}
-      height={22}
-      loading="lazy"
-      decoding="async"
-      style={{ width: 22, height: 22 }}
-      className="shrink-0"
-    />
-  );
+  return <BrandIcons.canva size={22} className="shrink-0" />;
 }

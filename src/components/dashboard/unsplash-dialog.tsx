@@ -5,6 +5,7 @@ import { Search, ImageIcon } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
 import type { ImportedFile } from "./canva-dialog";
+import { BrandIcons } from "@/components/dashboard/brand-icons";
 
 interface UnsplashDialogProps {
   open: boolean;
@@ -198,15 +199,5 @@ export function UnsplashDialog({ open, onClose, onImport }: UnsplashDialogProps)
 }
 
 function UnsplashLogo() {
-  return (
-    <img
-      src="https://cdn.simpleicons.org/unsplash"
-      alt="Unsplash"
-      width={20}
-      height={20}
-      className="shrink-0"
-      loading="lazy"
-      decoding="async"
-    />
-  );
+  return <BrandIcons.unsplash size={20} className="shrink-0 text-black dark:text-white fill-current" />;
 }

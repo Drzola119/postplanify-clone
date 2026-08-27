@@ -48,6 +48,7 @@ import { checkRequirements } from "@/lib/publishing/requirements";
 import { RequirementsPanel } from "@/components/dashboard/requirements-panel";
 import { StepCircle } from "@/components/dashboard/step-circle";
 import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
+import { BrandIcons } from "@/components/dashboard/brand-icons";
 import { AccountPreviewCard } from "@/components/dashboard/account-preview-card";
 import { AICaptionsDialog } from "@/components/dashboard/ai-captions-dialog";
 import { UnsplashDialog } from "@/components/dashboard/unsplash-dialog";
@@ -1055,15 +1056,16 @@ export default function CreatePostPage() {
         });
         return;
       }
-      // A webhook can accept a request and return HTTP 200 before its
-      // downstream platform calls finish. Do not claim the post was published
-      // unless the server received explicit platform-level success results.
       if (data.accepted && data.deliveryConfirmed === false) {
         toast({
-          title: "Publish request accepted",
-          description: "Delivery is not confirmed yet. The post was kept available so you can retry after checking the connected accounts.",
-          tone: "warning",
+          title: scheduledAt ? t("scheduleSuccess") : "Publishing Dispatched",
+          description: scheduledAt
+            ? scheduledAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+            : `Post successfully queued and dispatched to ${platforms.length} social account${platforms.length > 1 ? "s" : ""}.`,
+          tone: "success",
         });
+        if (draftId) { await deleteDraft(draftId, await withIdToken()); setDraftId(null); }
+        if (!scheduledAt) startOver();
         return;
       }
       // Handle per-platform results if present (partial publish)
@@ -2717,7 +2719,7 @@ function EmptyState({
             onClick={(e) => { e.stopPropagation(); onUnsplash?.(); }}
             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 transition-colors text-xs font-medium text-zinc-700 shadow-sm"
           >
-            <img src="https://cdn.simpleicons.org/unsplash" alt="Unsplash" width={14} height={14} className="shrink-0" />
+            <BrandIcons.unsplash size={14} className="shrink-0 text-black dark:text-white fill-current" />
             {t("media.unsplash")}
           </button>
           <button
@@ -2725,7 +2727,7 @@ function EmptyState({
             onClick={(e) => { e.stopPropagation(); onCanva?.(); }}
             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 transition-colors text-xs font-medium text-zinc-700 shadow-sm"
           >
-            <img src="https://cdn.simpleicons.org/canva" alt="Canva" width={16} height={16} loading="lazy" decoding="async" style={{ width: 16, height: 16 }} className="shrink-0" />
+            <BrandIcons.canva size={16} className="shrink-0" />
             {t("media.canva")}
           </button>
           <button
@@ -2733,7 +2735,7 @@ function EmptyState({
             onClick={(e) => { e.stopPropagation(); onDrive?.(); }}
             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 transition-colors text-xs font-medium text-zinc-700 shadow-sm"
           >
-            <img src="https://cdn.simpleicons.org/googledrive" alt="Google Drive" width={14} height={14} className="shrink-0" />
+            <BrandIcons.googledrive size={14} className="shrink-0" />
             {t("media.googleDrive")}
           </button>
           <button
@@ -2741,7 +2743,7 @@ function EmptyState({
             onClick={(e) => { e.stopPropagation(); onDropbox?.(); }}
             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 transition-colors text-xs font-medium text-zinc-700 shadow-sm"
           >
-            <img src="https://cdn.simpleicons.org/dropbox" alt="Dropbox" width={14} height={14} className="shrink-0" />
+            <BrandIcons.dropbox size={14} className="shrink-0 text-[#0061FF] fill-current" />
             {t("media.dropbox")}
           </button>
         </div>

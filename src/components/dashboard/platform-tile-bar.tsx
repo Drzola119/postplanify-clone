@@ -1,31 +1,12 @@
 "use client";
 
+import React from "react";
 import { cn } from "@/lib/utils";
 import { PLATFORMS, type PlatformId, type PlatformMeta } from "@/lib/platforms";
 import { PlatformPreviewRouter, type PreviewProps } from "@/components/dashboard/platform-previews/platform-previews";
 import { PLATFORM_BRAND_COLORS, PLATFORM_GRADIENTS } from "@/components/dashboard/platform-avatar";
+import { BrandIcons } from "@/components/dashboard/brand-icons";
 import { PreviewCard } from "@base-ui/react/preview-card";
-
-const SIMPLE_ICONS_SLUGS: Record<string, string> = {
-  instagram: "instagram",
-  facebook: "facebook",
-  tiktok: "tiktok",
-  threads: "threads",
-  twitter: "x",
-  linkedin: "linkedin",
-  bluesky: "bluesky",
-  youtube: "youtube",
-  pinterest: "pinterest",
-  google_business: "google",
-};
-
-function simpleIconsSlug(id: string): string {
-  return SIMPLE_ICONS_SLUGS[id] ?? id;
-}
-
-function iconUrl(id: string): string {
-  return `https://cdn.simpleicons.org/${simpleIconsSlug(id)}/white`;
-}
 
 interface PlatformTileBarProps {
   selected: Set<PlatformId>;
@@ -83,15 +64,17 @@ function Tile({
   onToggle: () => void;
   getPreviewProps: (id: PlatformId) => Omit<PreviewProps, "platform">;
 }) {
-  const id = platform.id;
-  const color = PLATFORM_BRAND_COLORS[id] ?? "#666";
-  const gradient = PLATFORM_GRADIENTS[id];
+  const id = platform.id as keyof typeof BrandIcons;
+  const color = PLATFORM_BRAND_COLORS[platform.id] ?? "#666";
+  const gradient = PLATFORM_GRADIENTS[platform.id];
 
   const bgStyle = gradient
     ? { background: gradient }
     : {
         background: `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.18) 0%, transparent 70%), ${color}`,
       };
+
+  const IconComponent = BrandIcons[id] ?? BrandIcons[platform.id as keyof typeof BrandIcons];
 
   return (
     <div className="relative flex flex-col items-center">
@@ -104,7 +87,7 @@ function Tile({
             disabled={locked}
             title={locked ? `${platform.name} is required for this composer mode` : undefined}
             className={cn(
-              "inline-flex items-center justify-center transition-all duration-150 ease-out",
+              "inline-flex items-center justify-center transition-all duration-150 ease-out text-white",
               "hover:scale-108 active:scale-94",
               locked
                 ? "opacity-90 cursor-not-allowed"
@@ -121,16 +104,11 @@ function Tile({
               ...bgStyle,
             }}
           >
-            <img
-              src={iconUrl(id)}
-              alt=""
-              width={28}
-              height={28}
-              className="pointer-events-none"
-              style={{ width: 28, height: 28 }}
-              loading="lazy"
-              decoding="async"
-            />
+            {IconComponent ? (
+              <IconComponent size={24} className="pointer-events-none text-white fill-current" />
+            ) : (
+              <span className="text-white text-xs font-bold">{platform.name.slice(0, 2).toUpperCase()}</span>
+            )}
           </button>
         </PreviewCard.Trigger>
         <PreviewCard.Portal>

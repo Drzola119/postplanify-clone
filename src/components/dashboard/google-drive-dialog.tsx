@@ -287,16 +287,8 @@ export function GoogleDriveDialog({ open, onClose, onImport }: GoogleDriveDialog
   );
 }
 
+import { BrandIcons } from "@/components/dashboard/brand-icons";
+
 function DriveLogo() {
-  return (
-    <img
-      src="https://cdn.simpleicons.org/googledrive"
-      alt="Google Drive"
-      width={20}
-      height={20}
-      className="shrink-0"
-      loading="lazy"
-      decoding="async"
-    />
-  );
+  return <BrandIcons.googledrive size={20} className="shrink-0" />;
 }

@@ -56,13 +56,18 @@ export function NotificationBell({
           setUnreadCount(items.filter((i) => !i.read).length);
         },
         (error) => {
-          console.warn("[NotificationBell] Listener error:", error);
+          // If Firestore rules are not deployed or user has no permissions yet, fallback gracefully
+          if (process.env.NODE_ENV === "development") {
+            console.debug("[NotificationBell] Firestore notifications unavailable:", error.message);
+          }
         }
       );
 
       return () => unsubscribe();
     } catch (err) {
-      console.warn("[NotificationBell] Error setting up listener:", err);
+      if (process.env.NODE_ENV === "development") {
+        console.debug("[NotificationBell] Setup skipped:", err);
+      }
     }
   }, [user?.uid]);
 

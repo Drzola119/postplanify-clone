@@ -1,7 +1,9 @@
 "use client";
 
+import React from "react";
 import { cn } from "@/lib/utils";
 import type { PlatformMeta } from "@/lib/platforms";
+import { BrandIcons } from "@/components/dashboard/brand-icons";
 
 export const PLATFORM_BRAND_COLORS: Record<string, string> = {
   instagram: "#E1306C",
@@ -24,27 +26,6 @@ export const PLATFORM_GRADIENTS: Record<string, string> = {
     "linear-gradient(135deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)",
 };
 
-const SIMPLE_ICONS_SLUGS: Record<string, string> = {
-  instagram: "instagram",
-  facebook: "facebook",
-  tiktok: "tiktok",
-  threads: "threads",
-  twitter: "x",
-  linkedin: "linkedin",
-  bluesky: "bluesky",
-  youtube: "youtube",
-  pinterest: "pinterest",
-  discord: "discord",
-  telegram: "telegram",
-  reddit: "reddit",
-  google_business: "google",
-};
-
-function iconUrl(id: string): string {
-  const slug = SIMPLE_ICONS_SLUGS[id] ?? id;
-  return `https://cdn.simpleicons.org/${slug}/white`;
-}
-
 function getInitials(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
@@ -62,9 +43,9 @@ export function PlatformAvatar({
   rounded = "md",
   className,
 }: PlatformAvatarProps) {
-  const id = platform.id;
-  const color = PLATFORM_BRAND_COLORS[id] ?? "#666";
-  const gradient = PLATFORM_GRADIENTS[id];
+  const id = platform.id as keyof typeof BrandIcons;
+  const color = PLATFORM_BRAND_COLORS[platform.id] ?? "#666";
+  const gradient = PLATFORM_GRADIENTS[platform.id];
   const iconSize = Math.round(size * 0.58);
 
   const borderRadius =
@@ -76,9 +57,11 @@ export function PlatformAvatar({
         background: `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.18) 0%, transparent 70%), ${color}`,
       };
 
+  const IconComponent = BrandIcons[id] ?? BrandIcons[platform.id as keyof typeof BrandIcons];
+
   return (
     <div
-      className={cn("relative flex-shrink-0 overflow-hidden flex items-center justify-center", className)}
+      className={cn("relative flex-shrink-0 overflow-hidden flex items-center justify-center text-white", className)}
       style={{
         width: size,
         height: size,
@@ -87,36 +70,20 @@ export function PlatformAvatar({
         ...bgStyle,
       }}
     >
-      <img
-        src={iconUrl(id)}
-        alt={platform.name}
-        width={iconSize}
-        height={iconSize}
-        loading="lazy"
-        decoding="async"
-        style={{ width: iconSize, height: iconSize }}
-        onError={(e) => {
-          const target = e.currentTarget;
-          target.style.display = "none";
-          const fallback = target.nextElementSibling as HTMLSpanElement | null;
-          if (fallback) fallback.style.display = "flex";
-        }}
-      />
-      <span
-        style={{
-          display: "none",
-          position: "absolute",
-          inset: 0,
-          alignItems: "center",
-          justifyContent: "center",
-          color: "white",
-          fontSize: Math.round(size * 0.35),
-          fontWeight: 700,
-          letterSpacing: "-0.02em",
-        }}
-      >
-        {getInitials(platform.name)}
-      </span>
+      {IconComponent ? (
+        <IconComponent size={iconSize} className="text-white fill-current" />
+      ) : (
+        <span
+          style={{
+            color: "white",
+            fontSize: Math.round(size * 0.35),
+            fontWeight: 700,
+            letterSpacing: "-0.02em",
+          }}
+        >
+          {getInitials(platform.name)}
+        </span>
+      )}
     </div>
   );
 }
