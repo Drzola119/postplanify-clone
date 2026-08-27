@@ -158,6 +158,23 @@ function endpointAndMedia(input: UploadPostPublishInput): { endpoint: string; me
   return { endpoint: `${API_BASE}/upload_photos`, mediaField: "photos[]", mediaValues: input.mediaUrls };
 }
 
+function truncateText(value: string, maxCharacters: number): string {
+  const characters = Array.from(value);
+  if (characters.length <= maxCharacters) return value;
+  if (maxCharacters <= 1) return characters.slice(0, maxCharacters).join("");
+  return `${characters.slice(0, maxCharacters - 1).join("").trimEnd()}…`;
+}
+
+function platformTitle(platform: string, caption: string, endpoint: string): string {
+  // UploadPost/TikTok restricts photo-post titles to 90 characters. Always
+  // provide the platform override so a long shared caption does not fall back
+  // to the unrestricted global title and reject the entire multi-platform job.
+  if (platform === "tiktok" && endpoint.endsWith("/upload_photos")) {
+    return truncateText(caption, 90);
+  }
+  return caption;
+}
+
 export async function publishToUploadPost(input: UploadPostPublishInput): Promise<UploadPostPublishResult> {
   if (!input.apiKey.trim()) throw new Error("UPLOAD_POST_API_KEY is empty");
   if (!input.username.trim()) throw new Error("UploadPost profile username is empty");
@@ -182,8 +199,8 @@ export async function publishToUploadPost(input: UploadPostPublishInput): Promis
 
   for (const platform of input.platforms) {
     const uploadPlatform = toUploadPostPlatform(platform);
-    const platformCaption = input.captionsByPlatform?.[platform];
-    if (platformCaption && platformCaption !== input.caption) form.append(`${uploadPlatform}_title`, platformCaption);
+    const platformCaption = input.captionsByPlatform?.[platform] || input.caption;
+    form.append(`${uploadPlatform}_title`, platformTitle(uploadPlatform, platformCaption, endpoint));
     const platformComment = input.firstCommentByPlatform?.[platform];
     if (platformComment && platformComment !== sharedFirstComment) form.append(`${uploadPlatform}_first_comment`, platformComment);
     for (const [key, value] of Object.entries(input.advancedByPlatform?.[platform] || {})) {

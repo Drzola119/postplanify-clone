@@ -31,6 +31,7 @@ describe("UploadPost publisher", () => {
       expect(form.get("user")).toBe("workspace-profile");
       expect(form.get("photos[]")).toBe("https://cdn.test/image.jpg");
       expect(form.getAll("platform[]")).toEqual(["instagram", "x"]);
+      expect(form.get("instagram_title")).toBe("Shared");
       expect(form.get("x_title")).toBe("Tweet caption");
       expect(init?.headers).toMatchObject({ "Idempotency-Key": "request-1" });
       return new Response(JSON.stringify({
@@ -55,6 +56,55 @@ describe("UploadPost publisher", () => {
     });
     expect(result.deliveryConfirmed).toBe(true);
     expect(result.results?.twitter.postId).toBe("x1");
+  });
+
+  it("caps a shared TikTok photo title at 90 characters", async () => {
+    const caption = "A".repeat(120);
+    vi.stubGlobal("fetch", vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const form = init?.body as FormData;
+      const tiktokTitle = String(form.get("tiktok_title"));
+      expect(Array.from(tiktokTitle)).toHaveLength(90);
+      expect(tiktokTitle.endsWith("…")).toBe(true);
+      expect(form.get("title")).toBe(caption);
+      return new Response(JSON.stringify({
+        success: true,
+        results: { tiktok: { success: true, post_id: "tt1" } },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }));
+
+    const result = await publishToUploadPost({
+      apiKey: "key",
+      username: "workspace-profile",
+      platforms: ["tiktok"],
+      caption,
+      captionsByPlatform: { tiktok: caption },
+      mediaUrls: ["https://cdn.test/image.jpg"],
+      mediaType: "image",
+      requestId: "request-tiktok-photo",
+    });
+
+    expect(result.deliveryConfirmed).toBe(true);
+  });
+
+  it("does not apply the photo limit to TikTok video titles", async () => {
+    const caption = "V".repeat(120);
+    vi.stubGlobal("fetch", vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const form = init?.body as FormData;
+      expect(form.get("tiktok_title")).toBe(caption);
+      return new Response(JSON.stringify({
+        success: true,
+        results: { tiktok: { success: true, post_id: "tt-video-1" } },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }));
+
+    await publishToUploadPost({
+      apiKey: "key",
+      username: "workspace-profile",
+      platforms: ["tiktok"],
+      caption,
+      mediaUrls: ["https://cdn.test/video.mp4"],
+      mediaType: "video",
+    });
   });
 
   it("treats request_id-only responses as accepted, not delivered", async () => {
