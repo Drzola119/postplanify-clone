@@ -10,6 +10,7 @@ import {
 } from "@/lib/images/engine-client";
 import { resolvers } from "@/lib/security/server-config";
 import { readCache } from "@/lib/db/account-health";
+import { readProfile } from "@/lib/db/upload-post-profiles";
 import { createPost, updatePost } from "@/lib/db/posts";
 import { toEnginePlatform } from "@/lib/images/platform-ratios";
 import { createLogger } from "@/lib/log";
