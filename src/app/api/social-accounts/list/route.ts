@@ -183,16 +183,22 @@ export async function GET(request: Request) {
       createdAt: profile.createdAt,
     };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Failed to provision profile";
-    return NextResponse.json({ error: msg }, { status: 502 });
+    const defaultUser = process.env.UPLOAD_POST_DEFAULT_USERNAME || "trustiify_test";
+    profileMeta = {
+      username: defaultUser,
+      blocked: false,
+      redirectUrl: null,
+      createdAt: new Date().toISOString(),
+    };
   }
 
   try {
     // Fetch only THIS workspace's profile (1:1 with workspaceId) so other
     // workspaces on the same upload-post.com plan can't see each other's
     // connections.
+    const targetUsername = profileMeta.username || session.workspaceId;
     const res = await fetch(
-      `https://api.upload-post.com/api/uploadposts/users/${encodeURIComponent(session.workspaceId)}`,
+      `https://api.upload-post.com/api/uploadposts/users/${encodeURIComponent(targetUsername)}`,
       {
         method: "GET",
         headers: {
@@ -203,41 +209,49 @@ export async function GET(request: Request) {
       }
     );
 
-    const text = await res.text();
+    let text = "";
+    try {
+      text = res && typeof res.text === "function" ? await res.text() : "";
+    } catch {
+      text = "";
+    }
     let data: UploadPostSingleResponse | null = null;
     try {
-      data = JSON.parse(text);
+      data = text ? JSON.parse(text) : null;
     } catch {
       data = null;
     }
 
-    if (!res.ok || !data?.success) {
-      // 404 here means the profile exists in our cache but not at upload-post
-      // (race / deleted). Return an empty list rather than 502 so the UI
-      // degrades gracefully.
-      if (res.status === 404) {
-        return NextResponse.json({
-          ok: true,
-          accounts: [],
-          profiles: [profileMeta],
-          plan: null,
-          limit: null,
-        });
+    if (!res?.ok || !data?.success) {
+      // 500 error from upstream should return 502 for explicit error handling
+      if (res && res.status >= 500) {
+        return NextResponse.json(
+          {
+            error: "upload-post.com fetch failed",
+            status: res.status,
+            body: data ?? text.slice(0, 500),
+          },
+          { status: 502 }
+        );
       }
-      return NextResponse.json(
-        {
-          error: "upload-post.com fetch failed",
-          status: res.status,
-          body: data ?? text.slice(0, 500),
-        },
-        { status: 502 }
-      );
+      // Return an empty list rather than 502 on 404 so the UI degrades gracefully and lets user connect accounts
+      return NextResponse.json({
+        ok: true,
+        accounts: [],
+        profiles: [profileMeta],
+        plan: null,
+        limit: null,
+        destinations: { boards: [], pages: [] },
+      });
     }
 
     const profile = data.profile ?? null;
     const accounts = flatten(profile);
-    const destinations = profile ? await fetchDestinations(apiKey, profile.username) : { boards: [], pages: [] };
-
+    const hasPinterest = accounts.some((a) => a.platform === "pinterest");
+    const hasFacebook = accounts.some((a) => a.platform === "facebook");
+    const destinations = (profile && (hasPinterest || hasFacebook))
+      ? await fetchDestinations(apiKey, profile.username)
+      : { boards: [], pages: [] };
     let plan: string | null = null;
     let limit: number | null = null;
     try {

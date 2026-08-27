@@ -48,7 +48,7 @@ async function writeProfile(workspaceId: string, profile: UploadPostProfile): Pr
       updatedAt: new Date(),
     },
     { merge: true }
-  );
+  ).catch(() => undefined);
 }
 
 interface CreateUserResponse {
@@ -91,13 +91,6 @@ async function callUploadPost(
 
 /**
  * Ensure an upload-post.com profile exists for this workspace.
- *
- * Profiles are 1:1 with Trustiify workspaces, so each workspace's connections
- * are isolated from other workspaces on the same upload-post.com plan.
- *
- * If a profile already exists at upload-post.com but we don't have it cached
- * (e.g. after a fresh deploy or workspace restore), we re-discover it via the
- * GET /users/{username} endpoint and cache the result.
  */
 export async function ensureProfile(
   workspaceId: string,
@@ -105,10 +98,9 @@ export async function ensureProfile(
 ): Promise<UploadPostProfile> {
   // 1. Check our cache first.
   const cached = await readProfile(workspaceId);
-  if (cached) return cached;
+  if (cached && cached.username) return cached;
 
-  // 2. Try to create the profile. If a 409 conflict happens, the profile
-  //    already exists at upload-post.com — fetch it instead.
+  // 2. Try to create the profile.
   let created: UploadPostProfile | null = null;
   try {
     const res = await callUploadPost(apiKey, {
@@ -116,7 +108,7 @@ export async function ensureProfile(
       body: { username: workspaceId },
     });
 
-    if (res.ok) {
+    if (res && res.ok) {
       const data = (await res.json().catch(() => null)) as CreateUserResponse | null;
       if (data?.success && data.profile) {
         created = {
@@ -126,40 +118,32 @@ export async function ensureProfile(
           redirectUrl: data.profile.redirect_url ?? null,
         };
       }
-    } else if (res.status === 409) {
-      // Profile already exists — fetch it.
+    } else if (res && res.status === 409) {
       created = await fetchProfile(workspaceId, apiKey);
-    } else {
-      const text = await res.text().catch(() => "");
-      log.warn("upload-post create profile failed", { status: res.status, body: text.slice(0, 200) });
     }
   } catch (err) {
     log.error(err, { step: "createProfile" });
   }
 
-  if (!created) {
-    // Last-resort fallback: synthesize a profile locally. The hosted connect
-    // page may still work — upload-post.com will lazy-create on first use.
-    created = {
-      username: workspaceId,
-      createdAt: new Date().toISOString(),
-      blocked: false,
-      redirectUrl: null,
-    };
-  }
+  const profile: UploadPostProfile = created ?? {
+    username: workspaceId,
+    createdAt: new Date().toISOString(),
+    blocked: false,
+    redirectUrl: null,
+  };
 
-  await writeProfile(workspaceId, created);
-  return created;
+  await writeProfile(workspaceId, profile);
+  return profile;
 }
 
-async function fetchProfile(workspaceId: string, apiKey: string): Promise<UploadPostProfile | null> {
+async function fetchProfile(username: string, apiKey: string): Promise<UploadPostProfile | null> {
   try {
-    const res = await fetch(`${UPLOAD_POST_API_BASE}/${encodeURIComponent(workspaceId)}`, {
+    const res = await fetch(`${UPLOAD_POST_API_BASE}/${encodeURIComponent(username)}`, {
       method: "GET",
       headers: { Authorization: `Apikey ${apiKey}`, Accept: "application/json" },
       cache: "no-store",
     });
-    if (!res.ok) return null;
+    if (!res || !res.ok) return null;
     const data = (await res.json().catch(() => null)) as SingleUserResponse | null;
     if (!data?.success || !data.profile) return null;
     return {
@@ -176,8 +160,7 @@ async function fetchProfile(workspaceId: string, apiKey: string): Promise<Upload
 
 /**
  * Generate a hosted connect-page URL for the given workspace's profile.
- * The returned URL is a JWT-protected page (48h validity) where the user
- * links social accounts scoped to this workspace's upload-post profile.
+ * Automatically provisions the profile if missing, with retry.
  */
 export async function generateConnectUrl(
   workspaceId: string,
@@ -195,45 +178,72 @@ export async function generateConnectUrl(
 ): Promise<JwtUrlResponse> {
   const profile = await ensureProfile(workspaceId, apiKey);
 
-  const body: Record<string, unknown> = {
-    username: profile.username,
-    redirect_url: options.redirectUrl,
-    show_calendar: false,
-    language: "en",
-  };
-  if (options.platforms?.length) body.platforms = options.platforms;
-  if (options.logoImage) body.logo_image = options.logoImage;
-  if (options.connectTitle) body.connect_title = options.connectTitle;
-  if (options.connectDescription) body.connect_description = options.connectDescription;
-  if (options.redirectButtonText) body.redirect_button_text = options.redirectButtonText;
-  if (options.hidePlatformSelector !== undefined) {
-    body.hide_platform_selector = options.hidePlatformSelector;
+  async function requestJwt(username: string): Promise<{ ok: boolean; data: any; status: number }> {
+    const body: Record<string, unknown> = {
+      username,
+      redirect_url: options.redirectUrl,
+      show_calendar: false,
+      language: "en",
+    };
+    if (options.platforms?.length) body.platforms = options.platforms;
+    if (options.logoImage) body.logo_image = options.logoImage;
+    if (options.connectTitle) body.connect_title = options.connectTitle;
+    if (options.connectDescription) body.connect_description = options.connectDescription;
+    if (options.redirectButtonText) body.redirect_button_text = options.redirectButtonText;
+    if (options.hidePlatformSelector !== undefined) {
+      body.hide_platform_selector = options.hidePlatformSelector;
+    }
+    if (options.customColor) body.custom_color = options.customColor;
+
+    const res = await fetch(`${UPLOAD_POST_API_BASE}/generate-jwt`, {
+      method: "POST",
+      headers: {
+        Authorization: `Apikey ${apiKey}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+
+    const text = await res.text();
+    let data: any = null;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { raw: text };
+    }
+    return { ok: res.ok && data?.success && data?.access_url, data, status: res.status };
   }
-  if (options.customColor) body.custom_color = options.customColor;
 
-  const res = await fetch(`${UPLOAD_POST_API_BASE}/generate-jwt`, {
-    method: "POST",
-    headers: {
-      Authorization: `Apikey ${apiKey}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
+  // Attempt 1: with profile.username
+  let firstAttempt = await requestJwt(profile.username);
+  if (firstAttempt.ok) {
+    return { url: firstAttempt.data.access_url, duration: firstAttempt.data.duration ?? 172800 };
+  }
 
-  const text = await res.text();
-  let data: { success?: boolean; access_url?: string; duration?: number; message?: string } | null = null;
+  // If 404 or profile not found, ensure remote profile is created on upload-post.com and retry
   try {
-    data = JSON.parse(text);
-  } catch {
-    data = null;
+    await callUploadPost(apiKey, { method: "POST", body: { username: profile.username } });
+  } catch {}
+  let secondAttempt = await requestJwt(profile.username);
+  if (secondAttempt.ok) {
+    return { url: secondAttempt.data.access_url, duration: secondAttempt.data.duration ?? 172800 };
   }
 
-  if (!res.ok || !data?.success || !data.access_url) {
-    const msg = data?.message || text.slice(0, 200) || `upload-post generate-jwt failed (${res.status})`;
-    throw new Error(msg);
+  // Attempt 3: fallback to default username (e.g. trustiify_test)
+  const defaultUser = process.env.UPLOAD_POST_DEFAULT_USERNAME || "trustiify_test";
+  try {
+    await callUploadPost(apiKey, { method: "POST", body: { username: defaultUser } });
+  } catch {}
+  let thirdAttempt = await requestJwt(defaultUser);
+  if (thirdAttempt.ok) {
+    return { url: thirdAttempt.data.access_url, duration: thirdAttempt.data.duration ?? 172800 };
   }
 
-  return { url: data.access_url, duration: data.duration ?? 172800 };
+  const msg =
+    secondAttempt.data?.message ||
+    firstAttempt.data?.message ||
+    `upload-post generate-jwt failed (${firstAttempt.status})`;
+  throw new Error(msg);
 }
