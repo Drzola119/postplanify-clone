@@ -290,7 +290,7 @@ export function GoogleDriveDialog({ open, onClose, onImport }: GoogleDriveDialog
 function DriveLogo() {
   return (
     <img
-      src="https://cdn.simpleicons.org/googledrive/4285F4"
+      src="https://cdn.simpleicons.org/googledrive"
       alt="Google Drive"
       width={20}
       height={20}

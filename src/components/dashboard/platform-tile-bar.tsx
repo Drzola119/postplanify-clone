@@ -16,7 +16,7 @@ const SIMPLE_ICONS_SLUGS: Record<string, string> = {
   bluesky: "bluesky",
   youtube: "youtube",
   pinterest: "pinterest",
-  google_business: "googleforms",
+  google_business: "google",
 };
 
 function simpleIconsSlug(id: string): string {
@@ -24,7 +24,7 @@ function simpleIconsSlug(id: string): string {
 }
 
 function iconUrl(id: string): string {
-  return `https://cdn.simpleicons.org/${simpleIconsSlug(id)}/ffffff`;
+  return `https://cdn.simpleicons.org/${simpleIconsSlug(id)}/white`;
 }
 
 interface PlatformTileBarProps {

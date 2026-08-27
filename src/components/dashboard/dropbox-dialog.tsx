@@ -289,7 +289,7 @@ export function DropboxDialog({ open, onClose, onImport }: DropboxDialogProps) {
 function DropboxLogo() {
   return (
     <img
-      src="https://cdn.simpleicons.org/dropbox/0061FF"
+      src="https://cdn.simpleicons.org/dropbox"
       alt="Dropbox"
       width={20}
       height={20}

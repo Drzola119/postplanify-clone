@@ -7,6 +7,7 @@ import { createPost, updatePost } from "@/lib/db/posts";
 import { createLogger } from "@/lib/log";
 import { parseBody } from "@/lib/validation/helpers";
 import { buildPublishPayload } from "@/lib/publishing/payload";
+import { readProfile } from "@/lib/db/upload-post-profiles";
 
 const log = createLogger("posts/publish");
 
@@ -180,9 +181,12 @@ export async function POST(request: Request) {
     }
   }
 
+  const workspaceProfile = await readProfile(workspaceId).catch(() => null);
   const uploadPostUsername =
     body.uploadPostUsername?.trim() ||
+    workspaceProfile?.username ||
     process.env.UPLOAD_POST_DEFAULT_USERNAME ||
+    workspaceId ||
     "trustiify_test";
 
   const jobId = body.jobId ?? crypto.randomUUID();

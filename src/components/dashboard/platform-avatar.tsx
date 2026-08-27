@@ -37,12 +37,12 @@ const SIMPLE_ICONS_SLUGS: Record<string, string> = {
   discord: "discord",
   telegram: "telegram",
   reddit: "reddit",
-  google_business: "googleforms",
+  google_business: "google",
 };
 
 function iconUrl(id: string): string {
   const slug = SIMPLE_ICONS_SLUGS[id] ?? id;
-  return `https://cdn.simpleicons.org/${slug}/ffffff`;
+  return `https://cdn.simpleicons.org/${slug}/white`;
 }
 
 function getInitials(name: string): string {

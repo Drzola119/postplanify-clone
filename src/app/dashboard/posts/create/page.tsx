@@ -2717,7 +2717,7 @@ function EmptyState({
             onClick={(e) => { e.stopPropagation(); onUnsplash?.(); }}
             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 transition-colors text-xs font-medium text-zinc-700 shadow-sm"
           >
-            <img src="https://cdn.simpleicons.org/unsplash/000000" alt="Unsplash" width={14} height={14} className="shrink-0" />
+            <img src="https://cdn.simpleicons.org/unsplash" alt="Unsplash" width={14} height={14} className="shrink-0" />
             {t("media.unsplash")}
           </button>
           <button
@@ -2725,7 +2725,7 @@ function EmptyState({
             onClick={(e) => { e.stopPropagation(); onCanva?.(); }}
             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 transition-colors text-xs font-medium text-zinc-700 shadow-sm"
           >
-            <img src="https://cdn.simpleicons.org/canva/00C4CC" alt="Canva" width={16} height={16} loading="lazy" decoding="async" style={{ width: 16, height: 16 }} className="shrink-0" />
+            <img src="https://cdn.simpleicons.org/canva" alt="Canva" width={16} height={16} loading="lazy" decoding="async" style={{ width: 16, height: 16 }} className="shrink-0" />
             {t("media.canva")}
           </button>
           <button
@@ -2733,7 +2733,7 @@ function EmptyState({
             onClick={(e) => { e.stopPropagation(); onDrive?.(); }}
             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 transition-colors text-xs font-medium text-zinc-700 shadow-sm"
           >
-            <img src="https://cdn.simpleicons.org/googledrive/4285F4" alt="Google Drive" width={14} height={14} className="shrink-0" />
+            <img src="https://cdn.simpleicons.org/googledrive" alt="Google Drive" width={14} height={14} className="shrink-0" />
             {t("media.googleDrive")}
           </button>
           <button
@@ -2741,7 +2741,7 @@ function EmptyState({
             onClick={(e) => { e.stopPropagation(); onDropbox?.(); }}
             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 transition-colors text-xs font-medium text-zinc-700 shadow-sm"
           >
-            <img src="https://cdn.simpleicons.org/dropbox/0061FF" alt="Dropbox" width={14} height={14} className="shrink-0" />
+            <img src="https://cdn.simpleicons.org/dropbox" alt="Dropbox" width={14} height={14} className="shrink-0" />
             {t("media.dropbox")}
           </button>
         </div>

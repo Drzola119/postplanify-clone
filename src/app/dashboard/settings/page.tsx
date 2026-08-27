@@ -40,7 +40,7 @@ import {
 function CanvaLogo({ className }: { className?: string }) {
   return (
     <img
-      src="https://cdn.simpleicons.org/canva/00C4CC"
+      src="https://cdn.simpleicons.org/canva"
       alt="Canva"
       width={48}
       height={48}

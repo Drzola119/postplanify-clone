@@ -200,7 +200,7 @@ export function UnsplashDialog({ open, onClose, onImport }: UnsplashDialogProps)
 function UnsplashLogo() {
   return (
     <img
-      src="https://cdn.simpleicons.org/unsplash/000000"
+      src="https://cdn.simpleicons.org/unsplash"
       alt="Unsplash"
       width={20}
       height={20}

@@ -205,7 +205,7 @@ export function CanvaDialog({ open, onClose, onImport }: CanvaDialogProps) {
 function CanvaLogo() {
   return (
     <img
-      src="https://cdn.simpleicons.org/canva/00C4CC"
+      src="https://cdn.simpleicons.org/canva"
       alt="Canva"
       width={22}
       height={22}
