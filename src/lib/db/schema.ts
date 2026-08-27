@@ -120,6 +120,8 @@ export interface PerPlatformResult {
   status: "delivered" | "failed" | "pending";
   /** upload-post.com post id, null when status is failed. */
   postId: string | null;
+  /** Public URL of the social post returned by UploadPost. */
+  postUrl?: string | null;
   /** Public CDN URL of the variant that was delivered to this platform. */
   mediaUrl?: string | null;
   /** ISO timestamp of the successful delivery, null otherwise. */

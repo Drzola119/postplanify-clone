@@ -270,7 +270,7 @@ async function resetStuckClaimsForAllWorkspaces(olderThanMs: number): Promise<nu
 
 export function startQueueWorker(intervalMs = DEFAULT_INTERVAL_MS): void {
   if (interval) return;
-  interval = setInterval(async () => {
+  const run = async () => {
     if (running) return;
     running = true;
     try {
@@ -282,7 +282,11 @@ export function startQueueWorker(intervalMs = DEFAULT_INTERVAL_MS): void {
     } finally {
       running = false;
     }
-  }, intervalMs);
+  };
+  // Reconcile accepted UploadPost jobs as soon as the server boots. Waiting
+  // for the first interval left every job pending forever on short-lived hosts.
+  void run();
+  interval = setInterval(run, intervalMs);
   interval.unref?.();
   log.info(`started (interval=${intervalMs}ms)`);
 }

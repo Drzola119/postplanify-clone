@@ -25,6 +25,74 @@ describe("UploadPost publisher", () => {
     expect(normalizeUploadPostResults({ results: { instagram: { skipped: true } } }, ["instagram"])?.instagram.ok).toBe(false);
   });
 
+  it("reads UploadPost status error_message and platform_post_id fields", () => {
+    expect(normalizeUploadPostResults({
+      results: [
+        { platform: "instagram", success: false, error_message: "Invalid media type" },
+        { platform: "facebook", success: true, platform_post_id: "fb-123" },
+      ],
+    }, ["instagram", "facebook"])).toEqual({
+      instagram: { ok: false, error: "Invalid media type" },
+      facebook: { ok: true, postId: "fb-123" },
+    });
+  });
+
+  it("maps photo feed media types to UploadPost's platform-specific enums", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const form = init?.body as FormData;
+      expect(form.get("media_type")).toBe("IMAGE");
+      expect(form.get("facebook_media_type")).toBe("POSTS");
+      return new Response(JSON.stringify({
+        success: true,
+        results: {
+          instagram: { success: true },
+          facebook: { success: true },
+        },
+      }), { status: 200 });
+    }));
+
+    await publishToUploadPost({
+      apiKey: "key",
+      username: "profile",
+      platforms: ["instagram", "facebook"],
+      caption: "Photo feed",
+      mediaUrls: ["https://cdn.test/image.jpg"],
+      mediaType: "image",
+      advancedByPlatform: {
+        instagram: { instagram_media_type: "FEED" },
+        facebook: { facebook_media_type: "FEED" },
+      },
+    });
+  });
+
+  it("keeps valid story media types for Instagram and Facebook photos", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const form = init?.body as FormData;
+      expect(form.get("media_type")).toBe("STORIES");
+      expect(form.get("facebook_media_type")).toBe("STORIES");
+      return new Response(JSON.stringify({
+        success: true,
+        results: {
+          instagram: { success: true },
+          facebook: { success: true },
+        },
+      }), { status: 200 });
+    }));
+
+    await publishToUploadPost({
+      apiKey: "key",
+      username: "profile",
+      platforms: ["instagram", "facebook"],
+      caption: "Photo story",
+      mediaUrls: ["https://cdn.test/image.jpg"],
+      mediaType: "image",
+      advancedByPlatform: {
+        instagram: { instagram_media_type: "STORIES" },
+        facebook: { facebook_media_type: "STORIES" },
+      },
+    });
+  });
+
   it("sends required profile, media, idempotency and platform fields", async () => {
     const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       const form = init?.body as FormData;

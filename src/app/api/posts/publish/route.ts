@@ -200,6 +200,7 @@ export async function POST(request: Request) {
         patch.perPlatformResults = Object.fromEntries(Object.entries(platformResults).map(([platform, entry]) => [platform, {
           status: entry.ok ? "delivered" : "failed",
           postId: entry.postId ?? null,
+          postUrl: entry.url ?? null,
           deliveredAt: entry.ok ? new Date().toISOString() : null,
           error: entry.ok ? null : { message: entry.error || "UploadPost delivery failed" },
         }]));

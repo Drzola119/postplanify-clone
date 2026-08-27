@@ -1040,15 +1040,18 @@ export default function CreatePostPage() {
             : {}),
         }),
       });
-      const data = (await res.json().catch(() => ({}))) as {
+      type PublishResponse = {
         ok?: boolean;
         jobId?: string;
+        postId?: string;
         error?: string;
         results?: Record<string, { ok: boolean; error?: string }>;
         result?: unknown;
         accepted?: boolean;
         deliveryConfirmed?: boolean;
+        final?: boolean;
       };
+      let data = (await res.json().catch(() => ({}))) as PublishResponse;
       if (!res.ok || !data.ok) {
         toast({
           title: scheduledAt ? t("scheduleFailed") : t("publishFailed"),
@@ -1056,6 +1059,34 @@ export default function CreatePostPage() {
           tone: "error",
         });
         return;
+      }
+      if (
+        !scheduledAt &&
+        data.postId &&
+        data.accepted &&
+        data.deliveryConfirmed === false &&
+        (!data.results || Object.keys(data.results).length === 0)
+      ) {
+        // UploadPost can switch a synchronous upload to a background job. Poll
+        // through our authenticated API so delivery confirmation does not
+        // depend on a long-lived Node interval surviving in production.
+        for (let attempt = 0; attempt < 18; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 5_000));
+          const statusResponse = await fetch("/api/posts/publish/status", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...getOverrideHeaders(),
+            },
+            body: JSON.stringify({ postId: data.postId }),
+          });
+          const statusData = (await statusResponse.json().catch(() => ({}))) as PublishResponse;
+          if (!statusResponse.ok && statusResponse.status !== 202) break;
+          if (statusData.final && statusData.results && Object.keys(statusData.results).length > 0) {
+            data = { ...data, ...statusData, accepted: true };
+            break;
+          }
+        }
       }
       if (data.accepted && data.deliveryConfirmed === false && (!data.results || Object.keys(data.results).length === 0)) {
         if (scheduledAt) {

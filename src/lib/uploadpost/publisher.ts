@@ -61,7 +61,7 @@ export function toUploadPostPlatform(platform: string): string {
 
 function errorMessage(value: unknown, fallback: string): string {
   if (!isRecord(value)) return fallback;
-  for (const key of ["error", "message", "detail"]) {
+  for (const key of ["error", "error_message", "message", "detail"]) {
     if (typeof value[key] === "string" && value[key]) return value[key];
   }
   return fallback;
@@ -85,7 +85,7 @@ function normalizeOneResult(raw: unknown): UploadPostPlatformResult {
     ["ok", "success", "published", "delivered", "publish_success", "completed"].includes(status)
   );
   const result: UploadPostPlatformResult = { ok };
-  const postId = stringField(raw, ["post_id", "publish_id", "id", "container_id"]);
+  const postId = stringField(raw, ["post_id", "platform_post_id", "publish_id", "id", "container_id"]);
   const url = stringField(raw, ["url", "post_url"]);
   if (postId) result.postId = postId;
   if (url) result.url = url;
@@ -137,6 +137,25 @@ const ADVANCED_FIELD_MAP: Record<string, string> = {
   youtube_thumbnail_url: "thumbnail_url",
   linkedin_page_id: "target_linkedin_page_id",
 };
+
+function normalizeMediaTypeField(key: string, value: unknown, endpoint: string): unknown {
+  if (typeof value !== "string") return value;
+  const mediaType = value.toUpperCase();
+  const isPhoto = endpoint.endsWith("/upload_photos");
+  const isVideo = endpoint.endsWith("/upload");
+
+  // The composer uses the human-facing FEED value. UploadPost deliberately
+  // uses different API enums for Instagram and Facebook and rejects FEED.
+  if (key === "instagram_media_type") {
+    if (isPhoto) return mediaType === "STORIES" ? "STORIES" : "IMAGE";
+    if (isVideo) return mediaType === "STORIES" ? "STORIES" : "REELS";
+  }
+  if (key === "facebook_media_type") {
+    if (isPhoto) return mediaType === "STORIES" ? "STORIES" : "POSTS";
+    if (isVideo) return mediaType === "FEED" ? "VIDEO" : mediaType;
+  }
+  return value;
+}
 
 function appendValue(form: FormData, key: string, value: unknown): void {
   if (value === undefined || value === null || value === "") return;
@@ -240,7 +259,7 @@ export async function publishToUploadPost(input: UploadPostPublishInput): Promis
     const platformComment = input.firstCommentByPlatform?.[platform];
     if (platformComment && platformComment !== sharedFirstComment) form.append(`${uploadPlatform}_first_comment`, platformComment);
     for (const [key, value] of Object.entries(input.advancedByPlatform?.[platform] || {})) {
-      appendValue(form, ADVANCED_FIELD_MAP[key] || key, value);
+      appendValue(form, ADVANCED_FIELD_MAP[key] || key, normalizeMediaTypeField(key, value, endpoint));
     }
   }
 
