@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const mockCreatePost = vi.fn(async () => "new-post-id");
-const mockUpdatePost = vi.fn(async () => undefined);
+const mockCreatePost = vi.fn(async (..._args: unknown[]) => "new-post-id");
+const mockUpdatePost = vi.fn(async (..._args: unknown[]) => undefined);
 const mockRequireSession = vi.fn(async () => ({ uid: "uid1", workspaceId: "ws1" }));
-let mockFetch: ReturnType<typeof vi.fn>;
+const mockPublishToUploadPost = vi.fn();
 
 vi.mock("@/lib/auth/session-context", () => ({ requireSession: () => mockRequireSession() }));
 vi.mock("@/lib/db/posts", () => ({ createPost: (...a: unknown[]) => mockCreatePost(...a), updatePost: (...a: unknown[]) => mockUpdatePost(...a) }));
+vi.mock("@/lib/db/upload-post-profiles", () => ({ readProfile: vi.fn(async () => ({ username: "profile1" })) }));
+vi.mock("@/lib/uploadpost/publisher", () => ({ publishToUploadPost: (...a: unknown[]) => mockPublishToUploadPost(...a) }));
 vi.mock("@/lib/security/server-config", async () => {
   const actual = await vi.importActual<typeof import("@/lib/security/server-config")>("@/lib/security/server-config");
   return { ...actual, resolvers: { n8nWebhookUrl: () => "https://n8n.test/webhook", uploadPostApiKey: () => "key" } };
@@ -17,8 +19,14 @@ describe("POST /api/posts/publish caption validation", () => {
     vi.clearAllMocks();
     mockRequireSession.mockResolvedValue({ uid: "uid1", workspaceId: "ws1" } as never);
     mockCreatePost.mockResolvedValue("new-post-id");
-    mockFetch = vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ ok: true }) } as unknown as Response));
-    (globalThis as unknown as { fetch: typeof fetch }).fetch = mockFetch as unknown as typeof fetch;
+    mockPublishToUploadPost.mockResolvedValue({
+      accepted: true,
+      deliveryConfirmed: true,
+      scheduled: false,
+      requestId: "request-1",
+      raw: { success: true, request_id: "request-1" },
+      httpStatus: 200,
+    });
   });
 
   it("accepts valid per-platform captions", async () => {
@@ -43,8 +51,11 @@ describe("POST /api/posts/publish caption validation", () => {
       sameForAll: false,
       advancedByPlatform: { instagram: { instagram_media_type: "REELS" } },
     }));
-    const payload = JSON.parse(String(mockFetch.mock.calls[0][1]?.body ?? "{}"));
-    expect(payload.captionsByPlatform).toEqual({ instagram: "IG", twitter: "TW" });
+    expect(mockPublishToUploadPost).toHaveBeenCalledWith(expect.objectContaining({
+      username: "profile1",
+      captionsByPlatform: { instagram: "IG", twitter: "TW" },
+      mediaUrls: ["https://cdn.test/a.jpg"],
+    }));
   });
 
   it("rejects missing caption entry when sameForAll false", async () => {
@@ -136,7 +147,14 @@ describe("POST /api/posts/publish caption validation", () => {
   });
 
   it("does not mark a post published when n8n returns an empty acknowledgement", async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, text: async () => "" } as unknown as Response);
+    mockPublishToUploadPost.mockResolvedValueOnce({
+      accepted: true,
+      deliveryConfirmed: false,
+      scheduled: false,
+      requestId: "request-empty",
+      raw: {},
+      httpStatus: 200,
+    });
     const { POST } = await import("@/app/api/posts/publish/route");
     const req = new Request("http://localhost/api/posts/publish", {
       method: "POST",
@@ -151,17 +169,21 @@ describe("POST /api/posts/publish caption validation", () => {
     });
     const res = await POST(req as never);
     const body = await res.json();
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
     expect(body.deliveryConfirmed).toBe(false);
     expect(mockUpdatePost).not.toHaveBeenCalledWith("ws1", "new-post-id", expect.objectContaining({ status: "published" }));
   });
 
   it("accepts Upload-Post success results as explicit delivery confirmation", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify({ success: true, results: { instagram: { success: true, url: "https://instagram.test/p/1" } } }),
-    } as unknown as Response);
+    mockPublishToUploadPost.mockResolvedValueOnce({
+      accepted: true,
+      deliveryConfirmed: true,
+      scheduled: false,
+      requestId: "request-success",
+      results: { instagram: { ok: true, url: "https://instagram.test/p/1" } },
+      raw: { success: true },
+      httpStatus: 200,
+    });
     const { POST } = await import("@/app/api/posts/publish/route");
     const req = new Request("http://localhost/api/posts/publish", {
       method: "POST",
@@ -177,7 +199,7 @@ describe("POST /api/posts/publish caption validation", () => {
     const res = await POST(req as never);
     const body = await res.json();
     expect(body.deliveryConfirmed).toBe(true);
-    expect(body.results).toEqual({ instagram: { ok: true } });
+    expect(body.results).toEqual({ instagram: expect.objectContaining({ ok: true }) });
     expect(mockUpdatePost).toHaveBeenCalledWith("ws1", "new-post-id", expect.objectContaining({ status: "published" }));
   });
 });

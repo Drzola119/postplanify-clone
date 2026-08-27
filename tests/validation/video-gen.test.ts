@@ -64,6 +64,7 @@ describe("videoGenerateRequestSchema — cartoon workflow", () => {
 describe("videoGenerateRequestSchema — real-estate workflow", () => {
   const validRealEstate = {
     workflow: "real-estate",
+    mode: "my-photos",
     provider: "auto",
     styleId: "re-cinematic",
     aspectRatios: ["16:9"],

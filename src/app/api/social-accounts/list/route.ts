@@ -135,9 +135,13 @@ interface UploadPostDestinationsResponse {
 async function fetchDestinations(apiKey: string, profileUsername: string) {
   const headers = { Authorization: `Apikey ${apiKey}`, Accept: "application/json" };
   const query = `?profile=${encodeURIComponent(profileUsername)}`;
+  const safeFetch = async (url: string): Promise<Response | null> => {
+    try { return (await fetch(url, { headers, cache: "no-store" })) ?? null; }
+    catch { return null; }
+  };
   const [boardsRes, pagesRes] = await Promise.all([
-    fetch(`https://api.upload-post.com/api/uploadposts/pinterest/boards${query}`, { headers, cache: "no-store" }).catch(() => null),
-    fetch(`https://api.upload-post.com/api/uploadposts/facebook/pages${query}`, { headers, cache: "no-store" }).catch(() => null),
+    safeFetch(`https://api.upload-post.com/api/uploadposts/pinterest/boards${query}`),
+    safeFetch(`https://api.upload-post.com/api/uploadposts/facebook/pages${query}`),
   ]);
   const parse = async (res: Response | null): Promise<UploadPostDestinationsResponse> => {
     if (!res?.ok) return {};
@@ -258,11 +262,16 @@ export async function GET(request: Request) {
       if (adminDb) {
         // We still call the list endpoint in the background to capture plan/limit
         // info. Failure here is non-fatal — the user sees their accounts either way.
-        const listRes = await fetch("https://api.upload-post.com/api/uploadposts/users", {
-          method: "GET",
-          headers: { Authorization: `Apikey ${apiKey}`, Accept: "application/json" },
-          cache: "no-store",
-        }).catch(() => null);
+        let listRes: Response | null = null;
+        try {
+          listRes = (await fetch("https://api.upload-post.com/api/uploadposts/users", {
+            method: "GET",
+            headers: { Authorization: `Apikey ${apiKey}`, Accept: "application/json" },
+            cache: "no-store",
+          })) ?? null;
+        } catch {
+          listRes = null;
+        }
         let listData: UploadPostListResponse | null = null;
         if (listRes?.ok) {
           try {

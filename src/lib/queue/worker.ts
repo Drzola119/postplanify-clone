@@ -1,12 +1,13 @@
 import "server-only";
 import { adminDb } from "@/lib/firebase/admin";
-import { listScheduledDue, claimPost, markPublished, markFailed, resetStuckClaims } from "@/lib/db/posts";
+import { listPosts, listScheduledDue, claimPost, markPublished, markFailed, resetStuckClaims, updatePost } from "@/lib/db/posts";
 import { resolvers } from "@/lib/security/server-config";
 import { deliverWebhook } from "@/lib/webhooks/delivery";
 import { ensureProfile, readProfile } from "@/lib/db/upload-post-profiles";
 import { createLogger } from "@/lib/log";
 import { evaluateAlertRules } from "@/lib/alerts/evaluate";
 import { buildPublishPayload, resolveCaptionsForPayload } from "@/lib/publishing/payload";
+import { getUploadPostStatus, publishToUploadPost } from "@/lib/uploadpost/publisher";
 
 const log = createLogger("queue-worker");
 
@@ -82,17 +83,22 @@ async function tickOnce(): Promise<TickResult> {
 
   const due = await collectDuePosts();
   result.scanned = due.length;
-  if (due.length === 0) return result;
 
-  let n8nUrl: string;
   let apiKey: string;
   try {
-    n8nUrl = resolvers.n8nWebhookUrl(new Headers());
     apiKey = resolvers.uploadPostApiKey(new Headers());
   } catch (err) {
-    result.error = err instanceof Error ? err.message : "Missing required env (N8N_WEBHOOK_URL or UPLOAD_POST_API_KEY)";
+    result.error = err instanceof Error ? err.message : "Missing required env (UPLOAD_POST_API_KEY)";
     return result;
   }
+
+  const reconciled = await reconcilePendingUploads(apiKey).catch((err) => {
+    log.error(err, { step: "reconcile-uploadpost" });
+    return { published: 0, failed: 0 };
+  });
+  result.published += reconciled.published;
+  result.failed += reconciled.failed;
+  if (due.length === 0) return result;
 
   for (const { workspaceId, postId } of due) {
     const claimed = await claimPost(workspaceId, postId, process.pid.toString());
@@ -108,7 +114,7 @@ async function tickOnce(): Promise<TickResult> {
       platforms: data.platforms,
     });
     try {
-      const n8nPayload = buildPublishPayload({
+      const publishPayload = buildPublishPayload({
         postId,
         userId: data.authorUid,
         uploadPostUsername,
@@ -134,12 +140,24 @@ async function tickOnce(): Promise<TickResult> {
         community: data.community,
         hashtags: Array.isArray(data.hashtags) ? data.hashtags.join(" ") : undefined,
       });
-      const res = await fetch(n8nUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(n8nPayload),
+      const uploadResult = await publishToUploadPost({
+        apiKey,
+        username: uploadPostUsername,
+        platforms: (publishPayload.platforms as string[]) ?? [],
+        caption: String(publishPayload.caption ?? ""),
+        captionsByPlatform: publishPayload.captionsByPlatform as Record<string, string> | undefined,
+        mediaUrls: (publishPayload.mediaUrls as string[]) ?? [],
+        mediaType: data.mediaType,
+        advancedByPlatform: publishPayload.advancedByPlatform as Record<string, Record<string, unknown>> | undefined,
+        firstComment: publishPayload.firstComment as string | undefined,
+        firstCommentByPlatform: publishPayload.firstCommentByPlatform as Record<string, string> | undefined,
+        document: data.document,
+        frameCoverUrl: data.frameCoverUrl,
+        customCoverUrl: data.customCoverUrl,
+        requestId: postId,
+        externalId: postId,
       });
-      if (res.ok) {
+      if (uploadResult.deliveryConfirmed) {
         await markPublished(workspaceId, postId);
         result.published++;
         void deliverWebhook(workspaceId, {
@@ -147,13 +165,25 @@ async function tickOnce(): Promise<TickResult> {
           workspaceId,
           data: { postId, authorUid: data.authorUid, platforms: data.platforms ?? [] },
         });
-      } else {
-        await markFailed(workspaceId, postId, `n8n ${res.status}`);
+      } else if (uploadResult.results) {
+        const failures = Object.entries(uploadResult.results)
+          .filter(([, platformResult]) => !platformResult.ok)
+          .map(([platform, platformResult]) => `${platform}: ${platformResult.error || "failed"}`);
+        await markFailed(workspaceId, postId, failures.join("; ") || "UploadPost did not confirm delivery");
         result.failed++;
         void deliverWebhook(workspaceId, {
           event: "post.failed",
           workspaceId,
-          data: { postId, reason: `n8n ${res.status}` },
+          data: { postId, reason: failures.join("; ") },
+        });
+      } else {
+        // UploadPost owns the async job now. Keep it publishing and persist
+        // the request id instead of lying that an HTTP acknowledgement means
+        // the social platform has the post.
+        await updatePost(workspaceId, postId, {
+          status: "publishing",
+          uploadPostRequestId: uploadResult.requestId,
+          uploadPostJobId: uploadResult.jobId,
         });
       }
     } catch (err) {
@@ -184,6 +214,48 @@ async function collectDuePosts(): Promise<Array<{ workspaceId: string; postId: s
     }
   }
   return out;
+}
+
+async function reconcilePendingUploads(apiKey: string): Promise<{ published: number; failed: number }> {
+  const totals = { published: 0, failed: 0 };
+  if (!adminDb) return totals;
+  const workspacesSnap = await adminDb.collection("workspaces").limit(50).get();
+  for (const workspace of workspacesSnap.docs) {
+    const pending = await listPosts(workspace.id, { status: ["publishing", "scheduled"], pageSize: 100 });
+    for (const post of pending.items) {
+      if (!post.uploadPostRequestId && !post.uploadPostJobId) continue;
+      try {
+        const status = await getUploadPostStatus({
+          apiKey,
+          requestId: post.uploadPostRequestId,
+          jobId: post.uploadPostJobId,
+          platforms: post.platforms,
+        });
+        if (!status.final) continue;
+        const succeeded = status.results ? Object.values(status.results).filter((entry) => entry.ok).length : 0;
+        const failures = status.results
+          ? Object.entries(status.results).filter(([, entry]) => !entry.ok)
+          : [];
+        if (status.status === "completed" && succeeded === post.platforms.length) {
+          await markPublished(workspace.id, post.id);
+          totals.published++;
+        } else {
+          const reason = failures.length
+            ? failures.map(([platform, entry]) => `${platform}: ${entry.error || "failed"}`).join("; ")
+            : `UploadPost job ended with status ${status.status}`;
+          await updatePost(workspace.id, post.id, {
+            status: succeeded > 0 ? "partially_published" : "failed",
+            publishedAt: succeeded > 0 ? new Date() : undefined,
+            failureReason: reason,
+          });
+          totals.failed++;
+        }
+      } catch (err) {
+        log.warn("UploadPost status reconciliation failed", { workspaceId: workspace.id, postId: post.id, err });
+      }
+    }
+  }
+  return totals;
 }
 
 async function resetStuckClaimsForAllWorkspaces(olderThanMs: number): Promise<number> {

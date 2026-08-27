@@ -27,6 +27,8 @@ describe("webhooks/delivery - deliverWebhook", () => {
     vi.doMock("@/lib/db/destinations", () => ({
       listDestinations: mockList,
       markDestinationDelivered: vi.fn(),
+      incrementConsecutiveFailures: vi.fn(),
+      resetConsecutiveFailures: vi.fn(),
       getDestinationSecret: vi.fn(),
     }));
     const { deliverWebhook: deliver } = await import("@/lib/webhooks/delivery");
@@ -48,6 +50,8 @@ describe("webhooks/delivery - deliverWebhook", () => {
         },
       ]),
       markDestinationDelivered: vi.fn(async () => undefined),
+      incrementConsecutiveFailures: vi.fn(async () => undefined),
+      resetConsecutiveFailures: vi.fn(async () => undefined),
       getDestinationSecret: vi.fn(async () => secret),
     }));
 
@@ -85,6 +89,8 @@ describe("webhooks/delivery - deliverWebhook", () => {
         },
       ]),
       markDestinationDelivered: vi.fn(),
+      incrementConsecutiveFailures: vi.fn(async () => undefined),
+      resetConsecutiveFailures: vi.fn(async () => undefined),
       getDestinationSecret: vi.fn(async () => secret),
     }));
 

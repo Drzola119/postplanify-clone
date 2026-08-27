@@ -53,6 +53,8 @@ export interface PostDoc {
   caption: string;
   platforms: PlatformId[];
   mediaUrls: string[];
+  /** Media kind sent to UploadPost (text/image/video or a composer mode). */
+  mediaType?: string;
   hashtags: string[];
   labels: string[];
   scheduledAt?: Date | string;
@@ -97,6 +99,9 @@ export interface PostDoc {
   workerId?: string;
   claimedAt?: Date;
   failureReason?: string;
+  /** UploadPost identifiers used to reconcile asynchronous/scheduled delivery. */
+  uploadPostRequestId?: string;
+  uploadPostJobId?: string;
   boostConfig?: BoostConfig;
   /**
    * Per-platform delivery results populated when a post is published via
@@ -108,7 +113,7 @@ export interface PostDoc {
   perPlatformResults?: Record<string, PerPlatformResult>;
   createdAt: Date;
   updatedAt: Date;
-  deletedAt?: Date;
+  deletedAt?: Date | null;
 }
 
 export interface PerPlatformResult {

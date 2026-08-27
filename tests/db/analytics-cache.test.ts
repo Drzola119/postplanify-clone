@@ -3,8 +3,8 @@ import { describe, it, expect, vi } from "vitest";
 const { CACHE_TTL_MS, invalidateAnalyticsCache } = await import("@/lib/db/analytics-cache");
 
 describe("analytics-cache", () => {
-  it("exports default 15-minute TTL", () => {
-    expect(CACHE_TTL_MS).toBe(1000 * 60 * 15);
+  it("exports the live one-minute TTL", () => {
+    expect(CACHE_TTL_MS).toBe(1000 * 60);
   });
 
   it("invalidateAnalyticsCache does not throw when adminDb is null", async () => {

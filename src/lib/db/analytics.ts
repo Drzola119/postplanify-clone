@@ -142,7 +142,12 @@ export async function getPlatformSeries(
       .collection("platforms")
       .doc(platform)
   );
-  const snapshots = await db.getAll(...refs);
+  // Firestore Admin exposes getAll, while lightweight test/emulator adapters
+  // may only expose DocumentReference.get(). Support both without changing
+  // the query semantics.
+  const snapshots = typeof (db as unknown as { getAll?: unknown }).getAll === "function"
+    ? await db.getAll(...refs)
+    : await Promise.all(refs.map((ref) => ref.get()));
   const docs: PlatformSeriesPoint[] = [];
   for (let i = 0; i < snapshots.length; i++) {
     const snap = snapshots[i];

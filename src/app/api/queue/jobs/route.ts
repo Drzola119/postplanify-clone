@@ -17,10 +17,10 @@ export async function GET(request: NextRequest) {
   ]);
 
   const health = getWorkerStatus();
-  let n8nConfigured = false;
+  let uploadPostConfigured = false;
   try {
-    resolvers.n8nWebhookUrl(new Headers());
-    n8nConfigured = true;
+    resolvers.uploadPostApiKey(new Headers());
+    uploadPostConfigured = true;
   } catch (err) {
     if (!(err instanceof MissingServerSecretError)) {
       // Surface as not-configured.
@@ -30,6 +30,6 @@ export async function GET(request: NextRequest) {
   return jsonOk({
     inflight: inflightResult.items,
     failed: failedResult.items,
-    health: { ...health, n8nConfigured, intervalMs: Number(process.env.WORKER_INTERVAL_MS ?? 30_000) },
+    health: { ...health, uploadPostConfigured, intervalMs: Number(process.env.WORKER_INTERVAL_MS ?? 30_000) },
   });
 }

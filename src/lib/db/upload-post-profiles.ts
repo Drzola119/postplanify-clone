@@ -24,6 +24,14 @@ export interface JwtUrlResponse {
   duration: number;
 }
 
+interface GenerateJwtResponse {
+  success?: boolean;
+  access_url?: string;
+  duration?: number;
+  message?: string;
+  raw?: string;
+}
+
 function workspaceRef(workspaceId: string) {
   if (!adminDb) throw new Error("adminDb not configured");
   return adminDb.doc(`workspaces/${workspaceId}`);
@@ -178,7 +186,9 @@ export async function generateConnectUrl(
 ): Promise<JwtUrlResponse> {
   const profile = await ensureProfile(workspaceId, apiKey);
 
-  async function requestJwt(username: string): Promise<{ ok: boolean; data: any; status: number }> {
+  async function requestJwt(
+    username: string
+  ): Promise<{ ok: boolean; data: GenerateJwtResponse; status: number }> {
     const body: Record<string, unknown> = {
       username,
       redirect_url: options.redirectUrl,
@@ -207,28 +217,35 @@ export async function generateConnectUrl(
     });
 
     const text = await res.text();
-    let data: any = null;
+    let data: GenerateJwtResponse = {};
     try {
       data = JSON.parse(text);
     } catch {
       data = { raw: text };
     }
-    return { ok: res.ok && data?.success && data?.access_url, data, status: res.status };
+    return { ok: Boolean(res.ok && data.success && data.access_url), data, status: res.status };
   }
 
   // Attempt 1: with profile.username
-  let firstAttempt = await requestJwt(profile.username);
+  const firstAttempt = await requestJwt(profile.username);
   if (firstAttempt.ok) {
-    return { url: firstAttempt.data.access_url, duration: firstAttempt.data.duration ?? 172800 };
+    return { url: firstAttempt.data.access_url!, duration: firstAttempt.data.duration ?? 172800 };
+  }
+
+  // Retry only the recoverable "profile not found" case. Retrying auth,
+  // validation, or rate-limit failures hides the useful upstream message and
+  // can multiply a single button click into several failing API calls.
+  if (firstAttempt.status !== 404) {
+    throw new Error(firstAttempt.data?.message || `upload-post generate-jwt failed (${firstAttempt.status})`);
   }
 
   // If 404 or profile not found, ensure remote profile is created on upload-post.com and retry
   try {
     await callUploadPost(apiKey, { method: "POST", body: { username: profile.username } });
   } catch {}
-  let secondAttempt = await requestJwt(profile.username);
+  const secondAttempt = await requestJwt(profile.username);
   if (secondAttempt.ok) {
-    return { url: secondAttempt.data.access_url, duration: secondAttempt.data.duration ?? 172800 };
+    return { url: secondAttempt.data.access_url!, duration: secondAttempt.data.duration ?? 172800 };
   }
 
   // Attempt 3: fallback to default username (e.g. trustiify_test)
@@ -236,9 +253,9 @@ export async function generateConnectUrl(
   try {
     await callUploadPost(apiKey, { method: "POST", body: { username: defaultUser } });
   } catch {}
-  let thirdAttempt = await requestJwt(defaultUser);
+  const thirdAttempt = await requestJwt(defaultUser);
   if (thirdAttempt.ok) {
-    return { url: thirdAttempt.data.access_url, duration: thirdAttempt.data.duration ?? 172800 };
+    return { url: thirdAttempt.data.access_url!, duration: thirdAttempt.data.duration ?? 172800 };
   }
 
   const msg =

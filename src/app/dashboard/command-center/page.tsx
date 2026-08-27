@@ -56,7 +56,7 @@ interface WorkerHealth {
   running: boolean;
   lastTickAt: string | null;
   lastResult: TickResult | null;
-  n8nConfigured: boolean;
+  uploadPostConfigured: boolean;
   intervalMs: number;
 }
 
@@ -211,8 +211,8 @@ export default function CommandCenterPage() {
             <div>
               <p className="text-sm font-semibold text-zinc-900">
                 {health?.running ? t("commandCenter.worker_running") : t("commandCenter.worker_idle")}
-                {!health?.n8nConfigured ? (
-                  <span className="ml-2 text-red-600">{t("commandCenter.n8n_not_configured")}</span>
+                {!health?.uploadPostConfigured ? (
+                  <span className="ml-2 text-red-600">{t("commandCenter.uploadpost_not_configured")}</span>
                 ) : null}
               </p>
               <p className="text-xs text-zinc-500">
@@ -242,7 +242,7 @@ export default function CommandCenterPage() {
             <button
               type="button"
               onClick={() => void forceRunTick()}
-              disabled={runningTick || !health?.n8nConfigured}
+              disabled={runningTick || !health?.uploadPostConfigured}
               className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-3 h-8 text-xs font-medium"
             >
               {runningTick ? (

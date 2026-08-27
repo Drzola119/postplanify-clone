@@ -170,9 +170,9 @@ export default function CreatePostPage() {
         if (!remote) { droppedLocal++; return; }
         const kind = m.kind ?? "image";
         const isVideo = kind === "video";
-        let durationSec = (m as unknown as { durationSec?: number }).durationSec;
+        const durationSec = (m as unknown as { durationSec?: number }).durationSec;
         let metadataLoaded = (m as unknown as { metadataLoaded?: boolean }).metadataLoaded;
-        let metadataError = (m as unknown as { metadataError?: string }).metadataError;
+        const metadataError = (m as unknown as { metadataError?: string }).metadataError;
         // Backwards compat: old drafts have no metadata fields
         if (isVideo) {
           if (durationSec != null) {
@@ -215,8 +215,8 @@ export default function CreatePostPage() {
         const restoredCarousel: CarouselItem[] = record.carouselItems.filter((c) => c.cdnUrl).map((c, i) => {
           const isVideo = c.kind === "video";
           let metadataLoaded = (c as unknown as { metadataLoaded?: boolean }).metadataLoaded;
-          let metadataError = (c as unknown as { metadataError?: string }).metadataError;
-          let durationSec = (c as unknown as { durationSec?: number }).durationSec;
+          const metadataError = (c as unknown as { metadataError?: string }).metadataError;
+          const durationSec = (c as unknown as { durationSec?: number }).durationSec;
           if (isVideo && durationSec != null) metadataLoaded = true;
           else if (isVideo && metadataLoaded == null && !metadataError) metadataLoaded = false;
           // File is synthetic for restored remote; size unknown
@@ -246,10 +246,9 @@ export default function CreatePostPage() {
       }
       if (record.trialReelFile?.cdnUrl) {
         const tr = record.trialReelFile as unknown as { cdnUrl: string; name: string; mimeType?: string; durationSec?: number; metadataLoaded?: boolean; metadataError?: string };
-        const isVideo = true;
         let metadataLoaded = tr.metadataLoaded;
-        let metadataError = tr.metadataError;
-        let durationSec = tr.durationSec;
+        const metadataError = tr.metadataError;
+        const durationSec = tr.durationSec;
         if (durationSec != null) metadataLoaded = true;
         else if (metadataLoaded == null && !metadataError) metadataLoaded = false;
         const fakeFile = new File([], tr.name ?? "trial-reel", { type: tr.mimeType ?? "video/mp4" });
@@ -1024,7 +1023,9 @@ export default function CreatePostPage() {
           tagUsers: tagUsersList.length > 0 ? tagUsersList : undefined,
           feedType,
           altTextByPlatform,
-          mediaType: composerMode,
+          // UploadPost selects a different endpoint for video vs photo/text.
+          // Sending "standard" here made normal videos look like photo posts.
+          mediaType: composerMode === "standard" ? composerMediaKind : composerMode,
           frameCoverUrl: frameCoverUrl ?? undefined,
           customCoverUrl: customCoverUrl ?? undefined,
           collaborators: collaborators.length > 0 ? collaborators : undefined,
@@ -1056,16 +1057,21 @@ export default function CreatePostPage() {
         });
         return;
       }
-      if (data.accepted && data.deliveryConfirmed === false) {
-        toast({
-          title: scheduledAt ? t("scheduleSuccess") : "Publishing Dispatched",
-          description: scheduledAt
-            ? scheduledAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
-            : `Post successfully queued and dispatched to ${platforms.length} social account${platforms.length > 1 ? "s" : ""}.`,
-          tone: "success",
-        });
-        if (draftId) { await deleteDraft(draftId, await withIdToken()); setDraftId(null); }
-        if (!scheduledAt) startOver();
+      if (data.accepted && data.deliveryConfirmed === false && (!data.results || Object.keys(data.results).length === 0)) {
+        if (scheduledAt) {
+          toast({
+            title: t("scheduleSuccess"),
+            description: scheduledAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }),
+            tone: "success",
+          });
+          if (draftId) { await deleteDraft(draftId, await withIdToken()); setDraftId(null); }
+        } else {
+          toast({
+            title: "Publishing is still processing",
+            description: "UploadPost accepted the media but has not confirmed delivery yet. Your composer was kept intact; check Publish History before retrying.",
+            tone: "warning",
+          });
+        }
         return;
       }
       // Handle per-platform results if present (partial publish)

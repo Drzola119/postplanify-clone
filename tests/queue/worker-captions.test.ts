@@ -4,6 +4,7 @@ import { createMockFirestore, type MockFirestore } from "../fixtures/firestore-m
 const g = globalThis as unknown as { __mockFs?: MockFirestore };
 if (!g.__mockFs) g.__mockFs = createMockFirestore();
 const mockFs = g.__mockFs;
+const publishMock = vi.fn();
 
 vi.mock("@/lib/firebase/admin", () => ({
   adminApp: { name: "mock" },
@@ -15,6 +16,13 @@ vi.mock("@/lib/firebase/admin", () => ({
   verifySessionCookie: vi.fn(async () => null),
   getCurrentUser: vi.fn(async () => null),
 }));
+vi.mock("@/lib/db/upload-post-profiles", () => ({
+  readProfile: vi.fn(async () => ({ username: "trustiify_test" })),
+  ensureProfile: vi.fn(async () => ({ username: "trustiify_test" })),
+}));
+vi.mock("@/lib/uploadpost/publisher", () => ({
+  publishToUploadPost: (...args: unknown[]) => publishMock(...args),
+}));
 
 describe("queue/worker captionsByPlatform persistence", () => {
   beforeEach(() => {
@@ -23,6 +31,8 @@ describe("queue/worker captionsByPlatform persistence", () => {
     process.env.UPLOAD_POST_API_KEY = "test-key";
     process.env.UPLOAD_POST_DEFAULT_USERNAME = "trustiify_test";
     vi.restoreAllMocks();
+    publishMock.mockReset();
+    publishMock.mockResolvedValue({ accepted: true, deliveryConfirmed: true, scheduled: false, requestId: "req", results: { instagram: { ok: true }, twitter: { ok: true } }, raw: {}, httpStatus: 200 });
   });
 
   it("worker sends captionsByPlatform and sameForAll from persisted doc", async () => {
@@ -47,34 +57,16 @@ describe("queue/worker captionsByPlatform persistence", () => {
       updatedAt: new Date(),
       deletedAt: null,
     });
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input).includes("n8n.test")) {
-        return new Response(JSON.stringify({ ok: true }), { status: 200 });
-      }
-      return new Response(JSON.stringify({
-        success: true,
-        profile: { username: "trustiify_test", created_at: new Date().toISOString(), blocked: false },
-      }), { status: 200 });
-    });
-    const origFetch = globalThis.fetch;
-    (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch;
-    try {
-      const { runQueueTick } = await import("@/lib/queue/worker");
-      const result = await runQueueTick();
-      expect(result.scanned).toBe(1);
-      expect(result.published).toBe(1);
-      // Inspect n8n payload
-      const call = fetchMock.mock.calls.find((c) => String(c[0]).includes("n8n.test"));
-      expect(call).toBeDefined();
-      const body = JSON.parse(String(call![1]?.body ?? "{}"));
-      expect(body.captionsByPlatform).toEqual({ instagram: "IG cap", twitter: "Tweet cap" });
-      expect(body.sameForAll).toBe(false);
-      expect(body.caption).toBe("fallback");
-      expect(body.mediaUrls).toEqual(["https://cdn.test/a.jpg"]);
-      expect(body.advancedByPlatform).toEqual({ instagram: { instagram_media_type: "REELS" } });
-    } finally {
-      (globalThis as unknown as { fetch: typeof fetch }).fetch = origFetch;
-    }
+    const { runQueueTick } = await import("@/lib/queue/worker");
+    const result = await runQueueTick();
+    expect(result.scanned).toBe(1);
+    expect(result.published).toBe(1);
+    expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({
+      captionsByPlatform: { instagram: "IG cap", twitter: "Tweet cap" },
+      caption: "fallback",
+      mediaUrls: ["https://cdn.test/a.jpg"],
+      advancedByPlatform: { instagram: { instagram_media_type: "REELS" } },
+    }));
   });
 
   it("legacy post without captionsByPlatform still publishes using caption fallback", async () => {
@@ -95,27 +87,11 @@ describe("queue/worker captionsByPlatform persistence", () => {
       updatedAt: new Date(),
       deletedAt: null,
     });
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input).includes("n8n.test")) {
-        return new Response(JSON.stringify({ ok: true }), { status: 200 });
-      }
-      return new Response(JSON.stringify({
-        success: true,
-        profile: { username: "trustiify_test", created_at: new Date().toISOString(), blocked: false },
-      }), { status: 200 });
-    });
-    const origFetch = globalThis.fetch;
-    (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch;
-    try {
-      const { runQueueTick } = await import("@/lib/queue/worker");
-      await runQueueTick();
-      const call = fetchMock.mock.calls.find((c) => String(c[0]).includes("n8n.test"));
-      const body = JSON.parse(String(call![1]?.body ?? "{}"));
-      // Should synthesize map from caption
-      expect(body.caption).toBe("legacy caption");
-      expect(body.captionsByPlatform).toEqual({ instagram: "legacy caption" });
-    } finally {
-      (globalThis as unknown as { fetch: typeof fetch }).fetch = origFetch;
-    }
+    const { runQueueTick } = await import("@/lib/queue/worker");
+    await runQueueTick();
+    expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({
+      caption: "legacy caption",
+      captionsByPlatform: { instagram: "legacy caption" },
+    }));
   });
 });

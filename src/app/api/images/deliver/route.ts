@@ -427,8 +427,15 @@ async function deliverVariantToPlatform(args: {
 
   // ── b) Build the upload-post.com multipart payload ────────────────────
   const form = new FormData();
+  // Required by every UploadPost upload endpoint. This was previously
+  // omitted, so the API could acknowledge the HTTP request while publishing
+  // to no profile at all.
+  form.append("user", username);
   form.append("platform[]", toEnginePlatform(platform));
   form.append("title", caption);
+  form.append("async_upload", "false");
+  form.append("request_id", `${jobId}:${platform}`);
+  form.append("external_id", jobId);
   if (firstComment) form.append("first_comment", firstComment);
   form.append(
     "photos[]",
@@ -452,7 +459,7 @@ async function deliverVariantToPlatform(args: {
     }
   }
 
-  const idempotencyKey = randomUUID();
+  const idempotencyKey = `${jobId}:${platform}`;
 
   // ── c) Retry loop ──────────────────────────────────────────────────────
   let lastError: UploadPostError | null = null;
@@ -502,7 +509,19 @@ async function deliverVariantToPlatform(args: {
         );
       }
 
-      if (res.ok) {
+      const parsedRecord = parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : null;
+      const explicitFailure = parsedRecord?.success === false || parsedRecord?.ok === false;
+      const platformResults = parsedRecord?.results && typeof parsedRecord.results === "object"
+        ? parsedRecord.results as Record<string, unknown>
+        : null;
+      const platformResult = platformResults?.[toEnginePlatform(platform)];
+      const platformFailure = platformResult && typeof platformResult === "object" && (
+        (platformResult as Record<string, unknown>).success === false ||
+        (platformResult as Record<string, unknown>).ok === false ||
+        (platformResult as Record<string, unknown>).skipped === true
+      );
+
+      if (res.ok && !explicitFailure && !platformFailure && platformResult) {
         const postId = extractPostId(parsed);
         const latencyMs = Date.now() - t0;
         log.info(`[api/images/deliver] delivered to ${platform}`, {
@@ -522,11 +541,14 @@ async function deliverVariantToPlatform(args: {
         };
       }
 
-      // Other non-2xx — record and maybe retry
+      // A 2xx without a per-platform result is only an acknowledgement (for
+      // example an async request_id), not proof that the social post exists.
       const msg =
-        (parsed && typeof parsed === "object" && "error" in parsed
-          ? String((parsed as Record<string, unknown>).error)
-          : null) || `HTTP ${res.status}`;
+        (platformResult && typeof platformResult === "object" && "error" in platformResult
+          ? String((platformResult as Record<string, unknown>).error)
+          : parsedRecord && "error" in parsedRecord
+            ? String(parsedRecord.error)
+            : null) || (res.ok ? "UploadPost accepted the request but did not confirm platform delivery" : `HTTP ${res.status}`);
       lastError = makeUploadPostError(msg, res.status, `http_${res.status}`);
 
       const retryable = res.status === 429 || res.status >= 500;

@@ -35,6 +35,7 @@ vi.mock("@/lib/queue/worker", () => ({
 vi.mock("@/lib/security/server-config", () => ({
   resolvers: {
     n8nWebhookUrl: () => mockN8nUrl,
+    uploadPostApiKey: () => "test-key",
   },
   MissingServerSecretError: class MissingServerSecretError extends Error {
     secret: string;
@@ -218,11 +219,11 @@ describe("GET /api/posts/scheduled", () => {
 });
 
 describe("GET /api/queue/health", () => {
-  it("returns worker status + n8nConfigured true", async () => {
+  it("returns worker status + uploadPostConfigured true", async () => {
     const res = await healthHandler();
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.n8nConfigured).toBe(true);
+    expect(body.uploadPostConfigured).toBe(true);
     expect(body.running).toBe(false);
     expect(body.lastTickAt).toBe("2026-01-01T00:00:00.000Z");
   });

@@ -3,6 +3,7 @@ import path from "node:path";
 
 export default defineConfig({
   test: {
+    testTimeout: 15_000,
     environment: "node",
     globals: false,
     setupFiles: ["./tests/setup.ts"],

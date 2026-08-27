@@ -45,24 +45,19 @@ export interface PostListItem {
   autoAddMusic?: boolean;
   profile?: string;
   failureReason?: string;
+  uploadPostRequestId?: string;
+  uploadPostJobId?: string;
 }
 
 export async function listPosts(workspaceId: string, filters: ListPostsFilters = {}): Promise<{ items: PostListItem[]; nextCursor: string | null }> {
   const coll = collection(workspaceId);
   const pageSize = Math.min(Math.max(filters.pageSize ?? 25, 1), 100);
 
-  let q = coll
-    .orderBy("createdAt", "desc")
-    .where("deletedAt", "==", null)
-    .limit(pageSize);
-  if (filters.status) {
-    if (Array.isArray(filters.status)) {
-      q = q.where("status", "in", filters.status);
-    } else {
-      q = q.where("status", "==", filters.status);
-    }
-  }
-  if (filters.platform) q = q.where("platforms", "array-contains", filters.platform);
+  // Keep this query on Firestore's automatic single-field index. Older posts
+  // do not have deletedAt, and `deletedAt == null` excludes missing fields.
+  // Combining it with status/platform also required undeployed composite
+  // indexes and made the production history/queue endpoints return 500.
+  let q = coll.orderBy("createdAt", "desc").limit(500);
   if (filters.cursor) {
     try {
       const cursorSnap = await coll.doc(filters.cursor).get();
@@ -73,8 +68,21 @@ export async function listPosts(workspaceId: string, filters: ListPostsFilters =
   }
 
   const snap = await q.get();
-  const items = snap.docs.map((d: { id: string; data: () => unknown }) => serialize(workspaceId, d.id, d.data() as PostDoc));
-  const nextCursor = items.length === pageSize ? items[items.length - 1].id : null;
+  const wantedStatuses = filters.status
+    ? new Set(Array.isArray(filters.status) ? filters.status : [filters.status])
+    : null;
+  const filtered = snap.docs.filter((d) => {
+    const data = d.data() as PostDoc;
+    if (data.deletedAt) return false;
+    if (wantedStatuses && !wantedStatuses.has(data.status)) return false;
+    if (filters.platform && !data.platforms?.includes(filters.platform)) return false;
+    const createdMs = Date.parse(toIso(data.createdAt));
+    if (filters.sinceDate && createdMs < filters.sinceDate.getTime()) return false;
+    if (filters.untilDate && createdMs > filters.untilDate.getTime()) return false;
+    return true;
+  });
+  const items = filtered.slice(0, pageSize).map((d) => serialize(workspaceId, d.id, d.data() as PostDoc));
+  const nextCursor = filtered.length > pageSize ? items[items.length - 1]?.id ?? null : null;
   return { items, nextCursor };
 }
 
@@ -93,29 +101,21 @@ export async function listPostsHistory(
   const coll = collection(workspaceId);
   const pageSize = Math.min(Math.max(filters.pageSize ?? 50, 1), 100);
 
-  // Order by publishedAt (when present) descending. For failed posts that
-  // never published, fall back to createdAt in the client filter below.
-  let q = coll
-    .where("deletedAt", "==", null)
-    .orderBy("publishedAt", "desc")
-    .limit(pageSize);
-  if (filters.status) {
-    q = q.where("status", "==", filters.status);
-  } else {
-    q = q.where("status", "in", ["published", "failed"]);
-  }
-  if (filters.platform) q = q.where("platforms", "array-contains", filters.platform);
-  if (filters.from) q = q.where("publishedAt", ">=", filters.from);
-
-  const snap = await q.get();
-  let items = snap.docs.map((d) => serialize(workspaceId, d.id, d.data() as PostDoc));
-  if (filters.to) {
-    const cutoff = filters.to.getTime();
-    items = items.filter((it) => {
-      const t = it.publishedAt ? Date.parse(it.publishedAt) : 0;
-      return t > 0 && t <= cutoff;
-    });
-  }
+  const snap = await coll.orderBy("createdAt", "desc").limit(500).get();
+  const items = snap.docs
+    .filter((d) => {
+      const data = d.data() as PostDoc;
+      if (data.deletedAt) return false;
+      if (filters.status ? data.status !== filters.status : !["published", "failed", "partially_published"].includes(data.status)) return false;
+      if (filters.platform && !data.platforms?.includes(filters.platform)) return false;
+      const eventMs = Date.parse(toIso(data.publishedAt || data.createdAt));
+      if (filters.from && eventMs < filters.from.getTime()) return false;
+      if (filters.to && eventMs > filters.to.getTime()) return false;
+      return true;
+    })
+    .sort((a, b) => Date.parse(toIso((b.data() as PostDoc).publishedAt || (b.data() as PostDoc).createdAt)) - Date.parse(toIso((a.data() as PostDoc).publishedAt || (a.data() as PostDoc).createdAt)))
+    .slice(0, pageSize)
+    .map((d) => serialize(workspaceId, d.id, d.data() as PostDoc));
   return { items };
 }
 
@@ -134,6 +134,7 @@ export async function createPost(workspaceId: string, authorUid: string, data: P
     caption: data.caption ?? "",
     platforms: data.platforms ?? [],
     mediaUrls: data.mediaUrls ?? [],
+    mediaType: data.mediaType,
     hashtags: data.hashtags ?? [],
     labels: data.labels ?? [],
     altText: data.altText ?? [],
@@ -158,6 +159,7 @@ export async function createPost(workspaceId: string, authorUid: string, data: P
     status: data.status ?? "draft",
     createdAt: now,
     updatedAt: now,
+    deletedAt: null,
   };
   await ref.set(payload);
   return ref.id;
@@ -211,6 +213,7 @@ export async function bulkCreatePosts(
       advancedByPlatform: item.advancedByPlatform,
       createdAt: now,
       updatedAt: now,
+      deletedAt: null,
     };
     batch.set(ref, payload);
   }
@@ -221,12 +224,17 @@ export async function bulkCreatePosts(
 export async function listScheduledDue(workspaceId: string, now: Date): Promise<PostListItem[]> {
   const coll = collection(workspaceId);
   const q = coll
-    .where("deletedAt", "==", null)
-    .where("status", "in", ["queued", "scheduled"])
     .where("scheduledAt", "<=", now)
-    .limit(50);
+    .limit(200);
   const snap = await q.get();
-  return snap.docs.map((d) => serialize(workspaceId, d.id, d.data() as PostDoc));
+  // Posts already accepted by UploadPost's own scheduler must never be sent a
+  // second time by our legacy local worker.
+  return snap.docs
+    .filter((d) => {
+      const data = d.data() as PostDoc;
+      return !data.deletedAt && !data.uploadPostJobId && ["queued", "scheduled"].includes(data.status);
+    })
+    .map((d) => serialize(workspaceId, d.id, d.data() as PostDoc));
 }
 
 export async function claimPost(workspaceId: string, postId: string, workerId: string): Promise<boolean> {
@@ -265,13 +273,13 @@ export async function resetStuckClaims(workspaceId: string, olderThanMs: number)
   const coll = collection(workspaceId);
   const threshold = new Date(Date.now() - olderThanMs);
   const q = coll
-    .where("deletedAt", "==", null)
-    .where("status", "==", "publishing")
     .where("claimedAt", "<=", threshold);
   const snap = await q.get();
   const batch = adminDb!.batch();
   let count = 0;
   for (const d of snap.docs) {
+    const data = d.data() as PostDoc;
+    if (data.deletedAt || data.status !== "publishing") continue;
     batch.update(d.ref, {
       status: "queued",
       workerId: null,
@@ -305,6 +313,8 @@ function serialize(workspaceId: string, id: string, data: PostDoc): PostListItem
     autoAddMusic: data.autoAddMusic,
     profile: data.profile,
     failureReason: data.failureReason,
+    uploadPostRequestId: data.uploadPostRequestId,
+    uploadPostJobId: data.uploadPostJobId,
     scheduledAt: data.scheduledAt ? toIso(data.scheduledAt) : undefined,
     publishedAt: data.publishedAt ? toIso(data.publishedAt) : undefined,
     createdAt: toIso(data.createdAt),
@@ -320,18 +330,15 @@ export async function countPublishedPosts(
 ): Promise<number> {
   if (!adminDb) return 0;
   try {
-    let q = adminDb
+    const q = adminDb
       .collection(`workspaces/${workspaceId}/posts`)
-      .where("deletedAt", "==", null)
-      .where("status", "==", "published")
       .where("publishedAt", ">=", from)
       .where("publishedAt", "<=", to);
-
-    if (platform) {
-      q = q.where("platforms", "array-contains", platform);
-    }
     const snap = await q.get();
-    return snap.size;
+    return snap.docs.filter((d) => {
+      const data = d.data() as PostDoc;
+      return !data.deletedAt && data.status === "published" && (!platform || data.platforms?.includes(platform));
+    }).length;
   } catch {
     return 0;
   }

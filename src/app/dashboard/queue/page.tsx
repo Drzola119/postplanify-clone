@@ -44,7 +44,7 @@ interface WorkerHealth {
   running: boolean;
   lastTickAt: string | null;
   lastResult: { scanned: number; published: number; failed: number; reaped: number; error?: string } | null;
-  n8nConfigured: boolean;
+  uploadPostConfigured: boolean;
   intervalMs: number;
 }
 
@@ -320,10 +320,10 @@ export default function PostingQueuePage() {
               · {health.lastResult.reaped} {t("queue.reaped")}
             </span>
           ) : null}
-          {!health.n8nConfigured ? (
+          {!health.uploadPostConfigured ? (
             <span className="inline-flex items-center gap-1 text-red-700">
               <AlertCircle className="size-3" />
-              {t("queue.n8n_warning")}
+              {t("queue.uploadpost_warning")}
             </span>
           ) : null}
         </div>

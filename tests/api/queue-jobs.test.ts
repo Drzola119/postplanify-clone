@@ -22,7 +22,7 @@ vi.mock("@/lib/queue/worker", () => ({
   runQueueTick: mockRunQueueTick,
 }));
 vi.mock("@/lib/security/server-config", () => ({
-  resolvers: { n8nWebhookUrl: () => "https://n8n.example.com/webhook" },
+  resolvers: { n8nWebhookUrl: () => "https://n8n.example.com/webhook", uploadPostApiKey: () => "test-key" },
   MissingServerSecretError: class MissingServerSecretError extends Error {
     secret: string;
     constructor(secret: string) {
@@ -66,7 +66,7 @@ describe("GET /api/queue/jobs", () => {
     expect(body.inflight).toHaveLength(1);
     expect(body.failed).toHaveLength(1);
     expect(body.health.running).toBe(true);
-    expect(body.health.n8nConfigured).toBe(true);
+    expect(body.health.uploadPostConfigured).toBe(true);
     expect(body.health.intervalMs).toBeDefined();
   });
 

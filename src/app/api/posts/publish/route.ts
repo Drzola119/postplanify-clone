@@ -6,8 +6,8 @@ import { MissingServerSecretError, resolvers } from "@/lib/security/server-confi
 import { createPost, updatePost } from "@/lib/db/posts";
 import { createLogger } from "@/lib/log";
 import { parseBody } from "@/lib/validation/helpers";
-import { buildPublishPayload } from "@/lib/publishing/payload";
 import { readProfile } from "@/lib/db/upload-post-profiles";
+import { publishToUploadPost } from "@/lib/uploadpost/publisher";
 
 const log = createLogger("posts/publish");
 
@@ -55,78 +55,14 @@ const publishPayloadSchema = z.object({
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-interface PublishPayload {
-  jobId?: string;
-  uploadPostUsername?: string;
-  platforms: string[];
-  caption: string;
-  hashtags?: string;
-  mediaUrls: string[];
-  scheduledAt?: string | null;
-  firstComment?: string;
-  firstCommentByPlatform?: Record<string, string>;
-  quoteTweetUrl?: string;
-  community?: string;
-  mediaType?: string;
-  tagUsers?: string | string[];
-  feedType?: "feed" | "story";
-  altTextByPlatform?: Record<string, string>;
-  carouselItems?: Array<{ url: string }>;
-  trialReel?: { url: string };
-  document?: { url: string; title: string; mimeType: string };
-  frameCoverUrl?: string;
-  customCoverUrl?: string;
-  collaborators?: string[];
-  /** Per-platform advanced options keyed by platform id. */
-  advancedByPlatform?: Record<string, Record<string, string | number | boolean | string[] | undefined>>;
-  /** Per-platform captions (with metadata rules applied). */
-  captionsByPlatform?: Record<string, string>;
-  /** True when the user used the same caption for all platforms. */
-  sameForAll?: boolean;
-}
-
-type NormalizedPlatformResult = { ok: boolean; error?: string };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-/**
- * Upload-Post/n8n integrations have used both `ok` and `success` over time.
- * Normalize either shape, but do not invent success when the upstream response
- * does not contain a platform-level result.
- */
-function normalizePlatformResults(value: unknown): Record<string, NormalizedPlatformResult> | undefined {
-  if (!isRecord(value) || !isRecord(value.results)) return undefined;
-  const normalized: Record<string, NormalizedPlatformResult> = {};
-  for (const [platform, raw] of Object.entries(value.results)) {
-    if (!isRecord(raw)) continue;
-    const ok = typeof raw.ok === "boolean"
-      ? raw.ok
-      : typeof raw.success === "boolean"
-        ? raw.success
-        : typeof raw.status === "string"
-          ? ["ok", "success", "published", "delivered"].includes(raw.status.toLowerCase())
-          : undefined;
-    if (typeof ok !== "boolean") continue;
-    const error = typeof raw.error === "string"
-      ? raw.error
-      : typeof raw.message === "string" && !ok
-        ? raw.message
-        : undefined;
-    normalized[platform] = error ? { ok, error } : { ok };
-  }
-  return Object.keys(normalized).length > 0 ? normalized : undefined;
-}
-
 export async function POST(request: Request) {
   const session = await requireSession();
   if (session instanceof Response) return session;
   const { uid, workspaceId } = session;
 
-  let n8nUrl: string;
+  let uploadPostApiKey: string;
   try {
-    n8nUrl = resolvers.n8nWebhookUrl(request.headers);
+    uploadPostApiKey = resolvers.uploadPostApiKey(request.headers);
   } catch (err) {
     if (err instanceof MissingServerSecretError) {
       return NextResponse.json(
@@ -198,7 +134,7 @@ export async function POST(request: Request) {
     postId = await createPost(workspaceId, uid, {
       caption: body.caption,
       platforms: body.platforms as never,
-      mediaUrls: body.mediaUrls,
+      mediaUrls: body.mediaUrls ?? [],
       hashtags: body.hashtags ? body.hashtags.split(/\s+/).filter(Boolean) : [],
       status: isScheduled ? "scheduled" : "queued",
       scheduledAt: isScheduled ? new Date(body.scheduledAt!) : undefined,
@@ -218,6 +154,7 @@ export async function POST(request: Request) {
       captionsByPlatform: body.captionsByPlatform,
       sameForAll: body.sameForAll,
       advancedByPlatform: body.advancedByPlatform as Record<string, Record<string, unknown>> | undefined,
+      mediaType: body.mediaType,
     });
   } catch (err) {
     // Firestore unavailable — fall back to stateless publish so the existing
@@ -226,92 +163,79 @@ export async function POST(request: Request) {
     postId = "";
   }
 
-  const payload = buildPublishPayload({
-    jobId,
-    postId,
-    userId: uid,
-    uploadPostUsername,
-    platforms: body.platforms,
-    caption: body.caption,
-    captionsByPlatform: body.captionsByPlatform,
-    sameForAll: body.sameForAll,
-    mediaUrls: body.mediaUrls ?? [],
-    scheduledAt: body.scheduledAt ?? null,
-    advancedByPlatform: (body.advancedByPlatform as Record<string, unknown>) ?? {},
-    firstComment: body.firstComment,
-    firstCommentByPlatform: body.firstCommentByPlatform,
-    quoteTweetUrl: body.quoteTweetUrl,
-    community: body.community,
-    tagUsers: body.tagUsers,
-    feedType: body.feedType,
-    altTextByPlatform: body.altTextByPlatform,
-    carouselItems: body.carouselItems,
-    trialReel: body.trialReel,
-    document: body.document,
-    frameCoverUrl: body.frameCoverUrl,
-    customCoverUrl: body.customCoverUrl,
-    collaborators: body.collaborators,
-    mediaType: body.mediaType,
-    hashtags: body.hashtags,
-  });
-
   try {
-    const res = await fetch(n8nUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+    const result = await publishToUploadPost({
+      apiKey: uploadPostApiKey,
+      username: uploadPostUsername,
+      platforms: body.platforms,
+      caption: body.caption,
+      captionsByPlatform: body.captionsByPlatform,
+      mediaUrls: body.mediaUrls ?? [],
+      mediaType: body.mediaType,
+      scheduledAt: body.scheduledAt,
+      advancedByPlatform: body.advancedByPlatform as Record<string, Record<string, unknown>> | undefined,
+      firstComment: body.firstComment,
+      firstCommentByPlatform: body.firstCommentByPlatform,
+      document: body.document,
+      frameCoverUrl: body.frameCoverUrl,
+      customCoverUrl: body.customCoverUrl,
+      requestId: jobId,
+      externalId: postId || jobId,
     });
-    const text = await res.text();
-    let parsed: unknown = text;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      parsed = { raw: text };
-    }
-    const upstreamRecord = isRecord(parsed) ? parsed : undefined;
-    const platformResults = normalizePlatformResults(upstreamRecord);
-    const explicitFailure = upstreamRecord?.ok === false || upstreamRecord?.success === false;
-    if (!res.ok) {
-      if (postId) {
-        await updatePost(workspaceId, postId, { status: "failed", failureReason: `n8n ${res.status}` }).catch(() => undefined);
+    const platformResults = result.results;
+    const succeeded = platformResults ? Object.values(platformResults).filter((entry) => entry.ok).length : 0;
+    const failed = platformResults ? Object.values(platformResults).filter((entry) => !entry.ok).length : 0;
+    if (postId) {
+      const patch: Record<string, unknown> = {
+        uploadPostRequestId: result.requestId,
+        uploadPostJobId: result.jobId,
+      };
+      if (platformResults) {
+        patch.perPlatformResults = Object.fromEntries(Object.entries(platformResults).map(([platform, entry]) => [platform, {
+          status: entry.ok ? "delivered" : "failed",
+          postId: entry.postId ?? null,
+          deliveredAt: entry.ok ? new Date().toISOString() : null,
+          error: entry.ok ? null : { message: entry.error || "UploadPost delivery failed" },
+        }]));
       }
-      return NextResponse.json(
-        { error: "n8n webhook failed", upstream: parsed, status: res.status, postId },
-        { status: 502 }
-      );
-    }
-
-    if (explicitFailure) {
-      if (postId) {
-        await updatePost(workspaceId, postId, {
-          status: "failed",
-          failureReason: typeof upstreamRecord?.error === "string" ? upstreamRecord.error : "n8n rejected the publish request",
-        }).catch(() => undefined);
+      if (result.deliveryConfirmed) {
+        patch.status = "published";
+        patch.publishedAt = new Date();
+      } else if (platformResults && failed > 0) {
+        patch.status = succeeded > 0 ? "partially_published" : "failed";
+        patch.failureReason = Object.entries(platformResults)
+          .filter(([, entry]) => !entry.ok)
+          .map(([platform, entry]) => `${platform}: ${entry.error || "failed"}`)
+          .join("; ");
+      } else {
+        patch.status = isScheduled || result.scheduled ? "scheduled" : "publishing";
       }
-      return NextResponse.json(
-        { error: "n8n rejected the publish request", upstream: parsed, postId },
-        { status: 502 }
-      );
+      await updatePost(workspaceId, postId, patch as never).catch((err) => log.warn("Failed to persist UploadPost result", { err, postId }));
     }
-
-    const deliveryConfirmed = Boolean(
-      platformResults &&
-      platformsArr.every((platform) => platformResults[platform]?.ok === true)
-    );
-    if (postId && !isScheduled && deliveryConfirmed) {
-      await updatePost(workspaceId, postId, { status: "published", publishedAt: new Date() }).catch(() => undefined);
+    if (platformResults && succeeded === 0 && failed > 0) {
+      return NextResponse.json({
+        error: "UploadPost rejected every platform",
+        accepted: false,
+        deliveryConfirmed: false,
+        jobId,
+        postId,
+        results: platformResults,
+      }, { status: 502 });
     }
     return NextResponse.json({
       ok: true,
-      accepted: true,
-      deliveryConfirmed,
+      accepted: result.accepted,
+      deliveryConfirmed: result.deliveryConfirmed,
+      scheduled: result.scheduled,
+      uploadPostRequestId: result.requestId,
+      uploadPostJobId: result.jobId,
       jobId,
       postId,
       results: platformResults,
-      result: parsed,
-    });
+      result: result.raw,
+    }, { status: result.deliveryConfirmed ? 200 : 202 });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Webhook call failed";
+    const msg = err instanceof Error ? err.message : "UploadPost call failed";
     if (postId) {
       await updatePost(workspaceId, postId, { status: "failed", failureReason: msg }).catch(() => undefined);
     }

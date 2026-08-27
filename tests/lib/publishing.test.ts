@@ -84,7 +84,9 @@ describe("lib/publishing/advanced-options", () => {
   it("segmented/select specs include at least one option", () => {
     for (const p of PLATFORMS) {
       for (const spec of FIELD_SPECS[p.id] ?? []) {
-        if (spec.kind === "segmented" || spec.kind === "select") {
+        // Destination-backed selects (for example Pinterest boards and
+        // Facebook pages) intentionally receive options from the API.
+        if ((spec.kind === "segmented" || spec.kind === "select") && spec.options !== undefined) {
           expect((spec.options ?? []).length).toBeGreaterThan(0);
         }
       }

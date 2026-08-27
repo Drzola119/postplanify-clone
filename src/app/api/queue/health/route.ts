@@ -10,11 +10,12 @@ export async function GET() {
   const session = await requireSession();
   if (session instanceof Response) return session;
 
-  // Confirm the worker has a valid n8n URL to call (it would silently fail otherwise).
-  let n8nConfigured = false;
+  // The worker publishes directly to UploadPost. n8n acknowledgements are
+  // intentionally not used as delivery proof anymore.
+  let uploadPostConfigured = false;
   try {
-    resolvers.n8nWebhookUrl(new Headers());
-    n8nConfigured = true;
+    resolvers.uploadPostApiKey(new Headers());
+    uploadPostConfigured = true;
   } catch (err) {
     if (!(err instanceof MissingServerSecretError)) {
       // Surface other errors as not-configured rather than 500-ing the dashboard.
@@ -24,7 +25,7 @@ export async function GET() {
   const status = getWorkerStatus();
   return NextResponse.json({
     ...status,
-    n8nConfigured,
+    uploadPostConfigured,
     intervalMs: Number(process.env.WORKER_INTERVAL_MS ?? 30_000),
   });
 }
