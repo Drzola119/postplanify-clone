@@ -127,8 +127,8 @@ export async function POST(request: Request) {
   const uploadPostUsername =
     body.uploadPostUsername?.trim() ||
     workspaceProfile?.username ||
-    process.env.UPLOAD_POST_DEFAULT_USERNAME ||
     workspaceId ||
+    process.env.UPLOAD_POST_DEFAULT_USERNAME ||
     "trustiify_test";
 
   const jobId = body.jobId ?? crypto.randomUUID();

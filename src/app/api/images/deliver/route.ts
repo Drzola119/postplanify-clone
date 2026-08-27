@@ -165,13 +165,18 @@ export async function POST(request: NextRequest) {
   // The workspace's upload-post.com profile username lives in the
   // social-accounts cache. Fall back to the env default if no cache yet.
   let uploadPostUsername =
-    process.env.UPLOAD_POST_DEFAULT_USERNAME || "trustiify_test";
+    workspaceId || process.env.UPLOAD_POST_DEFAULT_USERNAME || "trustiify_test";
   try {
-    const cache = await readCache(workspaceId);
-    const profileUser = cache?.profiles?.[0]?.username;
-    if (profileUser) uploadPostUsername = profileUser;
+    const workspaceProfile = await readProfile(workspaceId).catch(() => null);
+    if (workspaceProfile?.username) {
+      uploadPostUsername = workspaceProfile.username;
+    } else {
+      const cache = await readCache(workspaceId);
+      const profileUser = cache?.profiles?.[0]?.username;
+      if (profileUser) uploadPostUsername = profileUser;
+    }
   } catch (err) {
-    log.warn("[api/images/deliver] readCache failed; using env default username", { err });
+    log.warn("[api/images/deliver] readCache failed; using fallback username", { err });
   }
 
   // ── 2. Fetch the engine job + verify variants are complete ─────────────

@@ -268,6 +268,8 @@
     "posts": {
       "calendar": {
         "page_title": "Calendrier",
+        "search_placeholder": "Rechercher des publications…",
+        "search_label": "Rechercher des publications",
         "filter_text": "Publications texte",
         "filter_image": "Publications image",
         "filter_video": "Publications vidéo",
