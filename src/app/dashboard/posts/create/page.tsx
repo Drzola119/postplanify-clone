@@ -1044,12 +1044,25 @@ export default function CreatePostPage() {
         error?: string;
         results?: Record<string, { ok: boolean; error?: string }>;
         result?: unknown;
+        accepted?: boolean;
+        deliveryConfirmed?: boolean;
       };
       if (!res.ok || !data.ok) {
         toast({
           title: scheduledAt ? t("scheduleFailed") : t("publishFailed"),
           description: data.error ?? `HTTP ${res.status}`,
           tone: "error",
+        });
+        return;
+      }
+      // A webhook can accept a request and return HTTP 200 before its
+      // downstream platform calls finish. Do not claim the post was published
+      // unless the server received explicit platform-level success results.
+      if (data.accepted && data.deliveryConfirmed === false) {
+        toast({
+          title: "Publish request accepted",
+          description: "Delivery is not confirmed yet. The post was kept available so you can retry after checking the connected accounts.",
+          tone: "warning",
         });
         return;
       }
@@ -1087,23 +1100,13 @@ export default function CreatePostPage() {
           return;
         }
       }
-      // Fallback when n8n does not return per-platform results: treat as all-success
-      // Document limitation: n8n may not return granular results; we show generic success
+      // Never treat a body-less/aggregate webhook response as a published post.
+      // Without platform-level confirmation, keep the composer state retryable.
       toast({
-        title: scheduledAt ? t("scheduleSuccess") : t("publishSuccess"),
-        description: scheduledAt
-          ? scheduledAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
-          : t("jobSent", { id: data.jobId?.slice(0, 8) ?? "?" }),
-        tone: "success",
+        title: "Publish status unavailable",
+        description: "The automation accepted the request but did not return platform delivery results. The post was not marked published.",
+        tone: "warning",
       });
-      // Drafts are local-only scratch — drop the one we just published so
-      // the Drafts page doesn't keep showing it after the user has moved on.
-      if (draftId) {
-        const removedId = draftId;
-        await deleteDraft(removedId, await withIdToken());
-        setDraftId(null);
-      }
-      if (!scheduledAt) startOver();
     } catch (err) {
       toast({
           title: scheduledAt ? t("scheduleFailed") : t("publishFailed"),

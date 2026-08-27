@@ -134,4 +134,50 @@ describe("POST /api/posts/publish caption validation", () => {
     const res = await POST(req as never);
     expect(res.status).toBe(200);
   });
+
+  it("does not mark a post published when n8n returns an empty acknowledgement", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, text: async () => "" } as unknown as Response);
+    const { POST } = await import("@/app/api/posts/publish/route");
+    const req = new Request("http://localhost/api/posts/publish", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        platforms: ["instagram"],
+        caption: "Keep this retryable",
+        captionsByPlatform: { instagram: "Keep this retryable" },
+        sameForAll: true,
+        mediaUrls: ["https://cdn.test/a.jpg"],
+      }),
+    });
+    const res = await POST(req as never);
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.deliveryConfirmed).toBe(false);
+    expect(mockUpdatePost).not.toHaveBeenCalledWith("ws1", "new-post-id", expect.objectContaining({ status: "published" }));
+  });
+
+  it("accepts Upload-Post success results as explicit delivery confirmation", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ success: true, results: { instagram: { success: true, url: "https://instagram.test/p/1" } } }),
+    } as unknown as Response);
+    const { POST } = await import("@/app/api/posts/publish/route");
+    const req = new Request("http://localhost/api/posts/publish", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        platforms: ["instagram"],
+        caption: "Confirmed delivery",
+        captionsByPlatform: { instagram: "Confirmed delivery" },
+        sameForAll: true,
+        mediaUrls: ["https://cdn.test/a.jpg"],
+      }),
+    });
+    const res = await POST(req as never);
+    const body = await res.json();
+    expect(body.deliveryConfirmed).toBe(true);
+    expect(body.results).toEqual({ instagram: { ok: true } });
+    expect(mockUpdatePost).toHaveBeenCalledWith("ws1", "new-post-id", expect.objectContaining({ status: "published" }));
+  });
 });

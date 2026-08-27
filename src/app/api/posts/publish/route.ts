@@ -84,6 +84,40 @@ interface PublishPayload {
   sameForAll?: boolean;
 }
 
+type NormalizedPlatformResult = { ok: boolean; error?: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/**
+ * Upload-Post/n8n integrations have used both `ok` and `success` over time.
+ * Normalize either shape, but do not invent success when the upstream response
+ * does not contain a platform-level result.
+ */
+function normalizePlatformResults(value: unknown): Record<string, NormalizedPlatformResult> | undefined {
+  if (!isRecord(value) || !isRecord(value.results)) return undefined;
+  const normalized: Record<string, NormalizedPlatformResult> = {};
+  for (const [platform, raw] of Object.entries(value.results)) {
+    if (!isRecord(raw)) continue;
+    const ok = typeof raw.ok === "boolean"
+      ? raw.ok
+      : typeof raw.success === "boolean"
+        ? raw.success
+        : typeof raw.status === "string"
+          ? ["ok", "success", "published", "delivered"].includes(raw.status.toLowerCase())
+          : undefined;
+    if (typeof ok !== "boolean") continue;
+    const error = typeof raw.error === "string"
+      ? raw.error
+      : typeof raw.message === "string" && !ok
+        ? raw.message
+        : undefined;
+    normalized[platform] = error ? { ok, error } : { ok };
+  }
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
 export async function POST(request: Request) {
   const session = await requireSession();
   if (session instanceof Response) return session;
@@ -230,6 +264,9 @@ export async function POST(request: Request) {
     } catch {
       parsed = { raw: text };
     }
+    const upstreamRecord = isRecord(parsed) ? parsed : undefined;
+    const platformResults = normalizePlatformResults(upstreamRecord);
+    const explicitFailure = upstreamRecord?.ok === false || upstreamRecord?.success === false;
     if (!res.ok) {
       if (postId) {
         await updatePost(workspaceId, postId, { status: "failed", failureReason: `n8n ${res.status}` }).catch(() => undefined);
@@ -239,10 +276,36 @@ export async function POST(request: Request) {
         { status: 502 }
       );
     }
-    if (postId && !isScheduled) {
+
+    if (explicitFailure) {
+      if (postId) {
+        await updatePost(workspaceId, postId, {
+          status: "failed",
+          failureReason: typeof upstreamRecord?.error === "string" ? upstreamRecord.error : "n8n rejected the publish request",
+        }).catch(() => undefined);
+      }
+      return NextResponse.json(
+        { error: "n8n rejected the publish request", upstream: parsed, postId },
+        { status: 502 }
+      );
+    }
+
+    const deliveryConfirmed = Boolean(
+      platformResults &&
+      platformsArr.every((platform) => platformResults[platform]?.ok === true)
+    );
+    if (postId && !isScheduled && deliveryConfirmed) {
       await updatePost(workspaceId, postId, { status: "published", publishedAt: new Date() }).catch(() => undefined);
     }
-    return NextResponse.json({ ok: true, jobId, postId, result: parsed });
+    return NextResponse.json({
+      ok: true,
+      accepted: true,
+      deliveryConfirmed,
+      jobId,
+      postId,
+      results: platformResults,
+      result: parsed,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Webhook call failed";
     if (postId) {
