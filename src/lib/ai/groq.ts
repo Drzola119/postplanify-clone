@@ -2,12 +2,13 @@ import "server-only";
 import type { PlatformId } from "@/lib/db/schema";
 
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_MODELS_ENDPOINT = "https://api.groq.com/openai/v1/models";
 
-// Keep these IDs aligned with Groq's active production/preview catalog.
+// Default preferred models (auto-resolved dynamically if decommissioned)
 export const GROQ_TEXT_MODEL = "llama-3.3-70b-versatile";
 export const GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
-export const GROQ_FALLBACK_TEXT_MODEL = "llama-3.3-70b-versatile";
-export const GROQ_FALLBACK_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+export const GROQ_FALLBACK_TEXT_MODEL = "llama-3.1-8b-instant";
+export const GROQ_FALLBACK_VISION_MODEL = "llama-3.2-11b-vision-preview";
 
 export type GroqMessage =
   | { role: "system" | "user" | "assistant"; content: string }
@@ -47,43 +48,145 @@ export class GroqError extends Error {
   }
 }
 
+let cachedModels: { ids: string[]; timestamp: number } | null = null;
+
+/**
+ * Fetch available model IDs for the given Groq API key (cached for 10 minutes).
+ */
+export async function getAvailableGroqModels(apiKey: string): Promise<string[]> {
+  const now = Date.now();
+  if (cachedModels && now - cachedModels.timestamp < 10 * 60 * 1000) {
+    return cachedModels.ids;
+  }
+  try {
+    const res = await fetch(GROQ_MODELS_ENDPOINT, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+    if (!res.ok) return [];
+    const data = (await res.json().catch(() => ({}))) as { data?: { id: string }[] };
+    const ids = (data.data || []).map((m) => m.id);
+    if (ids.length > 0) {
+      cachedModels = { ids, timestamp: now };
+    }
+    return ids;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Dynamically resolves an active model from the user's available Groq models.
+ */
+export async function resolveGroqModel(
+  apiKey: string,
+  preferred: string,
+  kind: "text" | "vision" = "text"
+): Promise<string> {
+  const available = await getAvailableGroqModels(apiKey);
+  if (available.length === 0) return preferred;
+  if (available.includes(preferred)) return preferred;
+
+  if (kind === "vision") {
+    const visionCandidate = available.find(
+      (id) =>
+        id.includes("scout") ||
+        id.includes("vision") ||
+        id.includes("vl") ||
+        id.includes("qwen")
+    );
+    if (visionCandidate) return visionCandidate;
+  }
+
+  const textPreferences = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-70b-versatile",
+    "llama3-70b-8192",
+    "llama-3.1-8b-instant",
+    "llama3-8b-8192",
+    "mixtral-8x7b-32768",
+    "gemma2-9b-it",
+  ];
+
+  for (const cand of textPreferences) {
+    if (available.includes(cand)) return cand;
+  }
+
+  const chatModel = available.find(
+    (id) =>
+      !id.includes("whisper") &&
+      !id.includes("embed") &&
+      !id.includes("guard")
+  );
+  return chatModel || available[0] || preferred;
+}
+
 export async function callGroq(opts: GroqOptions): Promise<GroqResult> {
-  const body: Record<string, unknown> = {
-    model: opts.model,
-    messages: opts.messages,
-    temperature: opts.temperature ?? 0.7,
-    max_tokens: opts.maxTokens ?? 600,
-    top_p: opts.topP ?? 0.95,
-    stream: false,
+  const sendRequest = async (modelToUse: string) => {
+    const body: Record<string, unknown> = {
+      model: modelToUse,
+      messages: opts.messages,
+      temperature: opts.temperature ?? 0.7,
+      max_tokens: opts.maxTokens ?? 600,
+      top_p: opts.topP ?? 0.95,
+      stream: false,
+    };
+    if (opts.jsonMode) body.response_format = { type: "json_object" };
+    if (
+      opts.reasoningEffort &&
+      opts.reasoningEffort !== "none" &&
+      opts.reasoningEffort !== "default"
+    ) {
+      body.reasoning_effort = opts.reasoningEffort;
+    }
+
+    const res = await fetch(GROQ_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${opts.apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const data = (await res.json().catch(() => ({}))) as {
+      choices?: { message?: { content?: string } }[];
+      error?: { message?: string };
+    };
+
+    if (!res.ok) {
+      const msg = data?.error?.message ?? `Groq API error ${res.status}`;
+      throw new GroqError(msg, res.status, data);
+    }
+
+    const content = stripReasoning(data.choices?.[0]?.message?.content ?? "");
+    if (!content) {
+      throw new GroqError("Empty completion from Groq", 502, data);
+    }
+
+    return { content, model: modelToUse, raw: data };
   };
-  if (opts.jsonMode) body.response_format = { type: "json_object" };
-  if (opts.reasoningEffort && opts.reasoningEffort !== "none" && opts.reasoningEffort !== "default") body.reasoning_effort = opts.reasoningEffort;
 
-  const res = await fetch(GROQ_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${opts.apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  const data = (await res.json().catch(() => ({}))) as {
-    choices?: { message?: { content?: string } }[];
-    error?: { message?: string };
-  };
-
-  if (!res.ok) {
-    const msg = data?.error?.message ?? `Groq API error ${res.status}`;
-    throw new GroqError(msg, res.status, data);
+  try {
+    return await sendRequest(opts.model);
+  } catch (err) {
+    // If model not found or decommissioned, dynamically find an active one
+    if (err instanceof GroqError && (err.status === 400 || err.status === 404)) {
+      try {
+        const isVision = opts.messages.some(
+          (m) => typeof m.content !== "string" && Array.isArray(m.content) && m.content.some((c) => c.type === "image_url")
+        );
+        const resolved = await resolveGroqModel(opts.apiKey, opts.model, isVision ? "vision" : "text");
+        if (resolved && resolved !== opts.model) {
+          return await sendRequest(resolved);
+        }
+      } catch {
+        // Fall back to rethrowing original error
+      }
+    }
+    throw err;
   }
-
-  const content = stripReasoning(data.choices?.[0]?.message?.content ?? "");
-  if (!content) {
-    throw new GroqError("Empty completion from Groq", 502, data);
-  }
-
-  return { content, model: opts.model, raw: data };
 }
 
 /** Remove hidden reasoning that some reasoning-capable models may emit. */
@@ -120,26 +223,16 @@ export function extractJson<T = unknown>(text: string): T | null {
 }
 
 /**
- * Context for AI-generated auto-replies. The campaign template is the
- * voice anchor; the AI can rephrase and personalize around it without
- * going off-script.
+ * Context for AI-generated auto-replies.
  */
 export interface InboxReplyContext {
-  /** Workspace id (for logging, not used for personalization). */
   workspaceId: string;
-  /** Platform id ("twitter" / "instagram" / etc). */
   platform: PlatformId;
-  /** Author handle of the inbound message author. */
   authorHandle: string;
-  /** Author display name if known. */
   authorName?: string;
-  /** Inbound message body. */
   body: string;
-  /** Campaign that triggered the reply. */
   campaignName: string;
-  /** Static template configured on the campaign. AI personalizes around this. */
   template: string;
-  /** Workspace locale (BCP-47 like "en-US", "fr-FR"). Optional — falls back to English. */
   locale?: string;
 }
 
@@ -153,13 +246,11 @@ Rules:
 - Reply in the same language as the inbound message (unless locale dictates otherwise).`;
 
 /**
- * Generate a personalized auto-reply via Groq. Falls back to the raw
- * template on API failure so we still send *something* — better than
- * dropping the reply.
+ * Generate a personalized auto-reply via Groq.
  */
 export async function generateInboxReply(
   ctx: InboxReplyContext,
-  apiKey: string,
+  apiKey: string
 ): Promise<string> {
   const userPrompt = [
     `Campaign: ${ctx.campaignName}`,
