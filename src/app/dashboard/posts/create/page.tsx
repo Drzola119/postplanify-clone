@@ -609,7 +609,7 @@ export default function CreatePostPage() {
       : composerMode === "trial_reel"
       ? "video"
       : composerMode === "document"
-      ? "image"
+      ? "text"
       : mediaItems.length === 0
       ? "text"
       : mediaItems.every((m) => m.kind === "image")
@@ -647,11 +647,7 @@ export default function CreatePostPage() {
               metadataError: trialReelFile.metadataError,
             }]
           : composerMode === "document" && documentFile
-          ? [{
-              kind: "image" as const,
-              mimeType: documentFile.file.type || "application/pdf",
-              sizeBytes: documentFile.file.size,
-            }]
+          ? []
           : mediaItems.map((m) => ({
               kind: m.kind,
               mimeType: m.mimeType,
@@ -660,7 +656,7 @@ export default function CreatePostPage() {
               metadataLoaded: m.metadataLoaded,
             }));
 
-      return checkRequirements(Array.from(selected), {
+      const report = checkRequirements(Array.from(selected), {
         captionByPlatform: Object.fromEntries(
           Array.from(selected).map((p) => [p, captionFor(p)])
         ) as Record<PlatformId, string>,
@@ -668,9 +664,45 @@ export default function CreatePostPage() {
         advancedByPlatform,
         composerMediaKind,
       });
+
+      if (composerMode === "document") {
+        for (const p of report.perPlatform) {
+          if (p.platform === "linkedin") {
+            if (!documentFile) {
+              p.issues.unshift({
+                code: "missing_document",
+                severity: "blocked",
+                message: "Upload a document (PDF, DOC, PPT) for LinkedIn.",
+                actionLabel: "Upload document",
+              });
+            } else if (!documentTitle.trim()) {
+              p.issues.unshift({
+                code: "missing_document_title",
+                severity: "blocked",
+                message: "Document title is required for LinkedIn.",
+                actionLabel: "Enter title",
+              });
+            }
+            const hasBlock = p.issues.some((i) => i.severity === "blocked");
+            const hasWarn = p.issues.some((i) => i.severity === "warning");
+            p.severity = hasBlock ? "blocked" : hasWarn ? "warning" : "ready";
+            p.summary = hasBlock
+              ? (p.issues.find((i) => i.severity === "blocked")?.message ?? "Has issues.")
+              : hasWarn
+              ? (p.issues.find((i) => i.severity === "warning")?.message ?? "Has warnings.")
+              : "Ready to publish to LinkedIn.";
+          }
+        }
+        report.blockedCount = report.perPlatform.filter((p) => p.severity === "blocked").length;
+        report.warningCount = report.perPlatform.filter((p) => p.severity === "warning").length;
+        report.readyCount = report.perPlatform.filter((p) => p.severity === "ready").length;
+        report.overall = report.blockedCount > 0 ? "blocked" : report.warningCount > 0 ? "warning" : "ready";
+      }
+
+      return report;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [captions, sameForAll, mediaItems, carouselItems, trialReelFile, documentFile, advancedByPlatform, selected, composerMediaKind, composerMode]
+    [captions, sameForAll, mediaItems, carouselItems, trialReelFile, documentFile, documentTitle, advancedByPlatform, selected, composerMediaKind, composerMode]
   );
 
   function toggleAccount(id: PlatformId) {
