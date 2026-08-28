@@ -5,9 +5,9 @@ const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 
 // Keep these IDs aligned with Groq's active production/preview catalog.
 export const GROQ_TEXT_MODEL = "llama-3.3-70b-versatile";
-export const GROQ_VISION_MODEL = "llama-3.2-11b-vision-preview";
-export const GROQ_FALLBACK_TEXT_MODEL = "llama3-70b-8192";
-export const GROQ_FALLBACK_VISION_MODEL = "llama-3.2-90b-vision-preview";
+export const GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+export const GROQ_FALLBACK_TEXT_MODEL = "llama-3.3-70b-versatile";
+export const GROQ_FALLBACK_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
 
 export type GroqMessage =
   | { role: "system" | "user" | "assistant"; content: string }

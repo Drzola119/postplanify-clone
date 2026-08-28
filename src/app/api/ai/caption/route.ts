@@ -180,15 +180,23 @@ export async function POST(request: Request) {
         topP: 0.95,
       });
     } catch (primaryErr) {
-      const fallbackModel = useVision ? GROQ_FALLBACK_VISION_MODEL : GROQ_FALLBACK_TEXT_MODEL;
-      result = await callGroq({
-        apiKey,
-        model: fallbackModel,
-        messages,
-        temperature: 0.8,
-        maxTokens: 600,
-        topP: 0.95,
-      });
+      if (useVision) {
+        // Fall back to text copywriting model so generation never fails
+        const textMessages: GroqMessage[] = [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt.slice(0, MAX_PROMPT_LEN) },
+        ];
+        result = await callGroq({
+          apiKey,
+          model: GROQ_TEXT_MODEL,
+          messages: textMessages,
+          temperature: 0.8,
+          maxTokens: 600,
+          topP: 0.95,
+        });
+      } else {
+        throw primaryErr;
+      }
     }
 
     const caption = result.content.trim();
