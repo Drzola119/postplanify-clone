@@ -1874,12 +1874,16 @@ export default function CreatePostPage() {
       if (!res.ok || !data.ok || !data.url) {
         throw new Error(data.error ?? `HTTP ${res.status}`);
       }
-      setTrialReelFile({
-        ...item,
-        cdnUrl: data.url,
-        uploadStatus: "ready",
-        uploadProgress: 100,
-      });
+      setTrialReelFile((prev) =>
+        prev
+          ? {
+              ...prev,
+              cdnUrl: data.url,
+              uploadStatus: "ready",
+              uploadProgress: 100,
+            }
+          : null
+      );
     } catch (err) {
       clearInterval(progressInterval);
       setTrialReelFile((prev) => (prev ? { ...prev, uploadStatus: "error" } : null));
@@ -3055,17 +3059,22 @@ function probeVideoDuration(url: string, cb: (durationSec?: number, error?: stri
   const video = document.createElement("video");
   video.preload = "metadata";
   video.muted = true;
-  // Some browsers require playsInline for metadata without autoplay
   (video as unknown as Record<string, unknown>).playsInline = true;
+  let finished = false;
+
   const cleanup = () => {
+    if (finished) return;
+    finished = true;
     video.removeEventListener("loadedmetadata", onLoaded);
     video.removeEventListener("error", onError);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (video as any).src = "";
-    video.remove();
+    clearTimeout(fallbackTimer);
+    try {
+      (video as any).src = "";
+      video.remove();
+    } catch {}
   };
   const onLoaded = () => {
-    const dur = isFinite(video.duration) ? video.duration : undefined;
+    const dur = isFinite(video.duration) && video.duration > 0 ? video.duration : undefined;
     cleanup();
     cb(dur, undefined);
   };
@@ -3073,9 +3082,24 @@ function probeVideoDuration(url: string, cb: (durationSec?: number, error?: stri
     cleanup();
     cb(undefined, "metadata_failed");
   };
+
+  const fallbackTimer = setTimeout(() => {
+    if (finished) return;
+    if (isFinite(video.duration) && video.duration > 0) {
+      onLoaded();
+    } else {
+      cleanup();
+      cb(undefined, "metadata_timeout");
+    }
+  }, 4000);
+
   video.addEventListener("loadedmetadata", onLoaded);
   video.addEventListener("error", onError);
   video.src = url;
+
+  if (video.readyState >= 1 && isFinite(video.duration) && video.duration > 0) {
+    onLoaded();
+  }
 }
 
 function sleep(ms: number): Promise<void> {
