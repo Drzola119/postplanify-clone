@@ -675,6 +675,13 @@ export default function CreatePostPage() {
                 message: "Upload a document (PDF, DOC, PPT) for LinkedIn.",
                 actionLabel: "Upload document",
               });
+            } else if (documentFile.pageCount && documentFile.pageCount > 300) {
+              p.issues.unshift({
+                code: "document_too_many_pages",
+                severity: "blocked",
+                message: `Document has ~${documentFile.pageCount} pages. LinkedIn enforces a maximum of 300 pages.`,
+                actionLabel: "Split document",
+              });
             } else if (!documentTitle.trim()) {
               p.issues.unshift({
                 code: "missing_document_title",
@@ -1922,9 +1929,10 @@ export default function CreatePostPage() {
     }
   }
 
-  async function handleDocumentFile(file: File) {
+  async function handleDocumentFile(file: File, pageCount?: number | null) {
     const item: DocumentFile = {
       file,
+      pageCount,
       uploadStatus: "uploading",
       uploadProgress: 0,
     };
@@ -1961,12 +1969,16 @@ export default function CreatePostPage() {
       if (!res.ok || !data.ok || !data.url) {
         throw new Error(data.error ?? `HTTP ${res.status}`);
       }
-      setDocumentFile({
-        ...item,
-        cdnUrl: data.url,
-        uploadStatus: "ready",
-        uploadProgress: 100,
-      });
+      setDocumentFile((prev) =>
+        prev
+          ? {
+              ...prev,
+              cdnUrl: data.url,
+              uploadStatus: "ready",
+              uploadProgress: 100,
+            }
+          : null
+      );
     } catch (err) {
       clearInterval(progressInterval);
       setDocumentFile((prev) => (prev ? { ...prev, uploadStatus: "error" } : null));

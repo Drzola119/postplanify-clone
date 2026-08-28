@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { Upload, X, FileText, AlertCircle } from "lucide-react";
+import { Upload, X, FileText, AlertCircle, Info, ChevronDown, ChevronUp, BookOpen, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StepCircle } from "@/components/dashboard/step-circle";
 
@@ -15,7 +15,8 @@ const ACCEPTED_TYPES: Record<string, string[]> = {
 };
 
 const ACCEPTED_EXTENSIONS = Object.values(ACCEPTED_TYPES).flat();
-const MAX_SIZE = 50 * 1024 * 1024; // 50 MB
+const MAX_SIZE = 100 * 1024 * 1024; // 100 MB (LinkedIn official maximum)
+const MAX_PAGES = 300; // LinkedIn official hard limit
 
 function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -30,8 +31,27 @@ function getFileIcon(type: string) {
   return "📃";
 }
 
+async function detectPdfPages(file: File): Promise<number | null> {
+  if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+    return null;
+  }
+  try {
+    const chunk = file.slice(0, Math.min(file.size, 10 * 1024 * 1024));
+    const buffer = await chunk.arrayBuffer();
+    const text = new TextDecoder("latin1").decode(buffer);
+    const pageMatches = text.match(/\/Type\s*\/Page\b/g);
+    if (pageMatches && pageMatches.length > 0) return pageMatches.length;
+    const countMatch = text.match(/\/Count\s+(\d+)/);
+    if (countMatch && countMatch[1]) return parseInt(countMatch[1], 10);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export interface DocumentFile {
   file: File;
+  pageCount?: number | null;
   cdnUrl?: string;
   uploadStatus: "pending" | "uploading" | "ready" | "error";
   uploadProgress?: number;
@@ -40,7 +60,7 @@ export interface DocumentFile {
 interface DocumentUploadCardProps {
   docFile: DocumentFile | null;
   docTitle: string;
-  onDocFile: (file: File) => void;
+  onDocFile: (file: File, pageCount?: number | null) => void;
   onRemoveDoc: () => void;
   onTitleChange: (title: string) => void;
 }
@@ -54,11 +74,14 @@ export function DocumentUploadCard({
 }: DocumentUploadCardProps) {
   const [draggingOver, setDraggingOver] = useState(false);
   const [sizeError, setSizeError] = useState<string | null>(null);
+  const [pageWarning, setPageWarning] = useState<string | null>(null);
+  const [showGuidelines, setShowGuidelines] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFiles = useCallback(
-    (files: File[]) => {
+    async (files: File[]) => {
       setSizeError(null);
+      setPageWarning(null);
       const file = files[0];
       if (!file) return;
       const ext = "." + file.name.split(".").pop()?.toLowerCase();
@@ -67,10 +90,17 @@ export function DocumentUploadCard({
         return;
       }
       if (file.size > MAX_SIZE) {
-        setSizeError("File too large. Maximum size is 50 MB.");
+        setSizeError("File exceeds LinkedIn's 100 MB limit. Please compress or optimize your document.");
         return;
       }
-      onDocFile(file);
+
+      const detectedPages = await detectPdfPages(file);
+      if (detectedPages && detectedPages > MAX_PAGES) {
+        setPageWarning(
+          `Your document has ~${detectedPages} pages. LinkedIn rejects documents exceeding ${MAX_PAGES} pages. Please split your document into chapters or upload a sample preview.`
+        );
+      }
+      onDocFile(file, detectedPages);
     },
     [onDocFile]
   );
@@ -96,6 +126,15 @@ export function DocumentUploadCard({
               <FileText className="size-3" /> Document · LinkedIn Only
             </span>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowGuidelines((prev) => !prev)}
+            className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+          >
+            <Info className="size-3.5" />
+            <span>Specifications & Limits</span>
+            {showGuidelines ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+          </button>
         </div>
 
         {/* Dropzone or file info */}
@@ -123,7 +162,7 @@ export function DocumentUploadCard({
                 <FileText className="size-6 text-blue-500" />
               </div>
               <p className="text-sm font-medium text-zinc-700">Drop your document here</p>
-              <p className="text-xs text-zinc-400">PDF, DOC, DOCX, PPT, PPTX · Max 50 MB</p>
+              <p className="text-xs text-zinc-400">PDF, DOC, DOCX, PPT, PPTX · Max 100 MB · Up to 300 pages</p>
               <button
                 type="button"
                 onClick={(e) => {
@@ -145,11 +184,24 @@ export function DocumentUploadCard({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-zinc-800 truncate">{docFile.file.name}</p>
-                <p className="text-xs text-zinc-500">{formatBytes(docFile.file.size)}</p>
+                <div className="flex items-center gap-2 text-xs text-zinc-500">
+                  <span>{formatBytes(docFile.file.size)}</span>
+                  {docFile.pageCount ? (
+                    <>
+                      <span>•</span>
+                      <span className={cn(docFile.pageCount > MAX_PAGES ? "text-amber-600 font-semibold" : "")}>
+                        {docFile.pageCount} pages {docFile.pageCount > MAX_PAGES ? "(Exceeds 300 limit)" : ""}
+                      </span>
+                    </>
+                  ) : null}
+                </div>
               </div>
               <button
                 type="button"
-                onClick={onRemoveDoc}
+                onClick={() => {
+                  setPageWarning(null);
+                  onRemoveDoc();
+                }}
                 className="size-7 rounded-full border border-zinc-200 bg-white text-zinc-500 flex items-center justify-center hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors flex-shrink-0"
               >
                 <X className="size-4" />
@@ -196,6 +248,17 @@ export function DocumentUploadCard({
           }}
         />
 
+        {/* Page Limit Warning */}
+        {pageWarning && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
+            <AlertCircle className="size-4 text-amber-600 mt-0.5 flex-shrink-0" />
+            <div className="text-xs text-amber-800 space-y-1">
+              <p className="font-semibold">Document exceeds LinkedIn 300-page limit</p>
+              <p>{pageWarning}</p>
+            </div>
+          </div>
+        )}
+
         {/* Size / type error */}
         {sizeError && (
           <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-200">
@@ -219,6 +282,46 @@ export function DocumentUploadCard({
             className="w-full rounded-lg border border-zinc-200 bg-white px-3 h-9 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950/20 focus:border-zinc-950/30 transition-colors"
           />
         </div>
+
+        {/* Collapsible Guidelines Box */}
+        {showGuidelines && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3.5 space-y-3 text-xs text-zinc-700">
+            <div className="flex items-center gap-2 font-semibold text-blue-900">
+              <BookOpen className="size-4 text-blue-600" />
+              <span>LinkedIn Document Specifications & Limits</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+              <div className="bg-white/80 border border-blue-100 p-2.5 rounded">
+                <span className="font-semibold text-zinc-800">📄 Page Count:</span>
+                <p className="text-zinc-600">Hard limit: <strong className="text-red-700">300 pages max</strong>. (Recommended: 5–15 pages for peak reader retention).</p>
+              </div>
+              <div className="bg-white/80 border border-blue-100 p-2.5 rounded">
+                <span className="font-semibold text-zinc-800">💾 File Size:</span>
+                <p className="text-zinc-600">Hard limit: <strong className="text-zinc-900">100 MB max</strong>. (Recommended: &lt;15 MB for faster mobile feeds).</p>
+              </div>
+              <div className="bg-white/80 border border-blue-100 p-2.5 rounded">
+                <span className="font-semibold text-zinc-800">📁 Supported Formats:</span>
+                <p className="text-zinc-600">PDF (<code className="text-blue-700">.pdf</code>), PowerPoint (<code className="text-blue-700">.ppt, .pptx</code>), Word (<code className="text-blue-700">.doc, .docx</code>).</p>
+              </div>
+              <div className="bg-white/80 border border-blue-100 p-2.5 rounded">
+                <span className="font-semibold text-zinc-800">📐 Recommended Dimensions:</span>
+                <p className="text-zinc-600">Portrait 4:5 (1080×1350px) or Square 1:1 for seamless mobile carousel swipe.</p>
+              </div>
+            </div>
+
+            <div className="border-t border-blue-200/60 pt-2 space-y-1">
+              <span className="font-semibold text-blue-900 flex items-center gap-1">
+                <Layers className="size-3.5" /> Best Strategies for Large Books / Guides (300+ Pages):
+              </span>
+              <ul className="list-disc list-inside space-y-0.5 text-zinc-600 pl-1">
+                <li><strong>Share a Preview Carousel:</strong> Extract a 5–15 page teaser (Cover, Table of Contents, 1 Sample Story).</li>
+                <li><strong>Link to Full Book:</strong> Host the full 300+ page PDF on Google Drive or your site, and add the download link in the caption.</li>
+                <li><strong>Serialize by Chapters:</strong> Split the book into a series (e.g. Chapter 1, Chapter 2) across episodic posts.</li>
+              </ul>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
