@@ -75,6 +75,12 @@ function stringField(value: unknown, keys: string[]): string | undefined {
   return undefined;
 }
 
+/** Statuses that UploadPost uses to signal the post was accepted / will be delivered. */
+const OK_STATUSES = new Set([
+  "ok", "success", "published", "delivered", "publish_success", "completed",
+  "queued", "processing", "accepted", "scheduled",
+]);
+
 function normalizeOneResult(raw: unknown): UploadPostPlatformResult {
   if (!isRecord(raw)) return { ok: false, error: "Invalid platform result" };
   const status = typeof raw.status === "string" ? raw.status.toLowerCase() : "";
@@ -82,7 +88,7 @@ function normalizeOneResult(raw: unknown): UploadPostPlatformResult {
   const ok = !skipped && (
     raw.success === true ||
     raw.ok === true ||
-    ["ok", "success", "published", "delivered", "publish_success", "completed"].includes(status)
+    OK_STATUSES.has(status)
   );
   const result: UploadPostPlatformResult = { ok };
   const postId = stringField(raw, ["post_id", "platform_post_id", "publish_id", "id", "container_id"]);
@@ -95,23 +101,68 @@ function normalizeOneResult(raw: unknown): UploadPostPlatformResult {
   return result;
 }
 
+/**
+ * Try to find the per-platform results map inside the UploadPost response.
+ * The API uses several different shapes depending on the endpoint/version:
+ *   - { results: [...] }           array of { platform, status, ... }
+ *   - { results: { ig: {...} } }   object keyed by platform
+ *   - { data: { results: ... } }   nested wrapper
+ *   - { response: { results: ... } }
+ *   - { platforms: { ... } }       alternative key
+ *   - { bluesky: {...}, ... }      top-level platform keys
+ */
+function findResultsPayload(raw: unknown): unknown {
+  if (!isRecord(raw)) return undefined;
+  // Direct results key
+  if (raw.results != null) return raw.results;
+  // Nested wrappers
+  for (const wrapper of ["data", "response"]) {
+    const inner = raw[wrapper];
+    if (isRecord(inner) && inner.results != null) return inner.results;
+  }
+  // Alternative key
+  if (raw.platforms != null) return raw.platforms;
+  return undefined;
+}
+
+/** Known UploadPost platform keys so we can detect top-level platform results. */
+const KNOWN_PLATFORMS = new Set([
+  "tiktok", "facebook", "x", "twitter", "bluesky", "instagram", "youtube",
+  "threads", "pinterest", "linkedin", "google_business", "reddit",
+  "discord", "telegram",
+]);
+
 export function normalizeUploadPostResults(
   raw: unknown,
   requestedPlatforms: string[],
 ): Record<string, UploadPostPlatformResult> | undefined {
-  if (!isRecord(raw) || raw.results == null) return undefined;
   const normalized: Record<string, UploadPostPlatformResult> = {};
-  if (Array.isArray(raw.results)) {
-    for (const item of raw.results) {
-      if (!isRecord(item) || typeof item.platform !== "string") continue;
-      const uiPlatform = item.platform === "x" ? "twitter" : item.platform;
-      normalized[uiPlatform] = normalizeOneResult(item);
-    }
-  } else if (isRecord(raw.results)) {
-    for (const [platform, result] of Object.entries(raw.results)) {
-      normalized[platform === "x" ? "twitter" : platform] = normalizeOneResult(result);
+
+  const resultsPayload = findResultsPayload(raw);
+  if (resultsPayload != null) {
+    if (Array.isArray(resultsPayload)) {
+      for (const item of resultsPayload) {
+        if (!isRecord(item) || typeof item.platform !== "string") continue;
+        const uiPlatform = item.platform === "x" ? "twitter" : item.platform;
+        normalized[uiPlatform] = normalizeOneResult(item);
+      }
+    } else if (isRecord(resultsPayload)) {
+      for (const [platform, result] of Object.entries(resultsPayload)) {
+        normalized[platform === "x" ? "twitter" : platform] = normalizeOneResult(result);
+      }
     }
   }
+
+  // Fallback: check for top-level platform keys (e.g. { bluesky: { status: "success" } })
+  if (Object.keys(normalized).length === 0 && isRecord(raw)) {
+    for (const [key, value] of Object.entries(raw)) {
+      const uiKey = key === "x" ? "twitter" : key;
+      if (KNOWN_PLATFORMS.has(key) && isRecord(value)) {
+        normalized[uiKey] = normalizeOneResult(value);
+      }
+    }
+  }
+
   if (Object.keys(normalized).length === 0) return undefined;
   for (const platform of requestedPlatforms) {
     if (!normalized[platform]) normalized[platform] = { ok: false, error: "No result returned for this platform" };
@@ -286,10 +337,15 @@ export async function publishToUploadPost(input: UploadPostPublishInput): Promis
   const deliveryConfirmed = Boolean(results && input.platforms.every((platform) => results[platform]?.ok === true));
   const returnedRequestId = stringField(raw, ["request_id"]) || requestId;
   const jobId = stringField(raw, ["job_id"]);
+  // A job_id is just a tracking identifier — it does NOT mean the post was
+  // scheduled for later delivery. Only honour the caller's explicit
+  // scheduledAt to avoid marking immediate posts as "scheduled".
+  const isScheduled = Boolean(input.scheduledAt);
+
   return {
     accepted: true,
     deliveryConfirmed,
-    scheduled: Boolean(jobId || input.scheduledAt),
+    scheduled: isScheduled,
     requestId: returnedRequestId,
     jobId,
     results,

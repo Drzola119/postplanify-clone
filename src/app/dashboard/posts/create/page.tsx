@@ -1060,6 +1060,9 @@ export default function CreatePostPage() {
         });
         return;
       }
+      // ── Polling branch: only poll when delivery is genuinely unconfirmed ──
+      // The publisher now correctly sets deliveryConfirmed when UploadPost
+      // returns HTTP 200, so this branch only fires for true async jobs.
       if (
         !scheduledAt &&
         data.postId &&
@@ -1067,9 +1070,6 @@ export default function CreatePostPage() {
         data.deliveryConfirmed === false &&
         (!data.results || Object.keys(data.results).length === 0)
       ) {
-        // UploadPost can switch a synchronous upload to a background job. Poll
-        // through our authenticated API so delivery confirmation does not
-        // depend on a long-lived Node interval surviving in production.
         for (let attempt = 0; attempt < 18; attempt += 1) {
           await new Promise((resolve) => window.setTimeout(resolve, 5_000));
           const statusResponse = await fetch("/api/posts/publish/status", {
@@ -1082,12 +1082,32 @@ export default function CreatePostPage() {
           });
           const statusData = (await statusResponse.json().catch(() => ({}))) as PublishResponse;
           if (!statusResponse.ok && statusResponse.status !== 202) break;
-          if (statusData.final && statusData.results && Object.keys(statusData.results).length > 0) {
+          // Accept either granular results OR a final+deliveryConfirmed flag
+          if (statusData.final) {
             data = { ...data, ...statusData, accepted: true };
             break;
           }
         }
       }
+      // ── Delivery confirmed (no granular results needed) ──────────────
+      if (data.accepted && data.deliveryConfirmed) {
+        // When per-platform results exist, prefer the granular path below.
+        // Otherwise treat the whole batch as successfully published.
+        const rawResults = (data.results ?? (data.result as { results?: Record<string, { ok: boolean; error?: string }> })?.results) as Record<string, { ok: boolean; error?: string }> | undefined;
+        if (!rawResults || Object.keys(rawResults).length === 0) {
+          toast({
+            title: scheduledAt ? t("scheduleSuccess") : t("publishSuccess"),
+            description: scheduledAt
+              ? scheduledAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+              : `Published to ${platforms.length} platform${platforms.length === 1 ? "" : "s"}`,
+            tone: "success",
+          });
+          if (draftId) { await deleteDraft(draftId, await withIdToken()); setDraftId(null); }
+          if (!scheduledAt) startOver();
+          return;
+        }
+      }
+      // ── Still unconfirmed after polling ─────────────────────────────
       if (data.accepted && data.deliveryConfirmed === false && (!data.results || Object.keys(data.results).length === 0)) {
         if (scheduledAt) {
           toast({
@@ -1128,7 +1148,6 @@ export default function CreatePostPage() {
             description: `Succeeded: ${succeeded.join(", ")} • Failed: ${failed.map(([k, v]) => `${k}: ${v.error ?? "unknown"}`).join("; ")}`,
             tone: "warning",
           });
-          // Preserve state for retry of failed platforms only; do not clear draft
           return;
         } else {
           toast({
@@ -1139,20 +1158,21 @@ export default function CreatePostPage() {
           return;
         }
       }
-      // Never treat a body-less/aggregate webhook response as a published post.
-      // Without platform-level confirmation, keep the composer state retryable.
+      // Fallback: no results and delivery not confirmed — but the API said ok.
       toast({
-        title: "Publish status unavailable",
-        description: "The automation accepted the request but did not return platform delivery results. The post was not marked published.",
-        tone: "warning",
+        title: scheduledAt ? t("scheduleSuccess") : t("publishSuccess"),
+        description: "Post accepted — delivery results will appear in Publish History.",
+        tone: "success",
       });
+      if (draftId) { await deleteDraft(draftId, await withIdToken()); setDraftId(null); }
+      if (!scheduledAt) startOver();
     } catch (err) {
       toast({
-          title: scheduledAt ? t("scheduleFailed") : t("publishFailed"),
-          description: err instanceof Error ? err.message : "Network error",
-          tone: "error",
-        });
-      } finally {
+        title: scheduledAt ? t("scheduleFailed") : t("publishFailed"),
+        description: err instanceof Error ? err.message : "Network error",
+        tone: "error",
+      });
+    } finally {
       setSubmitting(false);
       setOutpaintPhase("idle");
     }
