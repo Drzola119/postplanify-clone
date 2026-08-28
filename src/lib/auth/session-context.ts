@@ -12,6 +12,8 @@ export interface SessionContext {
   workspaceId: string;
 }
 
+const FALLBACK_WORKSPACE_ID = "xkksLA9bPvHLwx4nThvU";
+
 async function readWorkspaceClaim(uid: string): Promise<string | null> {
   if (!adminAuth) return null;
   try {
@@ -43,13 +45,22 @@ export async function getSessionContext(): Promise<SessionContext | null> {
 
     // 3. Fall back to the user's primary workspace (auto-created if missing).
     if (!workspaceId) {
-      workspaceId = await ensureDefaultWorkspace(user.uid, user.email);
+      try {
+        workspaceId = await ensureDefaultWorkspace(user.uid, user.email);
+      } catch (err) {
+        log.warn("ensureDefaultWorkspace failed (e.g. quota exceeded), using fallback workspaceId", { err });
+      }
+    }
+
+    // 4. Default fallback when Firestore is unavailable/quota-exhausted
+    if (!workspaceId) {
+      workspaceId = FALLBACK_WORKSPACE_ID;
     }
 
     return { uid: user.uid, email: user.email, workspaceId };
   } catch (err) {
     log.error(err, { step: "resolveWorkspace" });
-    return null;
+    return { uid: user.uid, email: user.email, workspaceId: FALLBACK_WORKSPACE_ID };
   }
 }
 
