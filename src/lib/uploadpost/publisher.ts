@@ -249,18 +249,21 @@ function platformTitle(platform: string, caption: string, endpoint: string): str
   // fall back to the global title and reject the entire multi-platform job.
   const photoPost = endpoint.endsWith("/upload_photos");
   const limits: Record<string, number | undefined> = {
-    tiktok: photoPost ? 90 : undefined,
+    tiktok: photoPost ? 90 : 2200,
+    facebook: 255,
     pinterest: 100,
     youtube: 100,
     reddit: 300,
-    linkedin: 400,
+    linkedin: 255,
     bluesky: 300,
     threads: 500,
     instagram: 2200,
     discord: 2000,
     telegram: photoPost ? 1024 : undefined,
+    googlebusiness: 255,
   };
-  return limits[platform] ? truncateText(caption, limits[platform]) : caption;
+  const maxChars = limits[platform] ?? 255;
+  return truncateText(caption, maxChars);
 }
 
 function platformDescription(platform: string, caption: string, endpoint: string): string {
@@ -282,9 +285,10 @@ function fallbackTitle(input: UploadPostPublishInput, endpoint: string): string 
     const caption = input.captionsByPlatform?.[platform] || input.caption;
     return platformTitle(uploadPlatform, caption, endpoint);
   });
-  return titles.reduce((shortest, title) =>
-    Array.from(title).length < Array.from(shortest).length ? title : shortest,
+  const shortest = titles.reduce((acc, title) =>
+    Array.from(title).length < Array.from(acc).length ? title : acc,
   input.caption);
+  return truncateText(shortest, 100);
 }
 
 export async function publishToUploadPost(input: UploadPostPublishInput): Promise<UploadPostPublishResult> {
