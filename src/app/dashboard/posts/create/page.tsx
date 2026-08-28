@@ -2400,12 +2400,20 @@ export default function CreatePostPage() {
         imageUrl={
           activeMediaItem?.kind === "image"
             ? activeMediaItem.cdnUrl || activeMediaItem.url
-            : null
+            : composerMode === "carousel" && carouselItems.length > 0 && carouselItems[0].kind === "image"
+              ? carouselItems[0].cdnUrl || carouselItems[0].previewUrl
+              : null
         }
         videoTitle={
           activeMediaItem?.kind === "video"
             ? activeMediaItem.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim()
-            : null
+            : composerMode === "trial_reel" && trialReelFile
+              ? trialReelFile.file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim()
+              : composerMode === "carousel" && carouselItems.some((c) => c.kind === "video")
+                ? carouselItems.find((c) => c.kind === "video").file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim()
+                : composerMode === "document" && documentFile
+                  ? documentTitle || documentFile.file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim()
+                  : null
         }
         isGenerating={aiGenerating}
       />
