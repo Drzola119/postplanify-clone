@@ -174,6 +174,9 @@ const ADVANCED_FIELD_MAP: Record<string, string> = {
   instagram_media_type: "media_type",
   instagram_cover_url: "cover_url",
   instagram_thumbnail_offset_ms: "cover_timestamp",
+  instagram_share_mode: "share_mode",
+  instagram_trial_reels_enabled: "trial_reels",
+  instagram_trial_reels_audience: "trial_audience",
   tiktok_post_mode: "post_mode",
   tiktok_privacy_level: "privacy_level",
   tiktok_auto_add_music: "auto_add_music",
@@ -374,12 +377,18 @@ export async function getUploadPostStatus(input: {
   try { raw = text ? JSON.parse(text) : {}; } catch { raw = { raw: text }; }
   if (!response.ok) throw new Error(`UploadPost status ${response.status}: ${errorMessage(raw, "Status request failed")}`);
   const status = isRecord(raw) && typeof raw.status === "string" ? raw.status.toLowerCase() : "unknown";
+  const results = normalizeUploadPostResults(raw, input.platforms);
+  const isFinal =
+    ["completed", "failed", "success", "published", "delivered", "done", "error"].includes(status) ||
+    (results != null &&
+      Object.keys(results).length === input.platforms.length &&
+      Object.values(results).every((r) => r.ok || Boolean(r.error)));
   return {
     status,
-    final: ["completed", "failed"].includes(status),
+    final: isFinal,
     requestId: stringField(raw, ["request_id"]) || input.requestId,
     jobId: stringField(raw, ["job_id"]) || input.jobId,
-    results: normalizeUploadPostResults(raw, input.platforms),
+    results,
     raw,
   };
 }
