@@ -27,8 +27,8 @@ describe("lib/publishing/capability-matrix", () => {
     }
   });
 
-  it("bluesky does not support video", () => {
-    expect(supportsMediaKind("bluesky", "video")).toBe(false);
+  it("bluesky supports video and image", () => {
+    expect(supportsMediaKind("bluesky", "video")).toBe(true);
     expect(supportsMediaKind("bluesky", "image")).toBe(true);
   });
 

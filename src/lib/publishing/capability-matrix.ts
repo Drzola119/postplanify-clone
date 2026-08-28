@@ -175,13 +175,14 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     displayName: "Bluesky",
     supportsText: true,
     supportsImage: true,
-    supportsVideo: false,
+    supportsVideo: true,
     maxTitleLength: 0,
     maxCaptionLength: 300,
     hardCapPer24h: 50,
     requiredTargets: [],
     media: {
       image: { maxBytes: 1 * MB, formats: ["image/jpeg", "image/png", "image/gif", "image/webp"], maxItems: 4 },
+      video: { maxBytes: 50 * MB, formats: ["video/mp4", "video/quicktime", "video/webm"], maxDurationSec: 60 },
     },
   },
   discord: {
