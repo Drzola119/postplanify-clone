@@ -4,10 +4,19 @@ import type { PlatformId } from "@/lib/db/schema";
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_MODELS_ENDPOINT = "https://api.groq.com/openai/v1/models";
 
-// Default preferred models (auto-resolved dynamically if decommissioned)
-export const GROQ_TEXT_MODEL = "llama-3.3-70b-versatile";
+// Ordered list of text candidate models supported across various Groq API account tiers
+export const TEXT_MODELS_FALLBACK_LIST = [
+  "llama-3.1-8b-instant",
+  "llama3-70b-8192",
+  "llama3-8b-8192",
+  "llama-3.3-70b-versatile",
+  "mixtral-8x7b-32768",
+  "gemma2-9b-it",
+];
+
+export const GROQ_TEXT_MODEL = "llama-3.1-8b-instant";
 export const GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
-export const GROQ_FALLBACK_TEXT_MODEL = "llama-3.1-8b-instant";
+export const GROQ_FALLBACK_TEXT_MODEL = "llama3-70b-8192";
 export const GROQ_FALLBACK_VISION_MODEL = "llama-3.2-11b-vision-preview";
 
 export type GroqMessage =
@@ -76,52 +85,6 @@ export async function getAvailableGroqModels(apiKey: string): Promise<string[]> 
   }
 }
 
-/**
- * Dynamically resolves an active model from the user's available Groq models.
- */
-export async function resolveGroqModel(
-  apiKey: string,
-  preferred: string,
-  kind: "text" | "vision" = "text"
-): Promise<string> {
-  const available = await getAvailableGroqModels(apiKey);
-  if (available.length === 0) return preferred;
-  if (available.includes(preferred)) return preferred;
-
-  if (kind === "vision") {
-    const visionCandidate = available.find(
-      (id) =>
-        id.includes("scout") ||
-        id.includes("vision") ||
-        id.includes("vl") ||
-        id.includes("qwen")
-    );
-    if (visionCandidate) return visionCandidate;
-  }
-
-  const textPreferences = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-70b-versatile",
-    "llama3-70b-8192",
-    "llama-3.1-8b-instant",
-    "llama3-8b-8192",
-    "mixtral-8x7b-32768",
-    "gemma2-9b-it",
-  ];
-
-  for (const cand of textPreferences) {
-    if (available.includes(cand)) return cand;
-  }
-
-  const chatModel = available.find(
-    (id) =>
-      !id.includes("whisper") &&
-      !id.includes("embed") &&
-      !id.includes("guard")
-  );
-  return chatModel || available[0] || preferred;
-}
-
 export async function callGroq(opts: GroqOptions): Promise<GroqResult> {
   const sendRequest = async (modelToUse: string) => {
     const body: Record<string, unknown> = {
@@ -168,21 +131,31 @@ export async function callGroq(opts: GroqOptions): Promise<GroqResult> {
     return { content, model: modelToUse, raw: data };
   };
 
+  // Try the requested model first
   try {
     return await sendRequest(opts.model);
   } catch (err) {
-    // If model not found or decommissioned, dynamically find an active one
     if (err instanceof GroqError && (err.status === 400 || err.status === 404)) {
-      try {
-        const isVision = opts.messages.some(
-          (m) => typeof m.content !== "string" && Array.isArray(m.content) && m.content.some((c) => c.type === "image_url")
-        );
-        const resolved = await resolveGroqModel(opts.apiKey, opts.model, isVision ? "vision" : "text");
-        if (resolved && resolved !== opts.model) {
-          return await sendRequest(resolved);
+      // Try from live available models if any
+      const available = await getAvailableGroqModels(opts.apiKey);
+      const isVision = opts.messages.some(
+        (m) => typeof m.content !== "string" && Array.isArray(m.content) && m.content.some((c) => c.type === "image_url")
+      );
+
+      if (!isVision) {
+        // Try active models in available list or candidate list
+        const candidates = [
+          ...available.filter((id) => !id.includes("whisper") && !id.includes("embed") && !id.includes("guard")),
+          ...TEXT_MODELS_FALLBACK_LIST,
+        ].filter((v, i, a) => a.indexOf(v) === i && v !== opts.model);
+
+        for (const cand of candidates) {
+          try {
+            return await sendRequest(cand);
+          } catch {
+            // keep trying next candidate
+          }
         }
-      } catch {
-        // Fall back to rethrowing original error
       }
     }
     throw err;

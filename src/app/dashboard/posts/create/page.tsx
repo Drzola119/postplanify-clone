@@ -2016,18 +2016,10 @@ export default function CreatePostPage() {
       } else {
         const vidItem = carouselItems.find((c) => c.kind === "video");
         if (vidItem) {
-          rawImageUrl = customCoverUrl || frameCoverUrl || null;
-          if (!rawImageUrl && vidItem.previewUrl) {
-            rawImageUrl = await extractVideoThumbnail(vidItem.previewUrl);
-          }
           videoTitle = vidItem.file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
         }
       }
     } else if (composerMode === "trial_reel") {
-      rawImageUrl = customCoverUrl || frameCoverUrl || null;
-      if (!rawImageUrl && trialReelFile?.previewUrl) {
-        rawImageUrl = await extractVideoThumbnail(trialReelFile.previewUrl);
-      }
       if (trialReelFile) {
         videoTitle = trialReelFile.file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
       }
@@ -2040,10 +2032,6 @@ export default function CreatePostPage() {
       if (active?.kind === "image") {
         rawImageUrl = active.cdnUrl || active.url;
       } else if (active?.kind === "video") {
-        rawImageUrl = customCoverUrl || frameCoverUrl || null;
-        if (!rawImageUrl && active.url) {
-          rawImageUrl = await extractVideoThumbnail(active.url);
-        }
         videoTitle = active.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
       }
     }
@@ -2492,7 +2480,7 @@ export default function CreatePostPage() {
             ? activeMediaItem.cdnUrl || activeMediaItem.url
             : composerMode === "carousel" && carouselItems.some((c) => c.kind === "image")
               ? (carouselItems.find((c) => c.kind === "image")!.cdnUrl || carouselItems.find((c) => c.kind === "image")!.previewUrl)
-              : customCoverUrl || frameCoverUrl || null
+              : null
         }
         videoTitle={
           activeMediaItem?.kind === "video"
