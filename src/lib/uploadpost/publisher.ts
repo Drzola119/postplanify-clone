@@ -60,9 +60,15 @@ export function toUploadPostPlatform(platform: string): string {
 }
 
 function errorMessage(value: unknown, fallback: string): string {
+  if (typeof value === "string" && value.trim()) return value;
   if (!isRecord(value)) return fallback;
-  for (const key of ["error", "error_message", "message", "detail"]) {
-    if (typeof value[key] === "string" && value[key]) return value[key];
+  for (const key of ["error", "error_message", "message", "detail", "reason", "msg", "description", "failureReason"]) {
+    const val = value[key];
+    if (typeof val === "string" && val.trim()) return val;
+    if (isRecord(val)) {
+      const nested = errorMessage(val, "");
+      if (nested) return nested;
+    }
   }
   return fallback;
 }

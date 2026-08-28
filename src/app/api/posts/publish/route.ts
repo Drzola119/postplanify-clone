@@ -220,8 +220,12 @@ export async function POST(request: Request) {
       await updatePost(workspaceId, postId, patch as never).catch((err) => log.warn("Failed to persist UploadPost result", { err, postId }));
     }
     if (platformResults && succeeded === 0 && failed > 0) {
+      const detailedError = Object.entries(platformResults)
+        .filter(([, r]) => !r.ok)
+        .map(([p, r]) => `${p}: ${r.error || "failed"}`)
+        .join("; ");
       return NextResponse.json({
-        error: "UploadPost rejected every platform",
+        error: detailedError || "UploadPost rejected every platform",
         accepted: false,
         deliveryConfirmed: false,
         jobId,
