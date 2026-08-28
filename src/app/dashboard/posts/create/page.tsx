@@ -1682,6 +1682,11 @@ export default function CreatePostPage() {
             )
           );
         });
+        extractVideoThumbnail(item.url).then((thumb) => {
+          if (thumb) {
+            setFrameCoverUrl((prev) => prev || thumb);
+          }
+        }).catch(() => undefined);
       }
     }
 
@@ -1881,6 +1886,11 @@ export default function CreatePostPage() {
     probeVideoDuration(previewUrl, (dur, err) => {
       setTrialReelFile((prev) => (prev ? { ...prev, durationSec: dur, metadataLoaded: true, metadataError: err } : null));
     });
+    extractVideoThumbnail(previewUrl).then((thumb) => {
+      if (thumb) {
+        setFrameCoverUrl((prev) => prev || thumb);
+      }
+    }).catch(() => undefined);
 
     toast({
       title: "Reel added",
@@ -2006,10 +2016,18 @@ export default function CreatePostPage() {
       } else {
         const vidItem = carouselItems.find((c) => c.kind === "video");
         if (vidItem) {
+          rawImageUrl = customCoverUrl || frameCoverUrl || null;
+          if (!rawImageUrl && vidItem.previewUrl) {
+            rawImageUrl = await extractVideoThumbnail(vidItem.previewUrl);
+          }
           videoTitle = vidItem.file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
         }
       }
     } else if (composerMode === "trial_reel") {
+      rawImageUrl = customCoverUrl || frameCoverUrl || null;
+      if (!rawImageUrl && trialReelFile?.previewUrl) {
+        rawImageUrl = await extractVideoThumbnail(trialReelFile.previewUrl);
+      }
       if (trialReelFile) {
         videoTitle = trialReelFile.file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
       }
@@ -2022,6 +2040,10 @@ export default function CreatePostPage() {
       if (active?.kind === "image") {
         rawImageUrl = active.cdnUrl || active.url;
       } else if (active?.kind === "video") {
+        rawImageUrl = customCoverUrl || frameCoverUrl || null;
+        if (!rawImageUrl && active.url) {
+          rawImageUrl = await extractVideoThumbnail(active.url);
+        }
         videoTitle = active.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
       }
     }
@@ -2470,7 +2492,7 @@ export default function CreatePostPage() {
             ? activeMediaItem.cdnUrl || activeMediaItem.url
             : composerMode === "carousel" && carouselItems.some((c) => c.kind === "image")
               ? (carouselItems.find((c) => c.kind === "image")!.cdnUrl || carouselItems.find((c) => c.kind === "image")!.previewUrl)
-              : null
+              : customCoverUrl || frameCoverUrl || null
         }
         videoTitle={
           activeMediaItem?.kind === "video"
@@ -3098,6 +3120,79 @@ function readImageSize(url: string): Promise<{ w: number; h: number }> {
  * Probe video duration using HTMLVideoElement. Prefer over `new Audio()` for
  * reliable metadata events on mp4/quicktime. Cleans up listeners and src after.
  */
+async function extractVideoThumbnail(url: string, atSec = 0.5): Promise<string | null> {
+  if (typeof document === "undefined" || !url) return null;
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    video.crossOrigin = "anonymous";
+    video.muted = true;
+    (video as unknown as Record<string, unknown>).playsInline = true;
+    let done = false;
+
+    const cleanup = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      video.removeEventListener("loadeddata", onLoaded);
+      video.removeEventListener("seeked", onSeeked);
+      video.removeEventListener("error", onError);
+      try {
+        video.src = "";
+        video.remove();
+      } catch {}
+    };
+
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve(null);
+    }, 4000);
+
+    const onLoaded = () => {
+      try {
+        video.currentTime = Math.min(atSec, Math.max(0.1, (video.duration || 1) / 2));
+      } catch {
+        onSeeked();
+      }
+    };
+
+    const onSeeked = () => {
+      try {
+        if (!video.videoWidth) {
+          cleanup();
+          resolve(null);
+          return;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.min(video.videoWidth, 800);
+        canvas.height = Math.round((canvas.width / video.videoWidth) * video.videoHeight);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          cleanup();
+          resolve(null);
+          return;
+        }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+        cleanup();
+        resolve(dataUrl);
+      } catch {
+        cleanup();
+        resolve(null);
+      }
+    };
+
+    const onError = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    video.addEventListener("loadeddata", onLoaded);
+    video.addEventListener("seeked", onSeeked);
+    video.addEventListener("error", onError);
+    video.src = url;
+  });
+}
+
 function probeVideoDuration(url: string, cb: (durationSec?: number, error?: string) => void): void {
   if (typeof document === "undefined") { cb(undefined, "no_document"); return; }
   const video = document.createElement("video");
