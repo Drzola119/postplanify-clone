@@ -2410,7 +2410,7 @@ export default function CreatePostPage() {
             : composerMode === "trial_reel" && trialReelFile
               ? trialReelFile.file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim()
               : composerMode === "carousel" && carouselItems.some((c) => c.kind === "video")
-                ? carouselItems.find((c) => c.kind === "video").file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim()
+                ? carouselItems.find((c) => c.kind === "video")!.file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim()
                 : composerMode === "document" && documentFile
                   ? documentTitle || documentFile.file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim()
                   : null
