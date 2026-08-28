@@ -25,7 +25,7 @@ export interface GroqOptions {
   maxTokens?: number;
   topP?: number;
   jsonMode?: boolean;
-  reasoningEffort?: "none" | "default";
+  reasoningEffort?: "low" | "medium" | "high" | "none" | "default";
 }
 
 export interface GroqResult {
@@ -55,7 +55,7 @@ export async function callGroq(opts: GroqOptions): Promise<GroqResult> {
     stream: false,
   };
   if (opts.jsonMode) body.response_format = { type: "json_object" };
-  if (opts.reasoningEffort) body.reasoning_effort = opts.reasoningEffort;
+  if (opts.reasoningEffort && opts.reasoningEffort !== "none" && opts.reasoningEffort !== "default") body.reasoning_effort = opts.reasoningEffort;
 
   const res = await fetch(GROQ_ENDPOINT, {
     method: "POST",
