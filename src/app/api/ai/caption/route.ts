@@ -4,7 +4,7 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/firebase/admin";
 import { MissingServerSecretError, resolvers } from "@/lib/security/server-config";
 import { buildCaptionPrompt } from "@/lib/ai/caption-templates";
-import { callGroq, GroqError, GroqMessage, GROQ_VISION_MODEL, GROQ_TEXT_MODEL } from "@/lib/ai/groq";
+import { callGroq, GroqError, GroqMessage, GroqResult, GROQ_VISION_MODEL, GROQ_TEXT_MODEL, GROQ_FALLBACK_TEXT_MODEL, GROQ_FALLBACK_VISION_MODEL } from "@/lib/ai/groq";
 import { parseBody } from "@/lib/validation/helpers";
 
 export const runtime = "nodejs";
@@ -169,21 +169,34 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await callGroq({
-      apiKey,
-      model,
-      messages,
-      temperature: 0.8,
-      maxTokens: 600,
-      topP: 0.95,
-    });
+    let result: GroqResult;
+    try {
+      result = await callGroq({
+        apiKey,
+        model,
+        messages,
+        temperature: 0.8,
+        maxTokens: 600,
+        topP: 0.95,
+      });
+    } catch (primaryErr) {
+      const fallbackModel = useVision ? GROQ_FALLBACK_VISION_MODEL : GROQ_FALLBACK_TEXT_MODEL;
+      result = await callGroq({
+        apiKey,
+        model: fallbackModel,
+        messages,
+        temperature: 0.8,
+        maxTokens: 600,
+        topP: 0.95,
+      });
+    }
 
     const caption = result.content.trim();
     if (!caption) {
       return NextResponse.json({ error: "Empty caption from model" }, { status: 502 });
     }
 
-    return NextResponse.json({ ok: true, caption, model });
+    return NextResponse.json({ ok: true, caption, model: result.model });
   } catch (err) {
     if (err instanceof GroqError) {
       return NextResponse.json({ error: err.message }, { status: err.status >= 500 ? 502 : 400 });
