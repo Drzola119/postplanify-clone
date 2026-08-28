@@ -1943,23 +1943,47 @@ export default function CreatePostPage() {
     useEmojis: boolean;
     extra: string;
   }) {
-    const active = mediaItems[activeMedia];
-    if (!active) {
-      toast({ title: t("uploadMedia"), tone: "warning" });
-      return;
-    }
     if (selectedPlatforms.length === 0) {
       toast({ title: t("pickAccount"), tone: "warning" });
       return;
     }
 
+    let rawImageUrl: string | null = null;
+    let videoTitle: string | null = null;
+
+    if (composerMode === "carousel") {
+      const imgItem = carouselItems.find((c) => c.kind === "image" && (c.cdnUrl || c.previewUrl));
+      if (imgItem) {
+        rawImageUrl = imgItem.cdnUrl || imgItem.previewUrl;
+      } else {
+        const vidItem = carouselItems.find((c) => c.kind === "video");
+        if (vidItem) {
+          videoTitle = vidItem.file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+        }
+      }
+    } else if (composerMode === "trial_reel") {
+      if (trialReelFile) {
+        videoTitle = trialReelFile.file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+      }
+    } else if (composerMode === "document") {
+      if (documentFile) {
+        videoTitle = documentTitle || documentFile.file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+      }
+    } else {
+      const active = mediaItems[activeMedia];
+      if (active?.kind === "image") {
+        rawImageUrl = active.cdnUrl || active.url;
+      } else if (active?.kind === "video") {
+        videoTitle = active.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+      }
+    }
+
     let imageUrl: string | null = null;
-    if (active.kind === "image") {
-      const rawUrl = active.cdnUrl || active.url;
-      if (rawUrl.startsWith("blob:")) {
+    if (rawImageUrl) {
+      if (rawImageUrl.startsWith("blob:")) {
         // Convert blob URL to base64 data URI so Groq can read it
         try {
-          const response = await fetch(rawUrl);
+          const response = await fetch(rawImageUrl);
           const blob = await response.blob();
           imageUrl = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
@@ -1972,14 +1996,10 @@ export default function CreatePostPage() {
           return;
         }
       } else {
-        imageUrl = rawUrl;
+        imageUrl = rawImageUrl;
       }
     }
 
-    const videoTitle =
-      active.kind === "video"
-        ? active.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim()
-        : null;
     if (!imageUrl && !videoTitle) {
       toast({ title: t("uploadMedia"), tone: "warning" });
       return;
@@ -2400,8 +2420,8 @@ export default function CreatePostPage() {
         imageUrl={
           activeMediaItem?.kind === "image"
             ? activeMediaItem.cdnUrl || activeMediaItem.url
-            : composerMode === "carousel" && carouselItems.length > 0 && carouselItems[0].kind === "image"
-              ? carouselItems[0].cdnUrl || carouselItems[0].previewUrl
+            : composerMode === "carousel" && carouselItems.some((c) => c.kind === "image")
+              ? (carouselItems.find((c) => c.kind === "image")!.cdnUrl || carouselItems.find((c) => c.kind === "image")!.previewUrl)
               : null
         }
         videoTitle={
