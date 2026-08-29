@@ -155,6 +155,15 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function fileToDataUri(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("File read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
 function splitDateTime(dt: string): { date: string; time: string } {
   if (!dt || !dt.includes("T")) return { date: todayISO(), time: "08:00" };
   const [date, time] = dt.split("T");
@@ -180,6 +189,15 @@ function pickCharLimitFor(item: BulkItem): number {
 
 function getMediaKindForItem(item: BulkItem): MediaKind {
   return item.kind === "video" ? "video" : "image";
+}
+
+function isVideoOnlyPlatform(id: PlatformId): boolean {
+  return !!PLATFORMS.find((p) => p.id === id)?.videoOnly;
+}
+
+function filterAccountsForKind(kind: BulkItem["kind"], ids: PlatformId[]): PlatformId[] {
+  if (kind === "image") return ids.filter((id) => !isVideoOnlyPlatform(id));
+  return ids;
 }
 
 function buildReadinessForItem(item: BulkItem, timezone: string) {
@@ -490,6 +508,29 @@ export default function BulkSchedulePage() {
     };
   }, []);
 
+  // Auto-fix: image posts must not target video-only platforms (e.g. YouTube). Fixes persisted bad state from before.
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    const needsFix = items.some((it) => (it as BulkItemBase).kind === "image" && (it as BulkItemBase).accountIds.includes("youtube" as PlatformId));
+    if (!needsFix) return;
+    setItems((prev) =>
+      prev.map((it) => {
+        const base = it as BulkItemBase;
+        if (base.kind === "image" && base.accountIds.includes("youtube" as PlatformId)) {
+          const filtered = filterAccountsForKind("image", base.accountIds as PlatformId[]);
+          const adv = { ...(base.advancedByPlatform ?? {}) } as Record<string, Record<string, unknown>>;
+          delete adv.youtube;
+          const next: BulkItemBase = { ...base, accountIds: filtered, advancedByPlatform: adv };
+          // keep top-level youtube fields empty
+          next.youtubeTitle = "";
+          next.youtubeTags = "";
+          return next as BulkItem;
+        }
+        return it;
+      })
+    );
+  }, [items]);
+
   const toggleAccount = useCallback((id: PlatformId) => {
     setAccounts((prev) => {
       const next = new Set(prev);
@@ -565,6 +606,12 @@ export default function BulkSchedulePage() {
         if (platforms.length === 0) platforms = Array.from(accounts);
         if (platforms.length === 0) {
           errors.push(`Row ${i + 2}: no platforms (add a "platforms" column or select accounts above)`);
+          continue;
+        }
+        // Auto-filter video-only platforms for image rows (CSV defaults to image)
+        platforms = filterAccountsForKind("image", platforms);
+        if (platforms.length === 0) {
+          errors.push(`Row ${i + 2}: no compatible platforms after filtering video-only for image`);
           continue;
         }
         const rawScheduled = (scheduledIdx >= 0 ? r[scheduledIdx] : "").trim();
@@ -786,8 +833,9 @@ export default function BulkSchedulePage() {
         continue;
       }
       const previewUrl = URL.createObjectURL(file);
+      const filteredAccounts = filterAccountsForKind(kind, Array.from(accounts));
       const adv: Record<string, Record<string, unknown>> = {};
-      for (const pid of accounts) {
+      for (const pid of filteredAccounts) {
         const def = getDefaultOptions(pid);
         if (Object.keys(def).length > 0) adv[pid] = { ...def };
         if (pid === "pinterest" && destinationOptions.boards[0] && !adv[pid]?.pinterest_board_id) {
@@ -798,6 +846,11 @@ export default function BulkSchedulePage() {
         }
       }
       const pinterestBoardId = (adv.pinterest as Record<string, unknown> | undefined)?.pinterest_board_id as string | undefined;
+      // Inform once if we auto-dropped YouTube for image
+      if (kind === "image" && accounts.has("youtube" as PlatformId) && !filteredAccounts.includes("youtube" as PlatformId)) {
+        // toast only once per batch
+        if (counter === 0) toast({ title: "YouTube auto-removed for images", description: "YouTube only accepts video — auto-deselected for image posts. Add video to enable YouTube.", tone: "info" });
+      }
       newItems.push({
         id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         source: "upload",
@@ -811,7 +864,7 @@ export default function BulkSchedulePage() {
         scheduledAt: slot.scheduledAt,
         scheduledDate: slot.date,
         scheduledTime: slot.time,
-        accountIds: Array.from(accounts),
+        accountIds: filteredAccounts,
         postIn: "feed",
         youtubeTitle: "",
         youtubeTags: "",
@@ -980,17 +1033,23 @@ export default function BulkSchedulePage() {
     setItems((prev) =>
       prev.map((item) => {
         const base = item as BulkItemBase;
-        const nextBoard = boardFromTemplate && base.accountIds.includes("pinterest" as PlatformId) === false && Array.from(accounts).includes("pinterest" as PlatformId) ? boardFromTemplate : base.pinterestBoard;
-        // If newly adding Pinterest, ensure pinterestBoard is filled from template if empty
-        const finalBoard =
-          Array.from(accounts).includes("pinterest" as PlatformId) && !base.pinterestBoard && boardFromTemplate
-            ? boardFromTemplate
-            : base.pinterestBoard;
+        const filtered = filterAccountsForKind(base.kind as BulkItem["kind"], Array.from(accounts));
+        const filteredAdv: Record<string, Record<string, unknown>> = {};
+        for (const pid of filtered) {
+          if (advTemplate[pid]) filteredAdv[pid] = advTemplate[pid];
+          else if ((base.advancedByPlatform as Record<string, Record<string, unknown>> | undefined)?.[pid]) {
+            filteredAdv[pid] = (base.advancedByPlatform as Record<string, Record<string, unknown>>)[pid];
+          }
+        }
+        const willHavePinterest = filtered.includes("pinterest" as PlatformId);
+        const finalBoard = willHavePinterest
+          ? (base.pinterestBoard || boardFromTemplate || "") as string
+          : "";
         return {
           ...item,
-          accountIds: Array.from(accounts),
+          accountIds: filtered,
           pinterestBoard: finalBoard as string,
-          advancedByPlatform: { ...(base.advancedByPlatform ?? {}), ...advTemplate } as BulkItem["advancedByPlatform"],
+          advancedByPlatform: { ...filteredAdv } as BulkItem["advancedByPlatform"],
         } as BulkItem;
       })
     );
@@ -1086,16 +1145,40 @@ export default function BulkSchedulePage() {
         try {
           let imageUrl: string | undefined;
           let videoTitle: string | undefined;
+          // Works for any content type: image → vision via data URI, video → title, others → filename
           if (item.kind === "image") {
-            if (item.source === "upload") {
-              imageUrl = item.url.startsWith("https://") ? item.url : undefined;
-            } else if (item.mediaUrl) {
-              imageUrl = item.mediaUrl;
+            if (item.source === "upload" && (item as UploadedBulkItem).file) {
+              const file = (item as UploadedBulkItem).file;
+              try {
+                if (file.size <= 4 * 1024 * 1024) {
+                  imageUrl = await fileToDataUri(file);
+                } else {
+                  imageUrl = item.url.startsWith("https://") ? item.url : undefined;
+                }
+              } catch {
+                imageUrl = item.url.startsWith("https://") ? item.url : undefined;
+              }
+              if (!imageUrl) imageUrl = item.url.startsWith("https://") ? item.url : undefined;
+              if (!imageUrl) videoTitle = item.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+            } else if ((item as CsvBulkItem).mediaUrl) {
+              imageUrl = (item as CsvBulkItem).mediaUrl;
+              if (!imageUrl) videoTitle = item.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+            } else {
+              videoTitle = item.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
             }
           } else {
             videoTitle = item.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
           }
+          // Fallback: if still no context, use filename + hashtags as videoTitle
+          if (!imageUrl && !videoTitle) {
+            videoTitle = [item.name.replace(/\.[^.]+$/, ""), ...(item.hashtags ?? []).join(" ")].join(" ").trim() || "social media post";
+          }
           const idToken = await getIdToken();
+          const platformsCtx = item.accountIds.map((pid) => {
+            const meta = PLATFORMS.find((p) => p.id === pid);
+            return { id: pid, name: meta?.name ?? pid, charLimit: meta?.charLimit ?? 280 };
+          });
+          const extraCtx = [item.name !== "CSV row 2" ? `File: ${item.name}` : null, (item.hashtags ?? []).length > 0 ? `Hashtags: ${(item.hashtags ?? []).join(" ")}` : null].filter(Boolean).join(" | ");
           const res = await fetch("/api/ai/caption", {
             method: "POST",
             headers: {
@@ -1107,9 +1190,10 @@ export default function BulkSchedulePage() {
               tone: "default",
               includeHashtags: true,
               useEmojis: true,
-              extra: "",
+              extra: extraCtx,
               imageUrl,
               videoTitle,
+              platforms: platformsCtx,
             }),
           });
           const data = (await res.json().catch(() => ({}))) as {
@@ -1144,13 +1228,35 @@ export default function BulkSchedulePage() {
     try {
       let imageUrl: string | undefined;
       let videoTitle: string | undefined;
+      // Handle any content type: image via data URI vision, video via title, fallback via filename
       if (item.kind === "image") {
-        if (item.source === "upload") imageUrl = item.url.startsWith("https://") ? item.url : undefined;
-        else imageUrl = (item as CsvBulkItem).mediaUrl || undefined;
+        if (item.source === "upload" && (item as UploadedBulkItem).file) {
+          const file = (item as UploadedBulkItem).file;
+          try {
+            if (file.size <= 4 * 1024 * 1024) imageUrl = await fileToDataUri(file);
+            else imageUrl = item.url.startsWith("https://") ? item.url : undefined;
+          } catch {
+            imageUrl = item.url.startsWith("https://") ? item.url : undefined;
+          }
+          if (!imageUrl) imageUrl = item.url.startsWith("https://") ? item.url : undefined;
+          if (!imageUrl) videoTitle = item.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+        } else {
+          imageUrl = (item as CsvBulkItem).mediaUrl || undefined;
+          if (!imageUrl) videoTitle = item.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+        }
       } else {
         videoTitle = item.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
       }
+      if (!imageUrl && !videoTitle) {
+        videoTitle = [item.name.replace(/\.[^.]+$/, ""), ...(item.hashtags ?? []).join(" ")].join(" ").trim() || "social media post";
+      }
       const idToken = await getIdToken();
+      const platformsCtx = item.accountIds.map((pid) => {
+        const meta = PLATFORMS.find((p) => p.id === pid);
+        return { id: pid, name: meta?.name ?? pid, charLimit: meta?.charLimit ?? 280 };
+      });
+      // Merge caller extra with file context so vision fallback still has hints
+      const mergedExtra = [opts.extra, `File: ${item.name}`, (item.hashtags ?? []).length ? `Hashtags: ${(item.hashtags ?? []).join(" ")}` : null].filter(Boolean).join(" | ");
       const res = await fetch("/api/ai/caption", {
         method: "POST",
         headers: {
@@ -1162,9 +1268,10 @@ export default function BulkSchedulePage() {
           tone: opts.tone,
           includeHashtags: opts.includeHashtags,
           useEmojis: opts.useEmojis,
-          extra: opts.extra,
+          extra: mergedExtra,
           imageUrl,
           videoTitle,
+          platforms: platformsCtx,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; caption?: string; error?: string };
@@ -1695,6 +1802,11 @@ export default function BulkSchedulePage() {
                   prev.map((it) => {
                     if (it.id !== itemId) return it;
                     const has = it.accountIds.includes(platformId);
+                    // Guard: image posts cannot go to video-only platforms (YouTube)
+                    if (!has && (it as BulkItemBase).kind === "image" && isVideoOnlyPlatform(platformId)) {
+                      toast({ title: "YouTube is video-only", description: "This post is an image — YouTube requires video. Upload a video to enable YouTube.", tone: "warning" });
+                      return it;
+                    }
                     const nextIds = has ? it.accountIds.filter((a) => a !== platformId) : [...it.accountIds, platformId];
                     // sync advanced defaults for newly added platform
                     let adv = (it as BulkItemBase).advancedByPlatform ?? {};

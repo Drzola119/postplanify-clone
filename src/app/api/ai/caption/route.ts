@@ -181,10 +181,34 @@ export async function POST(request: Request) {
       });
     } catch (primaryErr) {
       if (useVision) {
-        // Fall back to text copywriting model so generation never fails
+        // Vision failed — fall back to text model without saying "Look at image"
+        // Extract a filename hint so the model still has context instead of apologizing.
+        const filenameHint = (() => {
+          try {
+            if (imageUrl?.startsWith("data:")) return null;
+            const u = new URL(imageUrl!);
+            const last = u.pathname.split("/").pop() ?? "";
+            return last.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").slice(0, 80) || null;
+          } catch {
+            return (imageUrl ?? "").split("/").pop()?.replace(/\.[^.]+$/, "").slice(0, 80) ?? null;
+          }
+        })();
+        const fallbackPrompt = [
+          filenameHint ? `The user uploaded an image related to: "${filenameHint}".` : "The user uploaded an image.",
+          buildCaptionPrompt({
+            tone,
+            voice: body.voice ?? null,
+            template: body.template ?? null,
+            includeHashtags,
+            useEmojis,
+            extra: extra ?? null,
+            platforms,
+            hasMedia: !!filenameHint,
+          }).userPrompt,
+        ].join("\n\n");
         const textMessages: GroqMessage[] = [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt.slice(0, MAX_PROMPT_LEN) },
+          { role: "user", content: fallbackPrompt.slice(0, MAX_PROMPT_LEN) },
         ];
         result = await callGroq({
           apiKey,
