@@ -24,6 +24,7 @@ import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
 import { parseCsv, normalizePlatforms, normalizeHashtags } from "@/lib/bulk-schedule/csv";
+import { zonedDateTimeToDate } from "@/lib/datetime/zoned";
 
 type BulkItemSource = "upload" | "csv";
 
@@ -121,18 +122,6 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function nowLocalDateTime(offsetDays = 0): string {
-  const d = new Date();
-  d.setDate(d.getDate() + offsetDays);
-  d.setSeconds(0, 0);
-  const y = d.getFullYear();
-  const m = (d.getMonth() + 1).toString().padStart(2, "0");
-  const day = d.getDate().toString().padStart(2, "0");
-  const hh = d.getHours().toString().padStart(2, "0");
-  const mm = d.getMinutes().toString().padStart(2, "0");
-  return `${y}-${m}-${day}T${hh}:${mm}`;
-}
-
 function splitDateTime(dt: string): { date: string; time: string } {
   if (!dt || !dt.includes("T")) return { date: todayISO(), time: "08:00" };
   const [date, time] = dt.split("T");
@@ -149,10 +138,7 @@ function wallClockToUTC(date: string, time: string, timezone: string): Date | nu
   if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
   const [y, m, d] = date.split("-").map((s) => parseInt(s, 10));
   if (Number.isNaN(y) || Number.isNaN(m) || Number.isNaN(d)) return null;
-  const utcFake = new Date(Date.UTC(y, m - 1, d, hh, mm, 0, 0));
-  const tzNow = new Date(utcFake.toLocaleString("en-US", { timeZone: timezone }));
-  const offsetMs = utcFake.getTime() - tzNow.getTime();
-  return new Date(utcFake.getTime() + offsetMs);
+  return zonedDateTimeToDate({ year: y, month: m, day: d, hour: hh, minute: mm }, timezone);
 }
 
 function pickCharLimitFor(item: BulkItem): number {
@@ -265,6 +251,37 @@ export default function BulkSchedulePage() {
   const csvInputRef = useRef<HTMLInputElement>(null);
   const tzRef = useRef<HTMLDivElement>(null);
   const hydratedRef = useRef(false);
+
+  function scheduledSlot(index: number): { scheduledAt: string; date: string; time: string } | null {
+    const [year, month, day] = startDate.split("-").map(Number);
+    const [startHour, startMinute] = startTime.split(":").map(Number);
+    if ([year, month, day, startHour, startMinute].some((value) => !Number.isInteger(value))) return null;
+    const perDay = Math.max(1, postsPerDay);
+    const intervalDays = parseInt(interval, 10) || 1;
+    const dayOffset = Math.floor(index / perDay) * intervalDays;
+    const slotOffsetMinutes = (index % perDay) * 30;
+    // Use UTC setters only as timezone-neutral calendar arithmetic. The final
+    // wall-clock fields are then converted in the user's selected timezone.
+    const wall = new Date(Date.UTC(year, month - 1, day + dayOffset, startHour, startMinute + slotOffsetMinutes));
+    const localYear = wall.getUTCFullYear();
+    const localMonth = wall.getUTCMonth() + 1;
+    const localDay = wall.getUTCDate();
+    const localHour = wall.getUTCHours();
+    const localMinute = wall.getUTCMinutes();
+    const instant = zonedDateTimeToDate({
+      year: localYear,
+      month: localMonth,
+      day: localDay,
+      hour: localHour,
+      minute: localMinute,
+    }, timezone);
+    if (!instant) return null;
+    return {
+      scheduledAt: instant.toISOString(),
+      date: `${localYear}-${String(localMonth).padStart(2, "0")}-${String(localDay).padStart(2, "0")}`,
+      time: `${String(localHour).padStart(2, "0")}:${String(localMinute).padStart(2, "0")}`,
+    };
+  }
 
   // Auto-detect timezone on first mount; fall back to a value from the list
   // so the dropdown's label matches the user's wall-clock.
@@ -427,12 +444,24 @@ export default function BulkSchedulePage() {
           continue;
         }
         const rawScheduled = (scheduledIdx >= 0 ? r[scheduledIdx] : "").trim();
-        const scheduledAt = rawScheduled || nowLocalDateTime(i);
-        if (rawScheduled && Number.isNaN(Date.parse(rawScheduled))) {
-          errors.push(`Row ${i + 2}: invalid scheduledAt "${rawScheduled}"`);
-          continue;
+        const fallbackSlot = scheduledSlot(items.length + newItems.length);
+        let scheduledAt = fallbackSlot?.scheduledAt ?? "";
+        let date = fallbackSlot?.date ?? todayISO();
+        let time = fallbackSlot?.time ?? defaultTime();
+        if (rawScheduled) {
+          const rawParts = splitDateTime(rawScheduled);
+          const hasExplicitOffset = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(rawScheduled);
+          const parsedDate = hasExplicitOffset
+            ? new Date(rawScheduled)
+            : wallClockToUTC(rawParts.date, rawParts.time, timezone);
+          if (!parsedDate || Number.isNaN(parsedDate.getTime())) {
+            errors.push(`Row ${i + 2}: invalid scheduledAt "${rawScheduled}"`);
+            continue;
+          }
+          scheduledAt = parsedDate.toISOString();
+          date = rawParts.date;
+          time = rawParts.time;
         }
-        const { date, time } = splitDateTime(scheduledAt);
         const hashtags = hashtagsIdx >= 0 ? normalizeHashtags(r[hashtagsIdx] ?? "") : [];
         const mediaUrl = mediaIdx >= 0 ? (r[mediaIdx] ?? "").trim() : "";
         if (mediaUrl && !/^https?:\/\//i.test(mediaUrl)) {
@@ -600,8 +629,11 @@ export default function BulkSchedulePage() {
       }
       const isVideo = file.type.startsWith("video/");
       const kind: "image" | "video" = isVideo ? "video" : "image";
-      const dt = nowLocalDateTime(counter === 0 ? 0 : Math.floor(counter / Math.max(1, postsPerDay)));
-      const { date, time } = splitDateTime(dt);
+      const slot = scheduledSlot(items.length + counter);
+      if (!slot) {
+        skipped.push(`${file.name} (invalid schedule date, time, or timezone)`);
+        continue;
+      }
       const previewUrl = URL.createObjectURL(file);
       newItems.push({
         id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -613,10 +645,10 @@ export default function BulkSchedulePage() {
         name: file.name,
         size: file.size,
         caption: "",
-        scheduledAt: dt,
-        scheduledDate: date,
-        scheduledTime: time,
-        accountIds: [],
+        scheduledAt: slot.scheduledAt,
+        scheduledDate: slot.date,
+        scheduledTime: slot.time,
+        accountIds: Array.from(accounts),
         postIn: "feed",
         youtubeTitle: "",
         youtubeTags: "",
@@ -696,7 +728,8 @@ export default function BulkSchedulePage() {
         if (patch.scheduledDate !== undefined || patch.scheduledTime !== undefined) {
           const date = (patch.scheduledDate ?? i.scheduledDate) as string;
           const time = (patch.scheduledTime ?? i.scheduledTime) as string;
-          (updated as BulkItemBase).scheduledAt = `${date}T${time.slice(0, 5)}`;
+          const utc = wallClockToUTC(date, time, timezone);
+          (updated as BulkItemBase).scheduledAt = utc ? utc.toISOString() : `${date}T${time.slice(0, 5)}`;
         }
         return updated;
       })
@@ -708,28 +741,16 @@ export default function BulkSchedulePage() {
       toast({ title: "No items to schedule", tone: "warning" });
       return;
     }
-    const utc = wallClockToUTC(startDate, startTime, timezone);
-    if (!utc) {
+    if (!scheduledSlot(0)) {
       toast({ title: "Invalid date or time", tone: "error" });
       return;
     }
     setItems((prev) => {
-      const ppd = Math.max(1, postsPerDay);
-      const intervalDays = parseInt(interval, 10) || 1;
       return prev.map((item, idx) => {
-        const dayOffset = Math.floor(idx / ppd) * intervalDays;
-        const slotOffset = idx % ppd;
-        const d = new Date(utc);
-        d.setUTCDate(d.getUTCDate() + dayOffset);
-        d.setUTCMinutes(d.getUTCMinutes() + slotOffset * 30);
-        const y = d.getUTCFullYear();
-        const m = (d.getUTCMonth() + 1).toString().padStart(2, "0");
-        const day = d.getUTCDate().toString().padStart(2, "0");
-        const hh = d.getUTCHours().toString().padStart(2, "0");
-        const mm = d.getUTCMinutes().toString().padStart(2, "0");
-        const dt = `${y}-${m}-${day}T${hh}:${mm}`;
-        const { date, time } = splitDateTime(dt);
-        return { ...item, scheduledAt: dt, scheduledDate: date, scheduledTime: time };
+        const slot = scheduledSlot(idx);
+        return slot
+          ? { ...item, scheduledAt: slot.scheduledAt, scheduledDate: slot.date, scheduledTime: slot.time }
+          : item;
       });
     });
     toast({ title: "Schedule applied to all items", tone: "success" });

@@ -15,6 +15,9 @@ function usePageTitle(t: (key: string) => string): string {
   const path = usePathname();
   const PAGE_TITLES: Record<string, string> = {
     "/dashboard/posts": t("topbar.page_calendar"),
+    "/dashboard/calendar": t("topbar.page_calendar"),
+    "/dashboard/posts/create": "Create Post",
+    "/dashboard/posts/bulk-schedule": "Bulk Schedule",
     "/dashboard/posts/drafts": t("topbar.page_drafts"),
     "/dashboard/queue": t("topbar.page_queue"),
     "/dashboard/posts/history": t("topbar.page_history"),

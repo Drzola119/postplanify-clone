@@ -58,6 +58,31 @@ describe("POST /api/posts/publish caption validation", () => {
     }));
   });
 
+  it("persists scheduled posts without calling the immediate publisher", async () => {
+    const { POST } = await import("@/app/api/posts/publish/route");
+    const scheduledAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const res = await POST(new Request("http://localhost/api/posts/publish", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        platforms: ["instagram"],
+        caption: "Schedule only",
+        captionsByPlatform: { instagram: "Schedule only" },
+        sameForAll: true,
+        mediaUrls: ["https://cdn.test/a.jpg"],
+        scheduledAt,
+      }),
+    }) as never);
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).scheduled).toBe(true);
+    expect(mockPublishToUploadPost).not.toHaveBeenCalled();
+    expect(mockCreatePost).toHaveBeenCalledWith("ws1", "uid1", expect.objectContaining({
+      status: "scheduled",
+      scheduledAt: expect.any(Date),
+    }));
+  });
+
   it("rejects missing caption entry when sameForAll false", async () => {
     const { POST } = await import("@/app/api/posts/publish/route");
     const req = new Request("http://localhost/api/posts/publish", {

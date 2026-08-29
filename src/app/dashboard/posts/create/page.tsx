@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
 import {
   Eye,
@@ -110,6 +111,7 @@ const MAX_FILES = 10;
 
 export default function CreatePostPage() {
   const t = useTranslations("createPost");
+  const router = useRouter();
   const { toast, dismiss } = useToast();
   const { getIdToken, user } = useAuth();
 
@@ -503,8 +505,11 @@ export default function CreatePostPage() {
 
   const [requirementsOpen, setRequirementsOpen] = useState(false);
 
-  // Set true while the publish API call is in flight.
-  const [submitting, setSubmitting] = useState(false);
+  // Keep schedule and publish submission states distinct. Sharing one boolean
+  // made a schedule action render as "Publishing…" and obscured which backend
+  // path was actually running.
+  const [submissionMode, setSubmissionMode] = useState<"idle" | "scheduling" | "publishing">("idle");
+  const submitting = submissionMode !== "idle";
   // Outpainting pipeline phase (image → per-platform variants → per-platform publish).
   // "idle" when the standard single-shot publish is used.
   const [outpaintPhase, setOutpaintPhase] = useState<
@@ -965,13 +970,14 @@ export default function CreatePostPage() {
     // publishes each variant to its platform(s) under the workspace's own
     // upload-post.com profile.
     const canOutpaint =
+      !scheduledAt &&
       ENABLE_OUTPAINT &&
       composerMode === "standard" &&
       composerMediaKind === "image" &&
       readyMediaUrls.length === 1 &&
       needsOutpainting(platforms);
 
-    setSubmitting(true);
+    setSubmissionMode(scheduledAt ? "scheduling" : "publishing");
     try {
       if (canOutpaint) {
         const outpaintResult = await runOutpaintAndDeliver({
@@ -1041,10 +1047,13 @@ export default function CreatePostPage() {
             })
           );
 
-      const res = await fetch("/api/posts/publish", {
+      const idToken = await getIdToken();
+      const endpoint = scheduledAt ? "/api/posts/schedule" : "/api/posts/publish";
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
           ...getOverrideHeaders()
         },
         body: JSON.stringify({
@@ -1089,6 +1098,8 @@ export default function CreatePostPage() {
         accepted?: boolean;
         deliveryConfirmed?: boolean;
         final?: boolean;
+        scheduled?: boolean;
+        scheduledAt?: string;
       };
       let data = (await res.json().catch(() => ({}))) as PublishResponse;
       if (!res.ok || !data.ok) {
@@ -1099,11 +1110,36 @@ export default function CreatePostPage() {
         });
         return;
       }
+      // Scheduling has its own persistence-only endpoint. Treat only an
+      // explicit scheduled acknowledgement as success, then take the user to
+      // the calendar so the saved item is immediately visible.
+      if (scheduledAt) {
+        if (!data.scheduled || !data.postId) {
+          toast({
+            title: t("scheduleFailed"),
+            description: "The server did not confirm that the post was saved to the schedule.",
+            tone: "error",
+          });
+          return;
+        }
+        const confirmedAt = data.scheduledAt ? new Date(data.scheduledAt) : scheduledAt;
+        toast({
+          title: t("scheduleSuccess"),
+          description: confirmedAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }),
+          tone: "success",
+        });
+        if (draftId) {
+          await deleteDraft(draftId, await withIdToken());
+          setDraftId(null);
+        }
+        startOver();
+        router.push(`/dashboard/calendar?scheduled=${encodeURIComponent(data.postId)}`);
+        return;
+      }
       // ── Polling branch: only poll when delivery is genuinely unconfirmed ──
       // The publisher now correctly sets deliveryConfirmed when UploadPost
       // returns HTTP 200, so this branch only fires for true async jobs.
       if (
-        !scheduledAt &&
         data.postId &&
         data.accepted &&
         data.deliveryConfirmed === false &&
@@ -1135,33 +1171,22 @@ export default function CreatePostPage() {
         const rawResults = (data.results ?? (data.result as { results?: Record<string, { ok: boolean; error?: string }> })?.results) as Record<string, { ok: boolean; error?: string }> | undefined;
         if (!rawResults || Object.keys(rawResults).length === 0) {
           toast({
-            title: scheduledAt ? t("scheduleSuccess") : t("publishSuccess"),
-            description: scheduledAt
-              ? scheduledAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
-              : `Published to ${platforms.length} platform${platforms.length === 1 ? "" : "s"}`,
+            title: t("publishSuccess"),
+            description: `Published to ${platforms.length} platform${platforms.length === 1 ? "" : "s"}`,
             tone: "success",
           });
           if (draftId) { await deleteDraft(draftId, await withIdToken()); setDraftId(null); }
-          if (!scheduledAt) startOver();
+          startOver();
           return;
         }
       }
       // ── Still unconfirmed after polling ─────────────────────────────
       if (data.accepted && data.deliveryConfirmed === false && (!data.results || Object.keys(data.results).length === 0)) {
-        if (scheduledAt) {
-          toast({
-            title: t("scheduleSuccess"),
-            description: scheduledAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }),
-            tone: "success",
-          });
-          if (draftId) { await deleteDraft(draftId, await withIdToken()); setDraftId(null); }
-        } else {
-          toast({
-            title: "Publishing is still processing",
-            description: "UploadPost accepted the media but has not confirmed delivery yet. Your composer was kept intact; check Publish History before retrying.",
-            tone: "warning",
-          });
-        }
+        toast({
+          title: "Publishing is still processing",
+          description: "UploadPost accepted the media but has not confirmed delivery yet. Your composer was kept intact; check Publish History before retrying.",
+          tone: "warning",
+        });
         return;
       }
       // Handle per-platform results if present (partial publish)
@@ -1172,14 +1197,12 @@ export default function CreatePostPage() {
         const failed = entries.filter(([, v]) => !v.ok);
         if (failed.length === 0) {
           toast({
-            title: scheduledAt ? t("scheduleSuccess") : t("publishSuccess"),
-            description: scheduledAt
-              ? scheduledAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
-              : `All ${succeeded.length} platforms published`,
+            title: t("publishSuccess"),
+            description: `All ${succeeded.length} platforms published`,
             tone: "success",
           });
           if (draftId) { await deleteDraft(draftId, await withIdToken()); setDraftId(null); }
-          if (!scheduledAt) startOver();
+          startOver();
           return;
         } else if (succeeded.length > 0) {
           toast({
@@ -1190,7 +1213,7 @@ export default function CreatePostPage() {
           return;
         } else {
           toast({
-            title: scheduledAt ? t("scheduleFailed") : t("publishFailed"),
+            title: t("publishFailed"),
             description: `All platforms failed: ${failed.map(([k, v]) => `${k}: ${v.error ?? "unknown"}`).join("; ")}`,
             tone: "error",
           });
@@ -1199,12 +1222,12 @@ export default function CreatePostPage() {
       }
       // Fallback: no results and delivery not confirmed — but the API said ok.
       toast({
-        title: scheduledAt ? t("scheduleSuccess") : t("publishSuccess"),
+        title: t("publishSuccess"),
         description: "Post accepted — delivery results will appear in Publish History.",
         tone: "success",
       });
       if (draftId) { await deleteDraft(draftId, await withIdToken()); setDraftId(null); }
-      if (!scheduledAt) startOver();
+      startOver();
     } catch (err) {
       toast({
         title: scheduledAt ? t("scheduleFailed") : t("publishFailed"),
@@ -1212,7 +1235,7 @@ export default function CreatePostPage() {
         tone: "error",
       });
     } finally {
-      setSubmitting(false);
+      setSubmissionMode("idle");
       setOutpaintPhase("idle");
     }
   }
@@ -2455,7 +2478,7 @@ export default function CreatePostPage() {
               onClick={() => setScheduleModalOpen(true)}
               className="inline-flex items-center justify-center gap-2 rounded-md border border-zinc-200 bg-white px-4 h-9 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {t("schedule")}
+              {submissionMode === "scheduling" ? "Scheduling…" : t("schedule")}
             </button>
             <button
               type="button"
@@ -2464,7 +2487,7 @@ export default function CreatePostPage() {
               className="inline-flex items-center justify-center gap-2 rounded-md bg-zinc-950 hover:bg-zinc-800 text-white px-4 h-9 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Send className="size-3.5" />
-              {submitting ? t("publishing") : t("publishNow")}
+              {submissionMode === "publishing" ? t("publishing") : t("publishNow")}
             </button>
           </div>
         </div>

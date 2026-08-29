@@ -169,6 +169,27 @@ export async function POST(request: Request) {
     postId = "";
   }
 
+  // Scheduling is a persistence operation. The queue worker owns delivery at
+  // the due time; forwarding a scheduled request to UploadPost here can be
+  // interpreted as an immediate publish by upstream integrations.
+  if (isScheduled) {
+    if (!postId) {
+      return NextResponse.json(
+        { error: "Unable to save scheduled post; database is unavailable" },
+        { status: 503 },
+      );
+    }
+    return NextResponse.json({
+      ok: true,
+      accepted: true,
+      deliveryConfirmed: false,
+      scheduled: true,
+      jobId,
+      postId,
+      scheduledAt: new Date(body.scheduledAt!).toISOString(),
+    });
+  }
+
   try {
     const result = await publishToUploadPost({
       apiKey: uploadPostApiKey,
@@ -205,7 +226,18 @@ export async function POST(request: Request) {
           error: entry.ok ? null : { message: entry.error || "UploadPost delivery failed" },
         }]));
       }
-      if (result.deliveryConfirmed) {
+      if (isScheduled || result.scheduled) {
+        patch.status = "scheduled";
+        if (platformResults) {
+          patch.perPlatformResults = Object.fromEntries(Object.entries(platformResults).map(([platform, entry]) => [platform, {
+            status: "scheduled",
+            postId: entry.postId ?? null,
+            postUrl: entry.url ?? null,
+            deliveredAt: null,
+            error: entry.ok ? null : { message: entry.error || "UploadPost schedule failed" },
+          }]));
+        }
+      } else if (result.deliveryConfirmed) {
         patch.status = "published";
         patch.publishedAt = new Date();
       } else if (platformResults && failed > 0) {
@@ -215,7 +247,7 @@ export async function POST(request: Request) {
           .map(([platform, entry]) => `${platform}: ${entry.error || "failed"}`)
           .join("; ");
       } else {
-        patch.status = isScheduled || result.scheduled ? "scheduled" : "publishing";
+        patch.status = "publishing";
       }
       await updatePost(workspaceId, postId, patch as never).catch((err) => log.warn("Failed to persist UploadPost result", { err, postId }));
     }

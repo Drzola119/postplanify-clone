@@ -141,7 +141,7 @@ export function DashboardSidebar() {
   const t = useTranslations("shell");
 
   const MAIN: NavItem[] = [
-    { label: t("nav.calendar"), href: "/dashboard/posts", icon: Calendar, badge: 0 },
+    { label: t("nav.calendar"), href: "/dashboard/calendar", icon: Calendar, badge: 0 },
     { label: t("nav.drafts"), href: "/dashboard/posts/drafts", icon: FileText },
     { label: t("nav.queue"), href: "/dashboard/queue", icon: ListChecks },
     { label: t("nav.history"), href: "/dashboard/posts/history", icon: History },
@@ -316,7 +316,7 @@ export function DashboardSidebar() {
     >
       {/* Logo */}
       <div className="flex items-center justify-between h-14 px-4 border-b border-zinc-200 shrink-0">
-        <Link href="/dashboard/posts" className="flex items-center gap-2">
+        <Link href="/dashboard/calendar" className="flex items-center gap-2">
           <Image
             src="/images/postplanify/https___postplanify.com__next_image_url__2Flogo.png_w_64_q_75"
             alt="PostPlanify"

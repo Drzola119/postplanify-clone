@@ -240,22 +240,36 @@ export default function PostsCalendarPage() {
         params.set("pageSize", String(PAGE_SIZE));
         if (opts.cursor) params.set("cursor", opts.cursor);
 
-        const res = await fetch(`/api/posts?${params.toString()}`, {
-          credentials: "include",
-          cache: "no-store",
-          headers: {
-            ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
-            ...getOverrideHeaders(),
-          },
-        });
-        if (!res.ok) {
-          const text = await res.text().catch(() => "");
-          setLoadError(`Failed to load posts (${res.status}${text ? `: ${text}` : ""})`);
-          if (!opts.append) setPosts([]);
-          return;
-        }
-        const data = (await res.json()) as { posts?: Array<Record<string, unknown>>; nextCursor?: string | null };
-        const incoming = (data.posts ?? []).map((raw) => normalizeApiPost(raw));
+        const incoming: CalendarPost[] = [];
+        let cursor = opts.cursor;
+        let nextPageCursor: string | null = null;
+        // The calendar is a cross-status view. Load all available pages for
+        // the initial/refresh request so scheduled posts cannot be hidden by
+        // a recent-drafts page; pagination remains one page at a time for
+        // explicit "Load more" actions.
+        do {
+          const pageParams = new URLSearchParams(params);
+          if (cursor) pageParams.set("cursor", cursor);
+          else pageParams.delete("cursor");
+          const res = await fetch(`/api/posts?${pageParams.toString()}`, {
+            credentials: "include",
+            cache: "no-store",
+            headers: {
+              ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+              ...getOverrideHeaders(),
+            },
+          });
+          if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            setLoadError(`Failed to load posts (${res.status}${text ? `: ${text}` : ""})`);
+            if (!opts.append) setPosts([]);
+            return;
+          }
+          const data = (await res.json()) as { posts?: Array<Record<string, unknown>>; nextCursor?: string | null };
+          incoming.push(...(data.posts ?? []).map((raw) => normalizeApiPost(raw)));
+          nextPageCursor = data.nextCursor ?? null;
+          cursor = nextPageCursor ?? undefined;
+        } while (!opts.append && nextPageCursor);
 
         setPosts((prev) => {
           if (!opts.append) return incoming;
@@ -264,8 +278,8 @@ export default function PostsCalendarPage() {
           for (const p of incoming) if (!seen.has(p.id)) merged.push(p);
           return merged;
         });
-        setNextCursor(data.nextCursor ?? null);
-        setHasMore(Boolean(data.nextCursor));
+        setNextCursor(nextPageCursor);
+        setHasMore(Boolean(nextPageCursor));
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : "Network error");
       } finally {
@@ -299,7 +313,7 @@ export default function PostsCalendarPage() {
     return list.sort(comparePostsChronologically);
   }, [posts, appliedFilters]);
 
-  const postsByDay = useMemo(() => groupPostsByDay(visiblePosts), [visiblePosts]);
+  const postsByDay = useMemo(() => groupPostsByDay(visiblePosts, timeZone), [visiblePosts, timeZone]);
 
   const filterIsDirty =
     draftSearch !== appliedSearch ||

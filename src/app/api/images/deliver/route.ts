@@ -256,6 +256,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const isScheduled = safeBody.scheduledAt
+    ? Date.parse(safeBody.scheduledAt) > Date.now()
+    : false;
+
   // ── 4. Persist a posts/{id} doc up-front so the result is durable ─────
   let postId: string;
   try {
@@ -268,7 +272,7 @@ export async function POST(request: NextRequest) {
       hashtags: safeBody.hashtags
         ? safeBody.hashtags.split(/\s+/).filter(Boolean)
         : [],
-      status: "queued",
+      status: isScheduled ? "scheduled" : "queued",
       scheduledAt: safeBody.scheduledAt ? new Date(safeBody.scheduledAt) : undefined,
       firstComment: safeBody.firstComment,
       firstCommentByPlatform: safeBody.firstCommentByPlatform,
@@ -279,10 +283,30 @@ export async function POST(request: NextRequest) {
       altTextByPlatform: safeBody.altTextByPlatform,
     });
   } catch (err) {
+    if (isScheduled) {
+      log.error("[api/images/deliver] scheduled post persistence failed", { err });
+      return NextResponse.json(
+        { error: "Unable to save scheduled post; database is unavailable" },
+        { status: 503 },
+      );
+    }
     // Firestore unavailable — fall back to stateless delivery so the
     // user still sees the publish result during env-var setup.
     log.warn("[api/images/deliver] createPost failed; publishing stateless", { err });
     postId = `stateless_${randomUUID()}`;
+  }
+
+  if (isScheduled) {
+    return NextResponse.json({
+      ok: true,
+      accepted: true,
+      scheduled: true,
+      deliveryConfirmed: false,
+      postId,
+      scheduledAt: new Date(safeBody.scheduledAt!).toISOString(),
+      totals: { total: platformsToPublish.length, succeeded: platformsToPublish.length, failed: 0 },
+      results: platformsToPublish.map((platform) => ({ platform, status: "scheduled" })),
+    }, { status: 201 });
   }
 
   // ── 5. Publish per platform ────────────────────────────────────────────
@@ -292,6 +316,7 @@ export async function POST(request: NextRequest) {
     platforms: platformsToPublish,
     uploadPostUsername,
     workspaceId,
+    isScheduled,
   });
 
   const results = await Promise.allSettled(
@@ -306,6 +331,7 @@ export async function POST(request: NextRequest) {
         ...(safeBody.firstComment ? { firstComment: safeBody.firstComment } : {}),
         ...(platformAdvancedOpts && Object.keys(platformAdvancedOpts).length ? { advancedOptions: platformAdvancedOpts as Record<string, string | number | boolean | string[] | undefined> } : {}),
         jobId: safeBody.jobId,
+        scheduledAt: safeBody.scheduledAt,
       });
     })
   );
@@ -334,10 +360,16 @@ export async function POST(request: NextRequest) {
 
   const succeeded = deliveryResults.filter((r) => r.status === "delivered").length;
   const failed = deliveryResults.length - succeeded;
-  let overallStatus: "published" | "partially_published" | "failed";
-  if (succeeded === deliveryResults.length) overallStatus = "published";
-  else if (succeeded > 0) overallStatus = "partially_published";
-  else overallStatus = "failed";
+  let overallStatus: "scheduled" | "published" | "partially_published" | "failed";
+  if (isScheduled) {
+    overallStatus = succeeded > 0 || failed === 0 ? "scheduled" : "failed";
+  } else if (succeeded === deliveryResults.length) {
+    overallStatus = "published";
+  } else if (succeeded > 0) {
+    overallStatus = "partially_published";
+  } else {
+    overallStatus = "failed";
+  }
 
   if (postId && !postId.startsWith("stateless_")) {
     try {
@@ -385,6 +417,7 @@ async function deliverVariantToPlatform(args: {
   firstComment?: string;
   advancedOptions?: Record<string, string | number | boolean | string[] | undefined>;
   jobId: string;
+  scheduledAt?: string | null;
 }): Promise<PlatformDeliveryResult> {
   const {
     variant,
@@ -395,6 +428,7 @@ async function deliverVariantToPlatform(args: {
     firstComment,
     advancedOptions,
     jobId,
+    scheduledAt,
   } = args;
 
   const t0 = Date.now();
@@ -439,7 +473,31 @@ async function deliverVariantToPlatform(args: {
   form.append("user", username);
   form.append("platform[]", toEnginePlatform(platform));
   form.append("title", caption);
-  form.append("async_upload", "false");
+
+  if (scheduledAt) {
+    const d = new Date(scheduledAt);
+    if (!isNaN(d.getTime())) {
+      const isoNoMs = d.toISOString().replace(/\.\d{3}Z$/, "Z");
+      const yyyy = d.getUTCFullYear();
+      const MM = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const dd = String(d.getUTCDate()).padStart(2, "0");
+      const hh = String(d.getUTCHours()).padStart(2, "0");
+      const mm = String(d.getUTCMinutes()).padStart(2, "0");
+      const ss = String(d.getUTCSeconds()).padStart(2, "0");
+      const spaceFormat = `${yyyy}-${MM}-${dd} ${hh}:${mm}:${ss}`;
+
+      form.append("scheduled_date", isoNoMs);
+      form.append("schedule_date", isoNoMs);
+      form.append("scheduled_at", isoNoMs);
+      form.append("scheduled_time", spaceFormat);
+      form.append("async_upload", "true");
+    } else {
+      form.append("async_upload", "false");
+    }
+  } else {
+    form.append("async_upload", "false");
+  }
+
   form.append("request_id", `${jobId}:${platform}`);
   form.append("external_id", jobId);
   if (firstComment) form.append("first_comment", firstComment);

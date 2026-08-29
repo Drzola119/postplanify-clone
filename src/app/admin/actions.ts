@@ -818,7 +818,7 @@ export async function retryPostAction(postId: string) {
           category: "publishing",
           title: "Post rescheduled",
           message: `Your post "${String(caption).slice(0, 60)}${String(caption).length > 60 ? "..." : ""}" has been rescheduled and will be retried shortly.`,
-          actionUrl: "/dashboard/posts?filter=scheduled",
+          actionUrl: "/dashboard/calendar?filter=scheduled",
           actionLabel: "View queue",
           metadata: { postId },
         });

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Calendar, Clock, Globe, Sparkles } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
+import { zonedDateTimeToDate } from "@/lib/datetime/zoned";
 
 interface ScheduleModalProps {
   open: boolean;
@@ -13,6 +14,7 @@ interface ScheduleModalProps {
 
 const TIMEZONES = [
   { id: "UTC", label: "(UTC+00:00) Coordinated Universal Time" },
+  { id: "Africa/Lagos", label: "(UTC+01:00) West Africa Time" },
   { id: "America/New_York", label: "(UTC-05:00) Eastern Time (US & Canada)" },
   { id: "America/Los_Angeles", label: "(UTC-08:00) Pacific Time (US & Canada)" },
   { id: "Europe/London", label: "(UTC+00:00) London" },
@@ -99,15 +101,10 @@ export function ScheduleModal({ open, onClose, onConfirm }: ScheduleModalProps) 
     if (!date) return null;
     const [hh, mm] = time.split(":").map((s) => parseInt(s, 10));
     if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
-    // Build a fake-UTC wall-clock matching the user's pick.
     const y = date.getFullYear();
     const m = date.getMonth();
     const d = date.getDate();
-    const utcFake = new Date(Date.UTC(y, m, d, hh, mm, 0, 0));
-    // Find the offset for the chosen timezone at that wall-clock instant.
-    const tzNow = new Date(utcFake.toLocaleString("en-US", { timeZone: timezone }));
-    const offsetMs = utcFake.getTime() - tzNow.getTime();
-    return new Date(utcFake.getTime() + offsetMs);
+    return zonedDateTimeToDate({ year: y, month: m + 1, day: d, hour: hh, minute: mm }, timezone);
   }, [date, time, timezone]);
 
   const isPast = useMemo(() => {

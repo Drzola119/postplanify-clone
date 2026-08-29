@@ -127,12 +127,13 @@ export function comparePostsChronologically(a: CalendarPost, b: CalendarPost): n
   return tb - ta;
 }
 
-export function groupPostsByDay(posts: CalendarPost[]): Record<string, CalendarPost[]> {
+export function groupPostsByDay(posts: CalendarPost[], timeZone = "UTC"): Record<string, CalendarPost[]> {
   const out: Record<string, CalendarPost[]> = {};
   for (const p of posts) {
     const stamp = p.scheduledAt ?? p.publishedAt ?? p.createdAt;
     if (!stamp) continue;
-    const day = stamp.slice(0, 10);
+    const { date } = formatInZone(stamp, timeZone);
+    const day = date || stamp.slice(0, 10);
     if (!out[day]) out[day] = [];
     out[day].push(p);
   }
