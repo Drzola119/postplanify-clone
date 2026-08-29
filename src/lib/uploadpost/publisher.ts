@@ -195,6 +195,12 @@ const ADVANCED_FIELD_MAP: Record<string, string> = {
   youtube_made_for_kids: "madeForKids",
   youtube_synthetic_media: "containsSyntheticMedia",
   youtube_thumbnail_url: "thumbnail_url",
+  youtube_subtitle_file: "subtitle_file",
+  pinterest_board_id: "board_id",
+  pinterest_link: "link",
+  pinterest_alt_text: "alt_text",
+  pinterest_description: "description",
+  pinterest_content_type: "content_type",
   linkedin_page_id: "target_linkedin_page_id",
 };
 
@@ -322,7 +328,39 @@ export async function publishToUploadPost(input: UploadPostPublishInput): Promis
     }
     const platformComment = input.firstCommentByPlatform?.[platform];
     if (platformComment && platformComment !== sharedFirstComment) form.append(`${uploadPlatform}_first_comment`, platformComment);
-    for (const [key, value] of Object.entries(input.advancedByPlatform?.[platform] || {})) {
+
+    const advanced = input.advancedByPlatform?.[platform] || {};
+
+    // YouTube defaults and multi-alias forwarding
+    if (uploadPlatform === "youtube") {
+      const privacy = advanced.youtube_privacy || advanced.privacyStatus || advanced.privacy_status || advanced.privacy || "public";
+      form.append("privacyStatus", String(privacy));
+      form.append("privacy_status", String(privacy));
+      form.append("privacy", String(privacy));
+      const kids = advanced.youtube_made_for_kids !== undefined ? advanced.youtube_made_for_kids : (advanced.madeForKids !== undefined ? advanced.madeForKids : false);
+      form.append("madeForKids", kids ? "true" : "false");
+      form.append("made_for_kids", kids ? "true" : "false");
+      const category = advanced.youtube_category_id || advanced.categoryId || advanced.category_id || "22";
+      form.append("categoryId", String(category));
+      form.append("category_id", String(category));
+    }
+
+    // Pinterest defaults and multi-alias forwarding
+    if (uploadPlatform === "pinterest") {
+      const boardId = advanced.pinterest_board_id || advanced.board_id || advanced.board;
+      if (boardId) {
+        form.append("board_id", String(boardId));
+        form.append("board", String(boardId));
+        form.append("pinterest_board_id", String(boardId));
+      }
+      const link = advanced.pinterest_link || advanced.link;
+      if (link) {
+        form.append("link", String(link));
+        form.append("pinterest_link", String(link));
+      }
+    }
+
+    for (const [key, value] of Object.entries(advanced)) {
       appendValue(form, ADVANCED_FIELD_MAP[key] || key, normalizeMediaTypeField(key, value, endpoint));
     }
   }
