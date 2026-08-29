@@ -127,14 +127,76 @@ export default function CreatePostPage() {
   // Detect ?draft=<id> from /dashboard/posts/drafts → Continue button.
   // Restore the full draft state (media metadata, per-platform captions, accounts,
   // collaborators, hashtags, etc.) so the user picks up where they left off.
+  // Falls back to server fetch when the draft is not in localStorage
+  // (cross-device, cleared storage, or UID key mismatch).
   const [draftId, setDraftId] = useState<string | null>(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const id = params.get("draft");
     if (!id) return;
-    const record = loadDraft(id, draftCtx.uid);
-    if (record) {
+    // Use an async wrapper so we can fallback to server fetch
+    (async () => {
+      let record = loadDraft(id, draftCtx.uid);
+      // Try anon key as fallback before hitting server
+      if (!record) {
+        try {
+          const anon = loadDraft(id, null);
+          if (anon) record = anon;
+        } catch {}
+      }
+      if (!record) {
+        try {
+          const idToken = await getIdToken();
+          const headers: Record<string, string> = {
+            ...getOverrideHeaders(),
+            ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+          };
+          const res = await fetch(`/api/drafts/${encodeURIComponent(id)}`, {
+            credentials: "include",
+            headers,
+          });
+          if (res.ok) {
+            const data = (await res.json()) as { draft?: Record<string, unknown> };
+            const d = data.draft as Record<string, unknown> | undefined;
+            if (d) {
+              // Map server DraftDoc (subset) to local DraftRecord shape
+              const platforms = (d.platforms as string[] | undefined) ?? [];
+              const mediaItems = (d.mediaItems as Array<{ url?: string; type?: string }> | undefined) ?? [];
+              const caption = (d.caption as string | undefined) ?? "";
+              record = {
+                id: (d.id as string) ?? id,
+                createdAt: Date.parse((d.createdAt as string) ?? "") || Date.now(),
+                updatedAt: Date.parse((d.updatedAt as string) ?? "") || Date.now(),
+                captions: caption ? { __all: caption } : {},
+                sameForAll: (d.sameForAll as boolean | undefined) ?? true,
+                community: (d.community as string | undefined) ?? "profile",
+                quoteTweet: (d.quoteTweetUrl as string | undefined) ?? "",
+                tagUsers: Array.isArray(d.tagUsers) ? (d.tagUsers as string[]).join(" ") : "",
+                selected: (platforms as never) ?? [],
+                collaborators: Array.isArray(d.collaborators) ? (d.collaborators as Array<{ handle?: string }>) .map((c) => c.handle ?? "").filter(Boolean) : [],
+                mediaItems: mediaItems.map((m, i) => ({
+                  kind: (m.type ?? "image") as "image" | "video",
+                  cdnUrl: m.url,
+                  localId: `server-${i}-${Date.now()}`,
+                  name: "media",
+                  mime: m.type === "video" ? "video/mp4" : "image/jpeg",
+                })),
+                activeMedia: 0,
+                customCoverUrl: (d.customCoverUrl as string | null) ?? null,
+                frameCoverUrl: (d.frameCoverUrl as string | null) ?? null,
+                firstComments: {},
+                altTexts: {},
+              } as unknown as DraftRecord;
+              // Seed localStorage so subsequent loads are instant
+              try {
+                saveDraft(record as DraftRecord, { uid: draftCtx.uid, idToken });
+              } catch {}
+            }
+          }
+        } catch {}
+      }
+      if (record) {
       setDraftId(id);
       setCaptions(record.captions ?? {});
       setSameForAll(Boolean(record.sameForAll));
@@ -285,14 +347,15 @@ export default function CreatePostPage() {
         tone: "info",
       });
     } else {
-      toast({ title: t("draftNotFound", { id }), tone: "error" });
-    }
-    // Strip ?draft= from the URL so a refresh doesn't re-fire the restore.
-    params.delete("draft");
-    const next = params.toString();
-    const clean = window.location.pathname + (next ? `?${next}` : "");
-    window.history.replaceState({}, "", clean);
-  }, [toast]);
+        toast({ title: t("draftNotFound", { id }), tone: "error" });
+      }
+      // Strip ?draft= from the URL so a refresh doesn't re-fire the restore.
+      params.delete("draft");
+      const next = params.toString();
+      const clean = window.location.pathname + (next ? `?${next}` : "");
+      window.history.replaceState({}, "", clean);
+    })();
+  }, [toast, draftCtx.uid, getIdToken]);
 
   // Connected accounts fetched from the server (only these should appear in the picker).
   const [connectedPlatforms, setConnectedPlatforms] = useState<Set<PlatformId>>(new Set());
@@ -2245,7 +2308,10 @@ export default function CreatePostPage() {
     carouselItems.length > 0 ||
     !!trialReelFile ||
     !!documentFile ||
+    selected.size > 0 ||
     Object.values(captions).some((v) => v.trim().length > 0);
+
+  const canSaveDraft = hasAnyContent || !!draftId;
 
   return (
     <div className="p-6 max-w-[1400px] mx-auto">
@@ -2479,11 +2545,13 @@ export default function CreatePostPage() {
         <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-3">
           <button
             type="button"
-            disabled={!hasAnyContent}
+            disabled={!canSaveDraft || submitting}
             onClick={handleSaveDraft}
+            title={!canSaveDraft ? "Add a caption, media or select a platform to save" : undefined}
             className="inline-flex items-center justify-center gap-2 rounded-md border border-zinc-200 bg-white px-4 h-9 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {t("saveDraft")}
+            <FileText className="size-4" />
+            {draftId ? t("draftSaved") : t("saveDraft")}
           </button>
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
             {readinessReport.overall === "blocked" || readinessReport.overall === "warning" ? (

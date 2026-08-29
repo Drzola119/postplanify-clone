@@ -118,10 +118,11 @@ export default function DraftsPage() {
     try {
       const res = await authedFetch("/api/drafts");
       if (seq !== requestSeq.current) return;
+      let serverRows: DraftRow[] = [];
       if (res.ok) {
         const data = (await res.json()) as { drafts?: ApiDraftListItem[] };
         const list = data.drafts ?? [];
-        const rows: DraftRow[] = list.map((d) => draftToRow({
+        serverRows = list.map((d) => draftToRow({
           id: d.id,
           updatedAt: d.updatedAt ?? d.createdAt ?? Date.now(),
           createdAt: d.createdAt ?? d.updatedAt,
@@ -132,29 +133,64 @@ export default function DraftsPage() {
             cdnUrl: m.url,
           })),
         }));
-        if (rows.length > 0) {
-          setDrafts(rows);
-          setLoading(false);
-          return;
-        }
       }
-      // Fall back to local drafts when the server list is empty or failed.
-      const records = listLocalDrafts(user?.uid ?? null);
-      if (records.length > 0) {
-        const rows: DraftRow[] = records.map((r) => draftToRow(r as DraftRecordLike));
-        setDrafts(rows);
-      } else {
-        setDrafts([]);
+      // Always merge local drafts (per-UID + anon fallback migration) so
+      // drafts saved before login or while offline still appear. Server rows
+      // take precedence for the same id.
+      const localUuidRows: DraftRow[] = (() => {
+        const uid = user?.uid ?? null;
+        const byId = new Map<string, DraftRow>();
+        // Primary key: per-UID
+        for (const r of listLocalDrafts(uid)) {
+          byId.set(r.id, draftToRow(r as DraftRecordLike));
+        }
+        // Fallback: anon key (migrate drafts saved before auth resolved)
+        if (uid) {
+          for (const r of listLocalDrafts(null)) {
+            if (!byId.has(r.id)) byId.set(r.id, draftToRow(r as DraftRecordLike));
+          }
+          // Also check explicit anon if different from null behavior
+          try {
+            const anonRaw = typeof window !== "undefined" ? window.localStorage.getItem("postplanify.drafts.v1.anon") : null;
+            if (anonRaw) {
+              const anonParsed = JSON.parse(anonRaw) as Record<string, DraftRecordLike>;
+              for (const id of Object.keys(anonParsed)) {
+                if (!byId.has(id)) byId.set(id, draftToRow(anonParsed[id]));
+              }
+            }
+          } catch {}
+        }
+        return Array.from(byId.values());
+      })();
+
+      const merged = new Map<string, DraftRow>();
+      for (const r of localUuidRows) merged.set(r.id, r);
+      for (const r of serverRows) merged.set(r.id, r);
+      const all = Array.from(merged.values());
+      if (seq !== requestSeq.current) return;
+      setDrafts(all);
+      if (all.length === 0 && !res.ok) {
+        setLoadError(t("posts.drafts.error_load"));
       }
     } catch {
       if (seq !== requestSeq.current) return;
+      // On network failure, show whatever is in local storage
       const records = listLocalDrafts(user?.uid ?? null);
-      if (records.length > 0) {
-        setDrafts(records.map((r) => draftToRow(r as DraftRecordLike)));
-      } else {
-        setDrafts([]);
-      }
-      setLoadError(t("posts.drafts.error_load"));
+      const anonFallback = (() => {
+        if (!user?.uid) return [];
+        try {
+          const raw = typeof window !== "undefined" ? window.localStorage.getItem("postplanify.drafts.v1.anon") : null;
+          if (!raw) return [];
+          const parsed = JSON.parse(raw) as Record<string, DraftRecordLike>;
+          return Object.values(parsed);
+        } catch { return []; }
+      })();
+      const mergedMap = new Map<string, DraftRecordLike>();
+      for (const r of anonFallback) if (!mergedMap.has(r.id)) mergedMap.set(r.id, r);
+      for (const r of records) mergedMap.set(r.id, r as DraftRecordLike);
+      const rows = Array.from(mergedMap.values()).map((r) => draftToRow(r));
+      setDrafts(rows);
+      if (rows.length === 0) setLoadError(t("posts.drafts.error_load"));
     } finally {
       if (seq === requestSeq.current) setLoading(false);
     }

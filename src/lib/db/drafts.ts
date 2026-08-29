@@ -1,13 +1,19 @@
 import "server-only";
 import { toIso } from "@/lib/db/date-utils";
-import { adminDb } from "@/lib/db";
+import { adminDb, FieldValue } from "@/lib/db";
 import type { DraftDoc, PlatformId } from "@/lib/db/schema";
 
-const SERVER_TIMESTAMP = { _methodName: "serverTimestamp" } as const;
+const SERVER_TIMESTAMP = FieldValue.serverTimestamp();
 
 function collection(workspaceId: string) {
   if (!adminDb) throw new Error("adminDb not configured");
   return adminDb.collection(`workspaces/${workspaceId}/drafts`);
+}
+
+function stripUndefined(obj: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) if (v !== undefined) out[k] = v;
+  return out;
 }
 
 export interface DraftListItem {
@@ -52,7 +58,7 @@ export async function saveDraft(workspaceId: string, authorUid: string, input: {
   const coll = collection(workspaceId);
   const ref = input.id ? coll.doc(input.id) : coll.doc();
   const now = SERVER_TIMESTAMP;
-  const payload: Record<string, unknown> = {
+  const raw: Record<string, unknown> = {
     caption: input.caption ?? "",
     platforms: input.platforms ?? [],
     mediaItems: input.mediaItems ?? [],
@@ -70,6 +76,14 @@ export async function saveDraft(workspaceId: string, authorUid: string, input: {
     updatedAt: now,
     createdAt: now,
   };
+  const payload = stripUndefined(raw);
+  // Only set createdAt on creation; use update semantics via merge
+  if (input.id) {
+    const snap = await ref.get().catch(() => null);
+    if (snap && snap.exists) {
+      delete (payload as Record<string, unknown>).createdAt;
+    }
+  }
   await ref.set(payload, { merge: true });
   return ref.id;
 }
