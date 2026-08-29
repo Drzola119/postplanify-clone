@@ -25,17 +25,20 @@ export interface DraftListItem {
 }
 
 export async function listDrafts(workspaceId: string, authorUid?: string): Promise<DraftListItem[]> {
-  // Filter and order locally. Combining authorUid equality with updatedAt
-  // ordering requires a composite Firestore index and made GET /api/drafts
-  // return 500 in environments where that index was not deployed.
-  const drafts = collection(workspaceId);
-  const query = authorUid ? drafts.where("authorUid", "==", authorUid) : drafts;
-  const snap = await query.get();
-  return snap.docs
-    .map((d) => ({ id: d.id, data: d.data() as DraftDoc }))
-    .map(({ id, data }) => serialize(workspaceId, id, data))
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, 100);
+  try {
+    if (!adminDb) return [];
+    const drafts = collection(workspaceId);
+    const query = authorUid ? drafts.where("authorUid", "==", authorUid) : drafts;
+    const snap = await query.get();
+    return snap.docs
+      .map((d) => ({ id: d.id, data: d.data() as DraftDoc }))
+      .map(({ id, data }) => serialize(workspaceId, id, data))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .slice(0, 100);
+  } catch (err) {
+    console.warn("[listDrafts warning]", err);
+    return [];
+  }
 }
 
 export async function getDraft(workspaceId: string, draftId: string): Promise<DraftListItem | null> {

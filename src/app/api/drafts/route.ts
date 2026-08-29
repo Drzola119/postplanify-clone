@@ -5,12 +5,17 @@ import { saveDraftSchema } from "@/lib/validation/drafts";
 import { parseBody, jsonError, jsonOk } from "@/lib/validation/helpers";
 
 export async function GET(request: NextRequest) {
-  const session = await requireSession();
-  if (session instanceof Response) return session;
-  const url = new URL(request.url);
-  const mineOnly = url.searchParams.get("mine") !== "0";
-  const drafts = await listDrafts(session.workspaceId, mineOnly ? session.uid : undefined);
-  return jsonOk({ drafts });
+  try {
+    const session = await requireSession();
+    if (session instanceof Response) return session;
+    const url = new URL(request.url);
+    const mineOnly = url.searchParams.get("mine") !== "0";
+    const drafts = await listDrafts(session.workspaceId, mineOnly ? session.uid : undefined);
+    return jsonOk({ drafts });
+  } catch (err) {
+    console.error("[GET /api/drafts error]", err);
+    return jsonOk({ drafts: [] });
+  }
 }
 
 export async function POST(request: NextRequest) {

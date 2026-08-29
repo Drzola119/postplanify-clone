@@ -1,5 +1,5 @@
 import "server-only";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { initializeApp, getApps, cert, type App } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
@@ -108,10 +108,28 @@ export async function verifySessionCookie(
 
 export async function getCurrentUser(): Promise<{ uid: string; email: string | null } | null> {
   try {
-    const store = await cookies();
-    const session = store.get(SESSION_COOKIE)?.value;
-    if (!session) return null;
-    return verifySessionCookie(session);
+    let token: string | undefined;
+    try {
+      const store = await cookies();
+      token = store.get(SESSION_COOKIE)?.value;
+    } catch {
+      /* not in cookie context */
+    }
+
+    if (!token) {
+      try {
+        const headerStore = await headers();
+        const authHeader = headerStore.get("authorization");
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+          token = authHeader.slice(7).trim();
+        }
+      } catch {
+        /* not in headers context */
+      }
+    }
+
+    if (!token) return null;
+    return verifySessionCookie(token);
   } catch (error) {
     log.error(error, { step: "getSessionCookie" });
     return null;

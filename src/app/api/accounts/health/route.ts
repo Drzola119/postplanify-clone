@@ -94,28 +94,33 @@ async function fetchLiveAccounts(workspaceId: string, apiKey: string): Promise<C
 }
 
 export async function GET(request: Request) {
-  const session = await requireSession();
-  if (session instanceof Response) return session;
-  if (!adminDb) {
-    return NextResponse.json({ error: "Database not configured" }, { status: 503 });
-  }
-
-  // Try to refresh from upload-post.com if the env var is configured; otherwise fall back to cache.
-  const apiKey = process.env.UPLOAD_POST_API_KEY;
-  if (apiKey) {
-    const live = await fetchLiveAccounts(session.workspaceId, apiKey);
-    if (live) {
-      const cached = await readCache(session.workspaceId);
-      await writeCache(session.workspaceId, {
-        accounts: live,
-        profiles: cached?.profiles ?? [],
-        plan: cached?.plan ?? null,
-        limit: cached?.limit ?? null,
-      });
+  try {
+    const session = await requireSession();
+    if (session instanceof Response) return session;
+    if (!adminDb) {
+      return NextResponse.json({ health: [] });
     }
-  }
 
-  const snapshot = await readCache(session.workspaceId);
-  const health = deriveHealth(snapshot);
-  return NextResponse.json({ health });
+    // Try to refresh from upload-post.com if the env var is configured; otherwise fall back to cache.
+    const apiKey = process.env.UPLOAD_POST_API_KEY;
+    if (apiKey) {
+      const live = await fetchLiveAccounts(session.workspaceId, apiKey);
+      if (live) {
+        const cached = await readCache(session.workspaceId);
+        await writeCache(session.workspaceId, {
+          accounts: live,
+          profiles: cached?.profiles ?? [],
+          plan: cached?.plan ?? null,
+          limit: cached?.limit ?? null,
+        });
+      }
+    }
+
+    const snapshot = await readCache(session.workspaceId);
+    const health = deriveHealth(snapshot);
+    return NextResponse.json({ health });
+  } catch (err) {
+    console.error("[GET /api/accounts/health error]", err);
+    return NextResponse.json({ health: [] });
+  }
 }

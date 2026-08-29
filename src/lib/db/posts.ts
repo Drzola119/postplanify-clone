@@ -50,40 +50,48 @@ export interface PostListItem {
 }
 
 export async function listPosts(workspaceId: string, filters: ListPostsFilters = {}): Promise<{ items: PostListItem[]; nextCursor: string | null }> {
-  const coll = collection(workspaceId);
-  const pageSize = Math.min(Math.max(filters.pageSize ?? 25, 1), 100);
+  try {
+    if (!adminDb) return { items: [], nextCursor: null };
+    const coll = collection(workspaceId);
+    const pageSize = Math.min(Math.max(filters.pageSize ?? 25, 1), 100);
 
-  // Keep this query on Firestore's automatic single-field index. Older posts
-  // do not have deletedAt, and `deletedAt == null` excludes missing fields.
-  // Combining it with status/platform also required undeployed composite
-  // indexes and made the production history/queue endpoints return 500.
-  let q = coll.orderBy("createdAt", "desc").limit(500);
-  if (filters.cursor) {
+    let snap;
     try {
-      const cursorSnap = await coll.doc(filters.cursor).get();
-      if (cursorSnap.exists) q = q.startAfter(cursorSnap);
-    } catch {
-      // bad cursor — fall back to first page
+      let q = coll.orderBy("createdAt", "desc").limit(500);
+      if (filters.cursor) {
+        try {
+          const cursorSnap = await coll.doc(filters.cursor).get();
+          if (cursorSnap.exists) q = q.startAfter(cursorSnap);
+        } catch {
+          // bad cursor — fall back to first page
+        }
+      }
+      snap = await q.get();
+    } catch (orderErr) {
+      console.warn("[listPosts orderBy fallback]", orderErr);
+      snap = await coll.limit(500).get();
     }
-  }
 
-  const snap = await q.get();
-  const wantedStatuses = filters.status
-    ? new Set(Array.isArray(filters.status) ? filters.status : [filters.status])
-    : null;
-  const filtered = snap.docs.filter((d) => {
-    const data = d.data() as PostDoc;
-    if (data.deletedAt) return false;
-    if (wantedStatuses && !wantedStatuses.has(data.status)) return false;
-    if (filters.platform && !data.platforms?.includes(filters.platform)) return false;
-    const createdMs = Date.parse(toIso(data.createdAt));
-    if (filters.sinceDate && createdMs < filters.sinceDate.getTime()) return false;
-    if (filters.untilDate && createdMs > filters.untilDate.getTime()) return false;
-    return true;
-  });
-  const items = filtered.slice(0, pageSize).map((d) => serialize(workspaceId, d.id, d.data() as PostDoc));
-  const nextCursor = filtered.length > pageSize ? items[items.length - 1]?.id ?? null : null;
-  return { items, nextCursor };
+    const wantedStatuses = filters.status
+      ? new Set(Array.isArray(filters.status) ? filters.status : [filters.status])
+      : null;
+    const filtered = snap.docs.filter((d) => {
+      const data = d.data() as PostDoc;
+      if (data.deletedAt) return false;
+      if (wantedStatuses && !wantedStatuses.has(data.status)) return false;
+      if (filters.platform && !data.platforms?.includes(filters.platform)) return false;
+      const createdMs = Date.parse(toIso(data.createdAt));
+      if (filters.sinceDate && createdMs < filters.sinceDate.getTime()) return false;
+      if (filters.untilDate && createdMs > filters.untilDate.getTime()) return false;
+      return true;
+    });
+    const items = filtered.slice(0, pageSize).map((d) => serialize(workspaceId, d.id, d.data() as PostDoc));
+    const nextCursor = filtered.length > pageSize ? items[items.length - 1]?.id ?? null : null;
+    return { items, nextCursor };
+  } catch (err) {
+    console.error("[listPosts error]", err);
+    return { items: [], nextCursor: null };
+  }
 }
 
 export interface ListPostsHistoryFilters {
@@ -98,32 +106,44 @@ export async function listPostsHistory(
   workspaceId: string,
   filters: ListPostsHistoryFilters = {}
 ): Promise<{ items: PostListItem[] }> {
-  const coll = collection(workspaceId);
-  const pageSize = Math.min(Math.max(filters.pageSize ?? 50, 1), 100);
+  try {
+    if (!adminDb) return { items: [] };
+    const coll = collection(workspaceId);
+    const pageSize = Math.min(Math.max(filters.pageSize ?? 50, 1), 100);
 
-  const snap = await coll.orderBy("createdAt", "desc").limit(500).get();
-  const items = snap.docs
-    .filter((d) => {
-      const data = d.data() as PostDoc;
-      if (data.deletedAt) return false;
-      if (filters.status ? data.status !== filters.status : !["published", "failed", "partially_published"].includes(data.status)) return false;
-      if (filters.platform && !data.platforms?.includes(filters.platform)) return false;
-      const eventMs = Date.parse(toIso(data.publishedAt || data.createdAt));
-      if (filters.from && eventMs < filters.from.getTime()) return false;
-      if (filters.to && eventMs > filters.to.getTime()) return false;
-      return true;
-    })
-    .sort((a, b) => Date.parse(toIso((b.data() as PostDoc).publishedAt || (b.data() as PostDoc).createdAt)) - Date.parse(toIso((a.data() as PostDoc).publishedAt || (a.data() as PostDoc).createdAt)))
-    .slice(0, pageSize)
-    .map((d) => serialize(workspaceId, d.id, d.data() as PostDoc));
-  return { items };
+    const snap = await coll.orderBy("createdAt", "desc").limit(500).get();
+    const items = snap.docs
+      .filter((d) => {
+        const data = d.data() as PostDoc;
+        if (data.deletedAt) return false;
+        if (filters.status ? data.status !== filters.status : !["published", "failed", "partially_published"].includes(data.status)) return false;
+        if (filters.platform && !data.platforms?.includes(filters.platform)) return false;
+        const eventMs = Date.parse(toIso(data.publishedAt || data.createdAt));
+        if (filters.from && eventMs < filters.from.getTime()) return false;
+        if (filters.to && eventMs > filters.to.getTime()) return false;
+        return true;
+      })
+      .sort((a, b) => Date.parse(toIso((b.data() as PostDoc).publishedAt || (b.data() as PostDoc).createdAt)) - Date.parse(toIso((a.data() as PostDoc).publishedAt || (a.data() as PostDoc).createdAt)))
+      .slice(0, pageSize)
+      .map((d) => serialize(workspaceId, d.id, d.data() as PostDoc));
+    return { items };
+  } catch (err) {
+    console.error("[listPostsHistory error]", err);
+    return { items: [] };
+  }
 }
 
 export async function getPost(workspaceId: string, postId: string): Promise<PostListItem | null> {
-  const ref = collection(workspaceId).doc(postId);
-  const snap = await ref.get();
-  if (!snap.exists) return null;
-  return serialize(workspaceId, snap.id, snap.data() as PostDoc);
+  try {
+    if (!adminDb) return null;
+    const ref = collection(workspaceId).doc(postId);
+    const snap = await ref.get();
+    if (!snap.exists) return null;
+    return serialize(workspaceId, snap.id, snap.data() as PostDoc);
+  } catch (err) {
+    console.error("[getPost error]", err);
+    return null;
+  }
 }
 
 export async function createPost(workspaceId: string, authorUid: string, data: Partial<PostDoc>): Promise<string> {
@@ -222,19 +242,23 @@ export async function bulkCreatePosts(
 }
 
 export async function listScheduledDue(workspaceId: string, now: Date): Promise<PostListItem[]> {
-  const coll = collection(workspaceId);
-  const q = coll
-    .where("scheduledAt", "<=", now)
-    .limit(200);
-  const snap = await q.get();
-  // Posts already accepted by UploadPost's own scheduler must never be sent a
-  // second time by our legacy local worker.
-  return snap.docs
-    .filter((d) => {
-      const data = d.data() as PostDoc;
-      return !data.deletedAt && !data.uploadPostJobId && ["queued", "scheduled"].includes(data.status);
-    })
-    .map((d) => serialize(workspaceId, d.id, d.data() as PostDoc));
+  try {
+    if (!adminDb) return [];
+    const coll = collection(workspaceId);
+    const q = coll
+      .where("scheduledAt", "<=", now)
+      .limit(200);
+    const snap = await q.get();
+    return snap.docs
+      .filter((d) => {
+        const data = d.data() as PostDoc;
+        return !data.deletedAt && !data.uploadPostJobId && ["queued", "scheduled"].includes(data.status);
+      })
+      .map((d) => serialize(workspaceId, d.id, d.data() as PostDoc));
+  } catch (err) {
+    console.error("[listScheduledDue error]", err);
+    return [];
+  }
 }
 
 export async function claimPost(workspaceId: string, postId: string, workerId: string): Promise<boolean> {
@@ -270,26 +294,32 @@ export async function markFailed(workspaceId: string, postId: string, reason: st
 }
 
 export async function resetStuckClaims(workspaceId: string, olderThanMs: number): Promise<number> {
-  const coll = collection(workspaceId);
-  const threshold = new Date(Date.now() - olderThanMs);
-  const q = coll
-    .where("claimedAt", "<=", threshold);
-  const snap = await q.get();
-  const batch = adminDb!.batch();
-  let count = 0;
-  for (const d of snap.docs) {
-    const data = d.data() as PostDoc;
-    if (data.deletedAt || data.status !== "publishing") continue;
-    batch.update(d.ref, {
-      status: "queued",
-      workerId: null,
-      claimedAt: null,
-      updatedAt: SERVER_TIMESTAMP,
-    });
-    count++;
+  try {
+    if (!adminDb) return 0;
+    const coll = collection(workspaceId);
+    const threshold = new Date(Date.now() - olderThanMs);
+    const q = coll
+      .where("claimedAt", "<=", threshold);
+    const snap = await q.get();
+    const batch = adminDb!.batch();
+    let count = 0;
+    for (const d of snap.docs) {
+      const data = d.data() as PostDoc;
+      if (data.deletedAt || data.status !== "publishing") continue;
+      batch.update(d.ref, {
+        status: "queued",
+        workerId: null,
+        claimedAt: null,
+        updatedAt: SERVER_TIMESTAMP,
+      });
+      count++;
+    }
+    if (count > 0) await batch.commit();
+    return count;
+  } catch (err) {
+    console.error("[resetStuckClaims error]", err);
+    return 0;
   }
-  if (count > 0) await batch.commit();
-  return count;
 }
 
 function serialize(workspaceId: string, id: string, data: PostDoc): PostListItem {
