@@ -14,10 +14,33 @@ import {
   Undo2,
   Download,
   Trash2,
+  Send,
+  Clock,
+  Layers,
+  Image as ImageIcon,
+  Video,
+  FileText,
+  Eye,
+  ExternalLink,
+  AlertTriangle,
+  CheckCircle2,
+  AlertCircle,
+  Settings2,
+  MessageSquare,
+  Hash,
+  Users,
+  ArrowUpRight,
+  Timer,
+  History as HistoryIcon,
+  ListChecks,
+  Zap,
 } from "lucide-react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { PLATFORMS, getPlatform, type PlatformId } from "@/lib/platforms";
 import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
+import { ProPlatformIcon, ProOverflowBadge } from "@/components/dashboard/pro-platform-icon";
+import { ProStatIcon } from "@/components/dashboard/pro-stat-icon";
 import { PageHelp } from "@/components/dashboard/help/page-help";
 import { getHelpConfig } from "@/lib/help/content";
 import { useToast } from "@/components/ui/toast";
@@ -25,6 +48,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
 import { parseCsv, normalizePlatforms, normalizeHashtags } from "@/lib/bulk-schedule/csv";
 import { zonedDateTimeToDate } from "@/lib/datetime/zoned";
+import { AdvancedOptionsPanel } from "@/components/dashboard/advanced-options-panel";
+import { RequirementsPanel } from "@/components/dashboard/requirements-panel";
+import { AICaptionsDialog } from "@/components/dashboard/ai-captions-dialog";
+import { checkRequirements, type MediaMeta } from "@/lib/publishing/requirements";
+import { getDefaultOptions, type PlatformAdvancedOptions } from "@/lib/publishing/advanced-options";
+import type { MediaKind } from "@/lib/publishing/capability-matrix";
 
 type BulkItemSource = "upload" | "csv";
 
@@ -50,20 +79,24 @@ type BulkItemBase = {
   uploadStatus: "uploading" | "ready" | "error";
   uploadError?: string;
   uploadProgress?: number;
+  // ── Full-fidelity extensions (parity with Create Post) ──
+  firstComment?: string;
+  altText?: string;
+  tagUsers?: string;
+  advancedByPlatform?: Partial<Record<PlatformId, PlatformAdvancedOptions>>;
+  // per-item media kind override for advanced panel
+  mediaKind?: MediaKind;
 };
 
 type UploadedBulkItem = BulkItemBase & {
   source: "upload";
   file: File;
-  /** Local object URL for preview; revoked on remove/unmount. */
   previewUrl: string;
-  /** Stored path on CDN, used for cleanup. */
   storedPath?: string;
 };
 
 type CsvBulkItem = BulkItemBase & {
   source: "csv";
-  /** Remote media URL from the CSV's mediaurl column. */
   mediaUrl: string;
 };
 
@@ -128,11 +161,6 @@ function splitDateTime(dt: string): { date: string; time: string } {
   return { date: date || todayISO(), time: (time || "08:00").slice(0, 5) };
 }
 
-/**
- * Convert a wall-clock date+time in the chosen timezone to a UTC Date.
- * The browser has no direct timezone-conversion API, so we round-trip via
- * `toLocaleString` to read the offset and flip the local fields to UTC.
- */
 function wallClockToUTC(date: string, time: string, timezone: string): Date | null {
   const [hh, mm] = time.split(":").map((s) => parseInt(s, 10));
   if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
@@ -142,13 +170,37 @@ function wallClockToUTC(date: string, time: string, timezone: string): Date | nu
 }
 
 function pickCharLimitFor(item: BulkItem): number {
-  // Pick the strictest limit among selected platforms (matches upload-post behaviour).
   let min = 2200;
   for (const id of item.accountIds) {
     const p = PLATFORMS.find((pl) => pl.id === id);
     if (p && p.charLimit < min) min = p.charLimit;
   }
   return min;
+}
+
+function getMediaKindForItem(item: BulkItem): MediaKind {
+  return item.kind === "video" ? "video" : "image";
+}
+
+function buildReadinessForItem(item: BulkItem, timezone: string) {
+  const mediaKind = getMediaKindForItem(item);
+  const fakeMime = item.kind === "video" ? "video/mp4" : "image/jpeg";
+  const media: MediaMeta[] = [
+    {
+      kind: mediaKind,
+      mimeType: fakeMime,
+      sizeBytes: item.size || 1024 * 500,
+    },
+  ];
+  const captionByPlatform: Partial<Record<PlatformId, string>> = {};
+  for (const pid of item.accountIds) captionByPlatform[pid] = item.caption;
+  // Ensure youtube/pinterest required targets have sensible defaults if empty — validator will flag missing.
+  return checkRequirements(item.accountIds, {
+    captionByPlatform,
+    media,
+    advancedByPlatform: item.advancedByPlatform ?? {},
+    composerMediaKind: mediaKind,
+  });
 }
 
 interface ValidationIssue {
@@ -160,18 +212,44 @@ function validateItems(items: BulkItem[]): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const now = Date.now();
   for (const it of items) {
-    if (!it.caption.trim()) {
+    const readiness = buildReadinessForItem(it, "UTC");
+    // Deduplicate caption per item (one global caption field, not per-platform)
+    const hasMissingCaption = readiness.perPlatform.some((per) =>
+      per.issues.some((iss) => iss.code === "missing_caption" && iss.severity === "blocked")
+    );
+    if (hasMissingCaption) {
       issues.push({ itemId: it.id, message: "Caption is required" });
+    }
+    // Other blocked issues — one per distinct code per item (avoid 9x duplication)
+    const seenCodes = new Set<string>();
+    for (const per of readiness.perPlatform) {
+      for (const iss of per.issues) {
+        if (iss.severity !== "blocked") continue;
+        if (iss.code === "missing_caption") continue; // already handled globally
+        // Pinterest board: top-level field satisfies requirement; don't double-report
+        if (iss.code === "missing_target_pinterest_board_id" && it.pinterestBoard.trim()) continue;
+        const key = iss.code;
+        if (seenCodes.has(key)) continue;
+        seenCodes.add(key);
+        issues.push({ itemId: it.id, message: iss.message });
+      }
+    }
+    // Explicit YouTube/Pinterest top-level checks (not covered by capability matrix)
+    if (it.accountIds.includes("youtube" as PlatformId) && !it.youtubeTitle.trim()) {
+      if (!seenCodes.has("youtube_title")) {
+        issues.push({ itemId: it.id, message: "YouTube title is required" });
+      }
+    }
+    if (it.accountIds.includes("pinterest" as PlatformId) && !it.pinterestBoard.trim()) {
+      const advBoard = (it.advancedByPlatform?.pinterest as Record<string, unknown> | undefined)?.pinterest_board_id;
+      if (!advBoard) {
+        issues.push({ itemId: it.id, message: "Pinterest board is required" });
+      }
     }
     if (it.accountIds.length === 0) {
       issues.push({ itemId: it.id, message: "No platforms selected" });
     }
-    if (it.accountIds.includes("youtube") && !it.youtubeTitle.trim()) {
-      issues.push({ itemId: it.id, message: "YouTube title is required" });
-    }
-    if (it.accountIds.includes("pinterest") && !it.pinterestBoard.trim()) {
-      issues.push({ itemId: it.id, message: "Pinterest board is required" });
-    }
+    // Fallback simple checks for upload status & time
     if (it.source === "upload" && it.uploadStatus !== "ready") {
       issues.push({ itemId: it.id, message: "Still uploading to CDN" });
     }
@@ -187,7 +265,14 @@ function validateItems(items: BulkItem[]): ValidationIssue[] {
       issues.push({ itemId: it.id, message: `More than ${MAX_FUTURE_DAYS} days ahead` });
     }
   }
-  return issues;
+  // Final dedup
+  const seen = new Set<string>();
+  return issues.filter((i) => {
+    const key = `${i.itemId}:${i.message}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /** Persist only CSV items + scheduler settings — uploaded files aren't serializable. */
@@ -238,7 +323,7 @@ export default function BulkSchedulePage() {
   const [startTime, setStartTime] = useState<string>(defaultTime());
   const [postsPerDay, setPostsPerDay] = useState<number>(1);
   const [interval, setInterval] = useState<string>("1d");
-  const [timezone, setTimezone] = useState<string>("America/New_York");
+  const [timezone, setTimezone] = useState<string>("Africa/Lagos");
   const [tzOpen, setTzOpen] = useState(false);
   const [accounts, setAccounts] = useState<Set<PlatformId>>(new Set());
   const [dragging, setDragging] = useState(false);
@@ -246,6 +331,12 @@ export default function BulkSchedulePage() {
   const [scheduleBusy, setScheduleBusy] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [undoStack, setUndoStack] = useState<Array<{ kind: "remove"; item: BulkItem; index: number }>>([]);
+  const [aiTarget, setAiTarget] = useState<BulkItem | null>(null);
+  const [aiGeneratingItemId, setAiGeneratingItemId] = useState<string | null>(null);
+  const [destinationOptions, setDestinationOptions] = useState<{
+    boards: Array<{ value: string; label: string }>;
+    pages: Array<{ value: string; label: string }>;
+  }>({ boards: [], pages: [] });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addMoreInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
@@ -260,21 +351,22 @@ export default function BulkSchedulePage() {
     const intervalDays = parseInt(interval, 10) || 1;
     const dayOffset = Math.floor(index / perDay) * intervalDays;
     const slotOffsetMinutes = (index % perDay) * 30;
-    // Use UTC setters only as timezone-neutral calendar arithmetic. The final
-    // wall-clock fields are then converted in the user's selected timezone.
     const wall = new Date(Date.UTC(year, month - 1, day + dayOffset, startHour, startMinute + slotOffsetMinutes));
     const localYear = wall.getUTCFullYear();
     const localMonth = wall.getUTCMonth() + 1;
     const localDay = wall.getUTCDate();
     const localHour = wall.getUTCHours();
     const localMinute = wall.getUTCMinutes();
-    const instant = zonedDateTimeToDate({
-      year: localYear,
-      month: localMonth,
-      day: localDay,
-      hour: localHour,
-      minute: localMinute,
-    }, timezone);
+    const instant = zonedDateTimeToDate(
+      {
+        year: localYear,
+        month: localMonth,
+        day: localDay,
+        hour: localHour,
+        minute: localMinute,
+      },
+      timezone
+    );
     if (!instant) return null;
     return {
       scheduledAt: instant.toISOString(),
@@ -283,23 +375,53 @@ export default function BulkSchedulePage() {
     };
   }
 
-  // Auto-detect timezone on first mount; fall back to a value from the list
-  // so the dropdown's label matches the user's wall-clock.
+  // Auto-detect timezone on first mount
   useEffect(() => {
     try {
       const guess = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (guess && TIMEZONES.some((tz) => tz.id === guess)) {
-        setTimezone(guess);
-      } else {
-        setTimezone("America/New_York");
-      }
+      if (guess) setTimezone(guess);
     } catch {
-      setTimezone("America/New_York");
+      setTimezone("Africa/Lagos");
     }
   }, []);
 
-  // Restore persisted CSV draft + scheduler settings (uploaded files are not
-  // serializable since their preview URL is a blob: tied to the File object).
+  // Fetch connected platforms + destinations for advanced options (Pinterest boards, FB pages)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/social-accounts/list", { credentials: "include" });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as {
+          ok?: boolean;
+          accounts?: { platform: string }[];
+          destinations?: { boards?: { id: string; name: string }[]; pages?: { id: string; name: string }[] };
+        };
+        if (!data.ok || cancelled) return;
+        const pids = new Set<PlatformId>();
+        for (const a of data.accounts ?? []) {
+          if (PLATFORMS.some((p) => p.id === a.platform)) pids.add(a.platform as PlatformId);
+        }
+        // Don't override if user already picked accounts via persisted draft
+        if (pids.size > 0 && accounts.size === 0 && !hydratedRef.current) {
+          // let persisted restore win; otherwise set default to connected
+          // we set after hydration check below
+        }
+        setDestinationOptions({
+          boards: (data.destinations?.boards ?? []).map((b) => ({ value: b.id, label: b.name })),
+          pages: (data.destinations?.pages ?? []).map((p) => ({ value: p.id, label: p.name })),
+        });
+        if (pids.size > 0) {
+          setAccounts((prev) => (prev.size === 0 ? pids : prev));
+        }
+      } catch {}
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Restore persisted CSV draft + scheduler settings
   useEffect(() => {
     if (hydratedRef.current) return;
     hydratedRef.current = true;
@@ -312,11 +434,19 @@ export default function BulkSchedulePage() {
     setTimezone(persisted.timezone);
     setAccounts(new Set(persisted.accounts));
     if (persisted.csvItems.length > 0) {
-      setItems(persisted.csvItems);
+      // Rehydrate with defaults for new fields
+      const rehydrated = persisted.csvItems.map((it) => ({
+        ...it,
+        firstComment: (it as unknown as { firstComment?: string }).firstComment ?? "",
+        tagUsers: (it as unknown as { tagUsers?: string }).tagUsers ?? "",
+        altText: (it as unknown as { altText?: string }).altText ?? "",
+        advancedByPlatform: (it as unknown as { advancedByPlatform?: Record<string, unknown> }).advancedByPlatform ?? {},
+      })) as CsvBulkItem[];
+      setItems(rehydrated);
     }
   }, []);
 
-  // Persist on changes (skip the very first render to avoid clobbering).
+  // Persist on changes
   useEffect(() => {
     if (!hydratedRef.current) return;
     savePersistedDraft({
@@ -348,7 +478,7 @@ export default function BulkSchedulePage() {
     };
   }, []);
 
-  // Revoke blob URLs on unmount so we don't leak memory across navigations.
+  // Revoke blob URLs on unmount
   useEffect(() => {
     return () => {
       setItems((prev) => {
@@ -373,10 +503,6 @@ export default function BulkSchedulePage() {
   const pickMoreFiles = () => addMoreInputRef.current?.click();
   const pickCsvFile = () => csvInputRef.current?.click();
 
-  /**
-   * Upload a single file to the CDN. Returns the CDN URL (or null on failure).
-   * Surfaces errors via toast so silent skips are no longer possible.
-   */
   async function uploadFile(file: File): Promise<{ url: string; storedPath?: string } | null> {
     const idToken = await getIdToken();
     const fd = new FormData();
@@ -435,9 +561,7 @@ export default function BulkSchedulePage() {
           errors.push(`Row ${i + 2}: missing caption`);
           continue;
         }
-        let platforms: PlatformId[] = (platformsIdx >= 0
-          ? (normalizePlatforms(r[platformsIdx] ?? "") as PlatformId[])
-          : []);
+        let platforms: PlatformId[] = (platformsIdx >= 0 ? (normalizePlatforms(r[platformsIdx] ?? "") as PlatformId[]) : []);
         if (platforms.length === 0) platforms = Array.from(accounts);
         if (platforms.length === 0) {
           errors.push(`Row ${i + 2}: no platforms (add a "platforms" column or select accounts above)`);
@@ -451,9 +575,7 @@ export default function BulkSchedulePage() {
         if (rawScheduled) {
           const rawParts = splitDateTime(rawScheduled);
           const hasExplicitOffset = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(rawScheduled);
-          const parsedDate = hasExplicitOffset
-            ? new Date(rawScheduled)
-            : wallClockToUTC(rawParts.date, rawParts.time, timezone);
+          const parsedDate = hasExplicitOffset ? new Date(rawScheduled) : wallClockToUTC(rawParts.date, rawParts.time, timezone);
           if (!parsedDate || Number.isNaN(parsedDate.getTime())) {
             errors.push(`Row ${i + 2}: invalid scheduledAt "${rawScheduled}"`);
             continue;
@@ -468,6 +590,19 @@ export default function BulkSchedulePage() {
           errors.push(`Row ${i + 2}: mediaurl must be http(s) (got "${mediaUrl.slice(0, 40)}")`);
           continue;
         }
+        // Build default advanced options for selected platforms so Pinterest board / FB page are pre-filled
+        const adv: Record<string, Record<string, unknown>> = {};
+        for (const pid of platforms) {
+          const def = getDefaultOptions(pid);
+          if (Object.keys(def).length > 0) adv[pid] = { ...def };
+          if (pid === "pinterest" && destinationOptions.boards[0] && !adv[pid]?.pinterest_board_id) {
+            adv[pid] = { ...def, pinterest_board_id: destinationOptions.boards[0].value };
+          }
+          if (pid === "facebook" && destinationOptions.pages[0] && !adv[pid]?.facebook_page_id) {
+            adv[pid] = { ...def, facebook_page_id: destinationOptions.pages[0].value };
+          }
+        }
+        const csvPinterestBoardId = (adv.pinterest as Record<string, unknown> | undefined)?.pinterest_board_id as string | undefined;
         newItems.push({
           id: `csv-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
           source: "csv",
@@ -484,13 +619,17 @@ export default function BulkSchedulePage() {
           postIn: "feed",
           youtubeTitle: "",
           youtubeTags: "",
-          pinterestBoard: "",
+          pinterestBoard: csvPinterestBoardId ?? "",
           autoAddMusic: false,
           community: false,
           profile: "Default",
           hashtags,
           uploadStatus: mediaUrl ? "ready" : "error",
           uploadError: mediaUrl ? undefined : "Add a mediaurl column or upload media files",
+          firstComment: "",
+          altText: "",
+          tagUsers: "",
+          advancedByPlatform: adv,
         });
       }
       setItems((prev) => {
@@ -525,9 +664,17 @@ export default function BulkSchedulePage() {
     if (items.length === 0 || scheduleBusy) return;
     const issues = validateItems(items);
     if (issues.length > 0) {
+      const grouped = issues.reduce((acc, cur) => {
+        acc[cur.message] = (acc[cur.message] ?? 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      const summary = Object.entries(grouped)
+        .map(([msg, n]) => (n > 1 ? `${msg} ×${n}` : msg))
+        .slice(0, 3)
+        .join("; ");
       toast({
         title: "Can't schedule yet",
-        description: `${issues.length} item(s) need attention: ${issues.slice(0, 3).map((i) => i.message).join("; ")}`,
+        description: `${issues.length} issue(s): ${summary}`,
         tone: "error",
       });
       return;
@@ -550,8 +697,12 @@ export default function BulkSchedulePage() {
           youtubeTags: it.youtubeTags || undefined,
           pinterestBoard: it.pinterestBoard || undefined,
           autoAddMusic: it.autoAddMusic,
-          community: it.community || undefined,
+          community: it.community ? "community" : undefined,
           profile: it.profile,
+          firstComment: it.firstComment || undefined,
+          altText: it.altText ? [it.altText] : undefined,
+          tagUsers: it.tagUsers || undefined,
+          advancedByPlatform: it.advancedByPlatform,
         })),
       };
       const res = await fetch("/api/posts/bulk", {
@@ -567,11 +718,11 @@ export default function BulkSchedulePage() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error?.message ?? body.error ?? `Bulk schedule failed (${res.status})`);
+        const msg = body.error?.message ?? body.error ?? (Array.isArray(body.issues) ? body.issues.map((i: { message: string }) => i.message).join("; ") : `Bulk schedule failed (${res.status})`);
+        throw new Error(msg);
       }
       const data = (await res.json()) as { count?: number; ids?: string[]; ok?: boolean };
       const n = data.count ?? readyItems.length;
-      // Revoke local blob URLs before clearing state.
       setItems((prev) => {
         for (const it of prev) {
           if (it.source === "upload") URL.revokeObjectURL(it.previewUrl);
@@ -635,6 +786,18 @@ export default function BulkSchedulePage() {
         continue;
       }
       const previewUrl = URL.createObjectURL(file);
+      const adv: Record<string, Record<string, unknown>> = {};
+      for (const pid of accounts) {
+        const def = getDefaultOptions(pid);
+        if (Object.keys(def).length > 0) adv[pid] = { ...def };
+        if (pid === "pinterest" && destinationOptions.boards[0] && !adv[pid]?.pinterest_board_id) {
+          adv[pid] = { ...(adv[pid] ?? def), pinterest_board_id: destinationOptions.boards[0].value };
+        }
+        if (pid === "facebook" && destinationOptions.pages[0] && !adv[pid]?.facebook_page_id) {
+          adv[pid] = { ...(adv[pid] ?? def), facebook_page_id: destinationOptions.pages[0].value };
+        }
+      }
+      const pinterestBoardId = (adv.pinterest as Record<string, unknown> | undefined)?.pinterest_board_id as string | undefined;
       newItems.push({
         id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         source: "upload",
@@ -652,12 +815,16 @@ export default function BulkSchedulePage() {
         postIn: "feed",
         youtubeTitle: "",
         youtubeTags: "",
-        pinterestBoard: "",
+        pinterestBoard: pinterestBoardId ?? "",
         autoAddMusic: false,
         community: false,
         profile: "Default",
         hashtags: [],
         uploadStatus: "uploading",
+        firstComment: "",
+        altText: "",
+        tagUsers: "",
+        advancedByPlatform: adv,
       });
       counter++;
     }
@@ -670,7 +837,6 @@ export default function BulkSchedulePage() {
     }
     if (newItems.length === 0) return;
     setItems((prev) => [...prev, ...newItems]);
-    // Upload each to the CDN in parallel (cap concurrency to 3).
     const CONCURRENCY = 3;
     let cursor = 0;
     async function worker() {
@@ -726,10 +892,48 @@ export default function BulkSchedulePage() {
         if (i.id !== id) return i;
         const updated = { ...i, ...patch } as BulkItem;
         if (patch.scheduledDate !== undefined || patch.scheduledTime !== undefined) {
-          const date = (patch.scheduledDate ?? i.scheduledDate) as string;
-          const time = (patch.scheduledTime ?? i.scheduledTime) as string;
+          const date = (patch.scheduledDate ?? (i as BulkItemBase).scheduledDate) as string;
+          const time = (patch.scheduledTime ?? (i as BulkItemBase).scheduledTime) as string;
           const utc = wallClockToUTC(date, time, timezone);
           (updated as BulkItemBase).scheduledAt = utc ? utc.toISOString() : `${date}T${time.slice(0, 5)}`;
+        }
+        // Keep top-level Pinterest board in sync with advanced panel's board id
+        if ((patch as BulkItemBase).pinterestBoard !== undefined) {
+          const board = (patch as BulkItemBase).pinterestBoard as string;
+          const adv = ((updated as BulkItemBase).advancedByPlatform ?? {}) as Record<string, Record<string, unknown>>;
+          const pAdv = { ...(adv.pinterest ?? {}) } as Record<string, unknown>;
+          if (board) pAdv.pinterest_board_id = board;
+          else delete pAdv.pinterest_board_id;
+          // keep other pinterest advanced fields if present
+          adv.pinterest = pAdv;
+          (updated as BulkItemBase).advancedByPlatform = adv;
+          // If Pinterest not selected, clear board to avoid ghost requirement
+          if (!(updated as BulkItemBase).accountIds.includes("pinterest" as PlatformId)) {
+            (updated as BulkItemBase).pinterestBoard = "";
+          }
+        }
+        return updated;
+      })
+    );
+  }
+
+  function updateAdvanced(id: string, platform: PlatformId, next: PlatformAdvancedOptions) {
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.id !== id) return it;
+        const cur = (it as BulkItemBase).advancedByPlatform ?? {};
+        const updated = { ...it, advancedByPlatform: { ...cur, [platform]: next } } as BulkItem;
+        // Sync Pinterest board id from advanced back to top-level field so both stay consistent
+        if (platform === "pinterest") {
+          const boardId = (next as Record<string, unknown>).pinterest_board_id as string | undefined;
+          (updated as BulkItemBase).pinterestBoard = boardId ? String(boardId) : "";
+        }
+        if (platform === "facebook") {
+          const pageId = (next as Record<string, unknown>).facebook_page_id as string | undefined;
+          // no top-level field for FB page, but keep advanced in sync; top-level not needed
+          if (!pageId) {
+            // leave as is
+          }
         }
         return updated;
       })
@@ -761,7 +965,35 @@ export default function BulkSchedulePage() {
       toast({ title: "Pick at least one account first", tone: "warning" });
       return;
     }
-    setItems((prev) => prev.map((item) => ({ ...item, accountIds: Array.from(accounts) })));
+    const advTemplate: Record<string, Record<string, unknown>> = {};
+    for (const pid of accounts) {
+      const def = getDefaultOptions(pid);
+      advTemplate[pid] = { ...def };
+      if (pid === "pinterest" && destinationOptions.boards[0] && !advTemplate[pid]?.pinterest_board_id) {
+        advTemplate[pid] = { ...advTemplate[pid], pinterest_board_id: destinationOptions.boards[0].value };
+      }
+      if (pid === "facebook" && destinationOptions.pages[0] && !advTemplate[pid]?.facebook_page_id) {
+        advTemplate[pid] = { ...advTemplate[pid], facebook_page_id: destinationOptions.pages[0].value };
+      }
+    }
+    const boardFromTemplate = (advTemplate.pinterest as Record<string, unknown> | undefined)?.pinterest_board_id as string | undefined;
+    setItems((prev) =>
+      prev.map((item) => {
+        const base = item as BulkItemBase;
+        const nextBoard = boardFromTemplate && base.accountIds.includes("pinterest" as PlatformId) === false && Array.from(accounts).includes("pinterest" as PlatformId) ? boardFromTemplate : base.pinterestBoard;
+        // If newly adding Pinterest, ensure pinterestBoard is filled from template if empty
+        const finalBoard =
+          Array.from(accounts).includes("pinterest" as PlatformId) && !base.pinterestBoard && boardFromTemplate
+            ? boardFromTemplate
+            : base.pinterestBoard;
+        return {
+          ...item,
+          accountIds: Array.from(accounts),
+          pinterestBoard: finalBoard as string,
+          advancedByPlatform: { ...(base.advancedByPlatform ?? {}), ...advTemplate } as BulkItem["advancedByPlatform"],
+        } as BulkItem;
+      })
+    );
     toast({ title: "Accounts applied to all items", tone: "success" });
   }
 
@@ -795,8 +1027,12 @@ export default function BulkSchedulePage() {
             youtubeTags: target.youtubeTags || undefined,
             pinterestBoard: target.pinterestBoard || undefined,
             autoAddMusic: target.autoAddMusic,
-            community: target.community || undefined,
+            community: target.community ? "community" : undefined,
             profile: target.profile,
+            firstComment: (target as BulkItemBase).firstComment || undefined,
+            altText: (target as BulkItemBase).altText ? [(target as BulkItemBase).altText as string] : undefined,
+            tagUsers: (target as BulkItemBase).tagUsers || undefined,
+            advancedByPlatform: (target as BulkItemBase).advancedByPlatform,
           },
         ],
       };
@@ -815,7 +1051,6 @@ export default function BulkSchedulePage() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error?.message ?? body.error ?? `HTTP ${res.status}`);
       }
-      // Remove the scheduled item from the local list.
       setItems((prev) => {
         const target2 = prev.find((p) => p.id === itemId);
         if (target2?.source === "upload") URL.revokeObjectURL(target2.previewUrl);
@@ -852,9 +1087,6 @@ export default function BulkSchedulePage() {
           let imageUrl: string | undefined;
           let videoTitle: string | undefined;
           if (item.kind === "image") {
-            // For uploaded items, send the CDN URL directly so the AI route
-            // can fetch it. For CSV items without a mediaUrl, fall back to the
-            // filename as a hint.
             if (item.source === "upload") {
               imageUrl = item.url.startsWith("https://") ? item.url : undefined;
             } else if (item.mediaUrl) {
@@ -907,6 +1139,49 @@ export default function BulkSchedulePage() {
     });
   }
 
+  async function aiGenerateForItem(item: BulkItem, opts: { tone: string; includeHashtags: boolean; useEmojis: boolean; extra: string }) {
+    setAiGeneratingItemId(item.id);
+    try {
+      let imageUrl: string | undefined;
+      let videoTitle: string | undefined;
+      if (item.kind === "image") {
+        if (item.source === "upload") imageUrl = item.url.startsWith("https://") ? item.url : undefined;
+        else imageUrl = (item as CsvBulkItem).mediaUrl || undefined;
+      } else {
+        videoTitle = item.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+      }
+      const idToken = await getIdToken();
+      const res = await fetch("/api/ai/caption", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getOverrideHeaders(),
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+        },
+        body: JSON.stringify({
+          tone: opts.tone,
+          includeHashtags: opts.includeHashtags,
+          useEmojis: opts.useEmojis,
+          extra: opts.extra,
+          imageUrl,
+          videoTitle,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; caption?: string; error?: string };
+      if (res.ok && data.ok && data.caption) {
+        setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, caption: data.caption!.trim() } : it)));
+        toast({ title: "Caption generated", tone: "success" });
+        setAiTarget(null);
+      } else {
+        toast({ title: "Generation failed", description: data.error ?? `HTTP ${res.status}`, tone: "error" });
+      }
+    } catch (e) {
+      toast({ title: "Generation failed", description: e instanceof Error ? e.message : "Network error", tone: "error" });
+    } finally {
+      setAiGeneratingItemId(null);
+    }
+  }
+
   function clearAll() {
     setItems((prev) => {
       for (const it of prev) {
@@ -938,461 +1213,568 @@ export default function BulkSchedulePage() {
   }
 
   const accountsArr = useMemo(() => Array.from(accounts), [accounts]);
+  const totalIssues = useMemo(() => validateItems(items), [items]);
+  const readyCount = items.length - new Set(totalIssues.map((i) => i.itemId)).size;
+  const blockedCount = items.length - readyCount;
 
   return (
-    <div className="p-6 pb-40">
-      {/* Header row: title + Learn (left) + Date Scheduler (right) */}
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-3">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-[30px] font-bold leading-[36px] tracking-tight">{t("posts.bulkSchedule.page_title")}</h1>
+    <div className="min-h-0 flex-1 bg-[#fcfcfc] dark:bg-zinc-950">
+      <div className="max-w-[1600px] mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 space-y-4">
+        {/* ── Pro Header — linked to ecosystem ── */}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+            <div className="flex gap-3 min-w-0">
+              <span className="hidden sm:inline-flex size-10 items-center justify-center rounded-xl bg-zinc-900 text-white shadow-sm shrink-0">
+                <Layers className="size-5" />
+              </span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-[22px] sm:text-[26px] font-bold tracking-tight text-zinc-900 leading-none">{t("posts.bulkSchedule.page_title")}</h1>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-zinc-900 text-white text-[10px] font-bold tracking-widest px-2 py-0.5 uppercase">
+                    <Sparkles className="size-3" /> Pro
+                  </span>
+                  <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold border", items.length === 0 ? "bg-zinc-100 text-zinc-600 border-zinc-200" : blockedCount > 0 ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200")}>
+                    <ListChecks className="size-3.5" />
+                    {items.length === 0 ? "Ready to bulk" : `${readyCount}/${items.length} ready`}
+                  </span>
+                </div>
+                <p className="text-[13px] sm:text-sm text-zinc-500 mt-1 max-w-[720px] leading-relaxed">
+                  {t("posts.bulkSchedule.page_subtitle")} <span className="hidden sm:inline">• Linked to <Link href="/dashboard/posts/create" className="underline decoration-dotted hover:text-zinc-700">Create Post</Link> • <Link href="/dashboard/queue" className="underline decoration-dotted hover:text-zinc-700">Queue</Link> • <Link href="/dashboard/calendar" className="underline decoration-dotted hover:text-zinc-700">Calendar</Link> • <Link href="/dashboard/posts/history" className="underline decoration-dotted hover:text-zinc-700">History</Link></span>
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Link href="/dashboard/calendar" className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 h-9 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm">
+                <Calendar className="size-3.5" /> Calendar
+              </Link>
+              <Link href="/dashboard/queue" className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 h-9 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm">
+                <ListChecks className="size-3.5" /> Queue
+              </Link>
+              <Link href="/dashboard/posts/create" className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-900 hover:bg-black text-white px-4 h-9 text-xs font-bold shadow-sm">
+                <Plus className="size-3.5" /> Create Post <ArrowUpRight className="size-3 opacity-70 hidden sm:block" />
+              </Link>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+            <span className="inline-flex items-center gap-1 rounded-full bg-zinc-900 text-white px-2.5 py-1 font-bold">Bulk Schedule</span>
+            <Link href="/dashboard/posts/create" className="inline-flex items-center gap-1 rounded-full bg-white border border-zinc-200 px-2.5 py-1 font-medium text-zinc-600 hover:bg-zinc-50">Single Post <ExternalLink className="size-3 opacity-50" /></Link>
+            <Link href="/dashboard/assets" className="hidden sm:inline-flex items-center gap-1 rounded-full bg-zinc-100 hover:bg-white border border-transparent hover:border-zinc-200 px-2.5 py-1 font-medium text-zinc-600">Media Library</Link>
+            <Link href="/dashboard/hashtags" className="hidden sm:inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2.5 py-1 font-medium text-zinc-600">Hashtags</Link>
+            <span className="text-zinc-400 hidden sm:inline">• Auto-scheduler + per-post advanced controls</span>
             {(() => {
               const cfg = getHelpConfig("posts/bulk-schedule");
               if (!cfg) return null;
               return <PageHelp config={cfg} align="left" buttonClassName="rounded-full" />;
             })()}
           </div>
-          <p className="text-sm text-zinc-500 mt-1">
-            {t("posts.bulkSchedule.page_subtitle")}
-          </p>
         </div>
 
-        {/* Date Scheduler bar */}
-        <div className="flex flex-wrap items-end gap-2 rounded-lg border border-zinc-200 bg-white/60 p-2 backdrop-blur-sm">
-          <SchedulerField label={t("posts.bulkSchedule.start_date")}>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="h-7 w-full rounded-md border border-zinc-200 bg-white/50 px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
-            />
-          </SchedulerField>
-          <SchedulerField label={t("posts.bulkSchedule.time")}>
-            <input
-              type="time"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              className="h-7 w-full rounded-md border border-zinc-200 bg-white/50 px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
-            />
-          </SchedulerField>
-          <SchedulerField label={t("posts.bulkSchedule.posts_per_day")}>
-            <select
-              value={postsPerDay}
-              onChange={(e) => setPostsPerDay(parseInt(e.target.value, 10))}
-              className="h-7 w-full rounded-md border border-zinc-200 bg-white/50 px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
-            >
-              {[1, 2, 3, 4, 5, 6, 8, 10, 12, 24].map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
-          </SchedulerField>
-          <SchedulerField label={t("posts.bulkSchedule.interval")}>
-            <select
-              value={interval}
-              onChange={(e) => setInterval(e.target.value)}
-              className="h-7 w-full rounded-md border border-zinc-200 bg-white/50 px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
-            >
-              {INTERVALS.map((i) => (
-                <option key={i.id} value={i.id}>{t(`posts.bulkSchedule.interval_${i.id === "1d" ? "daily" : i.id === "3d" ? "3days" : i.id === "7d" ? "weekly" : i.id === "14d" ? "2weeks" : "monthly"}`)}</option>
-              ))}
-            </select>
-          </SchedulerField>
-          <SchedulerField label={t("posts.bulkSchedule.timezone")}>
-            <div className="relative" ref={tzRef}>
-              <button
-                type="button"
-                onClick={() => setTzOpen((v) => !v)}
-                aria-haspopup="listbox"
-                aria-expanded={tzOpen}
-                className="inline-flex items-center gap-1 h-7 rounded-md border border-zinc-200 bg-white/50 px-2 text-xs hover:bg-white"
+        {/* ── Pro Scheduler Bar — double-bezel soft */}
+        <div className="rounded-[16px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.04)] p-2 sm:p-3">
+          <div className="flex flex-wrap items-end gap-2">
+            <SchedulerField label={t("posts.bulkSchedule.start_date")}>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="h-9 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+              />
+            </SchedulerField>
+            <SchedulerField label={t("posts.bulkSchedule.time")}>
+              <input
+                type="time"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="h-9 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+              />
+            </SchedulerField>
+            <SchedulerField label={t("posts.bulkSchedule.posts_per_day")}>
+              <select
+                value={postsPerDay}
+                onChange={(e) => setPostsPerDay(parseInt(e.target.value, 10))}
+                className="h-9 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
               >
-                <span>{timezone}</span>
-                <ChevronDown className="size-3.5 text-zinc-500" />
-              </button>
-              {tzOpen ? (
-                <ul
-                  role="listbox"
-                  className="absolute right-0 top-full mt-1 z-30 w-[220px] max-h-[260px] overflow-y-auto rounded-md border border-zinc-200 bg-white shadow-lg p-1"
+                {[1, 2, 3, 4, 5, 6, 8, 10, 12, 24].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </SchedulerField>
+            <SchedulerField label={t("posts.bulkSchedule.interval")}>
+              <select
+                value={interval}
+                onChange={(e) => setInterval(e.target.value)}
+                className="h-9 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+              >
+                {INTERVALS.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {t(`posts.bulkSchedule.interval_${i.id === "1d" ? "daily" : i.id === "3d" ? "3days" : i.id === "7d" ? "weekly" : i.id === "14d" ? "2weeks" : "monthly"}`)}
+                  </option>
+                ))}
+              </select>
+            </SchedulerField>
+            <SchedulerField label={t("posts.bulkSchedule.timezone")}>
+              <div className="relative" ref={tzRef}>
+                <button
+                  type="button"
+                  onClick={() => setTzOpen((v) => !v)}
+                  aria-haspopup="listbox"
+                  aria-expanded={tzOpen}
+                  className="inline-flex items-center gap-1.5 h-9 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium hover:bg-zinc-50"
                 >
-                  {TIMEZONES.map((tz) => (
-                    <li key={tz.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTimezone(tz.id);
-                          setTzOpen(false);
-                        }}
-                        className={cn(
-                          "w-full text-left px-2 py-1.5 text-xs rounded hover:bg-zinc-100",
-                          tz.id === timezone && "bg-zinc-100 font-medium"
-                        )}
-                      >
-                        {tz.label}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          </SchedulerField>
-          <button
-            type="button"
-            onClick={applySchedule}
-            disabled={items.length === 0}
-            className="inline-flex items-center justify-center gap-2 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white px-3 h-7 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Calendar className="size-3.5" />
-            {t("posts.bulkSchedule.apply")}
-          </button>
-        </div>
-      </div>
-
-      {/* AI Captions top button */}
-      {items.length > 0 ? (
-        <div className="mb-4 flex items-center justify-between flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={aiGenerateForAll}
-            disabled={generating}
-            className="inline-flex items-center gap-2 rounded-md bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 h-10 text-sm font-medium"
-          >
-            <Sparkles className="size-4" />
-            {generating ? t("posts.bulkSchedule.generating") : t("posts.bulkSchedule.generate_ai_captions", { n: items.length })}
-          </button>
-          {undoStack.length > 0 ? (
-            <button
-              type="button"
-              onClick={undoRemove}
-              className="inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 h-9 text-xs font-medium hover:bg-zinc-50"
-            >
-              <Undo2 className="size-3.5" />
-              Undo remove ({undoStack.length})
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-
-      {/* Two-column layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4 items-start">
-        {/* Left column */}
-        <div className="space-y-4">
-          {/* Accounts card */}
-          <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm">
-            <div className="p-4 space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="size-6 inline-flex items-center justify-center rounded-full bg-zinc-900 text-white text-xs font-semibold">1</span>
-                <h3 className="text-base font-semibold leading-none">{t("posts.bulkSchedule.accounts_title")}</h3>
-              </div>
-              <div className="max-h-72 overflow-y-auto -mx-1 px-1 space-y-1">
-                {PLATFORMS.map((p) => {
-                  const isSel = accounts.has(p.id);
-                  return (
-                    <label
-                      key={p.id}
-                      className={cn(
-                        "flex items-center gap-2 w-full p-1.5 rounded-lg cursor-pointer transition-colors",
-                        isSel ? "bg-emerald-50" : "hover:bg-accent"
-                      )}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isSel}
-                        onChange={() => toggleAccount(p.id)}
-                        className="size-4 rounded-sm border-zinc-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer flex-shrink-0"
-                      />
-                      <PlatformAvatar platform={p} size={28} rounded="full" />
-                      <span className="text-sm font-medium truncate">{p.handle}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Media Files card */}
-          <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm">
-            <div className="p-4 space-y-3">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <span className="size-6 inline-flex items-center justify-center rounded-full bg-zinc-900 text-white text-xs font-semibold">2</span>
-                  <h3 className="text-base font-semibold leading-none">{t("posts.bulkSchedule.media_files_title")}</h3>
-                  <span className="text-xs text-zinc-500">
-                    {items.length}/{MAX_FILES}
-                  </span>
-                </div>
-                {items.length > 0 ? (
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={pickMoreFiles}
-                      className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 h-7 text-xs font-medium hover:bg-zinc-50"
-                    >
-                      <Plus className="size-3" />
-                      {t("posts.bulkSchedule.add_more")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={clearAll}
-                      className="inline-flex items-center gap-1 px-2 h-7 text-xs font-medium text-red-600 hover:bg-red-50 rounded-md"
-                    >
-                      <Trash2 className="size-3" />
-                      {t("posts.bulkSchedule.clear_all")}
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-
-              {items.length === 0 ? (
-                <>
-                  <div className="text-sm font-medium">{t("posts.bulkSchedule.drop_zone")}</div>
-                  <div
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setDragging(true);
-                    }}
-                    onDragEnter={(e) => {
-                      e.preventDefault();
-                      setDragging(true);
-                    }}
-                    onDragLeave={(e) => {
-                      // Only flip off when the cursor actually leaves the drop target.
-                      if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-                      setDragging(false);
-                    }}
-                    onDrop={onDrop}
-                    onClick={pickFiles}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        pickFiles();
-                      }
-                    }}
-                    className={cn(
-                      "rounded-lg border-2 border-dashed p-6 text-center cursor-pointer transition-colors",
-                      dragging ? "border-blue-500 bg-blue-50/40" : "border-zinc-300 hover:bg-zinc-50"
-                    )}
-                  >
-                    <UploadCloud className="size-7 mx-auto text-zinc-400" />
-                    <p className="mt-2 text-xs font-medium text-zinc-700">
-                      {t("posts.bulkSchedule.drop_zone_desc", { max: MAX_FILES })}
-                    </p>
-                    <p className="mt-1 text-[11px] text-zinc-500">
-                      {t("posts.bulkSchedule.drop_zone_footnote", { maxSize: Math.round(MAX_FILE_BYTES / 1024 / 1024) })}
-                    </p>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between gap-2 rounded-md border border-zinc-200 bg-zinc-50/50 px-3 py-2 flex-wrap">
-                    <p className="text-xs text-zinc-600 flex-1 min-w-0">
-                      <span className="font-medium">{t("posts.bulkSchedule.csv_hint")}</span>
-                    </p>
-                    <button
-                      type="button"
-                      onClick={downloadCsvTemplate}
-                      className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 h-7 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
-                    >
-                      <Download className="size-3.5" />
-                      Template
-                    </button>
-                    <button
-                      type="button"
-                      onClick={pickCsvFile}
-                      disabled={csvBusy}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 h-7 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-                    >
-                      <Upload className="size-3.5" />
-                      {csvBusy ? t("posts.bulkSchedule.reading") : t("posts.bulkSchedule.upload_csv")}
-                    </button>
-                    <input
-                      ref={csvInputRef}
-                      type="file"
-                      accept=".csv,text/csv"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleCsvFile(file);
-                        e.target.value = "";
-                      }}
-                    />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-medium text-zinc-700">{t("posts.bulkSchedule.selected_media")}</span>
-                    <span className="text-zinc-500">{t("posts.bulkSchedule.manage_uploads")}</span>
-                  </div>
-                  <div className="max-h-72 overflow-y-auto -mx-1 px-1 space-y-1">
-                    {items.map((item, idx) => (
-                      <div
-                        key={item.id}
-                        className={cn(
-                          "flex items-center gap-2 p-1.5 rounded-lg hover:bg-zinc-50",
-                          item.uploadStatus === "error" && "bg-red-50/50"
-                        )}
-                      >
-                        <div className="relative size-9 flex-shrink-0 rounded bg-zinc-100 overflow-hidden">
-                          {item.kind === "image" ? (
-                            // eslint-disable-next-line @next/next/no-img-element -- CDN URL or local blob preview
-                            <img src={item.source === "upload" ? item.previewUrl : item.url} alt={item.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <video src={item.source === "upload" ? item.previewUrl : item.url} className="w-full h-full object-cover" />
-                          )}
-                          {item.source === "upload" && item.uploadStatus === "uploading" ? (
-                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                              <span className="size-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                            </div>
-                          ) : null}
-                          {item.source === "upload" && item.uploadStatus === "error" ? (
-                            <div className="absolute inset-0 bg-red-500/50 flex items-center justify-center">
-                              <X className="size-3.5 text-white" />
-                            </div>
-                          ) : null}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-medium truncate">{item.name}</p>
-                          <p className="text-[10px] text-zinc-500">
-                            {item.source === "upload" && item.uploadStatus === "uploading"
-                              ? "Uploading…"
-                              : item.source === "upload" && item.uploadStatus === "error"
-                              ? "Upload failed"
-                              : null}
-                            {item.source === "upload" && item.uploadStatus === "ready" ? formatBytes(item.size) : ""}
-                            {item.source === "csv" ? "CSV" : ""}
-                            {" • "}
-                            {item.kind === "image" ? "Image" : "Video"} #{idx + 1}
-                          </p>
-                        </div>
+                  <Timer className="size-3.5 text-zinc-500" />
+                  <span>{timezone}</span>
+                  <ChevronDown className="size-3.5 text-zinc-500" />
+                </button>
+                {tzOpen ? (
+                  <ul role="listbox" className="absolute right-0 top-full mt-2 z-30 w-[220px] max-h-[260px] overflow-y-auto rounded-xl border border-zinc-200 bg-white shadow-lg p-1">
+                    {TIMEZONES.map((tz) => (
+                      <li key={tz.id}>
                         <button
                           type="button"
-                          onClick={() => removeItem(item.id)}
-                          aria-label={`Remove ${item.name}`}
-                          className="size-6 inline-flex items-center justify-center rounded hover:bg-zinc-200 text-zinc-500 hover:text-zinc-900 flex-shrink-0"
+                          onClick={() => {
+                            setTimezone(tz.id);
+                            setTzOpen(false);
+                          }}
+                          className={cn("w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-zinc-100 font-medium", tz.id === timezone && "bg-zinc-900 text-white hover:bg-zinc-900")}
                         >
-                          <X className="size-3.5" />
+                          {tz.label}
                         </button>
-                      </div>
+                      </li>
                     ))}
-                  </div>
-                  <div
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setDragging(true);
-                    }}
-                    onDragEnter={(e) => {
-                      e.preventDefault();
-                      setDragging(true);
-                    }}
-                    onDragLeave={(e) => {
-                      if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-                      setDragging(false);
-                    }}
-                    onDrop={onAddMoreDrop}
-                    onClick={pickMoreFiles}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        pickMoreFiles();
-                      }
-                    }}
-                    className={cn(
-                      "rounded-lg border-2 border-dashed p-6 text-center cursor-pointer transition-colors",
-                      dragging ? "border-blue-500 bg-blue-50/40" : "border-zinc-300 hover:bg-zinc-50"
-                    )}
-                  >
-                    <ImagePlus className="size-5 mx-auto text-zinc-400" />
-                    <p className="mt-1 text-xs font-medium text-zinc-700">Drop to add more media files</p>
-                    <p className="mt-0.5 text-[11px] text-zinc-500">
-                      Add to your existing {items.length} file{items.length === 1 ? "" : "s"}
-                    </p>
-                  </div>
-                </>
-              )}
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept={ACCEPTED_MIME_TYPES.join(",")}
-                className="hidden"
-                onChange={(e) => {
-                  const files = Array.from(e.target.files ?? []);
-                  if (files.length > 0) handleFiles(files);
-                  e.target.value = "";
-                }}
-              />
-              <input
-                ref={addMoreInputRef}
-                type="file"
-                multiple
-                accept={ACCEPTED_MIME_TYPES.join(",")}
-                className="hidden"
-                onChange={(e) => {
-                  const files = Array.from(e.target.files ?? []);
-                  if (files.length > 0) handleFiles(files);
-                  e.target.value = "";
-                }}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Right column */}
-        {items.length === 0 ? (
-          <EmptyState />
-        ) : (
-          <PostsList
-            items={items}
-            accountsCount={accountsArr.length}
-            onToggleAccount={(itemId, platformId) => {
-              setItems((prev) =>
-                prev.map((it) => {
-                  if (it.id !== itemId) return it;
-                  const has = it.accountIds.includes(platformId);
-                  return {
-                    ...it,
-                    accountIds: has ? it.accountIds.filter((a) => a !== platformId) : [...it.accountIds, platformId],
-                  };
-                })
-              );
-            }}
-            onUpdateItem={updateItem}
-            onRemove={removeItem}
-            onApplyAccountsToAll={applyAccountsToAll}
-            onScheduleSingle={scheduleSingle}
-          />
-        )}
-      </div>
-
-      {/* Sticky bottom action bar */}
-      {items.length > 0 ? (
-        <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-zinc-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
-          <div className="mx-auto max-w-[1600px] px-6 h-16 flex items-center justify-between gap-4">
-            <span className="text-sm font-medium">
-              {t("posts.bulkSchedule.posts_ready", { n: items.length })}
-            </span>
+                  </ul>
+                ) : null}
+              </div>
+            </SchedulerField>
             <button
               type="button"
-              onClick={handleScheduleAll}
-              disabled={scheduleBusy}
-              className="inline-flex items-center gap-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-4 h-10 text-sm font-medium disabled:opacity-50"
+              onClick={applySchedule}
+              disabled={items.length === 0}
+              className="ml-auto sm:ml-0 inline-flex items-center gap-1.5 rounded-xl bg-zinc-900 hover:bg-black text-white px-4 h-9 text-xs font-bold disabled:opacity-50 shadow-sm"
             >
-              <Calendar className="size-4" />
-              {scheduleBusy ? t("posts.bulkSchedule.scheduling") : t("posts.bulkSchedule.schedule_all")}
+              <Clock className="size-3.5" />
+              {t("posts.bulkSchedule.apply")}
             </button>
+            {totalIssues.length > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 border border-red-200 text-red-700 px-3 py-1.5 text-xs font-bold">
+                <AlertCircle className="size-3.5" /> {blockedCount} blocked • {readyCount} ready
+              </span>
+            )}
+            {totalIssues.length === 0 && items.length > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1.5 text-xs font-bold">
+                <CheckCircle2 className="size-3.5" /> All ready
+              </span>
+            )}
           </div>
+          <p className="text-[11px] text-zinc-500 mt-2 hidden sm:block">Start date sets slot 1. We auto-space posts in your timezone ({timezone}), 30 min apart per day. <Link href="/dashboard/calendar" className="underline decoration-dotted hover:text-zinc-700">View in Calendar</Link> after scheduling.</p>
         </div>
-      ) : null}
+
+        {/* ── AI + Undo bar ── */}
+        {items.length > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={aiGenerateForAll}
+                disabled={generating}
+                className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 hover:bg-black disabled:opacity-50 text-white px-4 h-9 text-xs font-bold shadow-sm"
+              >
+                <Sparkles className="size-4" />
+                {generating ? t("posts.bulkSchedule.generating") : t("posts.bulkSchedule.generate_ai_captions", { n: items.length })}
+              </button>
+              <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-white border border-zinc-200 px-2.5 py-1 text-xs font-medium text-zinc-600">
+                <Zap className="size-3.5 text-amber-500" /> Per-post AI with tone & context
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {undoStack.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={undoRemove}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 h-9 text-xs font-semibold hover:bg-zinc-50 shadow-sm"
+                >
+                  <Undo2 className="size-3.5" />
+                  Undo remove ({undoStack.length})
+                </button>
+              ) : null}
+              <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-zinc-900 text-white px-2.5 py-1 text-[11px] font-bold">{items.length}/{MAX_FILES} files</span>
+            </div>
+          </div>
+        ) : null}
+
+        {/* ── Two-column layout ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4 items-start">
+          {/* Left */}
+          <div className="space-y-4 lg:sticky lg:top-4">
+            {/* Accounts */}
+            <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm overflow-hidden">
+              <div className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="size-7 inline-flex items-center justify-center rounded-full bg-zinc-900 text-white text-xs font-bold">1</span>
+                  <h3 className="text-sm font-bold tracking-tight">{t("posts.bulkSchedule.accounts_title")}</h3>
+                  <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-1 text-[10px] font-bold text-zinc-600">{accounts.size} selected</span>
+                </div>
+                <div className="max-h-[320px] overflow-y-auto -mx-1 px-1 space-y-1">
+                  {PLATFORMS.map((p) => {
+                    const isSel = accounts.has(p.id);
+                    return (
+                      <label
+                        key={p.id}
+                        className={cn(
+                          "flex items-center gap-2.5 w-full p-2 rounded-xl cursor-pointer transition-colors border",
+                          isSel ? "bg-zinc-900 text-white border-zinc-900" : "bg-white border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50"
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSel}
+                          onChange={() => toggleAccount(p.id)}
+                          className="sr-only"
+                        />
+                        <span className={cn("size-[18px] rounded-[6px] border-2 flex items-center justify-center shrink-0", isSel ? "bg-white border-white text-zinc-900" : "bg-white border-zinc-300")}>
+                          {isSel && <CheckCircle2 className="size-3 fill-zinc-900 text-white" />}
+                        </span>
+                        <ProPlatformIcon platform={p.id} size={24} />
+                        <span className={cn("text-xs font-semibold truncate", isSel ? "text-white" : "text-zinc-700")}>{p.handle}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-zinc-500 mt-2">Default for new uploads. Use “Apply to all” to overwrite each post’s platforms. <Link href="/dashboard/accounts" className="underline decoration-dotted hover:text-zinc-700">Manage connections</Link></p>
+              </div>
+            </div>
+
+            {/* Media Files */}
+            <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm overflow-hidden">
+              <div className="p-4">
+                <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="size-7 inline-flex items-center justify-center rounded-full bg-zinc-900 text-white text-xs font-bold">2</span>
+                    <h3 className="text-sm font-bold tracking-tight">{t("posts.bulkSchedule.media_files_title")}</h3>
+                    <span className="text-xs font-mono text-zinc-500">
+                      {items.length}/{MAX_FILES}
+                    </span>
+                  </div>
+                  {items.length > 0 ? (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={pickMoreFiles}
+                        className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-2.5 h-7 text-xs font-semibold hover:bg-zinc-50"
+                      >
+                        <Plus className="size-3" />
+                        {t("posts.bulkSchedule.add_more")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearAll}
+                        className="inline-flex items-center gap-1 px-2 h-7 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-full"
+                      >
+                        <Trash2 className="size-3" />
+                        {t("posts.bulkSchedule.clear_all")}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+
+                {items.length === 0 ? (
+                  <>
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragging(true);
+                      }}
+                      onDragEnter={(e) => {
+                        e.preventDefault();
+                        setDragging(true);
+                      }}
+                      onDragLeave={(e) => {
+                        if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                        setDragging(false);
+                      }}
+                      onDrop={onDrop}
+                      onClick={pickFiles}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          pickFiles();
+                        }
+                      }}
+                      className={cn(
+                        "rounded-[14px] border-2 border-dashed p-6 text-center cursor-pointer transition-colors",
+                        dragging ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50/50"
+                      )}
+                    >
+                      <span className="mx-auto size-10 rounded-xl bg-zinc-900 text-white flex items-center justify-center shadow-sm">
+                        <UploadCloud className="size-5" />
+                      </span>
+                      <p className="mt-3 text-sm font-semibold text-zinc-900">{t("posts.bulkSchedule.drop_zone")}</p>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        {t("posts.bulkSchedule.drop_zone_desc", { max: MAX_FILES })}
+                      </p>
+                      <p className="mt-1 text-[11px] text-zinc-400">
+                        {t("posts.bulkSchedule.drop_zone_footnote", { maxSize: Math.round(MAX_FILE_BYTES / 1024 / 1024) })}
+                      </p>
+                    </div>
+                    <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3 flex flex-col gap-2">
+                      <p className="text-xs font-semibold text-zinc-700 flex items-center gap-1.5">
+                        <FileText className="size-3.5" /> CSV bulk? We got you.
+                      </p>
+                      <p className="text-xs text-zinc-600">{t("posts.bulkSchedule.csv_hint")}</p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={downloadCsvTemplate}
+                          className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-3 h-7 text-xs font-semibold hover:bg-zinc-50"
+                        >
+                          <Download className="size-3.5" />
+                          Template
+                        </button>
+                        <button
+                          type="button"
+                          onClick={pickCsvFile}
+                          disabled={csvBusy}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-zinc-900 text-white px-3 h-7 text-xs font-bold hover:bg-black disabled:opacity-50"
+                        >
+                          <Upload className="size-3.5" />
+                          {csvBusy ? t("posts.bulkSchedule.reading") : t("posts.bulkSchedule.upload_csv")}
+                        </button>
+                      </div>
+                      <input
+                        ref={csvInputRef}
+                        type="file"
+                        accept=".csv,text/csv"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleCsvFile(file);
+                          e.target.value = "";
+                        }}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between text-xs mb-2">
+                      <span className="font-semibold text-zinc-700 flex items-center gap-1.5">
+                        <ImageIcon className="size-3.5" /> {t("posts.bulkSchedule.selected_media")}
+                      </span>
+                      <span className="text-zinc-500">{t("posts.bulkSchedule.manage_uploads")}</span>
+                    </div>
+                    <div className="max-h-[320px] overflow-y-auto -mx-1 px-1 space-y-1.5">
+                      {items.map((item, idx) => (
+                        <div
+                          key={item.id}
+                          className={cn(
+                            "flex items-center gap-2.5 p-2 rounded-xl border transition-colors",
+                            item.uploadStatus === "error" ? "bg-red-50 border-red-200" : "bg-white border-zinc-200 hover:border-zinc-300"
+                          )}
+                        >
+                          <div className="relative size-10 flex-shrink-0 rounded-lg bg-zinc-100 overflow-hidden border border-zinc-200">
+                            {item.kind === "image" ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={item.source === "upload" ? item.previewUrl : item.url} alt={item.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <video src={item.source === "upload" ? item.previewUrl : item.url} className="w-full h-full object-cover" />
+                            )}
+                            {item.source === "upload" && item.uploadStatus === "uploading" ? (
+                              <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                                <span className="size-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                              </div>
+                            ) : null}
+                            {item.source === "upload" && item.uploadStatus === "error" ? (
+                              <div className="absolute inset-0 bg-red-500/70 flex items-center justify-center">
+                                <X className="size-3.5 text-white" />
+                              </div>
+                            ) : null}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold truncate">{item.name}</p>
+                            <p className="text-[10px] text-zinc-500 flex items-center gap-1">
+                              {item.source === "upload" && item.uploadStatus === "uploading" ? (
+                                <span className="inline-flex items-center gap-1 text-amber-600">
+                                  <span className="size-2 rounded-full bg-amber-500 animate-pulse" /> Uploading…
+                                </span>
+                              ) : item.source === "upload" && item.uploadStatus === "error" ? (
+                                <span className="text-red-600">Upload failed</span>
+                              ) : (
+                                formatBytes(item.size)
+                              )}
+                              <span>•</span> {item.kind === "image" ? "Image" : "Video"} #{idx + 1}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeItem(item.id)}
+                            aria-label={`Remove ${item.name}`}
+                            className="size-7 inline-flex items-center justify-center rounded-full hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900 shrink-0"
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragging(true);
+                      }}
+                      onDragEnter={(e) => {
+                        e.preventDefault();
+                        setDragging(true);
+                      }}
+                      onDragLeave={(e) => {
+                        if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                        setDragging(false);
+                      }}
+                      onDrop={onAddMoreDrop}
+                      onClick={pickMoreFiles}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          pickMoreFiles();
+                        }
+                      }}
+                      className={cn(
+                        "mt-3 rounded-xl border-2 border-dashed p-4 text-center cursor-pointer transition-colors flex flex-col items-center gap-1",
+                        dragging ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 hover:bg-zinc-50"
+                      )}
+                    >
+                      <ImagePlus className="size-4 text-zinc-400" />
+                      <p className="text-xs font-semibold text-zinc-700">Drop to add more media files</p>
+                      <p className="text-[11px] text-zinc-500">
+                        Add to your existing {items.length} file{items.length === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept={ACCEPTED_MIME_TYPES.join(",")}
+                  className="hidden"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files ?? []);
+                    if (files.length > 0) handleFiles(files);
+                    e.target.value = "";
+                  }}
+                />
+                <input
+                  ref={addMoreInputRef}
+                  type="file"
+                  multiple
+                  accept={ACCEPTED_MIME_TYPES.join(",")}
+                  className="hidden"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files ?? []);
+                    if (files.length > 0) handleFiles(files);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Right */}
+          {items.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <PostsList
+              items={items}
+              accountsCount={accountsArr.length}
+              onToggleAccount={(itemId, platformId) => {
+                setItems((prev) =>
+                  prev.map((it) => {
+                    if (it.id !== itemId) return it;
+                    const has = it.accountIds.includes(platformId);
+                    const nextIds = has ? it.accountIds.filter((a) => a !== platformId) : [...it.accountIds, platformId];
+                    // sync advanced defaults for newly added platform
+                    let adv = (it as BulkItemBase).advancedByPlatform ?? {};
+                    if (!has) {
+                      const def = getDefaultOptions(platformId);
+                      adv = { ...adv, [platformId]: { ...def, ...(platformId === "pinterest" && destinationOptions.boards[0] ? { pinterest_board_id: destinationOptions.boards[0].value } : {}), ...(platformId === "facebook" && destinationOptions.pages[0] ? { facebook_page_id: destinationOptions.pages[0].value } : {}) } };
+                    } else {
+                      const { [platformId]: _omit, ...rest } = adv;
+                      adv = rest;
+                    }
+                    return {
+                      ...it,
+                      accountIds: nextIds,
+                      advancedByPlatform: adv,
+                    } as BulkItem;
+                  })
+                );
+              }}
+              onUpdateItem={updateItem}
+              onUpdateAdvanced={updateAdvanced}
+              onRemove={removeItem}
+              onApplyAccountsToAll={applyAccountsToAll}
+              onScheduleSingle={scheduleSingle}
+              onOpenAI={(item) => setAiTarget(item)}
+              destinationOptions={destinationOptions}
+              aiGeneratingItemId={aiGeneratingItemId}
+              timezone={timezone}
+            />
+          )}
+        </div>
+
+        {/* Sticky bottom bar */}
+        {items.length > 0 ? (
+          <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-zinc-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+            <div className="mx-auto max-w-[1600px] px-4 sm:px-6 h-[64px] flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="hidden sm:inline-flex size-8 items-center justify-center rounded-full bg-zinc-900 text-white">
+                  <Layers className="size-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold leading-none">{t("posts.bulkSchedule.posts_ready", { n: items.length })} • {readyCount} ready</p>
+                  <p className="text-xs text-zinc-500 hidden sm:block">
+                    {blockedCount > 0 ? `${blockedCount} need attention — fix captions & required fields` : "All posts validated"} • <Link href="/dashboard/queue" className="underline decoration-dotted hover:text-zinc-700">View Queue</Link>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleScheduleAll}
+                disabled={scheduleBusy || blockedCount > 0}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-5 h-10 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              >
+                <Calendar className="size-4" />
+                {scheduleBusy ? t("posts.bulkSchedule.scheduling") : t("posts.bulkSchedule.schedule_all")}
+                <span className="hidden sm:inline-flex items-center justify-center min-w-5 h-5 rounded-full bg-white/20 text-[11px] px-1.5">{items.length}</span>
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Per-item AI dialog */}
+        <AICaptionsDialog
+          open={!!aiTarget}
+          onClose={() => setAiTarget(null)}
+          isGenerating={!!aiGeneratingItemId}
+          imageUrl={aiTarget?.kind === "image" ? (aiTarget?.source === "upload" ? aiTarget?.url : (aiTarget as CsvBulkItem)?.mediaUrl) || null : null}
+          videoTitle={aiTarget?.kind === "video" ? aiTarget?.name.replace(/\.[^.]+$/, "") ?? null : null}
+          onGenerate={(opts) => {
+            if (aiTarget) void aiGenerateForItem(aiTarget, opts);
+          }}
+        />
+      </div>
     </div>
   );
 }
 
 function SchedulerField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[10px] font-medium tracking-wide text-zinc-500">{label}</label>
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[10px] font-semibold tracking-widest uppercase text-zinc-500">{label}</label>
       {children}
     </div>
   );
@@ -1402,47 +1784,33 @@ function EmptyState() {
   const t = useTranslations("dashboard");
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm">
-        <div className="p-12 text-center">
-          <div className="size-12 rounded-full bg-zinc-100 inline-flex items-center justify-center mx-auto">
-            <Upload className="size-6 text-zinc-500" />
-          </div>
-          <h3 className="mt-4 text-lg font-semibold">{t("posts.bulkSchedule.empty_title")}</h3>
-          <p className="mt-2 text-sm text-zinc-500 max-w-md mx-auto">
-            {t("posts.bulkSchedule.empty_subtitle")}
-          </p>
+      <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm p-8 sm:p-12 text-center">
+        <span className="mx-auto size-12 rounded-[14px] bg-zinc-900 text-white flex items-center justify-center shadow-sm">
+          <Upload className="size-6" />
+        </span>
+        <h3 className="mt-4 text-lg font-bold tracking-tight">{t("posts.bulkSchedule.empty_title")}</h3>
+        <p className="mt-2 text-sm text-zinc-500 max-w-md mx-auto leading-relaxed">
+          {t("posts.bulkSchedule.empty_subtitle")}
+        </p>
+        <div className="mt-4 flex items-center justify-center gap-2 text-xs">
+          <Link href="/dashboard/posts/create" className="inline-flex items-center gap-1.5 rounded-full bg-zinc-900 text-white px-3 py-1.5 font-bold">
+            <Plus className="size-3.5" /> Create single post
+          </Link>
+          <Link href="/dashboard/assets" className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 font-semibold hover:bg-zinc-50">
+            <Eye className="size-3.5" /> Media Library
+          </Link>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StepCard
-          n={1}
-          title={t("posts.bulkSchedule.empty_step1_title")}
-          desc={t("posts.bulkSchedule.empty_step1_desc")}
-        />
-        <StepCard
-          n={2}
-          title={t("posts.bulkSchedule.empty_step2_title")}
-          desc={t("posts.bulkSchedule.empty_step2_desc", { max: 20 })}
-        />
-        <StepCard
-          n={3}
-          title={t("posts.bulkSchedule.empty_step3_title")}
-          desc={t("posts.bulkSchedule.empty_step3_desc")}
-        />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <StepCard n={1} title={t("posts.bulkSchedule.empty_step1_title")} desc={t("posts.bulkSchedule.empty_step1_desc")} />
+        <StepCard n={2} title={t("posts.bulkSchedule.empty_step2_title")} desc={t("posts.bulkSchedule.empty_step2_desc", { max: 20 })} />
+        <StepCard n={3} title={t("posts.bulkSchedule.empty_step3_title")} desc={t("posts.bulkSchedule.empty_step3_desc")} />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <TipCard
-          icon={<Calendar className="size-4 text-blue-600" />}
-          title={t("posts.bulkSchedule.tip_scheduler_title")}
-          desc={t("posts.bulkSchedule.tip_scheduler_desc")}
-        />
-        <TipCard
-          icon={<Sparkles className="size-4 text-violet-600" />}
-          title={t("posts.bulkSchedule.tip_ai_title")}
-          desc={t("posts.bulkSchedule.tip_ai_desc")}
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <TipCard icon={<Clock className="size-4 text-blue-600" />} title={t("posts.bulkSchedule.tip_scheduler_title")} desc={t("posts.bulkSchedule.tip_scheduler_desc")} />
+        <TipCard icon={<Sparkles className="size-4 text-violet-600" />} title={t("posts.bulkSchedule.tip_ai_title")} desc={t("posts.bulkSchedule.tip_ai_desc")} />
       </div>
     </div>
   );
@@ -1450,11 +1818,11 @@ function EmptyState() {
 
 function StepCard({ n, title, desc }: { n: number; title: string; desc: string }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm p-5">
-      <div className="size-8 inline-flex items-center justify-center rounded-full bg-zinc-900 text-white text-sm font-semibold mb-3">
+    <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm p-5">
+      <div className="size-8 inline-flex items-center justify-center rounded-full bg-zinc-900 text-white text-sm font-bold mb-3">
         {n}
       </div>
-      <p className="text-sm font-semibold">{title}</p>
+      <p className="text-sm font-bold">{title}</p>
       <p className="mt-1 text-xs text-zinc-500 leading-relaxed">{desc}</p>
     </div>
   );
@@ -1462,12 +1830,12 @@ function StepCard({ n, title, desc }: { n: number; title: string; desc: string }
 
 function TipCard({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm p-4 flex items-start gap-3">
-      <div className="size-8 rounded-lg bg-zinc-100 inline-flex items-center justify-center flex-shrink-0">
+    <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm p-4 flex items-start gap-3">
+      <div className="size-8 rounded-xl bg-zinc-100 inline-flex items-center justify-center flex-shrink-0">
         {icon}
       </div>
       <div className="min-w-0">
-        <p className="text-sm font-semibold">{title}</p>
+        <p className="text-sm font-bold">{title}</p>
         <p className="mt-1 text-xs text-zinc-500 leading-relaxed">{desc}</p>
       </div>
     </div>
@@ -1479,9 +1847,14 @@ interface PostsListProps {
   accountsCount: number;
   onToggleAccount: (itemId: string, platformId: PlatformId) => void;
   onUpdateItem: (id: string, patch: Partial<BulkItem>) => void;
+  onUpdateAdvanced: (id: string, platform: PlatformId, next: PlatformAdvancedOptions) => void;
   onRemove: (id: string) => void;
   onApplyAccountsToAll: () => void;
   onScheduleSingle: (itemId: string) => void;
+  onOpenAI: (item: BulkItem) => void;
+  destinationOptions: { boards: Array<{ value: string; label: string }>; pages: Array<{ value: string; label: string }> };
+  aiGeneratingItemId: string | null;
+  timezone: string;
 }
 
 function PostsList({
@@ -1489,28 +1862,37 @@ function PostsList({
   accountsCount,
   onToggleAccount,
   onUpdateItem,
+  onUpdateAdvanced,
   onRemove,
   onApplyAccountsToAll,
   onScheduleSingle,
+  onOpenAI,
+  destinationOptions,
+  aiGeneratingItemId,
+  timezone,
 }: PostsListProps) {
   const t = useTranslations("dashboard");
   return (
-    <div className="space-y-3">
-      <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm">
-        <div className="p-4 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 className="text-base font-semibold leading-none">{t("posts.bulkSchedule.posts_ready", { n: items.length })}</h3>
-            <p className="text-xs text-zinc-500 mt-1">{t("posts.bulkSchedule.customize_subtitle")}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onApplyAccountsToAll}
-            disabled={accountsCount === 0}
-            className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
-          >
-            {t("posts.bulkSchedule.apply_accounts_all")}
-          </button>
+    <div className="space-y-3 pb-6">
+      <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm p-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold tracking-tight flex items-center gap-2">
+            <ProStatIcon tint="blue" size={28}>
+              <Layers className="size-3.5" />
+            </ProStatIcon>
+            {t("posts.bulkSchedule.posts_ready", { n: items.length })}
+          </h3>
+          <p className="text-xs text-zinc-500 mt-1">{t("posts.bulkSchedule.customize_subtitle")} • Advanced per-platform controls inside each card.</p>
         </div>
+        <button
+          type="button"
+          onClick={onApplyAccountsToAll}
+          disabled={accountsCount === 0}
+          className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 h-8 text-xs font-bold hover:bg-zinc-50 disabled:opacity-50 shadow-sm"
+        >
+          <Users className="size-3.5" />
+          {t("posts.bulkSchedule.apply_accounts_all")}
+        </button>
       </div>
 
       {items.map((item, idx) => (
@@ -1520,8 +1902,13 @@ function PostsList({
           index={idx}
           onToggleAccount={(id) => onToggleAccount(item.id, id)}
           onUpdate={(patch) => onUpdateItem(item.id, patch)}
+          onUpdateAdvanced={(pid, next) => onUpdateAdvanced(item.id, pid, next)}
           onRemove={() => onRemove(item.id)}
           onScheduleSingle={() => onScheduleSingle(item.id)}
+          onOpenAI={() => onOpenAI(item)}
+          destinationOptions={destinationOptions}
+          aiGenerating={aiGeneratingItemId === item.id}
+          timezone={timezone}
         />
       ))}
     </div>
@@ -1533,15 +1920,25 @@ function PostRow({
   index,
   onToggleAccount,
   onUpdate,
+  onUpdateAdvanced,
   onRemove,
   onScheduleSingle,
+  onOpenAI,
+  destinationOptions,
+  aiGenerating,
+  timezone,
 }: {
   item: BulkItem;
   index: number;
   onToggleAccount: (id: PlatformId) => void;
   onUpdate: (patch: Partial<BulkItem>) => void;
+  onUpdateAdvanced: (platform: PlatformId, next: PlatformAdvancedOptions) => void;
   onRemove: () => void;
   onScheduleSingle: () => void;
+  onOpenAI: () => void;
+  destinationOptions: { boards: Array<{ value: string; label: string }>; pages: Array<{ value: string; label: string }> };
+  aiGenerating: boolean;
+  timezone: string;
 }) {
   const t = useTranslations("dashboard");
   const hasYouTube = item.accountIds.includes("youtube");
@@ -1555,261 +1952,387 @@ function PostRow({
   const charLimit = pickCharLimitFor(item);
   const overLimit = captionLen > charLimit;
   const previewSrc = item.source === "upload" ? item.previewUrl : item.url;
+  const mediaKind: MediaKind = item.kind === "video" ? "video" : "image";
+  const readiness = useMemo(() => buildReadinessForItem(item, timezone), [item, timezone]);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [extraOpen, setExtraOpen] = useState(false);
 
   return (
-    <div className="rounded-xl border border-zinc-200 bg-card text-card-foreground shadow-sm overflow-hidden">
-      <div className="grid grid-cols-1 md:grid-cols-[100px_minmax(0,180px)_minmax(0,140px)_minmax(0,1fr)] divide-y md:divide-y-0 md:divide-x divide-zinc-200">
-        {/* Column 1: Media preview */}
-        <div className="relative bg-zinc-100 aspect-square md:aspect-auto">
-          {item.kind === "image" ? (
-            // eslint-disable-next-line @next/next/no-img-element -- CDN URL or local blob preview
-            <img src={previewSrc} alt={item.name} className="w-full h-full object-cover" />
-          ) : (
-            <video src={previewSrc} className="w-full h-full object-cover" />
-          )}
-          <span className="absolute top-1 left-1 inline-flex items-center justify-center size-6 rounded bg-zinc-900/80 text-white text-[11px] font-semibold">
-            #{index + 1}
+    <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm overflow-hidden">
+      {/* Card header with media + platforms summary */}
+      <div className="flex items-center gap-3 px-3 py-2.5 border-b border-zinc-200 bg-zinc-50/50">
+        <span className="inline-flex items-center justify-center size-7 rounded-full bg-zinc-900 text-white text-xs font-bold">#{index + 1}</span>
+        <div className="flex items-center gap-1 flex-wrap">
+          {item.accountIds.slice(0, 5).map((pid) => (
+            <ProPlatformIcon key={pid} platform={pid} size={22} />
+          ))}
+          {item.accountIds.length > 5 && <ProOverflowBadge count={item.accountIds.length - 5} size={22} />}
+          <span className="text-xs font-semibold text-zinc-700 ml-1">
+            {item.accountIds.length} platform{item.accountIds.length !== 1 ? "s" : ""}
           </span>
-          <button
-            type="button"
-            onClick={onRemove}
-            aria-label="Remove"
-            className="absolute top-1 right-1 size-6 inline-flex items-center justify-center rounded-full bg-white border border-zinc-200 text-zinc-700 hover:bg-zinc-50"
-          >
-            <X className="size-3.5" />
-          </button>
-          <div className="absolute bottom-1 left-1 right-1 text-[10px] text-white">
-            <p className="font-medium truncate">{item.name}</p>
-            <p className="opacity-80">
-              {item.source === "upload" ? formatBytes(item.size) : "CSV import"}
-              {item.source === "upload" && item.uploadStatus === "uploading" ? " • Uploading…" : ""}
-              {item.source === "upload" && item.uploadStatus === "error" ? " • Upload failed" : ""}
-            </p>
-          </div>
         </div>
+        <span className={cn("ml-auto inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold border", readiness.overall === "blocked" ? "bg-red-50 text-red-700 border-red-200" : readiness.overall === "warning" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200")}>
+          {readiness.overall === "blocked" ? <AlertCircle className="size-3" /> : readiness.overall === "warning" ? <AlertTriangle className="size-3" /> : <CheckCircle2 className="size-3" />}
+          {readiness.overall === "blocked" ? `${readiness.blockedCount} blocked` : readiness.overall === "warning" ? `${readiness.warningCount} warnings` : "Ready"}
+        </span>
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Remove"
+          className="size-7 inline-flex items-center justify-center rounded-full bg-white border border-zinc-200 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
+        >
+          <X className="size-3.5" />
+        </button>
+      </div>
 
-        {/* Column 2: Platforms */}
-        <div className="p-3 min-w-0">
-          <h4 className="text-xs font-semibold tracking-wide text-zinc-700 mb-2">
-            {t("posts.bulkSchedule.platforms_selected", { n: item.accountIds.length })}
-          </h4>
-          <div className="space-y-0.5">
-            {PLATFORMS.map((p) => {
-              const isSel = item.accountIds.includes(p.id);
-              return (
-                <label
-                  key={p.id}
-                  className={cn(
-                    "flex items-center gap-1.5 px-1.5 py-1 rounded cursor-pointer text-xs",
-                    isSel ? "bg-emerald-50" : "hover:bg-zinc-50"
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isSel}
-                    onChange={() => onToggleAccount(p.id)}
-                    className="size-3.5 rounded-sm border-zinc-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer flex-shrink-0"
-                  />
-                  <PlatformAvatar platform={p} size={16} rounded="full" />
-                  <span className="truncate flex-1 text-[11px]">{p.handle}</span>
-                </label>
-              );
-            })}
+      <div className="grid grid-cols-1 lg:grid-cols-[160px_1fr] divide-y lg:divide-y-0 lg:divide-x divide-zinc-200">
+        {/* Media + Schedule + Platforms */}
+        <div className="p-3 space-y-3 bg-zinc-50/30">
+          <div className="relative rounded-xl overflow-hidden bg-zinc-100 aspect-[4/3] border border-zinc-200">
+            {item.kind === "image" ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={previewSrc} alt={item.name} className="w-full h-full object-cover" />
+            ) : (
+              <video src={previewSrc} className="w-full h-full object-cover" />
+            )}
+            <div className="absolute bottom-1 left-1 right-1 rounded-lg bg-black/60 backdrop-blur px-2 py-1">
+              <p className="text-[10px] font-semibold text-white truncate">{item.name}</p>
+              <p className="text-[10px] text-white/80 flex items-center gap-1">
+                {item.kind === "image" ? <ImageIcon className="size-3" /> : <Video className="size-3" />} {formatBytes(item.size)}
+                {item.source === "upload" && item.uploadStatus === "uploading" ? " • Uploading…" : ""}
+                {item.source === "upload" && item.uploadStatus === "error" ? " • Failed" : ""}
+              </p>
+            </div>
           </div>
-        </div>
 
-        {/* Column 3: Schedule */}
-        <div className="p-3 min-w-0">
-          <h4 className="text-xs font-semibold tracking-wide text-zinc-700 mb-2">{t("posts.bulkSchedule.schedule_header")}</h4>
           <div className="space-y-2">
+            <h4 className="text-xs font-bold flex items-center gap-1.5">
+              <Settings2 className="size-3.5 text-zinc-500" /> Platforms
+            </h4>
+            <div className="space-y-1 max-h-[220px] overflow-y-auto pr-1">
+              {PLATFORMS.map((p) => {
+                const isSel = item.accountIds.includes(p.id);
+                return (
+                  <label
+                    key={p.id}
+                    className={cn(
+                      "flex items-center gap-2 px-2 py-1.5 rounded-xl cursor-pointer text-xs border transition-colors",
+                      isSel ? "bg-zinc-900 text-white border-zinc-900" : "bg-white border-zinc-200 hover:bg-zinc-50"
+                    )}
+                  >
+                    <span className={cn("size-4 rounded-[6px] border-2 flex items-center justify-center shrink-0", isSel ? "bg-white border-white text-zinc-900" : "bg-white border-zinc-300")}>
+                      {isSel && <CheckCircle2 className="size-3 fill-zinc-900 text-white" />}
+                    </span>
+                    <ProPlatformIcon platform={p.id} size={18} />
+                    <span className={cn("truncate flex-1 text-[11px] font-semibold", isSel ? "text-white" : "text-zinc-700")}>{p.handle}</span>
+                    <input type="checkbox" checked={isSel} onChange={() => onToggleAccount(p.id)} className="sr-only" />
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-2 border-t border-zinc-200">
+            <h4 className="text-xs font-bold flex items-center gap-1.5">
+              <Clock className="size-3.5 text-zinc-500" /> Schedule
+            </h4>
             <div>
-              <label className="text-[10px] text-zinc-500">{t("posts.bulkSchedule.date_label")}</label>
+              <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide">Date</label>
               <input
                 type="date"
                 value={item.scheduledDate}
                 onChange={(e) => onUpdate({ scheduledDate: e.target.value })}
-                className="h-9 w-full rounded-md border border-zinc-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
+                className="mt-1 h-8 w-full rounded-xl border border-zinc-200 bg-white px-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
               />
             </div>
             <div>
-              <label className="text-[10px] text-zinc-500">{t("posts.bulkSchedule.time_label")}</label>
+              <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide">Time</label>
               <input
                 type="time"
                 value={item.scheduledTime}
                 onChange={(e) => onUpdate({ scheduledTime: e.target.value })}
-                className="h-9 w-full rounded-md border border-zinc-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
+                className="mt-1 h-8 w-full rounded-xl border border-zinc-200 bg-white px-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
               />
+              <p className="text-[10px] text-zinc-500 mt-1 flex items-center gap-1">
+                <Timer className="size-3" /> {timezone} • {item.scheduledAt ? new Date(item.scheduledAt).toLocaleString() : "—"}
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Column 4: Caption + Platform-specific fields */}
-        <div className="p-3 space-y-2 min-w-0">
+        {/* Caption + Advanced */}
+        <div className="p-3 sm:p-4 space-y-3 min-w-0">
+          {/* Caption */}
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-semibold tracking-wide text-zinc-700">{t("posts.bulkSchedule.caption_label")}</label>
-              <span className={cn("text-[10px]", overLimit ? "text-red-600 font-medium" : "text-zinc-500")}>
-                {captionLen}/{charLimit}
-              </span>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold flex items-center gap-1.5">
+                <Hash className="size-3.5 text-zinc-500" /> Caption <span className="text-red-500">*</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onOpenAI}
+                  disabled={aiGenerating}
+                  className="inline-flex items-center gap-1 rounded-full bg-zinc-900 hover:bg-black disabled:opacity-50 text-white px-2.5 py-1 text-[11px] font-bold"
+                >
+                  <Sparkles className="size-3" /> {aiGenerating ? "Generating…" : "AI Caption"}
+                </button>
+                <span className={cn("text-[10px] font-mono px-1.5 py-0.5 rounded-full border", overLimit ? "bg-red-50 text-red-600 border-red-200" : "bg-zinc-50 text-zinc-500 border-zinc-200")}>
+                  {captionLen}/{charLimit}
+                </span>
+              </div>
             </div>
             <textarea
               value={item.caption}
               onChange={(e) => onUpdate({ caption: e.target.value })}
               placeholder={t("posts.bulkSchedule.caption_placeholder")}
-              rows={3}
+              rows={4}
               maxLength={2200}
-              className="w-full rounded-md border border-zinc-200 bg-white p-2 text-xs placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-950/10 focus:border-zinc-300 resize-none"
+              className="w-full rounded-xl border border-zinc-200 bg-white p-2.5 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-300 resize-none leading-relaxed"
             />
+            <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] text-zinc-500">Per-post AI uses your image/video + tone & hashtags.</span>
+              <Link href="/dashboard/hashtags" className="inline-flex items-center gap-1 rounded-full bg-white border border-zinc-200 px-2 py-1 text-[10px] font-semibold hover:bg-zinc-50">
+                <Hash className="size-3" /> Hashtags
+              </Link>
+            </div>
           </div>
 
-          {/* Post in: Feed/Story */}
-          <div>
-            <label className="text-[10px] font-medium text-zinc-700">{t("posts.bulkSchedule.post_in")}</label>
-            <div className="mt-1 flex items-center gap-3">
-              <label className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="radio"
-                  name={`post-in-${item.id}`}
-                  checked={item.postIn === "feed"}
-                  onChange={() => onUpdate({ postIn: "feed" })}
-                  className="size-3.5 text-emerald-600 focus:ring-emerald-500"
-                />
-                <span className="text-xs">{t("posts.bulkSchedule.feed")}</span>
+          {/* Quick platform fields kept for speed */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex items-center gap-3 p-2 rounded-xl bg-zinc-50 border border-zinc-200">
+              <label className="text-xs font-semibold flex items-center gap-1.5">
+                <Send className="size-3.5 text-zinc-500" /> Post in
               </label>
-              <label className={cn(
-                "flex items-center gap-1.5",
-                hasInstagram || hasFacebook ? "cursor-pointer" : "cursor-not-allowed opacity-60"
-              )}>
-                <input
-                  type="radio"
-                  name={`post-in-${item.id}`}
-                  checked={item.postIn === "story"}
-                  onChange={() => onUpdate({ postIn: "story" })}
-                  disabled={!(hasInstagram || hasFacebook)}
-                  className="size-3.5 text-emerald-600 focus:ring-emerald-500"
-                />
-                <span className="text-xs">{t("posts.bulkSchedule.story")}</span>
+              <label className="flex items-center gap-1 cursor-pointer ml-auto">
+                <input type="radio" name={`post-in-${item.id}`} checked={item.postIn === "feed"} onChange={() => onUpdate({ postIn: "feed" })} className="size-3.5" />
+                <span className="text-xs font-medium">{t("posts.bulkSchedule.feed")}</span>
+              </label>
+              <label className={cn("flex items-center gap-1", hasInstagram || hasFacebook ? "cursor-pointer" : "opacity-50")}>
+                <input type="radio" name={`post-in-${item.id}`} checked={item.postIn === "story"} onChange={() => onUpdate({ postIn: "story" })} disabled={!(hasInstagram || hasFacebook)} className="size-3.5" />
+                <span className="text-xs font-medium">{t("posts.bulkSchedule.story")}</span>
               </label>
             </div>
-            {!(hasInstagram || hasFacebook) ? (
-              <p className="mt-0.5 text-[10px] text-zinc-500">{t("posts.bulkSchedule.stories_note")}</p>
-            ) : null}
+            <label className="flex items-center gap-2 p-2 rounded-xl bg-zinc-50 border border-zinc-200 cursor-pointer">
+              <input type="checkbox" checked={item.autoAddMusic} onChange={(e) => onUpdate({ autoAddMusic: e.target.checked })} className="size-3.5" />
+              <span className="text-xs font-semibold">{t("posts.bulkSchedule.auto_music")}</span>
+            </label>
           </div>
 
-          {/* YouTube Video Title */}
-          {hasYouTube ? (
-            <div>
-              <div className="flex items-center justify-between mb-0.5">
-                <label className="text-[10px] font-medium text-zinc-700">
-                  {t("posts.bulkSchedule.youtube_title")} <span className="text-red-500">{t("posts.bulkSchedule.required")}</span>
+          {hasYouTube && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-bold flex items-center gap-1">
+                  YouTube Title <span className="text-red-500">*</span> <span className={cn("ml-auto text-[10px] font-mono", ytTitleLen > 100 ? "text-red-600" : "text-zinc-500")}>{ytTitleLen}/100</span>
                 </label>
-                <span className={cn("text-[10px]", ytTitleLen > 100 ? "text-red-600" : "text-zinc-500")}>
-                  {ytTitleLen} / 100
-                </span>
+                <input
+                  type="text"
+                  value={item.youtubeTitle}
+                  onChange={(e) => onUpdate({ youtubeTitle: e.target.value.slice(0, 100) })}
+                  placeholder="Enter video title for YouTube..."
+                  className="mt-1 h-9 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                />
               </div>
-              <input
-                type="text"
-                value={item.youtubeTitle}
-                onChange={(e) => onUpdate({ youtubeTitle: e.target.value.slice(0, 100) })}
-                placeholder="Enter video title for YouTube..."
-                className="h-8 w-full rounded-md border border-zinc-200 bg-white px-2 text-xs placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
-              />
-            </div>
-          ) : null}
-
-          {/* YouTube Tags */}
-          {hasYouTube ? (
-            <div>
-              <div className="flex items-center justify-between mb-0.5">
-                <label className="text-[10px] font-medium text-zinc-700">{t("posts.bulkSchedule.youtube_tags")}</label>
-                <span className={cn("text-[10px]", ytTagsLen > 500 ? "text-red-600" : "text-zinc-500")}>
-                  {ytTagsLen} / 500
-                </span>
+              <div>
+                <label className="text-[11px] font-bold flex items-center gap-1">
+                  YouTube Tags <span className={cn("ml-auto text-[10px] font-mono", ytTagsLen > 500 ? "text-red-600" : "text-zinc-500")}>{ytTagsLen}/500</span>
+                </label>
+                <input
+                  type="text"
+                  value={item.youtubeTags}
+                  onChange={(e) => onUpdate({ youtubeTags: e.target.value.slice(0, 500) })}
+                  placeholder="social, youtube, video, tag"
+                  className="mt-1 h-9 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                />
               </div>
-              <input
-                type="text"
-                value={item.youtubeTags}
-                onChange={(e) => onUpdate({ youtubeTags: e.target.value.slice(0, 500) })}
-                placeholder="social, youtube, video, tag"
-                className="h-8 w-full rounded-md border border-zinc-200 bg-white px-2 text-xs placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
-              />
             </div>
-          ) : null}
+          )}
 
-          {/* Pinterest Board */}
-          {hasPinterest ? (
+          {hasPinterest && (
             <div>
-              <label className="text-[10px] font-medium text-zinc-700 mb-0.5 block">
-                {t("posts.bulkSchedule.pinterest_board")} <span className="text-red-500">{t("posts.bulkSchedule.required")}</span>
+              <label className="text-[11px] font-bold block mb-1">
+                {t("posts.bulkSchedule.pinterest_board")} <span className="text-red-500">*</span>
               </label>
               <select
                 value={item.pinterestBoard}
                 onChange={(e) => onUpdate({ pinterestBoard: e.target.value })}
-                className="h-8 w-full rounded-md border border-zinc-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
+                className="h-9 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
               >
                 <option value="">{t("posts.bulkSchedule.select_board")}</option>
-                <option value="default">Default Board</option>
-                <option value="inspiration">Inspiration</option>
-                <option value="products">Products</option>
+                {destinationOptions.boards.length > 0 ? (
+                  destinationOptions.boards.map((b) => (
+                    <option key={b.value} value={b.value}>
+                      {b.label}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="default">Default Board</option>
+                    <option value="inspiration">Inspiration</option>
+                    <option value="products">Products</option>
+                  </>
+                )}
               </select>
             </div>
-          ) : null}
+          )}
 
-          {/* Auto add music */}
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={item.autoAddMusic}
-              onChange={(e) => onUpdate({ autoAddMusic: e.target.checked })}
-              className="size-3.5 rounded-sm border-zinc-300 text-emerald-600 focus:ring-emerald-500"
-            />
-            <span className="text-xs">{t("posts.bulkSchedule.auto_music")}</span>
-          </label>
-
-          {/* X Community */}
-          {hasX ? (
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={item.community}
-                onChange={(e) => onUpdate({ community: e.target.checked })}
-                className="size-3.5 rounded-sm border-zinc-300 text-emerald-600 focus:ring-emerald-500"
-              />
-              <span className="text-xs">{t("posts.bulkSchedule.community")}</span>
-              <span className="text-[10px] text-zinc-500">{t("posts.bulkSchedule.optional")}</span>
-            </label>
-          ) : null}
-
-          {/* Profile */}
-          <div>
-            <label className="text-[10px] font-medium text-zinc-700 mb-0.5 block">{t("posts.bulkSchedule.profile")}</label>
-            <select
-              value={item.profile}
-              onChange={(e) => onUpdate({ profile: e.target.value })}
-              className="h-8 w-full rounded-md border border-zinc-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
+          {/* Collapsible extra */}
+          <div className="rounded-xl border border-zinc-200 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setExtraOpen((v) => !v)}
+              className="w-full flex items-center justify-between px-3 py-2.5 bg-zinc-50 hover:bg-zinc-100 text-left"
             >
-              <option value="Default">Default</option>
-              <option value="Personal">Personal</option>
-              <option value="Business">Business</option>
-            </select>
+              <span className="text-xs font-bold flex items-center gap-1.5">
+                <MessageSquare className="size-3.5" /> Extra · First comment, hashtags & tagging
+              </span>
+              <ChevronDown className={cn("size-4 text-zinc-500 transition-transform", extraOpen && "rotate-180")} />
+            </button>
+            {extraOpen && (
+              <div className="p-3 space-y-3 bg-white">
+                <div>
+                  <label className="text-[11px] font-semibold">First comment (optional)</label>
+                  <input
+                    type="text"
+                    value={(item as BulkItemBase).firstComment ?? ""}
+                    onChange={(e) => onUpdate({ firstComment: e.target.value } as Partial<BulkItem>)}
+                    placeholder="Add a first comment for Instagram/Facebook..."
+                    className="mt-1 h-9 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold flex items-center gap-1">
+                      <Hash className="size-3" /> Hashtags (comma separated)
+                    </label>
+                    <input
+                      type="text"
+                      value={(item.hashtags ?? []).join(", ")}
+                      onChange={(e) => onUpdate({ hashtags: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) } as unknown as Partial<BulkItem>)}
+                      placeholder="#cats, #cute"
+                      className="mt-1 h-9 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold flex items-center gap-1">
+                      <Users className="size-3" /> Tag users (comma separated)
+                    </label>
+                    <input
+                      type="text"
+                      value={(item as BulkItemBase).tagUsers ?? ""}
+                      onChange={(e) => onUpdate({ tagUsers: e.target.value } as Partial<BulkItem>)}
+                      placeholder="@user1, @user2"
+                      className="mt-1 h-9 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold">Alt text (accessibility)</label>
+                  <input
+                    type="text"
+                    value={(item as BulkItemBase).altText ?? ""}
+                    onChange={(e) => onUpdate({ altText: e.target.value } as Partial<BulkItem>)}
+                    placeholder="Describe the image for screen readers"
+                    className="mt-1 h-9 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                  />
+                </div>
+                {hasX && (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={item.community} onChange={(e) => onUpdate({ community: e.target.checked })} className="size-3.5" />
+                    <span className="text-xs font-semibold">{t("posts.bulkSchedule.community")}</span>
+                    <span className="text-[10px] text-zinc-500">{t("posts.bulkSchedule.optional")}</span>
+                  </label>
+                )}
+                <div>
+                  <label className="text-[11px] font-semibold">Profile</label>
+                  <select
+                    value={item.profile}
+                    onChange={(e) => onUpdate({ profile: e.target.value })}
+                    className="mt-1 h-9 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                  >
+                    <option value="Default">Default</option>
+                    <option value="Personal">Personal</option>
+                    <option value="Business">Business</option>
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Per-row schedule */}
-          <button
-            type="button"
-            onClick={onScheduleSingle}
-            disabled={item.uploadStatus === "uploading"}
-            className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
-          >
-            <Calendar className="size-3" />
-            Schedule this post
-          </button>
+          {/* Advanced per-platform — FULL parity with Create Post */}
+          <div className="rounded-xl border border-zinc-200 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen((v) => !v)}
+              className="w-full flex items-center justify-between px-3 py-2.5 bg-white hover:bg-zinc-50 text-left"
+            >
+              <span className="text-xs font-bold flex items-center gap-1.5">
+                <Settings2 className="size-3.5" /> Advanced for each platform • {item.accountIds.length} selected
+                <span className={cn("ml-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border", readiness.blockedCount > 0 ? "bg-red-50 text-red-700 border-red-200" : "bg-emerald-50 text-emerald-700 border-emerald-200")}>
+                  {readiness.blockedCount > 0 ? `${readiness.blockedCount} blocked` : "Ready"}
+                </span>
+              </span>
+              <ChevronDown className={cn("size-4 text-zinc-500 transition-transform", advancedOpen && "rotate-180")} />
+            </button>
+            {advancedOpen && (
+              <div className="p-3 space-y-3 bg-zinc-50/40 border-t border-zinc-200">
+                {item.accountIds.length === 0 ? (
+                  <p className="text-xs text-zinc-500">Select platforms to see advanced options.</p>
+                ) : (
+                  item.accountIds.map((pid) => {
+                    const meta = getPlatform(pid);
+                    const val = (item as BulkItemBase).advancedByPlatform?.[pid] ?? getDefaultOptions(pid);
+                    const destOpts =
+                      pid === "pinterest" && destinationOptions.boards.length > 0
+                        ? { pinterest_board_id: destinationOptions.boards }
+                        : pid === "facebook" && destinationOptions.pages.length > 0
+                          ? { facebook_page_id: destinationOptions.pages }
+                          : undefined;
+                    return (
+                      <AdvancedOptionsPanel
+                        key={pid}
+                        platform={pid}
+                        platformName={meta?.name ?? pid}
+                        mediaKind={mediaKind}
+                        value={val}
+                        onChange={(next) => onUpdateAdvanced(pid, next)}
+                        selectOptions={destOpts as never}
+                        defaultOpen={false}
+                      />
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Requirements */}
+          <RequirementsPanel
+            report={readiness}
+            platformNames={Object.fromEntries(PLATFORMS.map((p) => [p.id, p.name])) as Record<PlatformId, string>}
+            className="rounded-xl"
+          />
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onScheduleSingle}
+              disabled={item.uploadStatus === "uploading" || readiness.overall === "blocked"}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-zinc-900 hover:bg-black text-white h-9 text-xs font-bold disabled:opacity-50 shadow-sm"
+            >
+              <Calendar className="size-3.5" />
+              Schedule this post
+            </button>
+            <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-zinc-500">
+              <Eye className="size-3" /> Linked to <Link href="/dashboard/queue" className="underline decoration-dotted hover:text-zinc-700">Queue</Link>
+            </span>
+          </div>
         </div>
       </div>
 
       {item.accountIds.length === 0 ? (
-        <div className="border-t border-zinc-200 bg-amber-50 px-4 py-2 text-xs text-amber-700">
-          {t("posts.bulkSchedule.no_accounts_warning")}
+        <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-xs font-medium text-amber-800 flex items-center gap-1.5">
+          <AlertTriangle className="size-3.5" /> {t("posts.bulkSchedule.no_accounts_warning")}
         </div>
       ) : null}
     </div>

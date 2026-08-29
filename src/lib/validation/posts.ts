@@ -33,30 +33,40 @@ export const postCollaboratorSchema = z.object({
   status: z.enum(["invited", "accepted", "declined"]).default("invited"),
 });
 
-export const createPostSchema = z.object({
-  caption: nonEmptyString.max(22000),
-  platforms: z.array(platformIdSchema).min(1).max(9),
-  mediaUrls: urlArray.optional().default([]),
-  hashtags: z.array(z.string().min(1).max(64)).max(30).optional().default([]),
-  labels: z.array(z.string().min(1).max(64)).max(20).optional().default([]),
-  scheduledAt: optionalString,
-  firstComment: optionalString,
-  altText: z.array(z.string().max(1000)).max(10).optional().default([]),
-  collaborators: z.array(postCollaboratorSchema).max(20).optional().default([]),
-  community: optionalString,
-  quoteTweetUrl: optionalString,
-  threadRootId: optionalString,
-  /** Feed vs Story placement hint (e.g. "story" for IG/FB stories). */
-  postIn: z.enum(["feed", "story"]).optional(),
-  /** YouTube-only — required when "youtube" is in platforms. */
-  youtubeTitle: optionalString,
-  youtubeTags: optionalString,
-  /** Pinterest-only — required when "pinterest" is in platforms. */
-  pinterestBoard: optionalString,
-  autoAddMusic: z.boolean().optional(),
-  profile: optionalString,
-  status: postStatusSchema.optional().default("draft"),
-}).refine(
+export const createPostSchema = z
+  .object({
+    caption: nonEmptyString.max(22000),
+    platforms: z.array(platformIdSchema).min(1).max(9),
+    mediaUrls: urlArray.optional().default([]),
+    hashtags: z.array(z.string().min(1).max(64)).max(30).optional().default([]),
+    labels: z.array(z.string().min(1).max(64)).max(20).optional().default([]),
+    scheduledAt: optionalString,
+    firstComment: optionalString,
+    altText: z.array(z.string().max(1000)).max(10).optional().default([]),
+    collaborators: z.array(postCollaboratorSchema).max(20).optional().default([]),
+    community: optionalString,
+    quoteTweetUrl: optionalString,
+    threadRootId: optionalString,
+    /** Feed vs Story placement hint (e.g. "story" for IG/FB stories). */
+    postIn: z.enum(["feed", "story"]).optional(),
+    /** YouTube-only — required when "youtube" is in platforms. */
+    youtubeTitle: optionalString,
+    youtubeTags: optionalString,
+    /** Pinterest-only — required when "pinterest" is in platforms. */
+    pinterestBoard: optionalString,
+    autoAddMusic: z.boolean().optional(),
+    profile: optionalString,
+    status: postStatusSchema.optional().default("draft"),
+    // ── Bulk parity — keep in sync with single-post publish payload ──
+    advancedByPlatform: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+    captionsByPlatform: z.record(z.string(), z.string()).optional(),
+    sameForAll: z.boolean().optional(),
+    tagUsers: z.union([z.string(), z.array(z.string())]).optional(),
+    firstCommentByPlatform: z.record(z.string(), z.string()).optional(),
+    altTextByPlatform: z.record(z.string(), z.string()).optional(),
+  })
+  .passthrough()
+  .refine(
   (p) => {
     if (p.status === "scheduled" || p.status === "queued") {
       if (!p.scheduledAt) return false;
