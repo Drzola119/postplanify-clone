@@ -312,8 +312,30 @@ export async function publishToUploadPost(input: UploadPostPublishInput): Promis
   if (mediaField) for (const url of mediaValues) form.append(mediaField, url);
   form.append("request_id", requestId);
   form.append("external_id", input.externalId || requestId);
-  form.append("async_upload", "false");
-  if (input.scheduledAt) form.append("scheduled_date", input.scheduledAt);
+
+  if (input.scheduledAt) {
+    const d = new Date(input.scheduledAt);
+    if (!isNaN(d.getTime())) {
+      const isoNoMs = d.toISOString().replace(/\.\d{3}Z$/, "Z");
+      const yyyy = d.getUTCFullYear();
+      const MM = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const dd = String(d.getUTCDate()).padStart(2, "0");
+      const hh = String(d.getUTCHours()).padStart(2, "0");
+      const mm = String(d.getUTCMinutes()).padStart(2, "0");
+      const ss = String(d.getUTCSeconds()).padStart(2, "0");
+      const spaceFormat = `${yyyy}-${MM}-${dd} ${hh}:${mm}:${ss}`;
+
+      form.append("scheduled_date", isoNoMs);
+      form.append("schedule_date", isoNoMs);
+      form.append("scheduled_at", isoNoMs);
+      form.append("scheduled_time", spaceFormat);
+      form.append("async_upload", "true");
+    } else {
+      form.append("async_upload", "false");
+    }
+  } else {
+    form.append("async_upload", "false");
+  }
 
   const sharedFirstComment = input.firstComment || input.firstCommentByPlatform?.__all;
   if (sharedFirstComment) form.append("first_comment", sharedFirstComment);
