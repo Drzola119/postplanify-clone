@@ -47,12 +47,23 @@ export async function POST(request: Request) {
 
   const parsed = await parseBody(request, schedulePayloadSchema);
   if (!parsed.ok || !parsed.data) {
-    return NextResponse.json({ error: "Invalid scheduling payload" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid scheduling payload", issues: parsed.error?.issues },
+      { status: 400 }
+    );
   }
   const body = parsed.data;
   const scheduledAt = new Date(body.scheduledAt);
-  if (Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now()) {
-    return NextResponse.json({ error: "Scheduled time must be in the future" }, { status: 400 });
+  if (Number.isNaN(scheduledAt.getTime())) {
+    return NextResponse.json({ error: "Invalid scheduledAt - must be an ISO date string" }, { status: 400 });
+  }
+  // Give a 30s grace window so tiny clock skew doesn't turn a valid
+  // "tomorrow 09:00" into a confusing 503/400 loop.
+  if (scheduledAt.getTime() <= Date.now() - 30_000) {
+    return NextResponse.json(
+      { error: `Scheduled time must be in the future (server time is ${new Date().toISOString()})` },
+      { status: 400 }
+    );
   }
 
   const captionMap = body.captionsByPlatform;
@@ -114,7 +125,25 @@ export async function POST(request: Request) {
       scheduledAt: scheduledAt.toISOString(),
     }, { status: 201 });
   } catch (err) {
-    log.error("Failed to persist scheduled post", { err, workspaceId: session.workspaceId });
-    return NextResponse.json({ error: "Unable to save scheduled post" }, { status: 503 });
+    const message = err instanceof Error ? err.message : String(err);
+    log.error("Failed to persist scheduled post", { err, workspaceId: session.workspaceId, message });
+
+    // Map known Firestore failure modes to the most actionable status.
+    // Permission-denied (security rules) -> 403, not 503.
+    if (/PERMISSION_DENIED|permission/i.test(message)) {
+      return NextResponse.json(
+        { error: "Firestore permission denied. Check firestore.rules for workspaces/{workspaceId}/posts.", details: message },
+        { status: 403 }
+      );
+    }
+    if (/adminDb not configured|FIREBASE/i.test(message)) {
+      return NextResponse.json(
+        { error: "Unable to save scheduled post", details: `Database not configured on server. Check FIREBASE_PRIVATE_KEY env var. (${message})` },
+        { status: 503 }
+      );
+    }
+    // Include the underlying message so the client toast can surface it
+    // instead of the opaque "Unable to save scheduled post".
+    return NextResponse.json({ error: "Unable to save scheduled post", details: message }, { status: 503 });
   }
 }

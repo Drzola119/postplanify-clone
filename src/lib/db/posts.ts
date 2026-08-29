@@ -1,13 +1,25 @@
 import "server-only";
 import { toIso } from "@/lib/db/date-utils";
-import { adminDb } from "@/lib/db";
+import { adminDb, FieldValue } from "@/lib/db";
 import type { PostDoc, PostStatus, PlatformId } from "@/lib/db/schema";
 
-const SERVER_TIMESTAMP = { _methodName: "serverTimestamp" } as const;
+const SERVER_TIMESTAMP = FieldValue.serverTimestamp();
 
 function collection(workspaceId: string) {
   if (!adminDb) throw new Error("adminDb not configured");
   return adminDb.collection(`workspaces/${workspaceId}/posts`);
+}
+
+/**
+ * Firestore rejects `undefined` values. We strip them so callers can safely
+ * pass optional fields without branching every call site.
+ */
+function stripUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out as Partial<T>;
 }
 
 export interface ListPostsFilters {
@@ -149,7 +161,7 @@ export async function getPost(workspaceId: string, postId: string): Promise<Post
 export async function createPost(workspaceId: string, authorUid: string, data: Partial<PostDoc>): Promise<string> {
   const ref = collection(workspaceId).doc();
   const now = SERVER_TIMESTAMP;
-  const payload: Record<string, unknown> = {
+  const raw: Record<string, unknown> = {
     authorUid,
     caption: data.caption ?? "",
     platforms: data.platforms ?? [],
@@ -181,13 +193,15 @@ export async function createPost(workspaceId: string, authorUid: string, data: P
     updatedAt: now,
     deletedAt: null,
   };
+  const payload = stripUndefined(raw);
   await ref.set(payload);
   return ref.id;
 }
 
 export async function updatePost(workspaceId: string, postId: string, patch: Partial<PostDoc>): Promise<void> {
   const ref = collection(workspaceId).doc(postId);
-  await ref.update({ ...patch, updatedAt: SERVER_TIMESTAMP });
+  const cleaned = stripUndefined(patch as Record<string, unknown>);
+  await ref.update({ ...cleaned, updatedAt: SERVER_TIMESTAMP });
 }
 
 export async function softDeletePost(workspaceId: string, postId: string): Promise<void> {
@@ -207,7 +221,7 @@ export async function bulkCreatePosts(
   for (const item of items) {
     const ref = coll.doc();
     ids.push(ref.id);
-    const payload: Record<string, unknown> = {
+    const raw: Record<string, unknown> = {
       authorUid,
       caption: item.caption ?? "",
       platforms: item.platforms ?? [],
@@ -235,7 +249,7 @@ export async function bulkCreatePosts(
       updatedAt: now,
       deletedAt: null,
     };
-    batch.set(ref, payload);
+    batch.set(ref, stripUndefined(raw));
   }
   await batch.commit();
   return ids;

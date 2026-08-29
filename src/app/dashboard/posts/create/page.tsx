@@ -879,6 +879,21 @@ export default function CreatePostPage() {
   }
 
   async function publishPost(scheduledAt: Date | null) {
+    // Client-side guard against the most common scheduling 400 — a
+    // wall-clock that is already in the past due to timezone/operator lag.
+    // The server guards the same condition, but catching it here lets us
+    // show an immediate, localised message instead of a 400 -> 503 chain.
+    if (scheduledAt) {
+      if (Number.isNaN(scheduledAt.getTime())) {
+        toast({ title: t("scheduleFailed"), description: "Invalid date — please pick the date and time again.", tone: "error" });
+        return;
+      }
+      if (scheduledAt.getTime() <= Date.now()) {
+        toast({ title: t("scheduleFailed"), description: `Scheduled time must be in the future (now: ${new Date().toLocaleString()}). Please pick a later time.`, tone: "error" });
+        return;
+      }
+    }
+
     const platforms = Array.from(selected);
     if (platforms.length === 0) {
       toast({ title: t("pickAccount"), tone: "warning" });
@@ -1093,6 +1108,8 @@ export default function CreatePostPage() {
         jobId?: string;
         postId?: string;
         error?: string;
+        details?: string;
+        issues?: unknown;
         results?: Record<string, { ok: boolean; error?: string }>;
         result?: unknown;
         accepted?: boolean;
@@ -1101,11 +1118,28 @@ export default function CreatePostPage() {
         scheduled?: boolean;
         scheduledAt?: string;
       };
-      let data = (await res.json().catch(() => ({}))) as PublishResponse;
+      let data = (await res.json().catch(() => ({}))) as PublishResponse & { issues?: unknown; details?: string };
       if (!res.ok || !data.ok) {
+        // Surface the server's `details` (added for 503 diagnostics) and
+        // validation `issues` so the user isn't left with a generic
+        // "Unable to save scheduled post" message that can't be actioned.
+        const detailHint =
+          (data as { details?: string }).details ??
+          (data.error && /Database/i.test(data.error) ? data.error : undefined);
+        const issuesHint = (data as { issues?: unknown }).issues
+          ? ` Validation: ${JSON.stringify((data as { issues?: unknown }).issues)}`
+          : "";
+        const description =
+          (detailHint ? `${data.error ?? "Request failed"} — ${detailHint}${issuesHint}` : undefined) ??
+          (data.error ? `${data.error}${issuesHint}` : undefined) ??
+          `HTTP ${res.status}${issuesHint}`;
+        // Special-case 503 / 403 so users know it's infra, not their content
+        const isInfra = res.status === 503 || res.status === 403 || /Database|permission/i.test(description);
         toast({
           title: scheduledAt ? t("scheduleFailed") : t("publishFailed"),
-          description: data.error ?? `HTTP ${res.status}`,
+          description: isInfra
+            ? `${description} — please retry in a minute or contact support if this persists.`
+            : description,
           tone: "error",
         });
         return;
