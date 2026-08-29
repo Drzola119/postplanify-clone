@@ -203,7 +203,17 @@ export default function CreatePostPage() {
       setCommunity(record.community ?? "profile");
       setQuoteTweet(record.quoteTweet ?? "");
       setTagUsers(record.tagUsers ?? "");
-      if (record.selected?.length) setSelected(new Set(record.selected));
+      // If the draft contains only images, strip video-only platforms (YouTube) immediately
+      // so the UI (PlatformTileBar + Accounts checkboxes + Requirements panel) stay in sync
+      // without waiting for the async onlyImage effect. This fixes the "YouTube still
+      // shows as selected after Continue" bug seen in screenshots.
+      const draftMediaForFilter = (record.mediaItems ?? []).filter((m) => !!(m.cdnUrl ?? (m as unknown as { remoteUrl?: string }).remoteUrl));
+      const isImageOnlyDraft = draftMediaForFilter.length > 0 && draftMediaForFilter.every((m) => (m.kind ?? "image") === "image");
+      const filteredSelected = isImageOnlyDraft
+        ? (record.selected ?? []).filter((pid) => !PLATFORMS.find((p) => p.id === pid)?.videoOnly)
+        : (record.selected ?? []);
+      if (filteredSelected.length) setSelected(new Set(filteredSelected));
+      else if (record.selected?.length) setSelected(new Set(record.selected));
       setCollaborators(record.collaborators ?? []);
       setCustomCoverUrl(record.customCoverUrl ?? null);
       setFrameCoverUrl(record.frameCoverUrl ?? null);
@@ -831,6 +841,18 @@ export default function CreatePostPage() {
   }
 
   async function handleSaveDraft() {
+    const pendingUpload =
+      mediaItems.some((m) => m.uploadStatus === "uploading") ||
+      carouselItems.some((c) => c.uploadStatus === "uploading") ||
+      (trialReelFile?.uploadStatus === "uploading") ||
+      (documentFile?.uploadStatus === "uploading");
+    if (pendingUpload) {
+      toast({
+        title: "Media still uploading",
+        description: "Your draft will be saved but the image thumbnail may show as pending until the upload finishes. Try saving again after uploads complete.",
+        tone: "warning",
+      });
+    }
     const id = draftId ?? newDraftId();
     const record: DraftRecord = {
       id,

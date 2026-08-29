@@ -165,7 +165,31 @@ export default function DraftsPage() {
 
       const merged = new Map<string, DraftRow>();
       for (const r of localUuidRows) merged.set(r.id, r);
-      for (const r of serverRows) merged.set(r.id, r);
+      for (const r of serverRows) {
+        const existing = merged.get(r.id);
+        // Server draft may have been saved before image CDN upload finished
+        // (mediaCount=0 / mediaUrl undefined) – keep the local media thumbnail
+        // when it exists so the drafts table doesn't show a black square.
+        if (existing && !r.mediaUrl && existing.mediaUrl) {
+          merged.set(r.id, {
+            ...r,
+            mediaUrl: existing.mediaUrl,
+            mediaType: existing.mediaType,
+            mediaCount: existing.mediaCount,
+            // Keep the richer caption/updatedAt from server but preserve local media
+            caption: r.caption || existing.caption,
+          });
+        } else if (existing && r.mediaCount === 0 && existing.mediaCount > 0) {
+          merged.set(r.id, {
+            ...r,
+            mediaUrl: existing.mediaUrl,
+            mediaType: existing.mediaType,
+            mediaCount: existing.mediaCount,
+          });
+        } else {
+          merged.set(r.id, r);
+        }
+      }
       const all = Array.from(merged.values());
       if (seq !== requestSeq.current) return;
       setDrafts(all);
@@ -575,12 +599,16 @@ export default function DraftsPage() {
                             alt=""
                             className="size-20 rounded-md object-cover border border-zinc-200"
                           />
+                        ) : draft.mediaCount > 0 ? (
+                          <div className="size-20 rounded-md bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700 text-[10px] font-medium p-1 text-center" aria-label={t("posts.drafts.media_none")}>
+                            Media pending upload
+                          </div>
                         ) : (
                           <div
                             className="size-20 rounded-md bg-zinc-900 flex items-center justify-center text-white text-xs font-medium"
                             aria-label={t("posts.drafts.media_none")}
                           >
-                            {draft.mediaType === "video" ? "▶" : ""}
+                            {draft.mediaType === "video" ? "▶" : <span className="text-[10px]">No media</span>}
                           </div>
                         )}
                       </td>
