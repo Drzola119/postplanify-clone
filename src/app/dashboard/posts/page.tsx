@@ -568,57 +568,10 @@ export default function PostsCalendarPage() {
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 flex-shrink-0">
         <div className="flex flex-wrap items-center gap-2">
           <MediaKindSelector value={draftMediaKind} onChange={setDraftMediaKind} />
-          <FilterPill
-            label={
-              draftPlatform === "all"
-                ? t("posts.calendar.filter_all_accounts")
-                : PLATFORM_LABELS[draftPlatform] ?? draftPlatform
-            }
-            onClick={() => {
-              const order: PlatformFilterValue[] = [
-                "all",
-                "bluesky",
-                "instagram",
-                "tiktok",
-                "youtube",
-                "pinterest",
-                "twitter",
-                "linkedin",
-                "threads",
-                "facebook",
-                "discord",
-                "telegram",
-                "google_business",
-              ];
-              const idx = order.indexOf(draftPlatform);
-              setDraftPlatform(order[(idx + 1) % order.length] ?? "all");
-            }}
-          />
-          <FilterPill
-            label={
-              draftStatus === "all"
-                ? t("posts.calendar.filter_all_status")
-                : statusMetaOf(draftStatus as CalendarPost["status"]).label
-            }
-            onClick={() => {
-              const order: StatusFilterValue[] = [
-                "all",
-                "draft",
-                "scheduled",
-                "queued",
-                "publishing",
-                "published",
-                "partially_published",
-                "paused",
-                "failed",
-                "archived",
-              ];
-              const idx = order.indexOf(draftStatus);
-              setDraftStatus(order[(idx + 1) % order.length] ?? "all");
-            }}
-          />
+          <PlatformDropdown value={draftPlatform} onChange={setDraftPlatform} />
+          <StatusDropdown value={draftStatus} onChange={setDraftStatus} />
           <DateRangePill from={draftFromDate} to={draftToDate} onChange={(f, t) => { setDraftFromDate(f); setDraftToDate(t); }} />
-          <FilterPill label={t("posts.calendar.filter_all_labels")} onClick={() => toast({ title: "Labels", description: "Label filtering is not yet available.", tone: "info" })} />
+          <LabelsDropdown />
           <div className="relative">
             <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
             <input
@@ -857,32 +810,220 @@ export default function PostsCalendarPage() {
 
 // ─── View-specific renderers ───────────────────────────────────────────
 
+function useOnClickOutside(ref: React.RefObject<HTMLElement | null>, handler: () => void, enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) return;
+    const listener = (e: MouseEvent) => {
+      if (!ref.current || ref.current.contains(e.target as Node)) return;
+      handler();
+    };
+    document.addEventListener("mousedown", listener);
+    return () => document.removeEventListener("mousedown", listener);
+  }, [ref, handler, enabled]);
+}
+
 function MediaKindSelector({ value, onChange }: { value: MediaKindFilter; onChange: (v: MediaKindFilter) => void }) {
   const t = useTranslations("dashboard");
-  const order: MediaKindFilter[] = ["any", "text", "image", "video"];
-  const idx = order.indexOf(value);
-  const next = order[(idx + 1) % order.length] ?? "any";
-  const label =
-    value === "any"
-      ? t("posts.calendar.all_media")
-      : value === "text"
-        ? t("posts.calendar.text_only")
-        : value === "image"
-          ? t("posts.calendar.filter_image")
-          : t("posts.calendar.filter_video");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useOnClickOutside(ref, () => setOpen(false), open);
+  const options: { value: MediaKindFilter; label: string; icon: React.ReactNode }[] = [
+    { value: "any", label: t("posts.calendar.all_media"), icon: <TextIcon /> },
+    { value: "text", label: t("posts.calendar.text_only"), icon: <TextIcon /> },
+    { value: "image", label: t("posts.calendar.filter_image"), icon: <ImageIcon /> },
+    { value: "video", label: t("posts.calendar.filter_video"), icon: <VideoIcon /> },
+  ];
+  const current = options.find((o) => o.value === value) ?? options[0];
   return (
-    <button
-      type="button"
-      onClick={() => onChange(next)}
-      aria-label={`Media: ${label}`}
-      className={cn(
-        "inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border border-input bg-background shadow-sm hover:bg-accent text-xs h-8 px-3 rounded-lg",
-        value !== "any" && "text-foreground"
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label={`Media: ${current.label}`}
+        aria-expanded={open}
+        className={cn(
+          "inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border border-input bg-background shadow-sm hover:bg-accent text-xs h-8 px-3 rounded-lg",
+          value !== "any" && "text-foreground"
+        )}
+      >
+        {current.icon}
+        <span className="hidden lg:inline">{current.label}</span>
+        <ChevronDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 min-w-[180px] rounded-md border bg-card shadow-lg p-1">
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => {
+                onChange(opt.value);
+                setOpen(false);
+              }}
+              className={cn(
+                "w-full text-left text-xs rounded-sm px-2 py-1.5 hover:bg-accent flex items-center gap-2",
+                opt.value === value && "bg-accent font-medium"
+              )}
+            >
+              {opt.icon}
+              {opt.label}
+              {opt.value === value && <Check className="ml-auto size-3.5 text-zinc-500" />}
+            </button>
+          ))}
+        </div>
       )}
-    >
-      {value === "image" ? <ImageIcon /> : value === "video" ? <VideoIcon /> : value === "text" ? <TextIcon /> : <TextIcon />}
-      <span className="hidden lg:inline">{label}</span>
-    </button>
+    </div>
+  );
+}
+
+function PlatformDropdown({ value, onChange }: { value: PlatformFilterValue; onChange: (v: PlatformFilterValue) => void }) {
+  const t = useTranslations("dashboard");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useOnClickOutside(ref, () => setOpen(false), open);
+  const order: { value: PlatformFilterValue; label: string }[] = [
+    { value: "all", label: t("posts.calendar.filter_all_accounts") },
+    { value: "bluesky", label: PLATFORM_LABELS.bluesky },
+    { value: "instagram", label: PLATFORM_LABELS.instagram },
+    { value: "tiktok", label: PLATFORM_LABELS.tiktok },
+    { value: "youtube", label: PLATFORM_LABELS.youtube },
+    { value: "pinterest", label: PLATFORM_LABELS.pinterest },
+    { value: "twitter", label: PLATFORM_LABELS.twitter },
+    { value: "linkedin", label: PLATFORM_LABELS.linkedin },
+    { value: "threads", label: PLATFORM_LABELS.threads },
+    { value: "facebook", label: PLATFORM_LABELS.facebook },
+    { value: "discord", label: PLATFORM_LABELS.discord },
+    { value: "telegram", label: PLATFORM_LABELS.telegram },
+    { value: "google_business", label: PLATFORM_LABELS.google_business },
+  ];
+  const currentLabel = value === "all" ? t("posts.calendar.filter_all_accounts") : PLATFORM_LABELS[value as CalendarPlatform] ?? value;
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="inline-flex items-center gap-2 whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground rounded-md px-3 h-9 text-xs"
+      >
+        <span className="truncate">{currentLabel}</span>
+        <ChevronDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 min-w-[200px] rounded-md border bg-card shadow-lg p-1 max-h-72 overflow-y-auto">
+          {order.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => {
+                onChange(opt.value);
+                setOpen(false);
+              }}
+              className={cn(
+                "w-full text-left text-xs rounded-sm px-2 py-1.5 hover:bg-accent flex items-center gap-2",
+                opt.value === value && "bg-accent font-medium"
+              )}
+            >
+              <span className="truncate">{opt.label}</span>
+              {opt.value === value && <Check className="ml-auto size-3.5 text-zinc-500" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusDropdown({ value, onChange }: { value: StatusFilterValue; onChange: (v: StatusFilterValue) => void }) {
+  const t = useTranslations("dashboard");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useOnClickOutside(ref, () => setOpen(false), open);
+  const order: { value: StatusFilterValue; label: string }[] = [
+    { value: "all", label: t("posts.calendar.filter_all_status") },
+    { value: "draft", label: STATUS_META.draft.label },
+    { value: "scheduled", label: STATUS_META.scheduled.label },
+    { value: "queued", label: STATUS_META.queued.label },
+    { value: "publishing", label: STATUS_META.publishing.label },
+    { value: "published", label: STATUS_META.published.label },
+    { value: "partially_published", label: STATUS_META.partially_published.label },
+    { value: "paused", label: STATUS_META.paused.label },
+    { value: "failed", label: STATUS_META.failed.label },
+    { value: "archived", label: STATUS_META.archived.label },
+  ];
+  const currentLabel = value === "all" ? t("posts.calendar.filter_all_status") : STATUS_META[value as CalendarPost["status"]]?.label ?? value;
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="inline-flex items-center gap-2 whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground rounded-md px-3 h-9 text-xs"
+      >
+        <span className="truncate">{currentLabel}</span>
+        <ChevronDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 min-w-[180px] rounded-md border bg-card shadow-lg p-1">
+          {order.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => {
+                onChange(opt.value);
+                setOpen(false);
+              }}
+              className={cn(
+                "w-full text-left text-xs rounded-sm px-2 py-1.5 hover:bg-accent flex items-center gap-2",
+                opt.value === value && "bg-accent font-medium"
+              )}
+            >
+              <span
+                className={cn(
+                  "inline-block size-2 rounded-full shrink-0",
+                  opt.value === "all" ? "bg-zinc-400" : STATUS_META[opt.value as CalendarPost["status"]]?.bg.includes("emerald") ? "bg-emerald-500" : opt.value === "failed" ? "bg-red-500" : opt.value === "published" ? "bg-zinc-500" : opt.value === "draft" ? "bg-amber-500" : "bg-sky-500"
+                )}
+              />
+              <span className="truncate">{opt.label}</span>
+              {opt.value === value && <Check className="ml-auto size-3.5 text-zinc-500" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LabelsDropdown({ onSelect }: { onSelect?: (v: string) => void }) {
+  const t = useTranslations("dashboard");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useOnClickOutside(ref, () => setOpen(false), open);
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="inline-flex items-center gap-2 whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground rounded-md px-3 h-9 text-xs"
+      >
+        <span className="truncate">{t("posts.calendar.filter_all_labels")}</span>
+        <ChevronDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 min-w-[220px] rounded-md border bg-card shadow-lg p-3 space-y-2">
+          <p className="text-xs text-muted-foreground">{t("posts.calendar.filter_all_labels")}</p>
+          <p className="text-[11px] text-muted-foreground">Label filtering is coming soon. All labels are currently shown.</p>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="w-full text-left text-xs rounded-sm px-2 py-1.5 hover:bg-accent bg-accent font-medium flex items-center gap-2"
+          >
+            {t("posts.calendar.filter_all_labels")}
+            <Check className="ml-auto size-3.5 text-zinc-500" />
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -902,10 +1043,12 @@ function FilterPill({ label, onClick }: { label: string; onClick?: () => void })
 function DateRangePill({ from, to, onChange }: { from: string; to: string; onChange: (f: string, t: string) => void }) {
   const t = useTranslations("dashboard");
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useOnClickOutside(ref, () => setOpen(false), open);
   const label =
     from || to ? `${from || "…"} → ${to || "…"}` : t("posts.calendar.any_date");
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -954,12 +1097,15 @@ function TimezonePill({ value, onChange }: { value: string; onChange: (v: string
     "Europe/Paris",
   ].filter((v, i, arr) => arr.indexOf(v) === i);
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useOnClickOutside(ref, () => setOpen(false), open);
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label="Timezone"
+        aria-expanded={open}
         className="inline-flex items-center gap-2 whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground rounded-md px-3 h-9 text-xs min-w-[180px]"
       >
         <GlobeIcon />
