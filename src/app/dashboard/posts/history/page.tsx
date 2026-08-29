@@ -35,6 +35,7 @@ import { getOverrideHeaders } from "@/lib/security/client-overrides";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { ProPlatformIcon, ProOverflowBadge } from "@/components/dashboard/pro-platform-icon";
+import { ProStatIcon } from "@/components/dashboard/pro-stat-icon";
 
 type Platform =
   | "bluesky"
@@ -502,7 +503,7 @@ export default function PublishHistoryPage() {
       label: t("posts.history.published"),
       value: stats.published,
       icon: CheckCircle2,
-      gradient: "from-emerald-500 to-teal-500",
+      tint: "emerald" as const,
       sub: `${stats.total} total`,
       footer: publishedPct > 80 ? "Excellent" : publishedPct > 50 ? "Good" : "Needs attention",
     },
@@ -510,7 +511,7 @@ export default function PublishHistoryPage() {
       label: t("posts.history.failed"),
       value: stats.failed,
       icon: XCircle,
-      gradient: "from-red-500 to-rose-500",
+      tint: "red" as const,
       sub: stats.failed === 0 ? "No failures" : `${stats.failed} need retry`,
       footer: stats.failed === 0 ? "All clear" : "Retry available",
     },
@@ -518,7 +519,7 @@ export default function PublishHistoryPage() {
       label: t("posts.history.success_rate"),
       value: successRate === null ? t("posts.history.na") : `${successRate}%`,
       icon: TrendingUp,
-      gradient: "from-blue-500 to-indigo-500",
+      tint: "blue" as const,
       sub: stats.total > 0 ? t("posts.history.total_attempts", { count: stats.total }) : t("posts.history.no_attempts"),
       footer: publishedPct >= 90 ? "Top performer" : publishedPct >= 70 ? "On track" : "Review failures",
     },
@@ -526,7 +527,7 @@ export default function PublishHistoryPage() {
       label: t("posts.history.date_range"),
       value: PRESETS.find((p) => p.value === rangePreset)?.label ?? "Custom",
       icon: Calendar,
-      gradient: "from-violet-500 to-purple-500",
+      tint: "violet" as const,
       sub: t("posts.history.showing", { count: filteredPosts.length }),
       footer: `${PRESETS.find((p) => p.value === rangePreset)?.label ?? ""} • ${filteredPosts.length} showing`,
     },
@@ -601,27 +602,30 @@ export default function PublishHistoryPage() {
           </div>
         ) : null}
 
-        {/* ── Stats ── */}
+        {/* ── Stats — human-crafted double-bezel, hairline, soft ambient, precise thin strokes */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
           {summaryCards.map((s) => {
             const Icon = s.icon;
             return (
-              <div key={s.label} className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-white p-3 sm:p-4 shadow-sm hover:shadow-md hover:border-zinc-300 transition-all">
-                <div className="absolute top-0 right-0 size-24 bg-gradient-to-br from-zinc-50 to-white rounded-full blur-2xl opacity-60 -mr-8 -mt-8 pointer-events-none" />
+              <div
+                key={s.label}
+                className="group relative overflow-hidden rounded-[20px] border border-zinc-200/70 bg-white p-3 sm:p-[14px] shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.04)] hover:shadow-[0_2px_8px_rgba(0,0,0,0.06),0_8px_24px_rgba(0,0,0,0.05)] hover:border-zinc-300/70 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]"
+              >
+                <span className="pointer-events-none absolute inset-0 rounded-[20px] opacity-[0.015]" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")" }} />
                 <div className="relative flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                    <span className={cn("inline-flex items-center justify-center size-9 sm:size-10 rounded-xl text-white shadow-sm shrink-0 bg-gradient-to-br", s.gradient)}>
-                      <Icon className="size-4 sm:size-[18px]" />
-                    </span>
+                  <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                    <ProStatIcon tint={s.tint} size={42}>
+                      <Icon className="size-[18px]" />
+                    </ProStatIcon>
                     <div className="min-w-0">
-                      <p className="text-[10px] sm:text-xs font-bold tracking-widest uppercase text-zinc-500 leading-none truncate">{s.label}</p>
-                      <p className="text-[11px] text-zinc-400 font-medium truncate hidden sm:block">{s.sub}</p>
+                      <p className="text-[10px] sm:text-[11px] font-semibold tracking-[0.14em] uppercase text-zinc-500 leading-none truncate">{s.label}</p>
+                      <p className="text-[11px] text-zinc-400 font-[450] truncate hidden sm:block mt-0.5">{s.sub}</p>
                     </div>
                   </div>
                 </div>
-                <div className="relative mt-3">
-                  <p className="text-2xl sm:text-3xl font-black tracking-tight text-zinc-900 leading-none">{loading ? <span className="inline-block h-7 w-12 rounded bg-zinc-100 animate-pulse" /> : s.value}</p>
-                  {s.footer && <p className="text-[10px] font-semibold text-zinc-500 mt-1 hidden sm:block">{s.footer}</p>}
+                <div className="relative mt-3.5">
+                  <p className="text-[28px] sm:text-[30px] font-[750] tracking-[-0.03em] text-zinc-900 leading-none">{loading ? <span className="inline-block h-7 w-12 rounded bg-zinc-100 animate-pulse" /> : s.value}</p>
+                  {s.footer && <p className="text-[10px] font-medium text-zinc-500 mt-1 hidden sm:block tracking-tight">{s.footer}</p>}
                 </div>
                 {s.label.includes("Success") && successRate !== null && (
                   <div className="mt-2 h-1.5 rounded-full bg-zinc-100 overflow-hidden">

@@ -36,6 +36,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Modal } from "@/components/ui/modal";
 import { ScheduleModal } from "@/components/dashboard/schedule-modal";
 import { ProPlatformIcon, ProOverflowBadge } from "@/components/dashboard/pro-platform-icon";
+import { ProStatIcon } from "@/components/dashboard/pro-stat-icon";
 import { cn } from "@/lib/utils";
 import { fmtScheduled, bucketLabel, type ScheduleBucket } from "@/lib/queue/buckets";
 
@@ -480,9 +481,7 @@ export default function PostingQueuePage() {
       tKey: "due_now",
       value: stats.dueNow,
       icon: Send,
-      gradient: "from-emerald-500 to-teal-500",
-      bg: "bg-emerald-50",
-      text: "text-emerald-700",
+      tint: "emerald" as const,
       sub: stats.dueNow > 0 ? "Publishing next tick" : "All clear",
     },
     {
@@ -490,9 +489,7 @@ export default function PostingQueuePage() {
       tKey: "today",
       value: stats.today,
       icon: Clock,
-      gradient: "from-blue-500 to-indigo-500",
-      bg: "bg-blue-50",
-      text: "text-blue-700",
+      tint: "blue" as const,
       sub: `${stats.withMedia} with media`,
     },
     {
@@ -500,9 +497,7 @@ export default function PostingQueuePage() {
       tKey: "tomorrow",
       value: stats.tomorrow,
       icon: Calendar,
-      gradient: "from-violet-500 to-purple-500",
-      bg: "bg-violet-50",
-      text: "text-violet-700",
+      tint: "violet" as const,
       sub: `${stats.textOnly} text-only`,
     },
     {
@@ -510,9 +505,7 @@ export default function PostingQueuePage() {
       tKey: "paused",
       value: stats.paused,
       icon: Pause,
-      gradient: "from-amber-500 to-orange-500",
-      bg: "bg-amber-50",
-      text: "text-amber-700",
+      tint: "amber" as const,
       sub: stats.paused > 0 ? "Needs attention" : "No holds",
     },
   ];
@@ -672,38 +665,41 @@ export default function PostingQueuePage() {
           </div>
         )}
 
-        {/* ── Summary cards ── */}
+        {/* ── Summary cards — human crafted, senior-designer: double-bezel, hairline, soft ambient, light precise strokes */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
           {summaryCards.map((s) => {
             const Icon = s.icon;
             return (
               <div
                 key={s.label}
-                className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-white p-3 sm:p-4 shadow-sm hover:shadow-md hover:border-zinc-300 transition-all"
+                className="group relative overflow-hidden rounded-[20px] border border-zinc-200/70 bg-white p-3 sm:p-[14px] shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.04)] hover:shadow-[0_2px_8px_rgba(0,0,0,0.06),0_8px_24px_rgba(0,0,0,0.05)] hover:border-zinc-300/70 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]"
               >
-                <div className="absolute top-0 right-0 size-24 bg-gradient-to-br from-zinc-50 to-white rounded-full blur-2xl opacity-60 -mr-8 -mt-8 pointer-events-none" />
+                {/* subtle editorial paper grain */}
+                <span className="pointer-events-none absolute inset-0 rounded-[20px] opacity-[0.015]" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")" }} />
                 <div className="relative flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                    <span className={cn("inline-flex items-center justify-center size-9 sm:size-10 rounded-xl text-white shadow-sm shrink-0 bg-gradient-to-br", s.gradient)}>
-                      <Icon className="size-4 sm:size-[18px]" />
-                    </span>
+                  <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                    <ProStatIcon tint={s.tint} size={42} accentDot={s.value > 0}>
+                      <Icon className="size-[18px]" />
+                    </ProStatIcon>
                     <div className="min-w-0">
-                      <p className="text-[10px] sm:text-xs font-bold tracking-widest uppercase text-zinc-500 leading-none">{t(`queue.${s.tKey}`)}</p>
-                      <p className="text-[11px] text-zinc-400 font-medium truncate hidden sm:block">{s.sub}</p>
+                      <p className="text-[10px] sm:text-[11px] font-semibold tracking-[0.14em] uppercase text-zinc-500 leading-none">{t(`queue.${s.tKey}`)}</p>
+                      <p className="text-[11px] text-zinc-400 font-[450] truncate hidden sm:block mt-0.5">{s.sub}</p>
                     </div>
                   </div>
-                  <span className={cn("hidden sm:inline-flex size-6 items-center justify-center rounded-full text-[10px] font-bold", s.bg, s.text)}>
+                  <span className="hidden sm:inline-flex items-center justify-center min-w-6 h-6 rounded-full bg-zinc-900 text-white text-[10px] font-bold px-1.5 tracking-tight">
                     {s.value > 9 ? "9+" : s.value}
                   </span>
                 </div>
-                <div className="relative mt-3 flex items-baseline gap-2">
-                  <p className="text-2xl sm:text-3xl font-black tracking-tight text-zinc-900 leading-none">
+                <div className="relative mt-3.5 flex items-baseline gap-2">
+                  <p className="text-[28px] sm:text-[30px] font-[750] tracking-[-0.03em] text-zinc-900 leading-none">
                     {loading ? <span className="inline-block h-7 w-8 rounded bg-zinc-100 animate-pulse" /> : s.value}
                   </p>
-                  <span className="text-xs font-medium text-zinc-500 hidden sm:inline">posts</span>
-                  {s.value > 0 && <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600">
-                    <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live
-                  </span>}
+                  <span className="text-xs font-medium text-zinc-500 hidden sm:inline tracking-tight">posts</span>
+                  {s.value > 0 && (
+                    <span className="ml-auto inline-flex items-center gap-1.5 text-[10px] font-semibold tracking-wide text-emerald-700">
+                      <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse shadow-sm" /> Live
+                    </span>
+                  )}
                 </div>
               </div>
             );
