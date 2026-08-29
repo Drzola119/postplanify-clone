@@ -2180,11 +2180,21 @@ export default function CreatePostPage() {
 
     let imageUrl: string | null = null;
     if (rawImageUrl) {
-      if (rawImageUrl.startsWith("blob:")) {
-        // Convert blob URL to base64 data URI so Groq can read it
+      // Always try to send as base64 data URI for reliable Groq vision
+      // (Bunny CDN URLs may not be publicly fetchable by Groq, and blob: URLs
+      // are local-only). Fall back to raw URL if fetch fails for http(s).
+      const isBlob = rawImageUrl.startsWith("blob:");
+      const isHttp = rawImageUrl.startsWith("http://") || rawImageUrl.startsWith("https://");
+      if (isBlob || isHttp) {
         try {
           const response = await fetch(rawImageUrl);
+          if (!response.ok) throw new Error(`fetch ${response.status}`);
           const blob = await response.blob();
+          // Validate it's actually an image
+          if (!blob.type.startsWith("image/") && blob.type !== "" && !isBlob) {
+            // If CDN returns non-image (e.g., 404 html), fall back to URL
+            throw new Error("not an image blob");
+          }
           imageUrl = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
             reader.onloadend = () => resolve(reader.result as string);
@@ -2192,8 +2202,12 @@ export default function CreatePostPage() {
             reader.readAsDataURL(blob);
           });
         } catch {
-          toast({ title: "Could not read image for AI analysis", tone: "error" });
-          return;
+          if (isBlob) {
+            toast({ title: "Could not read image for AI analysis", tone: "error" });
+            return;
+          }
+          // For http(s) fallback to raw URL – Groq will attempt to fetch it
+          imageUrl = rawImageUrl;
         }
       } else {
         imageUrl = rawImageUrl;
@@ -2347,7 +2361,13 @@ export default function CreatePostPage() {
           <PlatformTileBar
             selected={selected}
             onToggle={toggleAccount}
-            lockedPlatforms={composerMode === "trial_reel" ? new Set<PlatformId>(["instagram"]) : composerMode === "document" ? new Set<PlatformId>(["linkedin"]) : undefined}
+            lockedPlatforms={(() => {
+              const locks = new Set<PlatformId>();
+              if (composerMode === "trial_reel") locks.add("instagram");
+              if (composerMode === "document") locks.add("linkedin");
+              if (onlyImage) locks.add("youtube");
+              return locks.size > 0 ? locks : undefined;
+            })()}
             getPreviewProps={(id) => {
               const active = mediaItems[activeMedia];
               const mediaUrl = active ? active.cdnUrl ?? active.url : null;
