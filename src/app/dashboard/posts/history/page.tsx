@@ -34,6 +34,7 @@ import { useTranslations } from "next-intl";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { ProPlatformIcon, ProOverflowBadge } from "@/components/dashboard/pro-platform-icon";
 
 type Platform =
   | "bluesky"
@@ -64,6 +65,8 @@ const PLATFORM_LABELS: Record<Platform, string> = {
   google_business: "Google Business",
 };
 
+// kept for labels fallback — pro icons handle visuals
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function platformEmoji(platform: string): string {
   const map: Record<string, string> = {
     instagram: "📷",
@@ -83,21 +86,6 @@ function platformEmoji(platform: string): string {
   };
   return map[platform.toLowerCase()] ?? "📱";
 }
-
-const PLATFORM_COLORS: Record<string, string> = {
-  instagram: "from-[#f09433] via-[#e6683c] to-[#bc1888]",
-  tiktok: "bg-zinc-950",
-  youtube: "bg-red-600",
-  linkedin: "bg-[#0A66C2]",
-  facebook: "bg-[#1877F2]",
-  twitter: "bg-black",
-  x: "bg-black",
-  threads: "bg-zinc-900",
-  pinterest: "bg-[#E60023]",
-  bluesky: "bg-[#0085FF]",
-  discord: "bg-[#5865F2]",
-  telegram: "bg-[#2AABEE]",
-};
 
 interface PostRow {
   id: string;
@@ -879,8 +867,8 @@ export default function PublishHistoryPage() {
               )}
               <div className="flex flex-wrap gap-2">
                 {selectedPost.platforms.map((pl) => (
-                  <span key={pl} className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold", "bg-white border-zinc-200 text-zinc-700")}>
-                    <span className={cn("inline-flex size-5 items-center justify-center rounded-full text-white text-[10px]", PLATFORM_COLORS[pl] ?? "bg-zinc-700", PLATFORM_COLORS[pl]?.startsWith("from-") ? `bg-gradient-to-br ${PLATFORM_COLORS[pl]}` : "")}>{platformEmoji(pl)}</span>
+                  <span key={pl} className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-bold bg-white border-zinc-200 text-zinc-700">
+                    <ProPlatformIcon platform={pl} size={22} />
                     {PLATFORM_LABELS[pl] ?? pl}
                   </span>
                 ))}
@@ -953,17 +941,11 @@ function HistoryRow({
       <div className="min-w-0 flex-1 flex flex-col gap-1.5">
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
           <StatusPill status={post.status} />
-          <div className="flex items-center gap-1">
-            {post.platforms.slice(0, 4).map((p) => {
-              const bg = PLATFORM_COLORS[p] ?? "bg-zinc-800";
-              const isGrad = bg.startsWith("from-");
-              return (
-                <span key={p} title={PLATFORM_LABELS[p] ?? p} className={cn("inline-flex items-center justify-center size-6 sm:size-7 rounded-full text-white text-[11px] shadow-sm border border-white shrink-0", isGrad ? `bg-gradient-to-br ${bg}` : bg)}>
-                  {platformEmoji(p)}
-                </span>
-              );
-            })}
-            {post.platforms.length > 4 && <span className="inline-flex items-center justify-center size-6 sm:size-7 rounded-full bg-zinc-900 text-white text-[10px] font-bold border border-white">+{post.platforms.length - 4}</span>}
+          <div className="flex items-center gap-1.5">
+            {post.platforms.slice(0, 4).map((p) => (
+              <ProPlatformIcon key={p} platform={p} size={28} />
+            ))}
+            {post.platforms.length > 4 && <ProOverflowBadge count={post.platforms.length - 4} size={28} />}
           </div>
           <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-white border border-zinc-200 px-2 py-1 text-[10px] font-semibold text-zinc-600 shadow-sm">
             <Clock className="size-3" /> {formatRelative(post.publishedAt ?? post.createdAt)}

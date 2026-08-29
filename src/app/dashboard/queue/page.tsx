@@ -35,6 +35,7 @@ import { useToast } from "@/components/ui/toast";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Modal } from "@/components/ui/modal";
 import { ScheduleModal } from "@/components/dashboard/schedule-modal";
+import { ProPlatformIcon, ProOverflowBadge } from "@/components/dashboard/pro-platform-icon";
 import { cn } from "@/lib/utils";
 import { fmtScheduled, bucketLabel, type ScheduleBucket } from "@/lib/queue/buckets";
 
@@ -67,6 +68,8 @@ interface WorkerHealth {
   intervalMs: number;
 }
 
+// kept for fallback — not used after Pro icons upgrade
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function platformEmoji(platform: string): string {
   const map: Record<string, string> = {
     instagram: "📷",
@@ -86,21 +89,6 @@ function platformEmoji(platform: string): string {
   };
   return map[platform.toLowerCase()] ?? "📱";
 }
-
-const PLATFORM_COLORS: Record<string, string> = {
-  instagram: "from-[#f09433] via-[#e6683c] to-[#bc1888]",
-  tiktok: "bg-zinc-950",
-  youtube: "bg-red-600",
-  linkedin: "bg-[#0A66C2]",
-  facebook: "bg-[#1877F2]",
-  twitter: "bg-black",
-  x: "bg-black",
-  threads: "bg-zinc-900",
-  pinterest: "bg-[#E60023]",
-  bluesky: "bg-[#0085FF]",
-  discord: "bg-[#5865F2]",
-  telegram: "bg-[#2AABEE]",
-};
 
 function statusBadgeTone(status: string): "blue" | "amber" | "green" | "red" | "zinc" | "violet" {
   switch (status) {
@@ -1024,30 +1012,13 @@ function QueueRowView({
 
         {/* Main content */}
         <div className="min-w-0 flex-1 flex flex-col gap-1.5 sm:gap-2">
-          {/* Top meta row */}
+          {/* Top meta row — SUPER PRO platform badges like reference */}
           <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-            <div className="flex items-center gap-1">
-              {row.platforms.slice(0, 4).map((p) => {
-                const bg = PLATFORM_COLORS[p.toLowerCase()] ?? "bg-zinc-800";
-                const isGradient = bg.startsWith("from-");
-                return (
-                  <span
-                    key={p}
-                    title={p}
-                    className={cn(
-                      "inline-flex items-center justify-center size-6 sm:size-7 rounded-full text-white text-[11px] shadow-sm border border-white shrink-0",
-                      isGradient ? `bg-gradient-to-br ${bg}` : bg
-                    )}
-                  >
-                    {platformEmoji(p)}
-                  </span>
-                );
-              })}
-              {row.platforms.length > 4 ? (
-                <span className="inline-flex items-center justify-center size-6 sm:size-7 rounded-full bg-zinc-900 text-white text-[10px] font-bold border border-white">
-                  +{row.platforms.length - 4}
-                </span>
-              ) : null}
+            <div className="flex items-center gap-1.5">
+              {row.platforms.slice(0, 4).map((p) => (
+                <ProPlatformIcon key={p} platform={p} size={28} />
+              ))}
+              {row.platforms.length > 4 ? <ProOverflowBadge count={row.platforms.length - 4} size={28} /> : null}
             </div>
 
             <StatusPill tone={tone} label={row.status} />
