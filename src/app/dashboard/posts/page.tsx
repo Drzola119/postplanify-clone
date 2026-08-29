@@ -243,10 +243,8 @@ export default function PostsCalendarPage() {
         const incoming: CalendarPost[] = [];
         let cursor = opts.cursor;
         let nextPageCursor: string | null = null;
-        // The calendar is a cross-status view. Load all available pages for
-        // the initial/refresh request so scheduled posts cannot be hidden by
-        // a recent-drafts page; pagination remains one page at a time for
-        // explicit "Load more" actions.
+        let pagesLoaded = 0;
+        const MAX_INITIAL_PAGES = 6; // 300 posts cap on first paint — avoids OOM on 10k-post workspaces
         do {
           const pageParams = new URLSearchParams(params);
           if (cursor) pageParams.set("cursor", cursor);
@@ -269,6 +267,9 @@ export default function PostsCalendarPage() {
           incoming.push(...(data.posts ?? []).map((raw) => normalizeApiPost(raw)));
           nextPageCursor = data.nextCursor ?? null;
           cursor = nextPageCursor ?? undefined;
+          pagesLoaded += 1;
+          // Prevent duplicate-cursor infinite loop and bound initial load
+          if (!opts.append && nextPageCursor && pagesLoaded >= MAX_INITIAL_PAGES) break;
         } while (!opts.append && nextPageCursor);
 
         setPosts((prev) => {
@@ -309,9 +310,9 @@ export default function PostsCalendarPage() {
   );
 
   const visiblePosts = useMemo(() => {
-    const list = posts.filter((p) => postMatchesFilters(p, appliedFilters));
+    const list = posts.filter((p) => postMatchesFilters(p, appliedFilters, timeZone));
     return list.sort(comparePostsChronologically);
-  }, [posts, appliedFilters]);
+  }, [posts, appliedFilters, timeZone]);
 
   const postsByDay = useMemo(() => groupPostsByDay(visiblePosts, timeZone), [visiblePosts, timeZone]);
 
@@ -345,6 +346,33 @@ export default function PostsCalendarPage() {
     setAppliedFromDate("");
     setAppliedToDate("");
   };
+
+  // Auto-apply non-search filters instantly so the pill label and the list
+  // stay in sync. Without this the user sees "LinkedIn" selected but the
+  // list still shows TikTok (the draft vs applied split).
+  useEffect(() => {
+    setAppliedMediaKind(draftMediaKind);
+  }, [draftMediaKind]);
+  useEffect(() => {
+    setAppliedStatus(draftStatus);
+  }, [draftStatus]);
+  useEffect(() => {
+    setAppliedPlatform(draftPlatform);
+  }, [draftPlatform]);
+  useEffect(() => {
+    // Validate date range: don't apply an inverted range
+    if (draftFromDate && draftToDate && draftFromDate > draftToDate) {
+      toast({ title: "Invalid date range", description: "From date cannot be after To date.", tone: "warning" });
+      return;
+    }
+    setAppliedFromDate(draftFromDate);
+    setAppliedToDate(draftToDate);
+  }, [draftFromDate, draftToDate]);
+  // Debounced search: live filter as user types, but keep Apply/Enter as instant fallback
+  useEffect(() => {
+    const t = setTimeout(() => setAppliedSearch(draftSearch), 350);
+    return () => clearTimeout(t);
+  }, [draftSearch]);
 
   // ── Date navigation ────────────────────────────────────────────────
   const goPrev = () => {
@@ -392,7 +420,7 @@ export default function PostsCalendarPage() {
 
   const deleteIds = useCallback(
     async (ids: string[]) => {
-      if (ids.length === 0) return { ok: 0, failed: 0 };
+      if (ids.length === 0) return { ok: 0, failed: 0, failedIds: [] as string[] };
       const idKey = (id: string) => `pp.bulkdelete.${id}.${Date.now()}`;
       let ok = 0;
       const failed: string[] = [];
@@ -416,7 +444,7 @@ export default function PostsCalendarPage() {
         }
       });
       await Promise.all(workers);
-      return { ok, failed: failed.length };
+      return { ok, failed: failed.length, failedIds: failed };
     },
     [authedFetch]
   );
@@ -446,18 +474,21 @@ export default function PostsCalendarPage() {
     setBusy(true);
     const ids = Array.from(selectedIds);
     const result = await deleteIds(ids);
+    const failedSet = new Set(result.failedIds ?? []);
     if (result.failed > 0) {
-      setPosts((prev) => prev.filter((p) => !ids.includes(p.id) || result.failed === 0));
+      setPosts((prev) => prev.filter((p) => !ids.includes(p.id) || failedSet.has(p.id)));
       toast({
         title: `Deleted ${result.ok}, ${result.failed} failed`,
         description: "Failed items were kept; please retry.",
         tone: "warning",
       });
+      // Keep failed ids selected so user can retry
+      setSelectedIds(failedSet);
     } else {
       setPosts((prev) => prev.filter((p) => !ids.includes(p.id)));
       toast({ title: `Deleted ${result.ok} post${result.ok === 1 ? "" : "s"}`, tone: "success" });
+      setSelectedIds(new Set());
     }
-    setSelectedIds(new Set());
     setBusy(false);
   };
 
@@ -555,6 +586,9 @@ export default function PostsCalendarPage() {
                 "linkedin",
                 "threads",
                 "facebook",
+                "discord",
+                "telegram",
+                "google_business",
               ];
               const idx = order.indexOf(draftPlatform);
               setDraftPlatform(order[(idx + 1) % order.length] ?? "all");
@@ -627,14 +661,15 @@ export default function PostsCalendarPage() {
           <FilterIcon className="size-3.5" />
           {t("posts.calendar.apply")}
         </button>
-        {filterIsDirty && (
+        {/* Clear is always visible when any filter is active, not only when dirty — so LinkedIn/failed pill + Apply auto-sync still allows clearing */}
+        {(filterIsDirty || appliedPlatform !== "all" || appliedStatus !== "all" || appliedMediaKind !== "any" || appliedFromDate || appliedToDate || appliedSearch) && (
           <button
             type="button"
             onClick={clearFilters}
             className="inline-flex items-center justify-center gap-1.5 rounded-md text-xs h-9 px-3 hover:bg-accent text-muted-foreground"
           >
             <XIcon className="size-3.5" />
-            {t("posts.calendar.clear_filters", { defaultValue: "Clear" })}
+            {t("posts.calendar.clear_filters")}
           </button>
         )}
         <span className="text-xs text-muted-foreground">
@@ -823,10 +858,18 @@ export default function PostsCalendarPage() {
 // ─── View-specific renderers ───────────────────────────────────────────
 
 function MediaKindSelector({ value, onChange }: { value: MediaKindFilter; onChange: (v: MediaKindFilter) => void }) {
+  const t = useTranslations("dashboard");
   const order: MediaKindFilter[] = ["any", "text", "image", "video"];
   const idx = order.indexOf(value);
   const next = order[(idx + 1) % order.length] ?? "any";
-  const label = value === "any" ? "All media" : value === "text" ? "Text only" : value === "image" ? "Images" : "Videos";
+  const label =
+    value === "any"
+      ? t("posts.calendar.all_media")
+      : value === "text"
+        ? t("posts.calendar.text_only")
+        : value === "image"
+          ? t("posts.calendar.filter_image")
+          : t("posts.calendar.filter_video");
   return (
     <button
       type="button"
@@ -857,9 +900,10 @@ function FilterPill({ label, onClick }: { label: string; onClick?: () => void })
 }
 
 function DateRangePill({ from, to, onChange }: { from: string; to: string; onChange: (f: string, t: string) => void }) {
+  const t = useTranslations("dashboard");
   const [open, setOpen] = useState(false);
   const label =
-    from || to ? `${from || "…"} → ${to || "…"}` : "Any date";
+    from || to ? `${from || "…"} → ${to || "…"}` : t("posts.calendar.any_date");
   return (
     <div className="relative">
       <button
@@ -872,14 +916,14 @@ function DateRangePill({ from, to, onChange }: { from: string; to: string; onCha
       </button>
       {open && (
         <div className="absolute z-30 mt-1 right-0 w-64 rounded-md border bg-card shadow-lg p-3 space-y-2">
-          <label className="block text-[11px] font-medium text-muted-foreground">From</label>
+          <label className="block text-[11px] font-medium text-muted-foreground">{t("posts.calendar.from_label")}</label>
           <input
             type="date"
             value={from}
             onChange={(e) => onChange(e.target.value, to)}
             className="w-full rounded-md border border-input bg-background px-2 h-8 text-xs"
           />
-          <label className="block text-[11px] font-medium text-muted-foreground">To</label>
+          <label className="block text-[11px] font-medium text-muted-foreground">{t("posts.calendar.to_label")}</label>
           <input
             type="date"
             value={to}
@@ -888,10 +932,10 @@ function DateRangePill({ from, to, onChange }: { from: string; to: string; onCha
           />
           <div className="flex justify-between pt-1">
             <button type="button" onClick={() => { onChange("", ""); setOpen(false); }} className="text-xs text-muted-foreground hover:underline">
-              Clear
+              {t("posts.calendar.clear")}
             </button>
             <button type="button" onClick={() => setOpen(false)} className="text-xs font-medium text-foreground hover:underline">
-              Done
+              {t("posts.calendar.done")}
             </button>
           </div>
         </div>
@@ -1321,12 +1365,17 @@ function ListView({
   loadingMore: boolean;
 }) {
   const t = useTranslations("dashboard");
-  const monthName = currentDate.toLocaleString("en-US", { month: "long", year: "numeric" });
+  const monthName = new Intl.DateTimeFormat(undefined, {
+    month: "long",
+    year: "numeric",
+    timeZone,
+  }).format(currentDate);
+  const monthKey = formatInZone(currentDate.toISOString(), timeZone).date.slice(0, 7);
   const monthFiltered = posts.filter((p) => {
     const stamp = p.scheduledAt ?? p.publishedAt ?? p.createdAt;
     if (!stamp) return false;
-    const d = new Date(stamp);
-    return d.getMonth() === currentDate.getMonth() && d.getFullYear() === currentDate.getFullYear();
+    const { date } = formatInZone(stamp, timeZone);
+    return (date || stamp.slice(0, 10)).startsWith(monthKey);
   });
   const allSelected = monthFiltered.length > 0 && monthFiltered.every((r) => selected.has(r.id));
   const someSelected = !allSelected && monthFiltered.some((r) => selected.has(r.id));

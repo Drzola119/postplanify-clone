@@ -95,17 +95,41 @@ export interface PostFilters {
   toDate?: string;
 }
 
-export function postMatchesFilters(post: CalendarPost, f: PostFilters): boolean {
+function mediaKindOfUrl(u: string): "image" | "video" | "other" {
+  const lower = u.toLowerCase();
+  // Handle CDN URLs without extensions (e.g. Bunny ?format=, signed URLs)
+  // by checking both path extension and common query hints.
+  if (lower.includes(".mp4") || lower.includes(".mov") || lower.includes(".webm") || lower.includes(".m4v") || lower.includes("video")) return "video";
+  if (
+    lower.includes(".jpg") ||
+    lower.includes(".jpeg") ||
+    lower.includes(".png") ||
+    lower.includes(".gif") ||
+    lower.includes(".webp") ||
+    lower.includes(".heic") ||
+    lower.includes(".heif") ||
+    lower.includes("image")
+  )
+    return "image";
+  // Fallback to strict extension check
+  if (/\.(jpe?g|png|gif|webp|bmp|heic|heif)(\?|$)/i.test(u)) return "image";
+  if (/\.(mp4|mov|webm|m4v)(\?|$)/i.test(u)) return "video";
+  return "other";
+}
+
+export function postMatchesFilters(post: CalendarPost, f: PostFilters, timeZone = "UTC"): boolean {
   if (f.search) {
     const q = f.search.toLowerCase();
-    if (!post.caption.toLowerCase().includes(q)) return false;
+    const haystack = [post.caption, ...(post.hashtags ?? []), ...(post.labels ?? []), post.firstComment ?? "", post.profile ?? "", post.youtubeTitle ?? "", post.community ?? ""].join(" ").toLowerCase();
+    if (!haystack.includes(q)) return false;
   }
   if (f.status && f.status !== "all" && post.status !== f.status) return false;
   if (f.platform && f.platform !== "all" && !post.platforms.includes(f.platform)) return false;
   if (f.mediaKind && f.mediaKind !== "any") {
     const urls = post.mediaUrls ?? [];
-    const hasImage = urls.some((u) => /\.(jpe?g|png|gif|webp|bmp|heic|heif)(\?|$)/i.test(u));
-    const hasVideo = urls.some((u) => /\.(mp4|mov|webm|m4v)(\?|$)/i.test(u));
+    const kinds = urls.map(mediaKindOfUrl);
+    const hasImage = kinds.includes("image");
+    const hasVideo = kinds.includes("video");
     if (f.mediaKind === "image" && !hasImage) return false;
     if (f.mediaKind === "video" && !hasVideo) return false;
     if (f.mediaKind === "text" && urls.length > 0) return false;
@@ -113,7 +137,10 @@ export function postMatchesFilters(post: CalendarPost, f: PostFilters): boolean 
   if (f.fromDate || f.toDate) {
     const stamp = post.scheduledAt ?? post.publishedAt ?? post.createdAt;
     if (!stamp) return false;
-    const iso = stamp.slice(0, 10);
+    // Use timezone-aware date, not UTC slice, so "Any date" in Africa/Lagos
+    // matches what the user sees in the calendar grid.
+    const { date: zonedDate } = formatInZone(stamp, timeZone);
+    const iso = zonedDate || stamp.slice(0, 10);
     if (f.fromDate && iso < f.fromDate) return false;
     if (f.toDate && iso > f.toDate) return false;
   }
