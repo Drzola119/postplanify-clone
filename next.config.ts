@@ -43,7 +43,6 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       // Legacy dashboard slugs → current paths (kept for bookmarks + external links).
-      { source: "/dashboard/calendar", destination: "/dashboard/posts", permanent: true },
       { source: "/dashboard/drafts", destination: "/dashboard/posts/drafts", permanent: true },
       { source: "/dashboard/social-inbox", destination: "/dashboard/inbox", permanent: true },
       { source: "/dashboard/media", destination: "/dashboard/assets", permanent: true },
