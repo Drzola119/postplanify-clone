@@ -2289,6 +2289,15 @@ export default function BulkSchedulePage() {
           open={batchAiOpen}
           onClose={() => setBatchAiOpen(false)}
           isGenerating={generating}
+          batchCount={items.length}
+          imageUrl={
+            items[0]?.kind === "image"
+              ? items[0]?.source === "upload"
+                ? (items[0] as UploadedBulkItem)?.previewUrl || items[0]?.url
+                : (items[0] as CsvBulkItem)?.mediaUrl
+              : null
+          }
+          videoTitle={items[0]?.kind === "video" ? items[0]?.name.replace(/\.[^.]+$/, "") : null}
           onGenerate={(opts) => void aiGenerateForAll(opts)}
         />
 
@@ -2297,8 +2306,14 @@ export default function BulkSchedulePage() {
           open={!!aiTarget}
           onClose={() => setAiTarget(null)}
           isGenerating={!!aiGeneratingItemId}
-          imageUrl={aiTarget?.kind === "image" ? (aiTarget?.source === "upload" ? aiTarget?.url : (aiTarget as CsvBulkItem)?.mediaUrl) || null : null}
-          videoTitle={aiTarget?.kind === "video" ? aiTarget?.name.replace(/\.[^.]+$/, "") ?? null : null}
+          imageUrl={
+            aiTarget?.kind === "image"
+              ? aiTarget?.source === "upload"
+                ? (aiTarget as UploadedBulkItem)?.previewUrl || aiTarget?.url
+                : (aiTarget as CsvBulkItem)?.mediaUrl
+              : null
+          }
+          videoTitle={aiTarget?.kind === "video" ? aiTarget?.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim() ?? null : null}
           onGenerate={(opts) => {
             if (aiTarget) void aiGenerateForItem(aiTarget, opts);
           }}

@@ -19,6 +19,8 @@ interface AICaptionsDialogProps {
   imageUrl?: string | null;
   /** Optional video title (e.g. filename minus extension). */
   videoTitle?: string | null;
+  /** Optional batch count when generating captions for multiple items at once. */
+  batchCount?: number;
   /** While the parent is awaiting the API. Disables the Generate button. */
   isGenerating?: boolean;
 }
@@ -38,6 +40,7 @@ export function AICaptionsDialog({
   onGenerate,
   imageUrl,
   videoTitle,
+  batchCount,
   isGenerating,
 }: AICaptionsDialogProps) {
   const [tone, setTone] = useState("default");
@@ -47,9 +50,16 @@ export function AICaptionsDialog({
   const [extra, setExtra] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  const hasContext = !!imageUrl || !!videoTitle;
-  const mediaLabel = imageUrl ? "this image" : videoTitle ? `video “${videoTitle}”` : "your account";
-  const canGenerate = hasContext && !isGenerating;
+  const isBatch = typeof batchCount === "number" && batchCount > 0;
+  const hasMedia = !!imageUrl || !!videoTitle;
+  const mediaLabel = isBatch
+    ? `${batchCount} uploaded post${batchCount > 1 ? "s" : ""}`
+    : imageUrl
+      ? "this image"
+      : videoTitle
+        ? `video “${videoTitle}”`
+        : "your account & prompt";
+  const canGenerate = !isGenerating;
 
   async function handleClick() {
     if (!canGenerate) return;
@@ -65,9 +75,11 @@ export function AICaptionsDialog({
         }}
         title="Generate AI Captions"
         description={
-          hasContext
-            ? `Drafts will be tailored to ${mediaLabel}.`
-            : "Upload an image or video first so the model has context."
+          isBatch
+            ? `Drafts will be tailored for ${batchCount} post${batchCount > 1 ? "s" : ""} with visual analysis and platform limits.`
+            : hasMedia
+              ? `Drafts will be tailored to ${mediaLabel}.`
+              : "Drafts will be tailored to your workspace tone and preferences."
         }
         size="lg"
         footer={
@@ -90,7 +102,7 @@ export function AICaptionsDialog({
             ) : (
               <>
                 <Sparkles className="size-4" />
-                {hasContext ? "Generate Captions" : "Upload media to generate"}
+                {isBatch ? `Generate Captions for ${batchCount} Post${batchCount > 1 ? "s" : ""}` : "Generate Captions"}
               </>
             )}
           </button>
@@ -98,7 +110,31 @@ export function AICaptionsDialog({
       >
         <div className="space-y-4">
           {/* Context preview */}
-          {hasContext ? (
+          {isBatch ? (
+            <div className="flex items-center gap-3 rounded-md border border-zinc-200 bg-zinc-50/60 p-2.5">
+              {imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={imageUrl}
+                  alt="Reference"
+                  className="size-12 rounded-md object-cover border border-zinc-200 shrink-0"
+                />
+              ) : (
+                <div className="size-12 rounded-md bg-zinc-900 text-white flex items-center justify-center font-bold text-xs shrink-0">
+                  {batchCount}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-zinc-900 flex items-center gap-1.5">
+                  <Sparkles className="size-3.5 text-amber-500" />
+                  Bulk AI Generation ({batchCount} post{batchCount !== 1 ? "s" : ""})
+                </p>
+                <p className="text-xs text-zinc-500 truncate">
+                  Will analyze media and auto-tailor captions for all {batchCount} post(s)
+                </p>
+              </div>
+            </div>
+          ) : hasMedia ? (
             <div className="flex items-center gap-3 rounded-md border border-zinc-200 bg-zinc-50/60 p-2.5">
               {imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -135,10 +171,10 @@ export function AICaptionsDialog({
             </div>
           ) : (
             <div className="flex items-start gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2.5">
-              <ImageIcon className="size-4 text-zinc-500 flex-shrink-0 mt-0.5" />
+              <Sparkles className="size-4 text-amber-500 flex-shrink-0 mt-0.5" />
               <div className="text-xs text-zinc-700">
-                <span className="font-semibold">No media uploaded yet.</span>{" "}
-                Upload an image (we&apos;ll describe it) or a video (we&apos;ll use the title).
+                <span className="font-semibold">Workspace & Topic Context.</span>{" "}
+                Captions will be generated using your workspace tone and preferences. You can also add custom context below.
               </div>
             </div>
           )}
