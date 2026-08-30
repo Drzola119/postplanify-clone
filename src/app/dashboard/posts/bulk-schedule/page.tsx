@@ -588,6 +588,7 @@ export default function BulkSchedulePage() {
   const [timezone, setTimezone] = useState<string>("Africa/Lagos");
   const [tzOpen, setTzOpen] = useState(false);
   const [accounts, setAccounts] = useState<Set<PlatformId>>(new Set());
+  const [connectedPlatforms, setConnectedPlatforms] = useState<Set<PlatformId>>(new Set());
   const [composerMode, setComposerMode] = useState<ComposerMode>("standard");
   const [dragging, setDragging] = useState(false);
   const [csvBusy, setCsvBusy] = useState(false);
@@ -692,6 +693,7 @@ export default function BulkSchedulePage() {
           // let persisted restore win; otherwise set default to connected
           // we set after hydration check below
         }
+        setConnectedPlatforms(pids);
         setDestinationOptions({
           boards: (data.destinations?.boards ?? []).map((b) => ({ value: b.id, label: b.name })),
           pages: (data.destinations?.pages ?? []).map((p) => ({ value: p.id, label: p.name })),
@@ -830,18 +832,26 @@ export default function BulkSchedulePage() {
 
   const handleComposerModeChange = useCallback((next: ComposerMode) => {
     setComposerMode(next);
-    // Filter global accounts to what the new mode allows; keep existing if it still fits.
+    // Auto-select platforms that fit the new post type (mirrors /create parity).
     setAccounts((prev) => {
       const allowed = allowedPlatformsForPostType(next);
-      if (!allowed) return prev;
-      const filtered = Array.from(prev).filter((id) => allowed.includes(id));
-      // If filtering empties the set but there are connected platforms that fit, auto-select them (like Create Post)
-      if (filtered.length === 0 && allowed.length > 0) {
-        // keep empty to let user pick, but don't auto-fill from connected — user can use Select All
+      if (!allowed) {
+        // Standard: keep current if any, otherwise auto-select all connected (or all if nothing connected)
+        if (prev.size > 0) return prev;
+        if (connectedPlatforms.size > 0) return new Set(connectedPlatforms);
+        // Fallback to all non-videoOnly platforms so YouTube doesn't get auto-selected for image bulk
+        return new Set(PLATFORMS.filter((p) => !p.videoOnly).map((p) => p.id));
       }
-      return new Set(filtered);
+      const filtered = Array.from(prev).filter((id) => allowed.includes(id));
+      if (filtered.length > 0) return new Set(filtered);
+      // No remaining -> auto-select allowed ∩ connected, else allowed
+      if (connectedPlatforms.size > 0) {
+        const inter = allowed.filter((id) => connectedPlatforms.has(id));
+        if (inter.length > 0) return new Set(inter);
+      }
+      return new Set(allowed);
     });
-  }, []);
+  }, [connectedPlatforms]);
 
   function applyComposerModeToAll() {
     if (items.length === 0) {
@@ -896,8 +906,25 @@ export default function BulkSchedulePage() {
       prev.map((it) => {
         if (it.id !== itemId) return it;
         const base = it as BulkItemBase;
-        const filteredAccounts = filterAccountsForPostType(nextMode, base.accountIds as PlatformId[]);
+        let filteredAccounts = filterAccountsForPostType(nextMode, base.accountIds as PlatformId[]);
         // Also filter out youtube for image kind when switching to standard image
+        filteredAccounts = filterAccountsForKind(base.kind as BulkItem["kind"], filteredAccounts);
+        // If filtering empties the set, auto-select allowed platforms for this item (mirrors /create)
+        if (filteredAccounts.length === 0) {
+          const allowed = allowedPlatformsForPostType(nextMode);
+          if (allowed && allowed.length > 0) {
+            if (connectedPlatforms.size > 0) {
+              const inter = allowed.filter((id) => connectedPlatforms.has(id));
+              filteredAccounts = inter.length > 0 ? inter : [...allowed];
+            } else {
+              filteredAccounts = [...allowed];
+            }
+          } else if (!allowed) {
+            // standard with no remaining — keep previous? else fallback to connected
+            if (connectedPlatforms.size > 0) filteredAccounts = Array.from(connectedPlatforms);
+            else filteredAccounts = Array.from(base.accountIds);
+          }
+        }
         let extraPatch: Partial<BulkItemBase> = { postType: nextMode, accountIds: filteredAccounts };
         if (nextMode === "carousel" && !base.carouselSlides) {
           const firstSlide: BulkCarouselSlide | null =
@@ -919,7 +946,7 @@ export default function BulkSchedulePage() {
         return { ...it, ...extraPatch } as BulkItem;
       })
     );
-  }, []);
+  }, [connectedPlatforms]);
 
   const handleAddCarouselSlides = useCallback(async (itemId: string, files: File[]) => {
     if (files.length === 0) return;
@@ -1467,10 +1494,27 @@ export default function BulkSchedulePage() {
         continue;
       }
       const previewUrl = URL.createObjectURL(file);
-      // Filter accounts by kind + post type
+      // Filter accounts by kind + post type, with auto-fallback to allowed platforms (mirrors /create)
       let filteredAccounts = filterAccountsForKind(kind as BulkItem["kind"], Array.from(accounts));
       filteredAccounts = filterAccountsForPostType(composerMode, filteredAccounts);
-      // If post type is restrictive and filtering empties the set, keep empty (user will see "No platforms" blocked)
+      const originalFilteredLen = filteredAccounts.length;
+      if (filteredAccounts.length === 0) {
+        const allowed = allowedPlatformsForPostType(composerMode);
+        if (allowed && allowed.length > 0) {
+          if (connectedPlatforms.size > 0) {
+            const inter = allowed.filter((id) => connectedPlatforms.has(id));
+            filteredAccounts = inter.length > 0 ? inter : [...allowed];
+          } else {
+            filteredAccounts = [...allowed];
+          }
+        } else if (!allowed) {
+          // Standard: if no accounts were selected at all, auto-select connected (filtered by kind)
+          if (accounts.size === 0 && connectedPlatforms.size > 0) {
+            filteredAccounts = filterAccountsForKind(kind as BulkItem["kind"], Array.from(connectedPlatforms));
+            if (filteredAccounts.length === 0) filteredAccounts = Array.from(connectedPlatforms);
+          }
+        }
+      }
       const adv: Record<string, Record<string, unknown>> = {};
       for (const pid of filteredAccounts) {
         const def = getDefaultOptions(pid);
@@ -1487,14 +1531,17 @@ export default function BulkSchedulePage() {
       if (kind === "image" && accounts.has("youtube" as PlatformId) && !filteredAccounts.includes("youtube" as PlatformId)) {
         if (counter === 0) toast({ title: "YouTube auto-removed for images", description: "YouTube only accepts video — auto-deselected for image posts. Add video to enable YouTube.", tone: "info" });
       }
-      if (composerMode === "trial_reel" && accounts.size > 0 && filteredAccounts.length === 0 && counter === 0) {
-        toast({ title: "Trial Reel → Instagram only", description: "Your selected accounts don't include Instagram. Auto-filtered to Instagram.", tone: "info" });
-      }
-      if (composerMode === "carousel" && accounts.size > 0 && filteredAccounts.length === 0 && counter === 0) {
-        toast({ title: "Carousel → IG/FB/Threads only", description: "Auto-filtered platforms to those supporting carousel.", tone: "info" });
-      }
-      if (composerMode === "document" && accounts.size > 0 && filteredAccounts.length === 0 && counter === 0) {
-        toast({ title: "Document → LinkedIn only", description: "Auto-filtered to LinkedIn.", tone: "info" });
+      // Post-type auto-select feedback (when we had to fall back to allowed platforms)
+      if (counter === 0 && originalFilteredLen === 0 && filteredAccounts.length > 0) {
+        if (composerMode === "trial_reel") {
+          toast({ title: "Trial Reel → Instagram auto-selected", description: "Instagram selected for Trial Reel (Instagram only).", tone: "info" });
+        } else if (composerMode === "carousel") {
+          toast({ title: "Carousel → IG/FB/Threads auto-selected", description: "Platforms auto-selected for Carousel.", tone: "info" });
+        } else if (composerMode === "document") {
+          toast({ title: "Document → LinkedIn auto-selected", description: "LinkedIn selected for Document (LinkedIn only).", tone: "info" });
+        } else if (composerMode === "standard" && accounts.size === 0) {
+          toast({ title: `Auto-selected ${filteredAccounts.length} platform(s) for Standard`, tone: "info" });
+        }
       }
 
       // Build base item; carousel gets a carouselSlides array seeded with this first slide
@@ -2386,15 +2433,11 @@ export default function BulkSchedulePage() {
               <Link href="/dashboard/queue" className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 h-9 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm">
                 <ListChecks className="size-3.5" /> Queue
               </Link>
-              <Link href="/dashboard/posts/create" className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-900 hover:bg-black text-white px-4 h-9 text-xs font-bold shadow-sm">
-                <Plus className="size-3.5" /> Create Post <ArrowUpRight className="size-3 opacity-70 hidden sm:block" />
-              </Link>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
             <span className="inline-flex items-center gap-1 rounded-full bg-zinc-900 text-white px-2.5 py-1 font-bold">Bulk Schedule</span>
-            <Link href="/dashboard/posts/create" className="inline-flex items-center gap-1 rounded-full bg-white border border-zinc-200 px-2.5 py-1 font-medium text-zinc-600 hover:bg-zinc-50">Single Post <ExternalLink className="size-3 opacity-50" /></Link>
             <Link href="/dashboard/assets" className="hidden sm:inline-flex items-center gap-1 rounded-full bg-zinc-100 hover:bg-white border border-transparent hover:border-zinc-200 px-2.5 py-1 font-medium text-zinc-600">Media Library</Link>
             <Link href="/dashboard/hashtags" className="hidden sm:inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2.5 py-1 font-medium text-zinc-600">Hashtags</Link>
             <span className="text-zinc-400 hidden sm:inline">• Auto-scheduler + per-post advanced controls</span>
@@ -2527,7 +2570,21 @@ export default function BulkSchedulePage() {
             <div className="flex items-center gap-2 text-xs font-semibold pl-2 border-l border-zinc-200">
               <button
                 type="button"
-                onClick={() => setAccounts(new Set(PLATFORMS.map((p) => p.id)))}
+                onClick={() => {
+                  const allowed = allowedPlatformsForPostType(composerMode);
+                  if (!allowed) {
+                    // Standard: select all connected (or all if nothing connected), mirroring /create
+                    if (connectedPlatforms.size > 0) setAccounts(new Set(connectedPlatforms));
+                    else setAccounts(new Set(PLATFORMS.map((p) => p.id)));
+                  } else {
+                    if (connectedPlatforms.size > 0) {
+                      const inter = allowed.filter((id) => connectedPlatforms.has(id));
+                      setAccounts(new Set(inter.length > 0 ? inter : allowed));
+                    } else {
+                      setAccounts(new Set(allowed));
+                    }
+                  }
+                }}
                 className="text-zinc-600 hover:text-zinc-900 underline-offset-2 hover:underline cursor-pointer"
               >
                 Select All
@@ -3140,12 +3197,6 @@ function EmptyUploaderState({
             {t("posts.bulkSchedule.empty_subtitle")}
           </p>
           <div className="pt-1 flex items-center justify-center gap-2 text-xs">
-            <Link
-              href="/dashboard/posts/create"
-              className="inline-flex items-center gap-1.5 rounded-full bg-zinc-900 text-white px-3.5 py-1.5 font-bold shadow-xs hover:bg-black"
-            >
-              <Plus className="size-3.5" /> Create single post
-            </Link>
             <Link
               href="/dashboard/assets"
               className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 font-semibold text-zinc-700 hover:bg-zinc-50"
