@@ -59,13 +59,28 @@ const PLATFORM_ALIASES: Record<string, string> = {
   facebook: "facebook",
   fb: "facebook",
   tiktok: "tiktok",
+  tt: "tiktok",
   youtube: "youtube",
   yt: "youtube",
   linkedin: "linkedin",
+  li: "linkedin",
   threads: "threads",
+  th: "threads",
   pinterest: "pinterest",
+  pin: "pinterest",
   bluesky: "bluesky",
   bsky: "bluesky",
+  reddit: "reddit",
+  rd: "reddit",
+  google_business: "google_business",
+  googlebusiness: "google_business",
+  google: "google_business",
+  gmb: "google_business",
+  gbp: "google_business",
+  telegram: "telegram",
+  tg: "telegram",
+  discord: "discord",
+  dc: "discord",
 };
 
 export function normalizePlatforms(raw: string): string[] {
@@ -83,4 +98,31 @@ export function normalizeHashtags(raw: string): string[] {
     .map((s) => s.trim())
     .filter((s) => s.length > 0)
     .map((s) => (s.startsWith("#") ? s : `#${s}`));
+}
+
+/**
+ * Parses one or multiple media URLs from a CSV cell.
+ * Supports pipe `|`, semicolon `;`, newline `\n`, or comma-separated lists of URLs.
+ */
+export function normalizeMediaUrls(raw: string): string[] {
+  if (!raw || !raw.trim()) return [];
+  const parts = raw
+    .split(/(?:[\r\n|;]+|,(?=https?:\/\/))/g)
+    .map((s) => s.trim())
+    .filter((s) => /^https?:\/\//i.test(s));
+  return Array.from(new Set(parts));
+}
+
+export function normalizePostType(raw: string): "standard" | "carousel" | "trial_reel" | "document" {
+  const clean = (raw || "").trim().toLowerCase().replace(/[-_\s]+/g, "");
+  if (clean.includes("carousel") || clean.includes("gallery") || clean.includes("album")) return "carousel";
+  if (clean.includes("trial") || clean.includes("trialreel")) return "trial_reel";
+  if (clean.includes("document") || clean.includes("pdf") || clean.includes("doc")) return "document";
+  return "standard";
+}
+
+export function normalizePlacement(raw: string): "feed" | "story" {
+  const clean = (raw || "").trim().toLowerCase();
+  if (clean.includes("story") || clean.includes("stories")) return "story";
+  return "feed";
 }

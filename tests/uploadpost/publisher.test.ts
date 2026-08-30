@@ -93,6 +93,32 @@ describe("UploadPost publisher", () => {
     });
   });
 
+  it("maps X Community options to Upload-Post's documented fields", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const form = init?.body as FormData;
+      expect(form.get("community_id")).toBe("1493446837214187523");
+      expect(form.get("share_with_followers")).toBe("true");
+      return new Response(JSON.stringify({
+        success: true,
+        results: { x: { success: true } },
+      }), { status: 200 });
+    }));
+
+    await publishToUploadPost({
+      apiKey: "key",
+      username: "profile",
+      platforms: ["twitter"],
+      caption: "Hello community",
+      mediaUrls: [],
+      advancedByPlatform: {
+        twitter: {
+          twitter_community: "1493446837214187523",
+          twitter_share_with_followers: true,
+        },
+      },
+    });
+  });
+
   it("sends required profile, media, idempotency and platform fields", async () => {
     const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       const form = init?.body as FormData;

@@ -63,7 +63,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     requiredTargets: [],
     media: {
       image: { maxBytes: 30 * MB, formats: ["image/jpeg", "image/png", "image/webp"], maxItems: 10 },
-      video: { maxBytes: 100 * MB, formats: ["video/mp4", "video/quicktime"], minDurationSec: 3, maxDurationSec: 90 },
+      video: { maxBytes: 300 * MB, formats: ["video/mp4", "video/quicktime"], minDurationSec: 3, maxDurationSec: 900, maxItems: 10 },
     },
   },
   tiktok: {
@@ -77,7 +77,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     requiredTargets: [],
     media: {
       image: { maxBytes: 20 * MB, formats: ["image/jpeg", "image/webp"], maxItems: 35 },
-      video: { maxBytes: 287 * MB, formats: ["video/mp4", "video/quicktime"], minDurationSec: 3, maxDurationSec: 600 },
+      video: { maxBytes: 4 * GB, formats: ["video/mp4", "video/quicktime"], minDurationSec: 3, maxDurationSec: 600 },
     },
   },
   youtube: {
@@ -110,6 +110,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
       image: {
         maxBytes: 32 * MB,
         formats: ["image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp", "image/tiff"],
+        maxItems: 5,
       },
       video: { maxBytes: 1 * GB, formats: ["video/mp4", "video/quicktime"], minDurationSec: 4, maxDurationSec: 900 },
     },
@@ -139,8 +140,8 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     hardCapPer24h: 150,
     requiredTargets: [],
     media: {
-      image: { maxBytes: 5 * MB, formats: ["image/jpeg", "image/png", "image/gif"] },
-      video: { maxBytes: 200 * MB, formats: ["video/mp4"], maxDurationSec: 600 },
+      image: { maxBytes: 5 * MB, formats: ["image/jpeg", "image/png", "image/gif"], maxItems: 10 },
+      video: { maxBytes: 5 * GB, formats: ["video/mp4"], maxDurationSec: 600 },
     },
   },
   threads: {
@@ -154,7 +155,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     requiredTargets: [],
     media: {
       image: { maxBytes: 8 * MB, formats: ["image/jpeg", "image/png"], maxItems: 10 },
-      video: { maxBytes: 100 * MB, formats: ["video/mp4", "video/quicktime"], maxDurationSec: 300 },
+      video: { maxBytes: 100 * MB, formats: ["video/mp4", "video/quicktime"], maxDurationSec: 300, maxItems: 10 },
     },
   },
   facebook: {
@@ -167,7 +168,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     hardCapPer24h: 25,
     requiredTargets: [{ optionKey: "facebook_page_id", label: "Page" }],
     media: {
-      image: { maxBytes: 30 * MB, formats: ["image/jpeg", "image/png", "image/gif", "image/webp"] },
+      image: { maxBytes: 30 * MB, formats: ["image/jpeg", "image/png", "image/gif", "image/webp"], maxItems: 10 },
       video: { maxBytes: 1 * GB, formats: ["video/mp4", "video/quicktime"], maxDurationSec: 14400 },
     },
   },
@@ -182,7 +183,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     requiredTargets: [],
     media: {
       image: { maxBytes: 1 * MB, formats: ["image/jpeg", "image/png", "image/gif", "image/webp"], maxItems: 4 },
-      video: { maxBytes: 50 * MB, formats: ["video/mp4", "video/quicktime", "video/webm"], maxDurationSec: 60 },
+      video: { maxBytes: 100 * MB, formats: ["video/mp4", "video/quicktime", "video/webm"], maxDurationSec: 180 },
     },
   },
   discord: {
@@ -223,7 +224,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     hardCapPer24h: 50,
     requiredTargets: [],
     media: {
-      image: { maxBytes: 20 * MB, formats: ["image/jpeg", "image/png", "image/gif"], maxItems: 1 },
+      image: { maxBytes: 20 * MB, formats: ["image/jpeg", "image/png", "image/gif"], maxItems: 10 },
       video: { maxBytes: 1 * GB, formats: ["video/mp4"], maxDurationSec: 900 },
     },
   },

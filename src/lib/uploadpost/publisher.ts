@@ -202,6 +202,8 @@ const ADVANCED_FIELD_MAP: Record<string, string> = {
   pinterest_description: "description",
   pinterest_content_type: "content_type",
   linkedin_page_id: "target_linkedin_page_id",
+  twitter_community: "community_id",
+  twitter_share_with_followers: "share_with_followers",
 };
 
 function normalizeMediaTypeField(key: string, value: unknown, endpoint: string): unknown {

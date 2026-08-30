@@ -472,6 +472,14 @@ export const FIELD_SPECS: Record<PlatformId, FieldSpec[]> = {
       advanced: true,
     },
     {
+      key: "twitter_share_with_followers",
+      label: "Share community post with followers",
+      kind: "switch",
+      default: false,
+      help: "Also surface the X Community post to your followers.",
+      advanced: true,
+    },
+    {
       key: "twitter_geo_place_id",
       label: "Location",
       kind: "text",

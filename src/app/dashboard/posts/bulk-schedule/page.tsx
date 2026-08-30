@@ -48,7 +48,14 @@ import { getHelpConfig } from "@/lib/help/content";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
-import { parseCsv, normalizePlatforms, normalizeHashtags } from "@/lib/bulk-schedule/csv";
+import {
+  parseCsv,
+  normalizePlatforms,
+  normalizeHashtags,
+  normalizeMediaUrls,
+  normalizePostType,
+  normalizePlacement,
+} from "@/lib/bulk-schedule/csv";
 import { zonedDateTimeToDate } from "@/lib/datetime/zoned";
 import { AdvancedOptionsPanel } from "@/components/dashboard/advanced-options-panel";
 import { AICaptionsDialog } from "@/components/dashboard/ai-captions-dialog";
@@ -68,8 +75,17 @@ import { BrandIcons } from "@/components/dashboard/brand-icons";
 import { checkRequirements, type MediaMeta, type ReadinessReport } from "@/lib/publishing/requirements";
 import { getDefaultOptions, type PlatformAdvancedOptions } from "@/lib/publishing/advanced-options";
 import type { MediaKind } from "@/lib/publishing/capability-matrix";
-import { ComposerModeSelector, type ComposerMode } from "@/components/dashboard/composer-mode-selector";
+import type { ComposerMode } from "@/components/dashboard/composer-mode-selector";
 import type { TrialReelMode } from "@/components/dashboard/trial-reel-card";
+import { PlatformFeatureMatrixModal } from "@/components/dashboard/platform-feature-matrix-modal";
+import { BulkContentTypeSelector } from "@/components/dashboard/bulk-content-type-selector";
+import {
+  acceptsMediaKind,
+  normalizeBulkContentType,
+  platformsForBulkContent,
+  type BulkContentType,
+  type CarouselMediaMode,
+} from "@/lib/bulk-schedule/content-types";
 
 type BulkItemSource = "upload" | "csv";
 
@@ -90,7 +106,7 @@ type BulkCarouselSlide = {
 type BulkItemBase = {
   id: string;
   url: string;
-  kind: "image" | "video" | "document";
+  kind: "text" | "image" | "video" | "document";
   name: string;
   size: number;
   caption: string;
@@ -111,6 +127,8 @@ type BulkItemBase = {
   uploadProgress?: number;
   // ── Post Type (parity with Create Post) ──
   postType: ComposerMode;
+  contentType?: BulkContentType;
+  carouselMediaMode?: CarouselMediaMode;
   // Carousel — when postType === "carousel", holds the slides (2–10). `url`/`kind` mirror first slide for preview compat.
   carouselSlides?: BulkCarouselSlide[];
   // Trial Reel — when postType === "trial_reel"
@@ -170,17 +188,34 @@ const ACCEPTED_DOCUMENT_MIMES = [
 ] as const;
 
 const POST_TYPE_ALLOWED_PLATFORMS: Record<ComposerMode, PlatformId[] | null> = {
-  standard: null, // no restriction (but image/video kind still filters video-only)
+  standard: null, // no restriction (image/video kind still filters video-only)
   carousel: ["instagram", "facebook", "threads"],
   trial_reel: ["instagram"],
   document: ["linkedin"],
 };
 
-function bulkAcceptForMode(mode: ComposerMode): string {
-  if (mode === "document") return [...ACCEPTED_DOCUMENT_EXTS, ...ACCEPTED_DOCUMENT_MIMES].join(",");
-  if (mode === "trial_reel") return "video/mp4,video/quicktime,video/webm";
-  if (mode === "carousel") return "image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm";
+function composerModeForContentType(type: BulkContentType): ComposerMode {
+  if (type === "carousel") return "carousel";
+  if (type === "document") return "document";
+  return "standard";
+}
+
+function bulkAcceptForContentType(type: BulkContentType, carouselMode: CarouselMediaMode): string {
+  if (type === "document") return [...ACCEPTED_DOCUMENT_EXTS, ...ACCEPTED_DOCUMENT_MIMES].join(",");
+  if (type === "long_video" || type === "short_video") return "video/mp4,video/quicktime,video/webm";
+  if (type === "image") return "image/jpeg,image/png,image/webp,image/gif";
+  if (type === "carousel") {
+    if (carouselMode === "images") return "image/jpeg,image/png,image/webp,image/gif";
+    if (carouselMode === "videos") return "video/mp4,video/quicktime,video/webm";
+  }
   return ACCEPTED_MIME_TYPES.join(",");
+}
+
+function contentTypeForLegacyMode(mode: ComposerMode): BulkContentType {
+  if (mode === "carousel") return "carousel";
+  if (mode === "document") return "document";
+  if (mode === "trial_reel") return "short_video";
+  return "image";
 }
 
 const TIMEZONES: Array<{ id: string; label: string }> = [
@@ -321,7 +356,7 @@ function getMediaKindForItem(item: BulkItem): MediaKind {
   }
   if (pt === "trial_reel") return "video";
   // standard
-  return item.kind === "video" ? "video" : item.kind === "document" ? "text" : "image";
+  return item.kind === "video" ? "video" : item.kind === "document" || item.kind === "text" ? "text" : "image";
 }
 
 function isVideoOnlyPlatform(id: PlatformId): boolean {
@@ -330,11 +365,20 @@ function isVideoOnlyPlatform(id: PlatformId): boolean {
 
 function filterAccountsForKind(kind: BulkItem["kind"], ids: PlatformId[]): PlatformId[] {
   if (kind === "image") return ids.filter((id) => !isVideoOnlyPlatform(id));
+  if (kind === "text") return ids.filter((id) => CAPABILITY_MATRIX[id]?.supportsText);
   return ids;
 }
 
 function allowedPlatformsForPostType(postType: ComposerMode): PlatformId[] | null {
   return POST_TYPE_ALLOWED_PLATFORMS[postType] ?? null;
+}
+
+function allowedPlatformsForItem(item: BulkItemBase): PlatformId[] | null {
+  if (item.contentType) {
+    return platformsForBulkContent(item.contentType, item.carouselMediaMode ?? "images");
+  }
+  const pt = (item.postType ?? "standard") as ComposerMode;
+  return POST_TYPE_ALLOWED_PLATFORMS[pt] ?? null;
 }
 
 function filterAccountsForPostType(postType: ComposerMode, ids: PlatformId[]): PlatformId[] {
@@ -346,7 +390,11 @@ function filterAccountsForPostType(postType: ComposerMode, ids: PlatformId[]): P
 
 function filterAccountsForItem(item: BulkItemBase, ids: PlatformId[]): PlatformId[] {
   let filtered = filterAccountsForKind(item.kind as BulkItem["kind"], ids);
-  filtered = filterAccountsForPostType((item.postType ?? "standard") as ComposerMode, filtered);
+  const allowed = allowedPlatformsForItem(item);
+  if (allowed) {
+    const set = new Set<string>(allowed);
+    filtered = filtered.filter((id) => set.has(id));
+  }
   return filtered;
 }
 
@@ -374,6 +422,8 @@ function buildReadinessForItem(item: BulkItem) {
   } else if (postType === "trial_reel") {
     const fakeMime = "video/mp4";
     media = [{ kind: "video" as MediaKind, mimeType: fakeMime, sizeBytes: item.size || 1024 * 500 }];
+  } else if (item.kind === "text") {
+    media = [];
   } else {
     const fakeMime = item.kind === "video" ? "video/mp4" : "image/jpeg";
     media = [{ kind: mediaKind, mimeType: fakeMime, sizeBytes: item.size || 1024 * 500 }];
@@ -439,23 +489,57 @@ function validateItems(items: BulkItem[]): ValidationIssue[] {
     }
     // ── Post Type specific validations ──
     const pt = ((it as BulkItemBase).postType ?? "standard") as ComposerMode;
-    const allowed = allowedPlatformsForPostType(pt);
+    const content = (it as BulkItemBase).contentType;
+    const allowed = allowedPlatformsForItem(it as BulkItemBase);
     if (allowed) {
       const hasDisallowed = it.accountIds.some((id) => !allowed.includes(id));
       if (hasDisallowed) {
-        issues.push({ itemId: it.id, message: `${pt === "carousel" ? "Carousel" : pt === "trial_reel" ? "Trial Reel" : "Document"} only supports ${allowed.join(", ")}` });
+        const disallowedNames = it.accountIds
+          .filter((id) => !allowed.includes(id))
+          .map((id) => PLATFORMS.find((p) => p.id === id)?.name ?? id)
+          .join(", ");
+        issues.push({
+          itemId: it.id,
+          message: `${content === "community" ? "X Community" : content === "story" ? "Stories" : content === "short_video" ? "Shorts & Reels" : content === "long_video" ? "Long video" : pt === "carousel" ? "This carousel format" : pt === "trial_reel" ? "Trial Reel" : "Document"} is not supported on ${disallowedNames}`,
+        });
       }
+    }
+    if (content === "community") {
+      const communityId = (it.advancedByPlatform?.twitter as Record<string, unknown> | undefined)?.twitter_community;
+      if (typeof communityId !== "string" || !communityId.trim()) {
+        issues.push({ itemId: it.id, message: "X Community ID is required" });
+      }
+    }
+    if (content === "image" && it.kind !== "image") {
+      issues.push({ itemId: it.id, message: "Image post requires an image" });
+    }
+    if ((content === "long_video" || content === "short_video") && it.kind !== "video") {
+      issues.push({ itemId: it.id, message: `${content === "short_video" ? "Shorts & Reels" : "Long video"} requires a video` });
     }
     if (pt === "carousel") {
       const slides = (it as BulkItemBase).carouselSlides ?? [];
-      // If no carouselSlides yet (migrated old item), fallback to single url as 1 slide → still blocked until 2
       const effectiveCount = slides.length > 0 ? slides.length : 1;
+
       if (effectiveCount < 2) {
         issues.push({ itemId: it.id, message: "Carousel needs at least 2 slides" });
       }
       if (effectiveCount > 10) {
         issues.push({ itemId: it.id, message: "Carousel supports at most 10 slides" });
       }
+      const carouselMode = (it as BulkItemBase).carouselMediaMode ?? "images";
+      if (carouselMode === "images" && slides.some((slide) => slide.kind !== "image")) {
+        issues.push({ itemId: it.id, message: "Images-only carousel cannot contain video" });
+      }
+      if (carouselMode === "videos" && slides.some((slide) => slide.kind !== "video")) {
+        issues.push({ itemId: it.id, message: "Videos-only carousel cannot contain images" });
+      }
+      if (carouselMode === "mixed" && slides.length > 1) {
+        const kinds = new Set(slides.map((slide) => slide.kind));
+        if (!kinds.has("image") || !kinds.has("video")) {
+          issues.push({ itemId: it.id, message: "Mixed carousel needs at least one image and one video" });
+        }
+      }
+
       for (const s of slides) {
         if (s.uploadStatus !== "ready") {
           issues.push({ itemId: it.id, message: `Carousel slide "${s.name}" still uploading` });
@@ -466,41 +550,23 @@ function validateItems(items: BulkItem[]): ValidationIssue[] {
           break;
         }
       }
-      // Even when using legacy single-url carousel, ensure that url is CDN ready
-      if (slides.length === 0) {
-        if (it.source === "upload" && it.uploadStatus !== "ready") {
-          // already pushed below but avoid double
-        } else if (it.source === "upload" && !it.url.startsWith("https://")) {
-          // already
-        }
-      }
     } else if (pt === "trial_reel") {
       const base = it as BulkItemBase;
       if (base.kind !== "video" && base.carouselSlides?.every((s) => s.kind !== "video")) {
-        // standard trial reel should be video
         if ((it as BulkItemBase).kind !== "video") {
           issues.push({ itemId: it.id, message: "Trial Reel requires a video" });
         }
-      }
-      if (it.source === "upload" && it.uploadStatus !== "ready") {
-        // handled below generically, but also ensure trial specific
       }
     } else if (pt === "document") {
       const base = it as BulkItemBase;
       if (!base.documentTitle?.trim()) {
         issues.push({ itemId: it.id, message: "Document title is required (LinkedIn)" });
       }
-      if (it.source === "upload" && base.kind !== "document") {
-        // For document post, the file is stored as the main BulkItem file but kind should be document
-        // Accept if mime is pdf/doc etc; otherwise flag
-        const isDocMime = (base as unknown as { documentMime?: string }).documentMime;
-        // no extra check — kind guard is enough; readiness will also block
-      }
-      // documentPageCount >300 already flagged in readiness via media? But we also surface here
       if (base.documentPageCount && base.documentPageCount > 300) {
         issues.push({ itemId: it.id, message: `Document has ~${base.documentPageCount} pages — LinkedIn max 300` });
       }
     }
+
     // Fallback simple checks for upload status & time (skip for carousel/document which handled per-slide)
     if (pt !== "carousel" && pt !== "document") {
       if (it.source === "upload" && it.uploadStatus !== "ready") {
@@ -546,6 +612,10 @@ interface PersistedDraft {
   interval: string;
   timezone: string;
   composerMode?: ComposerMode;
+  contentType?: BulkContentType;
+  carouselMediaMode?: CarouselMediaMode;
+  xCommunityId?: string;
+  shareCommunityWithFollowers?: boolean;
 }
 
 function loadPersistedDraft(): PersistedDraft | null {
@@ -590,6 +660,10 @@ export default function BulkSchedulePage() {
   const [accounts, setAccounts] = useState<Set<PlatformId>>(new Set());
   const [connectedPlatforms, setConnectedPlatforms] = useState<Set<PlatformId>>(new Set());
   const [composerMode, setComposerMode] = useState<ComposerMode>("standard");
+  const [contentType, setContentType] = useState<BulkContentType>("image");
+  const [carouselMediaMode, setCarouselMediaMode] = useState<CarouselMediaMode>("images");
+  const [xCommunityId, setXCommunityId] = useState("");
+  const [shareCommunityWithFollowers, setShareCommunityWithFollowers] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [csvBusy, setCsvBusy] = useState(false);
   const [scheduleBusy, setScheduleBusy] = useState(false);
@@ -614,6 +688,7 @@ export default function BulkSchedulePage() {
     endDate: "",
   });
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [matrixModalOpen, setMatrixModalOpen] = useState(false);
   const [destinationOptions, setDestinationOptions] = useState<{
     boards: Array<{ value: string; label: string }>;
     pages: Array<{ value: string; label: string }>;
@@ -721,11 +796,16 @@ export default function BulkSchedulePage() {
     setTimezone(persisted.timezone);
     setAccounts(new Set(persisted.accounts));
     if (persisted.composerMode) setComposerMode(persisted.composerMode);
+    if (persisted.contentType) setContentType(persisted.contentType);
+    if (persisted.carouselMediaMode) setCarouselMediaMode(persisted.carouselMediaMode);
+    if (persisted.xCommunityId) setXCommunityId(persisted.xCommunityId);
+    if (persisted.shareCommunityWithFollowers) setShareCommunityWithFollowers(true);
     if (persisted.csvItems.length > 0) {
       // Rehydrate with defaults for new fields (including postType for older drafts)
       const rehydrated = persisted.csvItems.map((it) => ({
         ...it,
         postType: (it as unknown as { postType?: ComposerMode }).postType ?? persisted.composerMode ?? "standard",
+        contentType: (it as unknown as { contentType?: BulkContentType }).contentType ?? contentTypeForLegacyMode((it as unknown as { postType?: ComposerMode }).postType ?? persisted.composerMode ?? "standard"),
         firstComment: (it as unknown as { firstComment?: string }).firstComment ?? "",
         tagUsers: (it as unknown as { tagUsers?: string }).tagUsers ?? "",
         altText: (it as unknown as { altText?: string }).altText ?? "",
@@ -747,8 +827,12 @@ export default function BulkSchedulePage() {
       interval,
       timezone,
       composerMode,
+      contentType,
+      carouselMediaMode,
+      xCommunityId,
+      shareCommunityWithFollowers,
     });
-  }, [items, accounts, startDate, startTime, postsPerDay, interval, timezone, composerMode]);
+  }, [items, accounts, startDate, startTime, postsPerDay, interval, timezone, composerMode, contentType, carouselMediaMode, xCommunityId, shareCommunityWithFollowers]);
 
   // Close TZ dropdown on outside click + Escape.
   useEffect(() => {
@@ -830,28 +914,23 @@ export default function BulkSchedulePage() {
     });
   }, []);
 
-  const handleComposerModeChange = useCallback((next: ComposerMode) => {
-    setComposerMode(next);
-    // Auto-select platforms that fit the new post type (mirrors /create parity).
-    setAccounts((prev) => {
-      const allowed = allowedPlatformsForPostType(next);
-      if (!allowed) {
-        // Standard: keep current if any, otherwise auto-select all connected (or all if nothing connected)
-        if (prev.size > 0) return prev;
-        if (connectedPlatforms.size > 0) return new Set(connectedPlatforms);
-        // Fallback to all non-videoOnly platforms so YouTube doesn't get auto-selected for image bulk
-        return new Set(PLATFORMS.filter((p) => !p.videoOnly).map((p) => p.id));
-      }
-      const filtered = Array.from(prev).filter((id) => allowed.includes(id));
-      if (filtered.length > 0) return new Set(filtered);
-      // No remaining -> auto-select allowed ∩ connected, else allowed
-      if (connectedPlatforms.size > 0) {
-        const inter = allowed.filter((id) => connectedPlatforms.has(id));
-        if (inter.length > 0) return new Set(inter);
-      }
-      return new Set(allowed);
-    });
+  const selectCompatibleAccounts = useCallback((nextType: BulkContentType, nextCarouselMode: CarouselMediaMode) => {
+    const compatible = platformsForBulkContent(nextType, nextCarouselMode);
+    const connected = compatible.filter((id) => connectedPlatforms.has(id));
+    setAccounts(new Set(connectedPlatforms.size > 0 ? connected : compatible));
   }, [connectedPlatforms]);
+
+  const handleContentTypeChange = useCallback((next: BulkContentType) => {
+    setContentType(next);
+    setComposerMode(composerModeForContentType(next));
+    selectCompatibleAccounts(next, carouselMediaMode);
+  }, [carouselMediaMode, selectCompatibleAccounts]);
+
+  const handleCarouselMediaModeChange = useCallback((next: CarouselMediaMode) => {
+    setCarouselMediaMode(next);
+    setComposerMode("carousel");
+    selectCompatibleAccounts("carousel", next);
+  }, [selectCompatibleAccounts]);
 
   function applyComposerModeToAll() {
     if (items.length === 0) {
@@ -861,13 +940,35 @@ export default function BulkSchedulePage() {
     setItems((prev) =>
       prev.map((it) => {
         const base = it as BulkItemBase;
-        const nextPostType = composerMode;
-        // Filter accounts per new mode
-        const filteredAccounts = filterAccountsForPostType(nextPostType, base.accountIds as PlatformId[]);
+        const nextPostType = composerModeForContentType(contentType);
+        const compatible = platformsForBulkContent(contentType, carouselMediaMode);
+        const connectedCompatible = compatible.filter((id) => connectedPlatforms.has(id));
+        const filteredAccounts = connectedPlatforms.size > 0 ? connectedCompatible : compatible;
+        let advanced = { ...(base.advancedByPlatform ?? {}) } as Record<string, Record<string, unknown>>;
+        if (contentType === "short_video") {
+          advanced.instagram = { ...(advanced.instagram ?? {}), instagram_media_type: "REELS" };
+          advanced.facebook = { ...(advanced.facebook ?? {}), facebook_media_type: "REELS" };
+        } else if (contentType === "long_video") {
+          advanced.facebook = { ...(advanced.facebook ?? {}), facebook_media_type: "VIDEO" };
+        } else if (contentType === "story") {
+          advanced.instagram = { ...(advanced.instagram ?? {}), instagram_media_type: "STORIES" };
+          advanced.facebook = { ...(advanced.facebook ?? {}), facebook_media_type: "STORIES" };
+        } else if (contentType === "community") {
+          advanced.twitter = {
+            ...(advanced.twitter ?? {}),
+            twitter_community: xCommunityId,
+            twitter_share_with_followers: shareCommunityWithFollowers,
+          };
+        }
         // Carry over carouselSlides/documentTitle when switching away? Clear mismatched fields to keep state clean.
         const patch: Partial<BulkItemBase> = {
           postType: nextPostType,
           accountIds: filteredAccounts,
+          contentType,
+          carouselMediaMode: contentType === "carousel" ? carouselMediaMode : undefined,
+          postIn: contentType === "story" ? "story" : "feed",
+          advancedByPlatform: advanced,
+          ...(contentType === "text" || contentType === "community" ? { kind: "text" as const } : {}),
         };
         // Seed defaults for carousel/document when switching into them
         if (nextPostType === "carousel" && !base.carouselSlides) {
@@ -897,7 +998,7 @@ export default function BulkSchedulePage() {
         return { ...it, ...patch } as BulkItem;
       })
     );
-    toast({ title: `Applied ${composerMode} to all ${items.length} post(s)`, tone: "success" });
+    toast({ title: `Applied ${contentType.replaceAll("_", " ")} to all ${items.length} post(s)`, tone: "success" });
   }
 
   // ── Per-item Post Type handlers ──
@@ -925,7 +1026,7 @@ export default function BulkSchedulePage() {
             else filteredAccounts = Array.from(base.accountIds);
           }
         }
-        let extraPatch: Partial<BulkItemBase> = { postType: nextMode, accountIds: filteredAccounts };
+        let extraPatch: Partial<BulkItemBase> = { postType: nextMode, accountIds: filteredAccounts, contentType: undefined, carouselMediaMode: undefined };
         if (nextMode === "carousel" && !base.carouselSlides) {
           const firstSlide: BulkCarouselSlide | null =
             base.url && base.url.startsWith("https://")
@@ -951,6 +1052,16 @@ export default function BulkSchedulePage() {
   const handleAddCarouselSlides = useCallback(async (itemId: string, files: File[]) => {
     if (files.length === 0) return;
     const target = items.find((i) => i.id === itemId) as BulkItemBase | undefined;
+    const mode = target?.carouselMediaMode ?? "images";
+    const acceptedFiles = files.filter((file) => {
+      const kind = file.type.startsWith("video/") ? "video" : "image";
+      return acceptsMediaKind("carousel", kind, mode);
+    });
+    if (acceptedFiles.length !== files.length) {
+      toast({ title: "Some slides were skipped", description: `This is a ${mode} carousel.`, tone: "warning" });
+    }
+    files = acceptedFiles;
+    if (files.length === 0) return;
     const existingCount = (target?.carouselSlides?.length ?? 0);
     if (existingCount + files.length > 10) {
       toast({ title: "Carousel max 10 slides", description: `You can add ${10 - existingCount} more slide(s).`, tone: "warning" });
@@ -1116,7 +1227,37 @@ export default function BulkSchedulePage() {
       const platformsIdx = headers.indexOf("platforms");
       const scheduledIdx = headers.indexOf("scheduledat");
       const hashtagsIdx = headers.indexOf("hashtags");
-      const mediaIdx = headers.indexOf("mediaurl");
+      // Media column matches: mediaurl, mediaurls, media_url, media_urls, photos, photo_urls, images
+      let mediaIdx = headers.indexOf("mediaurl");
+      if (mediaIdx < 0) mediaIdx = headers.indexOf("mediaurls");
+      if (mediaIdx < 0) mediaIdx = headers.indexOf("media_url");
+      if (mediaIdx < 0) mediaIdx = headers.indexOf("media_urls");
+      if (mediaIdx < 0) mediaIdx = headers.indexOf("photos");
+      if (mediaIdx < 0) mediaIdx = headers.indexOf("images");
+
+      // Legacy post type column matches: posttype, post_type
+      let postTypeIdx = headers.indexOf("posttype");
+      if (postTypeIdx < 0) postTypeIdx = headers.indexOf("post_type");
+
+      // Content type column matches: contenttype, content_type, format, type
+      let contentTypeIdx = headers.indexOf("contenttype");
+      if (contentTypeIdx < 0) contentTypeIdx = headers.indexOf("content_type");
+      if (contentTypeIdx < 0) contentTypeIdx = headers.indexOf("format");
+      if (contentTypeIdx < 0) contentTypeIdx = headers.indexOf("type");
+
+      // Placement column matches: placement, postin, post_in, feedtype, feed_type
+      let placementIdx = headers.indexOf("placement");
+      if (placementIdx < 0) placementIdx = headers.indexOf("postin");
+      if (placementIdx < 0) placementIdx = headers.indexOf("post_in");
+      if (placementIdx < 0) placementIdx = headers.indexOf("feedtype");
+      if (placementIdx < 0) placementIdx = headers.indexOf("feed_type");
+
+      // Document title column matches: documenttitle, document_title, doctitle, title
+      let docTitleIdx = headers.indexOf("documenttitle");
+      if (docTitleIdx < 0) docTitleIdx = headers.indexOf("document_title");
+      if (docTitleIdx < 0) docTitleIdx = headers.indexOf("doctitle");
+      if (docTitleIdx < 0) docTitleIdx = headers.indexOf("title");
+
       if (capIdx < 0) {
         toast({ title: t("posts.bulkSchedule.csv_missing_column"), tone: "error" });
         return;
@@ -1134,17 +1275,35 @@ export default function BulkSchedulePage() {
           errors.push(`Row ${i + 2}: missing caption`);
           continue;
         }
+
+        // Determine row-level post type (defaults to composerMode)
+        const rowPostTypeRaw = postTypeIdx >= 0 ? r[postTypeIdx] : "";
+        const rowContentTypeRaw = contentTypeIdx >= 0 ? r[contentTypeIdx] : "";
+        const normalizedContentType = rowContentTypeRaw ? normalizeBulkContentType(rowContentTypeRaw) : null;
+        const rowContentType: BulkContentType = normalizedContentType ?? (rowPostTypeRaw ? contentTypeForLegacyMode(normalizePostType(rowPostTypeRaw)) : contentType);
+        const rowPostType: ComposerMode = rowPostTypeRaw ? normalizePostType(rowPostTypeRaw) : composerModeForContentType(rowContentType);
+
+        // Determine row placement (feed vs story)
+        const rowPlacementRaw = placementIdx >= 0 ? r[placementIdx] : "";
+        const rowPlacement: "feed" | "story" = rowContentType === "story" ? "story" : rowPlacementRaw ? normalizePlacement(rowPlacementRaw) : "feed";
+
+        // Document title if provided
+        const rowDocTitle = docTitleIdx >= 0 ? (r[docTitleIdx] ?? "").trim() : "";
+
         let platforms: PlatformId[] = (platformsIdx >= 0 ? (normalizePlatforms(r[platformsIdx] ?? "") as PlatformId[]) : []);
         if (platforms.length === 0) platforms = Array.from(accounts);
         if (platforms.length === 0) {
           errors.push(`Row ${i + 2}: no platforms (add a "platforms" column or select accounts above)`);
           continue;
         }
+
         // Auto-filter video-only platforms for image rows (CSV defaults to image) + post type
-        platforms = filterAccountsForKind("image", platforms);
-        platforms = filterAccountsForPostType(composerMode, platforms);
+        const rowCompatible = platformsForBulkContent(rowContentType, carouselMediaMode);
+        const rowCompatibleSet = new Set(rowCompatible);
+        const rowKindForFiltering: BulkItemBase["kind"] = rowContentType === "text" || rowContentType === "community" ? "text" : rowContentType === "long_video" || rowContentType === "short_video" ? "video" : rowContentType === "document" ? "document" : "image";
+        platforms = filterAccountsForKind(rowKindForFiltering, platforms).filter((platform) => rowCompatibleSet.has(platform));
         if (platforms.length === 0) {
-          errors.push(`Row ${i + 2}: no compatible platforms after filtering for ${composerMode}`);
+          errors.push(`Row ${i + 2}: no compatible platforms after filtering for ${rowPostType}`);
           continue;
         }
         const rawScheduled = (scheduledIdx >= 0 ? r[scheduledIdx] : "").trim();
@@ -1169,21 +1328,15 @@ export default function BulkSchedulePage() {
           time = rawParts.time;
         }
         const hashtags = hashtagsIdx >= 0 ? normalizeHashtags(r[hashtagsIdx] ?? "") : [];
-        const mediaUrl = mediaIdx >= 0 ? (r[mediaIdx] ?? "").trim() : "";
-        if (mediaUrl) {
-          if (!/^https?:\/\//i.test(mediaUrl)) {
-            errors.push(`Row ${i + 2}: mediaurl must be http(s) (got "${mediaUrl.slice(0, 40)}")`);
-            continue;
-          }
-          try {
-            // Validate URL structure beyond prefix.
-            const u = new URL(mediaUrl);
-            if (!u.hostname.includes(".")) throw new Error("bad host");
-          } catch {
-            errors.push(`Row ${i + 2}: mediaurl is not a valid URL`);
-            continue;
-          }
+        const rawMedia = mediaIdx >= 0 ? (r[mediaIdx] ?? "").trim() : "";
+        const parsedMediaList = normalizeMediaUrls(rawMedia);
+        const primaryMediaUrl = parsedMediaList[0] ?? rawMedia;
+
+        if (primaryMediaUrl && !/^https?:\/\//i.test(primaryMediaUrl)) {
+          errors.push(`Row ${i + 2}: mediaurl must be http(s) (got "${primaryMediaUrl.slice(0, 40)}")`);
+          continue;
         }
+
         // Build default advanced options for selected platforms so Pinterest board / FB page are pre-filled
         const adv: Record<string, Record<string, unknown>> = {};
         for (const pid of platforms) {
@@ -1196,25 +1349,72 @@ export default function BulkSchedulePage() {
             adv[pid] = { ...def, facebook_page_id: destinationOptions.pages[0].value };
           }
         }
+        if (rowContentType === "short_video") {
+          adv.instagram = { ...(adv.instagram ?? {}), instagram_media_type: "REELS" };
+          adv.facebook = { ...(adv.facebook ?? {}), facebook_media_type: "REELS" };
+        } else if (rowContentType === "long_video") {
+          adv.facebook = { ...(adv.facebook ?? {}), facebook_media_type: "VIDEO" };
+        } else if (rowContentType === "story") {
+          adv.instagram = { ...(adv.instagram ?? {}), instagram_media_type: "STORIES" };
+          adv.facebook = { ...(adv.facebook ?? {}), facebook_media_type: "STORIES" };
+        } else if (rowContentType === "community") {
+          adv.twitter = {
+            ...(adv.twitter ?? {}),
+            twitter_community: xCommunityId,
+            twitter_share_with_followers: shareCommunityWithFollowers,
+          };
+        }
         const csvPinterestBoardId = (adv.pinterest as Record<string, unknown> | undefined)?.pinterest_board_id as string | undefined;
-        // CSV kind inherits global post type (defaults to standard)
-        const csvKind: BulkItemBase["kind"] = composerMode === "document" ? "document" : composerMode === "trial_reel" ? "video" : "image";
-        // For document CSV, mediaUrl may be a doc URL — still store as is
+        // CSV kind inherits row post type
+        const effectiveContentType: BulkContentType = parsedMediaList.length > 1 && rowContentType === "image" ? "carousel" : rowContentType;
+        const effectivePostType = effectiveContentType === "carousel" ? "carousel" : effectiveContentType === "document" ? "document" : rowPostType;
+        const csvKind: BulkItemBase["kind"] = effectiveContentType === "text" || effectiveContentType === "community" ? "text" : effectiveContentType === "document" ? "document" : effectiveContentType === "long_video" || effectiveContentType === "short_video" ? "video" : "image";
+
+        // Build carousel slides if multiple URLs or carousel mode
+        let carouselSlides: BulkCarouselSlide[] | undefined;
+        if (effectivePostType === "carousel" && parsedMediaList.length > 0) {
+          carouselSlides = parsedMediaList.slice(0, 10).map((url, slideIdx) => ({
+            id: `csv-slide-${i}-${slideIdx}-${Date.now()}`,
+            previewUrl: url,
+            url,
+            kind: /\.(mp4|mov|webm)$/i.test(url) ? ("video" as const) : ("image" as const),
+            name: `Slide ${slideIdx + 1}`,
+            size: 0,
+            mimeType: /\.(mp4|mov|webm)$/i.test(url) ? "video/mp4" : "image/jpeg",
+            uploadStatus: "ready" as const,
+          }));
+        } else if (effectivePostType === "carousel" && primaryMediaUrl) {
+          carouselSlides = [
+            {
+              id: `csv-slide-${i}-0-${Date.now()}`,
+              previewUrl: primaryMediaUrl,
+              url: primaryMediaUrl,
+              kind: "image" as const,
+              name: "Slide 1",
+              size: 0,
+              mimeType: "image/jpeg",
+              uploadStatus: "ready" as const,
+            },
+          ];
+        }
+
         newItems.push({
           id: `csv-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
           source: "csv",
-          url: mediaUrl,
-          mediaUrl,
+          url: primaryMediaUrl,
+          mediaUrl: primaryMediaUrl,
           kind: csvKind,
-          postType: composerMode,
-          name: `CSV row ${i + 2}`,
+          postType: effectivePostType,
+          contentType: effectiveContentType,
+          carouselMediaMode: effectiveContentType === "carousel" ? carouselMediaMode : undefined,
+          name: rowDocTitle ? rowDocTitle : `CSV row ${i + 2}`,
           size: 0,
           caption,
           scheduledAt,
           scheduledDate: date,
           scheduledTime: time,
           accountIds: platforms,
-          postIn: "feed",
+          postIn: rowPlacement,
           youtubeTitle: "",
           youtubeTags: "",
           pinterestBoard: csvPinterestBoardId ?? "",
@@ -1222,32 +1422,17 @@ export default function BulkSchedulePage() {
           community: false,
           profile: "Default",
           hashtags,
-          uploadStatus: mediaUrl ? "ready" : "error",
-          uploadError: mediaUrl ? undefined : "Add a mediaurl column or upload media files",
+          uploadStatus: primaryMediaUrl || effectiveContentType === "text" || effectiveContentType === "community" ? "ready" : "error",
+          uploadError: primaryMediaUrl || effectiveContentType === "text" || effectiveContentType === "community" ? undefined : "Add a mediaurl column or upload media files",
           firstComment: "",
           altText: "",
           tagUsers: "",
           advancedByPlatform: adv,
-          ...(composerMode === "carousel" && mediaUrl
-            ? {
-                carouselSlides: [
-                  {
-                    id: `csv-slide-${i}-${Date.now()}`,
-                    previewUrl: mediaUrl,
-                    url: mediaUrl,
-                    kind: "image" as const,
-                    name: `Slide 1`,
-                    size: 0,
-                    mimeType: "image/jpeg",
-                    uploadStatus: "ready" as const,
-                  },
-                ],
-              }
+          carouselSlides,
+          ...(effectivePostType === "document"
+            ? { documentTitle: rowDocTitle || `Document ${i + 2}`, documentPageCount: null }
             : {}),
-          ...(composerMode === "document"
-            ? { documentTitle: `Document ${i + 2}`, documentPageCount: null }
-            : {}),
-          ...(composerMode === "trial_reel" ? { trialMode: "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED" as TrialReelMode } : {}),
+          ...(effectivePostType === "trial_reel" ? { trialMode: "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED" as TrialReelMode } : {}),
         } as CsvBulkItem);
       }
       const beforeCount = items.length;
@@ -1337,11 +1522,14 @@ export default function BulkSchedulePage() {
         items: readyItems.map((it) => {
           const base = it as BulkItemBase;
           const pt = (base.postType ?? "standard") as ComposerMode;
+          const intent = base.contentType;
           // Derive mediaUrls per post type
           let mediaUrls: string[] = [];
           let extra: Record<string, unknown> = {};
           let adv = { ...(base.advancedByPlatform ?? {}) } as Record<string, Record<string, unknown>>;
-          if (pt === "carousel") {
+          if (intent === "text" || intent === "community") {
+            mediaUrls = [];
+          } else if (pt === "carousel") {
             const slides = base.carouselSlides ?? [];
             mediaUrls = slides.length > 0 ? slides.map((s) => s.url).filter((u) => !!u && u.startsWith("https://")) : it.url ? [it.url] : [];
             if (slides.length > 0) extra.carouselItems = slides.map((s) => ({ url: s.url }));
@@ -1370,6 +1558,21 @@ export default function BulkSchedulePage() {
             if (it.accountIds.includes("facebook")) {
               adv = { ...adv, facebook: { ...(adv.facebook ?? {}), facebook_media_type: "STORIES" } };
             }
+          }
+          if (intent === "short_video") {
+            if (it.accountIds.includes("instagram")) adv = { ...adv, instagram: { ...(adv.instagram ?? {}), instagram_media_type: "REELS" } };
+            if (it.accountIds.includes("facebook")) adv = { ...adv, facebook: { ...(adv.facebook ?? {}), facebook_media_type: "REELS" } };
+          } else if (intent === "long_video" && it.accountIds.includes("facebook")) {
+            adv = { ...adv, facebook: { ...(adv.facebook ?? {}), facebook_media_type: "VIDEO" } };
+          } else if (intent === "community") {
+            adv = {
+              ...adv,
+              twitter: {
+                ...(adv.twitter ?? {}),
+                twitter_community: (adv.twitter ?? {}).twitter_community ?? xCommunityId,
+                twitter_share_with_followers: (adv.twitter ?? {}).twitter_share_with_followers ?? shareCommunityWithFollowers,
+              },
+            };
           }
           return {
             caption: it.caption,
@@ -1456,6 +1659,63 @@ export default function BulkSchedulePage() {
     }
   }
 
+  function addTextPost() {
+    if (items.length >= MAX_FILES) {
+      toast({ title: "Queue full", description: `Bulk scheduling supports up to ${MAX_FILES} posts at once.`, tone: "warning" });
+      return;
+    }
+    const slot = scheduledSlot(items.length);
+    if (!slot) {
+      toast({ title: "Invalid schedule", description: "Check the start date, time, and timezone.", tone: "error" });
+      return;
+    }
+    const compatible = platformsForBulkContent(contentType, carouselMediaMode);
+    const selected = Array.from(accounts).filter((id) => compatible.includes(id));
+    const connected = compatible.filter((id) => connectedPlatforms.has(id));
+    const accountIds = selected.length > 0 ? selected : connectedPlatforms.size > 0 ? connected : compatible;
+    const advancedByPlatform: Partial<Record<PlatformId, PlatformAdvancedOptions>> = {};
+    for (const platform of accountIds) {
+      advancedByPlatform[platform] = getDefaultOptions(platform);
+    }
+    if (contentType === "community") {
+      advancedByPlatform.twitter = {
+        ...(advancedByPlatform.twitter ?? {}),
+        twitter_community: xCommunityId,
+        twitter_share_with_followers: shareCommunityWithFollowers,
+      };
+    }
+    const item: CsvBulkItem = {
+      id: `text-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      source: "csv",
+      mediaUrl: "",
+      url: "",
+      kind: "text",
+      name: contentType === "community" ? "X Community post" : "Text post",
+      size: 0,
+      caption: "",
+      scheduledAt: slot.scheduledAt,
+      scheduledDate: slot.date,
+      scheduledTime: slot.time,
+      accountIds,
+      postIn: "feed",
+      youtubeTitle: "",
+      youtubeTags: "",
+      pinterestBoard: "",
+      autoAddMusic: false,
+      community: false,
+      profile: "Default",
+      hashtags: [],
+      uploadStatus: "ready",
+      postType: "standard",
+      contentType,
+      firstComment: "",
+      altText: "",
+      tagUsers: "",
+      advancedByPlatform,
+    };
+    setItems((previous) => [...previous, item]);
+  }
+
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragging(false);
@@ -1503,21 +1763,28 @@ export default function BulkSchedulePage() {
       const isVideo = file.type.startsWith("video/");
       const isImage = file.type.startsWith("image/") || (!file.type && /\.(jpe?g|png|webp|gif|heic)$/i.test(file.name));
 
-      if (composerMode === "document") {
+      if (contentType === "text" || contentType === "community") {
+        skipped.push(`${file.name} (${contentType === "text" ? "Text posts" : "X Community text posts"} do not need a media upload)`);
+        continue;
+      } else if (contentType === "document") {
         if (!isDocExt && !isDocMime) {
           skipped.push(`${file.name} (Document needs PDF/DOC/PPT/TXT — got ${file.type || ext})`);
           continue;
         }
-      } else if (composerMode === "trial_reel") {
+      } else if (contentType === "long_video" || contentType === "short_video") {
         if (!isVideo) {
-          skipped.push(`${file.name} (Trial Reel needs video — got ${file.type || ext})`);
+          skipped.push(`${file.name} (${contentType === "short_video" ? "Shorts & Reels" : "Long video"} needs video — got ${file.type || ext})`);
           continue;
         }
-      } else if (composerMode === "carousel") {
-        if (!isImage && !isVideo) {
-          skipped.push(`${file.name} (Carousel needs image or video — got ${file.type || ext})`);
+      } else if (contentType === "carousel") {
+        const fileKind = isVideo ? "video" : isImage ? "image" : null;
+        if (!fileKind || !acceptsMediaKind(contentType, fileKind, carouselMediaMode)) {
+          skipped.push(`${file.name} (${carouselMediaMode === "images" ? "Images-only" : carouselMediaMode === "videos" ? "Videos-only" : "Mixed"} carousel does not accept ${file.type || ext})`);
           continue;
         }
+      } else if (contentType === "image" && !isImage) {
+        skipped.push(`${file.name} (Image post needs an image — got ${file.type || ext})`);
+        continue;
       } else {
         // standard
         if (file.type && !ACCEPTED_MIME_TYPES.includes(file.type as (typeof ACCEPTED_MIME_TYPES)[number])) {
@@ -1531,7 +1798,7 @@ export default function BulkSchedulePage() {
 
       // Determine kind + postType for this item (inherits global composerMode at creation time)
       let kind: BulkItemBase["kind"] = "image";
-      if (composerMode === "document") kind = "document";
+      if (contentType === "document") kind = "document";
       else if (isVideo) kind = "video";
       else kind = "image";
 
@@ -1542,25 +1809,13 @@ export default function BulkSchedulePage() {
       }
       const previewUrl = URL.createObjectURL(file);
       // Filter accounts by kind + post type, with auto-fallback to allowed platforms (mirrors /create)
-      let filteredAccounts = filterAccountsForKind(kind as BulkItem["kind"], Array.from(accounts));
-      filteredAccounts = filterAccountsForPostType(composerMode, filteredAccounts);
+      const compatible = platformsForBulkContent(contentType, carouselMediaMode);
+      const compatibleSet = new Set(compatible);
+      let filteredAccounts = filterAccountsForKind(kind as BulkItem["kind"], Array.from(accounts)).filter((id) => compatibleSet.has(id));
       const originalFilteredLen = filteredAccounts.length;
       if (filteredAccounts.length === 0) {
-        const allowed = allowedPlatformsForPostType(composerMode);
-        if (allowed && allowed.length > 0) {
-          if (connectedPlatforms.size > 0) {
-            const inter = allowed.filter((id) => connectedPlatforms.has(id));
-            filteredAccounts = inter.length > 0 ? inter : [...allowed];
-          } else {
-            filteredAccounts = [...allowed];
-          }
-        } else if (!allowed) {
-          // Standard: if no accounts were selected at all, auto-select connected (filtered by kind)
-          if (accounts.size === 0 && connectedPlatforms.size > 0) {
-            filteredAccounts = filterAccountsForKind(kind as BulkItem["kind"], Array.from(connectedPlatforms));
-            if (filteredAccounts.length === 0) filteredAccounts = Array.from(connectedPlatforms);
-          }
-        }
+        const connected = compatible.filter((id) => connectedPlatforms.has(id));
+        filteredAccounts = connectedPlatforms.size > 0 ? connected : compatible;
       }
       const adv: Record<string, Record<string, unknown>> = {};
       for (const pid of filteredAccounts) {
@@ -1580,22 +1835,22 @@ export default function BulkSchedulePage() {
       }
       // Post-type auto-select feedback (when we had to fall back to allowed platforms)
       if (counter === 0 && originalFilteredLen === 0 && filteredAccounts.length > 0) {
-        if (composerMode === "trial_reel") {
-          toast({ title: "Trial Reel → Instagram auto-selected", description: "Instagram selected for Trial Reel (Instagram only).", tone: "info" });
-        } else if (composerMode === "carousel") {
-          toast({ title: "Carousel → IG/FB/Threads auto-selected", description: "Platforms auto-selected for Carousel.", tone: "info" });
-        } else if (composerMode === "document") {
+        if (contentType === "carousel") {
+          toast({ title: "Carousel platforms auto-selected", description: `Compatible platforms selected for ${carouselMediaMode}.`, tone: "info" });
+        } else if (contentType === "document") {
           toast({ title: "Document → LinkedIn auto-selected", description: "LinkedIn selected for Document (LinkedIn only).", tone: "info" });
-        } else if (composerMode === "standard" && accounts.size === 0) {
-          toast({ title: `Auto-selected ${filteredAccounts.length} platform(s) for Standard`, tone: "info" });
+        } else {
+          toast({ title: `Auto-selected ${filteredAccounts.length} compatible platform(s)`, tone: "info" });
         }
       }
 
       // Build base item; carousel gets a carouselSlides array seeded with this first slide
       const baseExtra: Partial<BulkItemBase> = {
-        postType: composerMode,
+        postType: composerModeForContentType(contentType),
+        contentType,
+        carouselMediaMode: contentType === "carousel" ? carouselMediaMode : undefined,
       };
-      if (composerMode === "carousel") {
+      if (contentType === "carousel") {
         const firstSlide: BulkCarouselSlide = {
           id: `slide-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           file,
@@ -1609,12 +1864,18 @@ export default function BulkSchedulePage() {
         };
         baseExtra.carouselSlides = [firstSlide];
       }
-      if (composerMode === "document") {
+      if (contentType === "document") {
         baseExtra.documentTitle = file.name.replace(/\.[^.]+$/, "");
         (baseExtra as BulkItemBase).documentPageCount = null;
       }
-      if (composerMode === "trial_reel") {
-        baseExtra.trialMode = "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED";
+      if (contentType === "short_video") {
+        adv.instagram = { ...(adv.instagram ?? {}), instagram_media_type: "REELS" };
+        adv.facebook = { ...(adv.facebook ?? {}), facebook_media_type: "REELS" };
+      } else if (contentType === "long_video") {
+        adv.facebook = { ...(adv.facebook ?? {}), facebook_media_type: "VIDEO" };
+      } else if (contentType === "story") {
+        adv.instagram = { ...(adv.instagram ?? {}), instagram_media_type: "STORIES" };
+        adv.facebook = { ...(adv.facebook ?? {}), facebook_media_type: "STORIES" };
       }
 
       newItems.push({
@@ -1631,7 +1892,7 @@ export default function BulkSchedulePage() {
         scheduledDate: slot.date,
         scheduledTime: slot.time,
         accountIds: filteredAccounts,
-        postIn: "feed",
+        postIn: contentType === "story" ? "story" : "feed",
         youtubeTitle: "",
         youtubeTags: "",
         pinterestBoard: pinterestBoardId ?? "",
@@ -1896,10 +2157,13 @@ export default function BulkSchedulePage() {
       const idToken = await getIdToken();
       const baseT = target as BulkItemBase;
       const ptT = (baseT.postType ?? "standard") as ComposerMode;
+      const intentT = baseT.contentType;
       let mediaUrlsT: string[] = [];
       let extraT: Record<string, unknown> = {};
       let advT = { ...(baseT.advancedByPlatform ?? {}) } as Record<string, Record<string, unknown>>;
-      if (ptT === "carousel") {
+      if (intentT === "text" || intentT === "community") {
+        mediaUrlsT = [];
+      } else if (ptT === "carousel") {
         const slides = baseT.carouselSlides ?? [];
         mediaUrlsT = slides.length > 0 ? slides.map((s) => s.url).filter((u) => !!u && u.startsWith("https://")) : target.url ? [target.url] : [];
         if (slides.length > 0) extraT.carouselItems = slides.map((s) => ({ url: s.url }));
@@ -1916,6 +2180,21 @@ export default function BulkSchedulePage() {
         extraT.documentTitle = titleT;
       } else {
         mediaUrlsT = target.url ? [target.url] : [];
+      }
+      if (intentT === "short_video") {
+        if (target.accountIds.includes("instagram")) advT = { ...advT, instagram: { ...(advT.instagram ?? {}), instagram_media_type: "REELS" } };
+        if (target.accountIds.includes("facebook")) advT = { ...advT, facebook: { ...(advT.facebook ?? {}), facebook_media_type: "REELS" } };
+      } else if (intentT === "long_video" && target.accountIds.includes("facebook")) {
+        advT = { ...advT, facebook: { ...(advT.facebook ?? {}), facebook_media_type: "VIDEO" } };
+      } else if (intentT === "community") {
+        advT = {
+          ...advT,
+          twitter: {
+            ...(advT.twitter ?? {}),
+            twitter_community: (advT.twitter ?? {}).twitter_community ?? xCommunityId,
+            twitter_share_with_followers: (advT.twitter ?? {}).twitter_share_with_followers ?? shareCommunityWithFollowers,
+          },
+        };
       }
       if (baseT.postIn === "story") {
         if (target.accountIds.includes("instagram")) advT = { ...advT, instagram: { ...(advT.instagram ?? {}), instagram_media_type: "STORIES" } };
@@ -2431,9 +2710,11 @@ export default function BulkSchedulePage() {
 
   function downloadCsvTemplate() {
     const template = [
-      "caption,platforms,scheduledAt,hashtags,mediaUrl",
-      '"Hello world from Instagram!","instagram,facebook",2026-09-01T09:00,"#hello,#world",https://cdn.example.com/photo.jpg',
-      '"Check out our latest","twitter,linkedin",2026-09-02T10:30,"#launch",',
+      "caption,platforms,scheduledAt,hashtags,mediaUrl,contentType,placement,documentTitle",
+      '"A caption-only product update","linkedin,twitter,facebook,threads",2026-09-01T09:00,"#launch,#updates",,text,feed,',
+      '"Swipe to read our step-by-step strategy guide ➡️","instagram,facebook,threads,linkedin,pinterest",2026-09-02T10:30,"#strategy,#guide","https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe,https://images.unsplash.com/photo-1579783902614-a3fb3927b675",carousel,feed,',
+      '"Behind the scenes today at the studio! ✨","instagram,facebook",2026-09-03T12:00,"#bts,#story",https://images.unsplash.com/photo-1579783902614-a3fb3927b675,story,story,',
+      '"Read our 2026 Social Media Industry Benchmark Report","linkedin",2026-09-04T15:00,"#report,#b2b",https://example.com/reports/benchmark-2026.pdf,document,feed,"2026 Social Media Industry Benchmark Report"',
     ].join("\n");
     const blob = new Blob([template], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -2478,10 +2759,17 @@ export default function BulkSchedulePage() {
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <Link href="/dashboard/calendar" className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 h-9 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setMatrixModalOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 h-9 text-xs font-semibold text-zinc-800 hover:bg-zinc-50 shadow-xs cursor-pointer"
+              >
+                <Sparkles className="size-3.5 text-zinc-900" /> Platform Feature Matrix
+              </button>
+              <Link href="/dashboard/calendar" className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 h-9 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 shadow-xs">
                 <Calendar className="size-3.5" /> Calendar
               </Link>
-              <Link href="/dashboard/queue" className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 h-9 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm">
+              <Link href="/dashboard/queue" className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 h-9 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 shadow-xs">
                 <ListChecks className="size-3.5" /> Queue
               </Link>
             </div>
@@ -2622,19 +2910,9 @@ export default function BulkSchedulePage() {
               <button
                 type="button"
                 onClick={() => {
-                  const allowed = allowedPlatformsForPostType(composerMode);
-                  if (!allowed) {
-                    // Standard: select all connected (or all if nothing connected), mirroring /create
-                    if (connectedPlatforms.size > 0) setAccounts(new Set(connectedPlatforms));
-                    else setAccounts(new Set(PLATFORMS.map((p) => p.id)));
-                  } else {
-                    if (connectedPlatforms.size > 0) {
-                      const inter = allowed.filter((id) => connectedPlatforms.has(id));
-                      setAccounts(new Set(inter.length > 0 ? inter : allowed));
-                    } else {
-                      setAccounts(new Set(allowed));
-                    }
-                  }
+                  const compatible = platformsForBulkContent(contentType, carouselMediaMode);
+                  const connected = compatible.filter((id) => connectedPlatforms.has(id));
+                  setAccounts(new Set(connectedPlatforms.size > 0 ? connected : compatible));
                 }}
                 className="text-zinc-600 hover:text-zinc-900 underline-offset-2 hover:underline cursor-pointer"
               >
@@ -2664,20 +2942,56 @@ export default function BulkSchedulePage() {
           </div>
         </div>
 
-        {/* ── Post Type selector (parity with /dashboard/posts/create) ── */}
+        {/* ── Content type planner ── */}
         <div className="rounded-[16px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.04)] p-2 sm:p-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex-1 min-w-[280px]">
-            <ComposerModeSelector mode={composerMode} onChange={handleComposerModeChange} />
+            <BulkContentTypeSelector
+              value={contentType}
+              carouselMode={carouselMediaMode}
+              onChange={handleContentTypeChange}
+              onCarouselModeChange={handleCarouselMediaModeChange}
+            />
+            {contentType === "community" ? (
+              <div className="mt-3 grid gap-2 rounded-xl border border-sky-200 bg-sky-50/70 p-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                <label className="text-[11px] font-bold text-sky-950">
+                  X Community ID
+                  <input
+                    value={xCommunityId}
+                    onChange={(event) => setXCommunityId(event.target.value.trim())}
+                    placeholder="e.g. 1493446837214187523"
+                    className="mt-1 block h-9 w-full rounded-lg border border-sky-200 bg-white px-3 text-xs font-medium text-zinc-900 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                  />
+                </label>
+                <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-sky-200 bg-white px-3 text-xs font-semibold text-sky-950">
+                  <input
+                    type="checkbox"
+                    checked={shareCommunityWithFollowers}
+                    onChange={(event) => setShareCommunityWithFollowers(event.target.checked)}
+                  />
+                  Share with followers
+                </label>
+              </div>
+            ) : null}
           </div>
-          <button
-            type="button"
-            onClick={applyComposerModeToAll}
-            disabled={items.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 disabled:opacity-50 text-zinc-900 px-3.5 h-9 text-xs font-bold shadow-xs transition-colors cursor-pointer shrink-0"
-          >
-            <Layers className="size-3.5 text-zinc-600" />
-            Apply type to All ({items.length})
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setMatrixModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-900 px-3 h-9 text-xs font-bold shadow-xs transition-colors cursor-pointer"
+            >
+              <Sparkles className="size-3.5 text-zinc-900" />
+              Feature Matrix
+            </button>
+            <button
+              type="button"
+              onClick={applyComposerModeToAll}
+              disabled={items.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 disabled:opacity-50 text-zinc-900 px-3.5 h-9 text-xs font-bold shadow-xs transition-colors cursor-pointer shrink-0"
+            >
+              <Layers className="size-3.5 text-zinc-600" />
+              Apply format to All ({items.length})
+            </button>
+          </div>
         </div>
 
         {/* ── AI + Campaign Rules + Undo bar ── */}
@@ -2772,6 +3086,9 @@ export default function BulkSchedulePage() {
             downloadCsvTemplate={downloadCsvTemplate}
             pickCsvFile={pickCsvFile}
             csvBusy={csvBusy}
+            onOpenMatrixModal={() => setMatrixModalOpen(true)}
+            contentType={contentType}
+            addTextPost={addTextPost}
           />
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4 items-start">
@@ -2792,11 +3109,11 @@ export default function BulkSchedulePage() {
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
-                        onClick={pickMoreFiles}
+                        onClick={contentType === "text" || contentType === "community" ? addTextPost : pickMoreFiles}
                         className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-2.5 h-7 text-xs font-semibold hover:bg-zinc-50 cursor-pointer"
                       >
                         <Plus className="size-3" />
-                        {t("posts.bulkSchedule.add_more")}
+                        {contentType === "text" || contentType === "community" ? "Add post" : t("posts.bulkSchedule.add_more")}
                       </button>
                       <button
                         type="button"
@@ -2864,8 +3181,12 @@ export default function BulkSchedulePage() {
                           {item.kind === "image" ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={item.source === "upload" ? item.previewUrl : item.url} alt={item.name} className="w-full h-full object-cover" />
-                          ) : (
+                          ) : item.kind === "video" ? (
                             <video src={item.source === "upload" ? item.previewUrl : item.url} className="w-full h-full object-cover" />
+                          ) : item.kind === "document" ? (
+                            <span className="flex h-full w-full items-center justify-center"><FileText className="size-5 text-zinc-500" /></span>
+                          ) : (
+                            <span className="flex h-full w-full items-center justify-center"><MessageSquare className="size-5 text-zinc-500" /></span>
                           )}
                           {item.source === "upload" && item.uploadStatus === "uploading" ? (
                             <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
@@ -2888,9 +3209,9 @@ export default function BulkSchedulePage() {
                             ) : item.source === "upload" && item.uploadStatus === "error" ? (
                               <span className="text-red-600">Upload failed</span>
                             ) : (
-                              formatBytes(item.size)
+                              item.kind === "text" ? "No media" : formatBytes(item.size)
                             )}
-                            <span>•</span> {item.kind === "image" ? "Image" : "Video"} #{idx + 1}
+                            <span>•</span> {item.kind === "image" ? "Image" : item.kind === "video" ? "Video" : item.kind === "document" ? "Document" : "Text"} #{idx + 1}
                           </p>
                         </div>
                         <button
@@ -2919,13 +3240,14 @@ export default function BulkSchedulePage() {
                       setDragging(false);
                     }}
                     onDrop={onAddMoreDrop}
-                    onClick={pickMoreFiles}
+                    onClick={contentType === "text" || contentType === "community" ? addTextPost : pickMoreFiles}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        pickMoreFiles();
+                        if (contentType === "text" || contentType === "community") addTextPost();
+                        else pickMoreFiles();
                       }
                     }}
                     className={cn(
@@ -2933,8 +3255,8 @@ export default function BulkSchedulePage() {
                       dragging ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 hover:bg-zinc-50"
                     )}
                   >
-                    <ImagePlus className="size-4 text-zinc-400" />
-                    <p className="text-xs font-semibold text-zinc-700">Drop to add more media files</p>
+                    {contentType === "text" || contentType === "community" ? <MessageSquare className="size-4 text-zinc-400" /> : <ImagePlus className="size-4 text-zinc-400" />}
+                    <p className="text-xs font-semibold text-zinc-700">{contentType === "text" || contentType === "community" ? "Add another text post" : "Drop to add more media files"}</p>
                     <p className="text-[11px] text-zinc-500">
                       Add to your existing {items.length} file{items.length === 1 ? "" : "s"}
                     </p>
@@ -2957,13 +3279,13 @@ export default function BulkSchedulePage() {
                       toast({ title: "YouTube is video-only", description: "This post is an image — YouTube requires video. Upload a video to enable YouTube.", tone: "warning" });
                       return it;
                     }
-                    // Guard: post-type platform restrictions (carousel → IG/FB/Threads, trial → IG, doc → LinkedIn)
+                    // Guard: post-type platform restrictions
                     if (!has) {
                       const pt = ((it as BulkItemBase).postType ?? "standard") as ComposerMode;
-                      const allowed = allowedPlatformsForPostType(pt);
+                      const allowed = allowedPlatformsForItem(it as BulkItemBase);
                       if (allowed && !allowed.includes(platformId)) {
-                        const label = pt === "carousel" ? "Carousel (IG · FB · Threads only)" : pt === "trial_reel" ? "Trial Reel (Instagram only)" : pt === "document" ? "Document (LinkedIn only)" : pt;
-                        toast({ title: `${label} not supported on this platform`, description: `Switch post type to Standard to enable ${platformId}.`, tone: "warning" });
+                        const label = pt === "carousel" ? "This Carousel format" : pt === "trial_reel" ? "Trial Reel (Instagram only)" : pt === "document" ? "Document (LinkedIn only)" : pt;
+                        toast({ title: `${label} not supported on ${PLATFORMS.find((p) => p.id === platformId)?.name ?? platformId}`, description: "Check the Platform Feature Matrix for supported formats.", tone: "warning" });
                         return it;
                       }
                     }
@@ -3019,7 +3341,7 @@ export default function BulkSchedulePage() {
           ref={fileInputRef}
           type="file"
           multiple
-          accept={bulkAcceptForMode(composerMode)}
+          accept={bulkAcceptForContentType(contentType, carouselMediaMode)}
           className="hidden"
           onChange={(e) => {
             const files = Array.from(e.target.files ?? []);
@@ -3031,7 +3353,7 @@ export default function BulkSchedulePage() {
           ref={addMoreInputRef}
           type="file"
           multiple
-          accept={bulkAcceptForMode(composerMode)}
+          accept={bulkAcceptForContentType(contentType, carouselMediaMode)}
           className="hidden"
           onChange={(e) => {
             const files = Array.from(e.target.files ?? []);
@@ -3171,6 +3493,12 @@ export default function BulkSchedulePage() {
           }}
         />
 
+        {/* Platform Feature Matrix Modal */}
+        <PlatformFeatureMatrixModal
+          open={matrixModalOpen}
+          onClose={() => setMatrixModalOpen(false)}
+        />
+
         {/* Hidden custom cover input for video thumbnails */}
         <input
           ref={customCoverInputRef}
@@ -3224,6 +3552,9 @@ function EmptyUploaderState({
   downloadCsvTemplate,
   pickCsvFile,
   csvBusy,
+  onOpenMatrixModal,
+  contentType,
+  addTextPost,
 }: {
   onDrop: (e: React.DragEvent) => void;
   dragging: boolean;
@@ -3235,6 +3566,9 @@ function EmptyUploaderState({
   downloadCsvTemplate: () => void;
   pickCsvFile: () => void;
   csvBusy: boolean;
+  onOpenMatrixModal: () => void;
+  contentType: BulkContentType;
+  addTextPost: () => void;
 }) {
   const t = useTranslations("dashboard");
 
@@ -3252,10 +3586,17 @@ function EmptyUploaderState({
           <p className="text-xs sm:text-sm text-zinc-500 leading-relaxed">
             {t("posts.bulkSchedule.empty_subtitle")}
           </p>
-          <div className="pt-1 flex items-center justify-center gap-2 text-xs">
+          <div className="pt-1 flex items-center justify-center gap-2 text-xs flex-wrap">
+            <button
+              type="button"
+              onClick={onOpenMatrixModal}
+              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 font-semibold text-zinc-800 hover:bg-zinc-50 shadow-xs cursor-pointer"
+            >
+              <Sparkles className="size-3.5 text-zinc-900" /> Platform Feature Matrix
+            </button>
             <Link
               href="/dashboard/assets"
-              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 font-semibold text-zinc-700 hover:bg-zinc-50"
+              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 font-semibold text-zinc-700 hover:bg-zinc-50 shadow-xs"
             >
               <Eye className="size-3.5" /> Media Library
             </Link>
@@ -3268,13 +3609,14 @@ function EmptyUploaderState({
             e.preventDefault();
           }}
           onDrop={onDrop}
-          onClick={pickFiles}
+          onClick={contentType === "text" || contentType === "community" ? addTextPost : pickFiles}
           role="button"
           tabIndex={0}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
-              pickFiles();
+              if (contentType === "text" || contentType === "community") addTextPost();
+              else pickFiles();
             }
           }}
           className={cn(
@@ -3285,21 +3627,27 @@ function EmptyUploaderState({
           )}
         >
           <div className="size-14 rounded-2xl bg-zinc-100 flex items-center justify-center text-zinc-700 mb-1 shadow-xs">
-            <UploadCloud className="size-7" />
+            {contentType === "text" || contentType === "community" ? <MessageSquare className="size-7" /> : <UploadCloud className="size-7" />}
           </div>
           <p className="text-base font-bold text-zinc-900">
-            {t("posts.bulkSchedule.drop_zone")}
+            {contentType === "community" ? "Add an X Community post" : contentType === "text" ? "Add a text post" : t("posts.bulkSchedule.drop_zone")}
           </p>
           <p className="text-xs text-zinc-500 max-w-sm">
-            {t("posts.bulkSchedule.drop_zone_desc", { max: MAX_FILES })}
+            {contentType === "community"
+              ? "Create the post now, then write its caption and confirm the X Community ID."
+              : contentType === "text"
+                ? "Create caption-only posts without uploading placeholder media."
+                : t("posts.bulkSchedule.drop_zone_desc", { max: MAX_FILES })}
           </p>
-          <p className="text-[11px] text-zinc-400 font-medium">
-            {t("posts.bulkSchedule.drop_zone_footnote", {
-              maxSize: Math.round(MAX_FILE_BYTES / 1024 / 1024),
-            })}
-          </p>
+          {contentType !== "text" && contentType !== "community" ? (
+            <p className="text-[11px] text-zinc-400 font-medium">
+              {t("posts.bulkSchedule.drop_zone_footnote", {
+                maxSize: Math.round(MAX_FILE_BYTES / 1024 / 1024),
+              })}
+            </p>
+          ) : null}
           <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-zinc-900 text-white px-4 py-2 text-xs font-bold shadow-xs hover:bg-black">
-            <Plus className="size-3.5" /> Browse Files
+            <Plus className="size-3.5" /> {contentType === "text" || contentType === "community" ? "Add Post" : "Browse Files"}
           </span>
         </div>
 
@@ -3857,7 +4205,7 @@ function PostRow({
   const charLimit = pickCharLimitFor(item);
   const overLimit = captionLen > charLimit;
   const previewSrc = item.source === "upload" ? item.previewUrl : item.url;
-  const mediaKind: MediaKind = item.kind === "video" ? "video" : "image";
+  const mediaKind: MediaKind = item.kind === "video" ? "video" : item.kind === "text" || item.kind === "document" ? "text" : "image";
   const readiness = useMemo(() => buildReadinessForItem(item), [item]);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [extraOpen, setExtraOpen] = useState(false);
@@ -3926,7 +4274,7 @@ function PostRow({
         {(
           [
             { id: "standard" as ComposerMode, label: "Standard" } as { id: ComposerMode; label: string; sub?: string },
-            { id: "carousel" as ComposerMode, label: "Carousel", sub: "IG·FB·Threads" } as { id: ComposerMode; label: string; sub?: string },
+            { id: "carousel" as ComposerMode, label: "Carousel", sub: "Smart platforms" } as { id: ComposerMode; label: string; sub?: string },
             { id: "trial_reel" as ComposerMode, label: "Trial Reel", sub: "IG Only" } as { id: ComposerMode; label: string; sub?: string },
             { id: "document" as ComposerMode, label: "Document", sub: "LinkedIn" } as { id: ComposerMode; label: string; sub?: string },
           ]
@@ -3938,7 +4286,7 @@ function PostRow({
               type="button"
               onClick={() => onChangePostType(m.id)}
               className={cn(
-                "relative inline-flex items-center gap-1 px-2.5 h-7 rounded-full text-[11px] font-bold border transition-all",
+                "relative inline-flex items-center gap-1 px-2.5 h-7 rounded-full text-[11px] font-bold border transition-all cursor-pointer",
                 active ? "bg-zinc-900 text-white border-zinc-900 shadow-sm" : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50"
               )}
             >
@@ -3948,7 +4296,9 @@ function PostRow({
           );
         })}
         <span className="ml-auto text-[10px] font-semibold text-zinc-500 hidden sm:inline">
-          {(item as BulkItemBase).postType === "carousel"
+          {(item as BulkItemBase).contentType
+            ? (item as BulkItemBase).contentType!.replaceAll("_", " ")
+            : (item as BulkItemBase).postType === "carousel"
             ? `${(item as BulkItemBase).carouselSlides?.length ?? 0}/10 slides`
             : (item as BulkItemBase).postType === "document"
               ? "PDF/DOC/PPT"
@@ -4007,7 +4357,7 @@ function PostRow({
                       <label className="rounded-lg border-2 border-dashed border-zinc-300 hover:border-zinc-400 hover:bg-zinc-50 aspect-square flex flex-col items-center justify-center gap-1 cursor-pointer">
                         <input
                           type="file"
-                          accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm"
+                          accept={bulkAcceptForContentType("carousel", (item as BulkItemBase).carouselMediaMode ?? "images")}
                           multiple
                           className="hidden"
                           onChange={(e) => {
@@ -4021,8 +4371,10 @@ function PostRow({
                       </label>
                     )}
                   </div>
-                  <p className={cn("text-[11px]", slides.length < 2 ? "text-amber-600" : "text-zinc-500")}>
-                    {slides.length < 2 ? "⚠️ Carousel needs at least 2 slides" : `${slides.length}/10 slides • IG · FB · Threads`}
+                  <p className={cn("text-[11px]", slides.length < 2 ? "text-amber-600 font-medium" : "text-zinc-500")}>
+                    {slides.length < 2
+                      ? "⚠️ Carousel needs at least 2 slides"
+                      : `${slides.length}/10 slides • ${(item as BulkItemBase).carouselMediaMode ?? "images"}`}
                   </p>
                   {(item.frameCoverUrl || item.customCoverUrl) && (
                     <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-zinc-200 text-[10px] font-medium text-emerald-700">
@@ -4076,46 +4428,60 @@ function PostRow({
                 )}
                 <span className="absolute top-2 left-2 text-[10px] bg-amber-500 text-white px-2 py-0.5 rounded-full font-bold flex items-center gap-1"><Zap className="size-3" /> Trial Reel</span>
               </div>
-              <label className="flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs font-semibold hover:bg-zinc-50 cursor-pointer">
-                <input type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onReplaceTrialVideo(f); e.target.value = ""; }} />
-                <Upload className="size-3" /> Replace video
-              </label>
-              <div className="space-y-1 pt-1">
-                <p className="text-[11px] font-bold text-zinc-700 flex items-center gap-1"><Zap className="size-3 text-amber-500" /> Trial Mode</p>
-                {(["CUSTOM", "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED", "TRIAL_REELS_DONT_SHARE_TO_FOLLOWERS"] as TrialReelMode[]).map((mode) => (
-                  <label key={mode} className={cn("flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-xs", (item as BulkItemBase).trialMode === mode ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 hover:bg-zinc-50/60")}>
-                    <input type="radio" name={`trial-${item.id}`} checked={(item as BulkItemBase).trialMode === mode} onChange={() => onTrialModeChange(mode)} className="size-3" />
-                    <span className="font-medium">{mode === "CUSTOM" ? "Custom (Standard Reel)" : mode === "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED" ? "Share if Liked" : "Don't Share"}</span>
-                  </label>
-                ))}
+              <div>
+                <label className="text-[10px] font-bold text-zinc-700">Trial Reel mode (Instagram)</label>
+                <select
+                  value={(item as BulkItemBase).trialMode ?? "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED"}
+                  onChange={(e) => onTrialModeChange(e.target.value as TrialReelMode)}
+                  className="mt-1 h-8 w-full rounded-lg border border-zinc-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                >
+                  <option value="TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED">Auto-share if engagement high (recommended)</option>
+                  <option value="TRIAL_REELS_ALWAYS_SHARE_TO_FOLLOWERS">Always share to followers</option>
+                  <option value="TRIAL_REELS_DO_NOT_SHARE_TO_FOLLOWERS">Non-followers only (isolated trial)</option>
+                </select>
               </div>
+              <label className="flex items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-zinc-300 hover:border-zinc-400 hover:bg-zinc-50 p-2.5 cursor-pointer">
+                <input type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onReplaceTrialVideo(f); e.target.value = ""; }} />
+                <Upload className="size-3.5 text-zinc-500" /> <span className="text-xs font-semibold text-zinc-700">Replace video</span>
+              </label>
             </div>
           ) : (
             <>
-              <div className="relative rounded-xl overflow-hidden bg-zinc-100 aspect-[4/3] border border-zinc-200">
+              {/* Standard single preview */}
+              <div className="relative rounded-xl overflow-hidden bg-zinc-100 aspect-video border border-zinc-200">
                 {item.kind === "image" ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={previewSrc} alt={item.name} className="w-full h-full object-cover" />
+                ) : item.kind === "video" ? (
+                  <video src={previewSrc} className="w-full h-full object-cover" controls />
                 ) : (
-                  <video src={previewSrc} className="w-full h-full object-cover" />
+                  <div className="flex h-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-zinc-50 to-zinc-100 text-zinc-500">
+                    <MessageSquare className="size-8" />
+                    <span className="text-[11px] font-bold">{item.contentType === "community" ? "X Community post" : "Text post"}</span>
+                  </div>
                 )}
-                <div className="absolute bottom-1 left-1 right-1 rounded-lg bg-black/60 backdrop-blur px-2 py-1">
-                  <p className="text-[10px] font-semibold text-white truncate">{item.name}</p>
-                  <p className="text-[10px] text-white/80 flex items-center gap-1">
-                    {item.kind === "image" ? <ImageIcon className="size-3" /> : <Video className="size-3" />} {formatBytes(item.size)}
-                    {item.source === "upload" && item.uploadStatus === "uploading" ? " • Uploading…" : ""}
-                    {item.source === "upload" && item.uploadStatus === "error" ? " • Failed" : ""}
-                  </p>
-                </div>
+                {item.source === "upload" && item.uploadStatus === "uploading" ? (
+                  <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-1">
+                    <span className="size-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    <span className="text-[10px] text-white font-medium">Uploading…</span>
+                  </div>
+                ) : null}
+                {item.source === "upload" && item.uploadStatus === "error" ? (
+                  <div className="absolute inset-0 bg-red-500/80 flex flex-col items-center justify-center gap-1 p-2 text-center text-white">
+                    <X className="size-5" />
+                    <span className="text-[10px] font-bold">Upload Failed</span>
+                    <span className="text-[9px] opacity-90 truncate max-w-full">{item.uploadError ?? "Retry required"}</span>
+                  </div>
+                ) : null}
               </div>
 
-              {/* Media tools buttons */}
-              <div className="space-y-1.5">
+              {/* Media actions */}
+              {item.kind !== "text" ? <div className="space-y-1.5">
                 {item.kind === "image" ? (
                   <button
                     type="button"
                     onClick={onOpenCrop}
-                    className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm"
+                    className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm cursor-pointer"
                   >
                     <Crop className="size-3 text-zinc-500" /> Crop image
                   </button>
@@ -4124,14 +4490,14 @@ function PostRow({
                     <button
                       type="button"
                       onClick={onOpenCover}
-                      className="inline-flex items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-1.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm"
+                      className="inline-flex items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-1.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm cursor-pointer"
                     >
                       <RefreshCw className="size-3 text-zinc-500" /> Frame
                     </button>
                     <button
                       type="button"
                       onClick={onPickCustomCover}
-                      className="inline-flex items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-1.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm"
+                      className="inline-flex items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-1.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm cursor-pointer"
                     >
                       <Upload className="size-3 text-zinc-500" /> Cover
                     </button>
@@ -4149,13 +4515,13 @@ function PostRow({
                   <button
                     type="button"
                     onClick={onOpenCollaborators}
-                    className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm"
+                    className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm cursor-pointer"
                   >
                     <Users className="size-3 text-zinc-500" />
                     Collaborators {item.collaborators?.length ? `(${item.collaborators.length})` : ""}
                   </button>
                 )}
-              </div>
+              </div> : null}
             </>
           )}
 
@@ -4169,17 +4535,23 @@ function PostRow({
             <div className="flex items-center gap-1 flex-wrap">
               {PLATFORMS.map((p) => {
                 const isSel = item.accountIds.includes(p.id);
+                const allowed = allowedPlatformsForItem(item as BulkItemBase);
+                const isDisallowedByMode = allowed !== null && !allowed.includes(p.id);
+                const isDisallowedByKind = (item as BulkItemBase).kind === "image" && isVideoOnlyPlatform(p.id);
+                const isBlocked = isDisallowedByMode || isDisallowedByKind;
                 return (
                   <button
                     key={p.id}
                     type="button"
                     onClick={() => onToggleAccount(p.id)}
-                    title={`${p.name} (${isSel ? "active" : "disabled"})`}
+                    title={`${p.name} (${isSel ? "active" : isBlocked ? "unsupported for current post format" : "click to enable"})`}
                     className={cn(
                       "size-7 rounded-lg flex items-center justify-center transition-all cursor-pointer border",
                       isSel
                         ? "bg-white border-zinc-300 shadow-xs scale-100 opacity-100"
-                        : "bg-zinc-100/60 border-transparent grayscale opacity-30 hover:opacity-75 hover:grayscale-0"
+                        : isBlocked
+                          ? "bg-zinc-100/40 border-transparent grayscale opacity-20 hover:opacity-40"
+                          : "bg-zinc-100/60 border-transparent grayscale opacity-40 hover:opacity-90 hover:grayscale-0"
                     )}
                   >
                     <ProPlatformIcon platform={p.id} size={18} />
@@ -4517,11 +4889,32 @@ function PostRow({
                   />
                 </div>
                 {hasX && (
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={item.community} onChange={(e) => onUpdate({ community: e.target.checked })} className="size-3.5" />
-                    <span className="text-xs font-semibold">{t("posts.bulkSchedule.community")}</span>
-                    <span className="text-[10px] text-zinc-500">{t("posts.bulkSchedule.optional")}</span>
-                  </label>
+                  <div className="rounded-lg border border-sky-200 bg-sky-50/60 p-2.5 space-y-2">
+                    <label className="text-[11px] font-semibold text-sky-950">
+                      X Community ID <span className="font-normal text-sky-700">(optional for regular posts)</span>
+                      <input
+                        type="text"
+                        value={String(((item as BulkItemBase).advancedByPlatform?.twitter as Record<string, unknown> | undefined)?.twitter_community ?? "")}
+                        onChange={(event) => {
+                          const current = ((item as BulkItemBase).advancedByPlatform?.twitter ?? getDefaultOptions("twitter")) as PlatformAdvancedOptions;
+                          onUpdateAdvanced("twitter", { ...current, twitter_community: event.target.value });
+                        }}
+                        placeholder="Community ID"
+                        className="mt-1 h-8 w-full rounded-lg border border-sky-200 bg-white px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                      />
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2 text-[11px] font-semibold text-sky-950">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(((item as BulkItemBase).advancedByPlatform?.twitter as Record<string, unknown> | undefined)?.twitter_share_with_followers)}
+                        onChange={(event) => {
+                          const current = ((item as BulkItemBase).advancedByPlatform?.twitter ?? getDefaultOptions("twitter")) as PlatformAdvancedOptions;
+                          onUpdateAdvanced("twitter", { ...current, twitter_share_with_followers: event.target.checked });
+                        }}
+                      />
+                      Share community post with followers
+                    </label>
+                  </div>
                 )}
                 <div>
                   <label className="text-[11px] font-semibold">Profile</label>
