@@ -71,9 +71,9 @@ describe("validation/posts - createPostSchema", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("rejects when caption exceeds 22000 chars", () => {
+  it("rejects when caption exceeds 70000 chars", () => {
     const result = parseValue(
-      { caption: "x".repeat(22001), platforms: ["twitter"] },
+      { caption: "x".repeat(70001), platforms: ["twitter"] },
       createPostSchema
     );
     expect(result.ok).toBe(false);

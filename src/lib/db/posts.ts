@@ -161,6 +161,9 @@ export async function getPost(workspaceId: string, postId: string): Promise<Post
 export async function createPost(workspaceId: string, authorUid: string, data: Partial<PostDoc>): Promise<string> {
   const ref = collection(workspaceId).doc();
   const now = SERVER_TIMESTAMP;
+  const scheduledAtRaw = data.scheduledAt as unknown;
+  const scheduledAt = typeof scheduledAtRaw === "string" ? new Date(scheduledAtRaw) : (scheduledAtRaw as Date | undefined);
+  const scheduledAtValid = scheduledAt instanceof Date && !Number.isNaN(scheduledAt.getTime()) ? scheduledAt : undefined;
   const raw: Record<string, unknown> = {
     authorUid,
     caption: data.caption ?? "",
@@ -184,7 +187,7 @@ export async function createPost(workspaceId: string, authorUid: string, data: P
     frameCoverUrl: data.frameCoverUrl,
     customCoverUrl: data.customCoverUrl,
     threadRootId: data.threadRootId,
-    scheduledAt: data.scheduledAt,
+    scheduledAt: scheduledAtValid,
     captionsByPlatform: data.captionsByPlatform,
     sameForAll: data.sameForAll,
     advancedByPlatform: data.advancedByPlatform,
@@ -221,6 +224,10 @@ export async function bulkCreatePosts(
   for (const item of items) {
     const ref = coll.doc();
     ids.push(ref.id);
+    // Firestore queries (listScheduledDue) compare scheduledAt as Timestamp — coerce ISO strings to Date.
+    const scheduledAtRaw = item.scheduledAt as unknown;
+    const scheduledAt = typeof scheduledAtRaw === "string" ? new Date(scheduledAtRaw) : (scheduledAtRaw as Date | undefined);
+    const scheduledAtValid = scheduledAt instanceof Date && !Number.isNaN(scheduledAt.getTime()) ? scheduledAt : undefined;
     const raw: Record<string, unknown> = {
       authorUid,
       caption: item.caption ?? "",
@@ -230,7 +237,7 @@ export async function bulkCreatePosts(
       labels: item.labels ?? [],
       altText: item.altText ?? [],
       collaborators: item.collaborators ?? [],
-      scheduledAt: item.scheduledAt,
+      scheduledAt: scheduledAtValid,
       firstComment: item.firstComment,
       community: item.community,
       quoteTweetUrl: item.quoteTweetUrl,

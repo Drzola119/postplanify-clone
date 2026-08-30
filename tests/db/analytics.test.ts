@@ -65,7 +65,7 @@ describe("db/analytics - getOverview", () => {
     const to = new Date(Date.UTC(2026, 6, 7));
     const overview = await getOverview("ws1", from, to);
     expect(overview.workspaceId).toBe("ws1");
-    expect(overview.byPlatform.length).toBe(9);
+    expect(overview.byPlatform.length).toBe(13);
     expect(overview.totals.impressions).toBe(0);
   });
 

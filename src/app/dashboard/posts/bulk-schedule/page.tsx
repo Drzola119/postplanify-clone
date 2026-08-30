@@ -53,6 +53,7 @@ import { zonedDateTimeToDate } from "@/lib/datetime/zoned";
 import { AdvancedOptionsPanel } from "@/components/dashboard/advanced-options-panel";
 import { AICaptionsDialog } from "@/components/dashboard/ai-captions-dialog";
 import { fitCaptionForPlatform, PLATFORM_LIMITS, getPlatformLimit } from "@/lib/ai/caption-fit";
+import { CAPABILITY_MATRIX } from "@/lib/publishing/capability-matrix";
 import { UnsplashDialog } from "@/components/dashboard/unsplash-dialog";
 import { CanvaDialog, type ImportedFile } from "@/components/dashboard/canva-dialog";
 import { GoogleDriveDialog } from "@/components/dashboard/google-drive-dialog";
@@ -133,14 +134,23 @@ const ACCEPTED_MIME_TYPES = [
   "video/webm",
 ] as const;
 
-const TIMEZONES = [
+const TIMEZONES: Array<{ id: string; label: string }> = [
   { id: "Africa/Lagos", label: "Africa/Lagos" },
   { id: "America/New_York", label: "America/New_York" },
   { id: "America/Los_Angeles", label: "America/Los_Angeles" },
+  { id: "America/Chicago", label: "America/Chicago" },
+  { id: "America/Sao_Paulo", label: "America/Sao_Paulo" },
   { id: "Europe/London", label: "Europe/London" },
   { id: "Europe/Paris", label: "Europe/Paris" },
+  { id: "Europe/Berlin", label: "Europe/Berlin" },
+  { id: "Europe/Madrid", label: "Europe/Madrid" },
+  { id: "Europe/Rome", label: "Europe/Rome" },
   { id: "Asia/Dubai", label: "Asia/Dubai" },
+  { id: "Asia/Kolkata", label: "Asia/Kolkata" },
+  { id: "Asia/Singapore", label: "Asia/Singapore" },
   { id: "Asia/Tokyo", label: "Asia/Tokyo" },
+  { id: "Asia/Shanghai", label: "Asia/Shanghai" },
+  { id: "Australia/Sydney", label: "Australia/Sydney" },
   { id: "UTC", label: "UTC" },
 ];
 
@@ -221,12 +231,29 @@ function wallClockToUTC(date: string, time: string, timezone: string): Date | nu
   return zonedDateTimeToDate({ year: y, month: m, day: d, hour: hh, minute: mm }, timezone);
 }
 
+function getEffectiveLimit(pid: PlatformId, item: BulkItem): number {
+  const cap = CAPABILITY_MATRIX[pid as unknown as keyof typeof CAPABILITY_MATRIX];
+  if (cap) {
+    // Twitter long-text-as-post inflates limit from 280 → 25000 when enabled (default true).
+    if (pid === "twitter") {
+      const adv = (item as BulkItemBase).advancedByPlatform?.twitter as Record<string, unknown> | undefined;
+      const longText = adv?.twitter_long_text_as_post;
+      // undefined = default true (same as FIELD_SPECS default)
+      if (longText === false) return 280;
+      return cap.maxCaptionLength; // 25000
+    }
+    return cap.maxCaptionLength;
+  }
+  const p = PLATFORMS.find((pl) => pl.id === pid);
+  return p?.charLimit ?? 2200;
+}
+
 function pickCharLimitFor(item: BulkItem): number {
   if (item.accountIds.length === 0) return 2200;
   let min = Infinity;
   for (const id of item.accountIds) {
-    const p = PLATFORMS.find((pl) => pl.id === id);
-    if (p && p.charLimit < min) min = p.charLimit;
+    const lim = getEffectiveLimit(id, item);
+    if (lim < min) min = lim;
   }
   return min === Infinity ? 2200 : min;
 }
@@ -244,7 +271,7 @@ function filterAccountsForKind(kind: BulkItem["kind"], ids: PlatformId[]): Platf
   return ids;
 }
 
-function buildReadinessForItem(item: BulkItem, timezone: string) {
+function buildReadinessForItem(item: BulkItem) {
   const mediaKind = getMediaKindForItem(item);
   const fakeMime = item.kind === "video" ? "video/mp4" : "image/jpeg";
   const media: MediaMeta[] = [
@@ -258,7 +285,6 @@ function buildReadinessForItem(item: BulkItem, timezone: string) {
   for (const pid of item.accountIds) {
     captionByPlatform[pid] = item.captionByPlatform?.[pid] ?? item.caption;
   }
-  // Ensure youtube/pinterest required targets have sensible defaults if empty — validator will flag missing.
   return checkRequirements(item.accountIds, {
     captionByPlatform,
     media,
@@ -276,7 +302,7 @@ function validateItems(items: BulkItem[]): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const now = Date.now();
   for (const it of items) {
-    const readiness = buildReadinessForItem(it, "UTC");
+    const readiness = buildReadinessForItem(it);
     // Deduplicate caption per item (one global caption field, not per-platform)
     const hasMissingCaption = readiness.perPlatform.some((per) =>
       per.issues.some((iss) => iss.code === "missing_caption" && iss.severity === "blocked")
@@ -458,11 +484,14 @@ export default function BulkSchedulePage() {
     };
   }
 
-  // Auto-detect timezone on first mount
+  // Auto-detect timezone on first mount and ensure it appears in the dropdown.
   useEffect(() => {
     try {
       const guess = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (guess) setTimezone(guess);
+      if (guess) {
+        setTimezone(guess);
+        // Ensure the guessed zone is selectable even if not in the hard-coded list (rendered dynamically below).
+      }
     } catch {
       setTimezone("Africa/Lagos");
     }
@@ -561,16 +590,34 @@ export default function BulkSchedulePage() {
     };
   }, []);
 
-  // Revoke blob URLs on unmount
+  // Keep a ref to the current items so the unmount cleanup can revoke without triggering a state update.
+  const itemsRef = useRef<BulkItem[]>([]);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  // Revoke blob URLs on unmount — synchronous loop, no setState.
   useEffect(() => {
     return () => {
-      setItems((prev) => {
-        for (const it of prev) {
-          if (it.source === "upload") URL.revokeObjectURL(it.previewUrl);
+      for (const it of itemsRef.current) {
+        if (it.source === "upload") {
+          try { URL.revokeObjectURL(it.previewUrl); } catch {}
         }
-        return prev;
-      });
+      }
     };
+  }, []);
+
+  // Warn before leaving while uploads would be lost (uploads are not persisted).
+  useEffect(() => {
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      const hasUploads = itemsRef.current.some((it) => it.source === "upload");
+      if (hasUploads && itemsRef.current.length > 0) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, []);
 
   // Auto-fix: image posts must not target video-only platforms (e.g. YouTube). Fixes persisted bad state from before.
@@ -658,6 +705,10 @@ export default function BulkSchedulePage() {
         toast({ title: t("posts.bulkSchedule.csv_missing_column"), tone: "error" });
         return;
       }
+      // Early guard: when the composer has no accounts and CSV also lacks platforms column, warn once.
+      if (accounts.size === 0 && platformsIdx < 0) {
+        toast({ title: "Select platforms first", description: "Pick accounts above or add a platforms column to your CSV.", tone: "warning" });
+      }
       const newItems: CsvBulkItem[] = [];
       const errors: string[] = [];
       for (let i = 0; i < rows.length; i++) {
@@ -681,9 +732,13 @@ export default function BulkSchedulePage() {
         }
         const rawScheduled = (scheduledIdx >= 0 ? r[scheduledIdx] : "").trim();
         const fallbackSlot = scheduledSlot(items.length + newItems.length);
-        let scheduledAt = fallbackSlot?.scheduledAt ?? "";
-        let date = fallbackSlot?.date ?? todayISO();
-        let time = fallbackSlot?.time ?? defaultTime();
+        if (!fallbackSlot) {
+          errors.push(`Row ${i + 2}: invalid scheduler (check start date/time/timezone)`);
+          continue;
+        }
+        let scheduledAt = fallbackSlot.scheduledAt;
+        let date = fallbackSlot.date;
+        let time = fallbackSlot.time;
         if (rawScheduled) {
           const rawParts = splitDateTime(rawScheduled);
           const hasExplicitOffset = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(rawScheduled);
@@ -698,9 +753,19 @@ export default function BulkSchedulePage() {
         }
         const hashtags = hashtagsIdx >= 0 ? normalizeHashtags(r[hashtagsIdx] ?? "") : [];
         const mediaUrl = mediaIdx >= 0 ? (r[mediaIdx] ?? "").trim() : "";
-        if (mediaUrl && !/^https?:\/\//i.test(mediaUrl)) {
-          errors.push(`Row ${i + 2}: mediaurl must be http(s) (got "${mediaUrl.slice(0, 40)}")`);
-          continue;
+        if (mediaUrl) {
+          if (!/^https?:\/\//i.test(mediaUrl)) {
+            errors.push(`Row ${i + 2}: mediaurl must be http(s) (got "${mediaUrl.slice(0, 40)}")`);
+            continue;
+          }
+          try {
+            // Validate URL structure beyond prefix.
+            const u = new URL(mediaUrl);
+            if (!u.hostname.includes(".")) throw new Error("bad host");
+          } catch {
+            errors.push(`Row ${i + 2}: mediaurl is not a valid URL`);
+            continue;
+          }
         }
         // Build default advanced options for selected platforms so Pinterest board / FB page are pre-filled
         const adv: Record<string, Record<string, unknown>> = {};
@@ -744,12 +809,21 @@ export default function BulkSchedulePage() {
           advancedByPlatform: adv,
         });
       }
+      const beforeCount = items.length;
+      const remainingAtStart = Math.max(0, MAX_FILES - beforeCount);
+      const truncatedByLimit = Math.max(0, newItems.length - remainingAtStart);
       setItems((prev) => {
         const remaining = Math.max(0, MAX_FILES - prev.length);
         return [...prev, ...newItems.slice(0, remaining)];
       });
-      const inserted = Math.min(newItems.length, MAX_FILES);
-      if (errors.length > 0) {
+      const inserted = Math.min(newItems.length, remainingAtStart);
+      if (truncatedByLimit > 0) {
+        toast({
+          title: `Imported ${inserted} of ${newItems.length} row(s) — ${truncatedByLimit} truncated (limit ${MAX_FILES})`,
+          description: errors.slice(0, 2).join("\n") || `Queue limit is ${MAX_FILES}. Remove items or schedule first.`,
+          tone: "warning",
+        });
+      } else if (errors.length > 0) {
         toast({
           title: t("posts.bulkSchedule.csv_imported_skipped", { n: inserted, m: errors.length }),
           description: errors.slice(0, 3).join("\n"),
@@ -760,6 +834,8 @@ export default function BulkSchedulePage() {
           title: t("posts.bulkSchedule.csv_imported", { n: inserted }),
           tone: "success",
         });
+      } else if (newItems.length === 0 && errors.length === 0) {
+        toast({ title: "Nothing imported", description: `Queue is full (${MAX_FILES} max).`, tone: "warning" });
       }
     } catch (e) {
       toast({
@@ -838,8 +914,14 @@ export default function BulkSchedulePage() {
       const n = data.count ?? readyItems.length;
       setItems((prev) => {
         for (const it of prev) {
-          if (it.source === "upload") URL.revokeObjectURL(it.previewUrl);
+          if (it.source === "upload") {
+            try { URL.revokeObjectURL(it.previewUrl); } catch {}
+          }
         }
+        return [];
+      });
+      setUndoStack((prev) => {
+        for (const e of prev) if (e.item.source === "upload") { try { URL.revokeObjectURL((e.item as UploadedBulkItem).previewUrl); } catch {} }
         return [];
       });
       toast({ title: t("posts.bulkSchedule.scheduled_n", { n }), tone: "success" });
@@ -871,10 +953,18 @@ export default function BulkSchedulePage() {
 
   async function handleFiles(files: File[]) {
     const remaining = Math.max(0, MAX_FILES - items.length);
+    if (remaining === 0) {
+      toast({
+        title: "Queue full",
+        description: `You already have ${MAX_FILES} items — schedule or remove some first.`,
+        tone: "warning",
+      });
+      return;
+    }
     if (files.length > remaining) {
       toast({
         title: "Too many files",
-        description: `You can only add ${remaining} more file(s) (limit is ${MAX_FILES}).`,
+        description: `You can only add ${remaining} more file(s) (limit is ${MAX_FILES}) — ${files.length - remaining} will be skipped.`,
         tone: "warning",
       });
     }
@@ -967,6 +1057,9 @@ export default function BulkSchedulePage() {
           prev.map((it) => {
             if (it.id !== item.id) return it;
             if (it.source !== "upload") return it;
+            // On success keep the blob alive until the user navigates away or removes the item
+            // (the blob is still referenced by previewUrl for crop/preview); CDN url is stored in `url`.
+            // If we switched previewUrl to CDN now, crop would break for files that haven't been re-fetched.
             return {
               ...it,
               url: result?.url ?? it.previewUrl,
@@ -986,7 +1079,8 @@ export default function BulkSchedulePage() {
       const idx = prev.findIndex((i) => i.id === id);
       if (idx < 0) return prev;
       const target = prev[idx];
-      if (target.source === "upload") URL.revokeObjectURL(target.previewUrl);
+      // Do NOT revoke blob here — keep it for undo. Store a revivable entry: if it's an uploaded item
+      // the File is retained, so undo can recreate the blob URL when needed.
       setUndoStack((s) => [...s, { kind: "remove", item: target, index: idx }]);
       return prev.filter((i) => i.id !== id);
     });
@@ -998,7 +1092,28 @@ export default function BulkSchedulePage() {
       const last = s[s.length - 1];
       setItems((prev) => {
         const next = [...prev];
-        next.splice(last.index, 0, last.item);
+        let itemToRestore: BulkItem = last.item;
+        // Blob URL was kept alive while in undo stack, but if something revoked it, recreate from File.
+        if (itemToRestore.source === "upload") {
+          try {
+            // Probe whether previewUrl is still valid by checking if it starts with blob: and attempting to fetch would be heavy.
+            // Recreate only if we detect it was revoked — simple heuristic: if previewUrl is a blob: URL that may have been revoked,
+            // re-create a fresh one from the stored File so the image renders again.
+            const preview = (itemToRestore as UploadedBulkItem).previewUrl;
+            // If the caller had revoked it externally, preview will be a dangling blob. Recreate unconditionally from File
+            // to guarantee a live URL — the old one remains harmless.
+            // We keep the File reference, so we can always revive.
+            if ((itemToRestore as UploadedBulkItem).file) {
+              const fresh = URL.createObjectURL((itemToRestore as UploadedBulkItem).file);
+              itemToRestore = { ...itemToRestore, previewUrl: fresh } as BulkItem;
+            } else if (preview.startsWith("blob:")) {
+              // No File (edge), keep as is.
+            }
+          } catch {}
+        }
+        // Clamp index to current length to avoid out-of-range splice after prior removals.
+        const idx = Math.min(Math.max(0, last.index), next.length);
+        next.splice(idx, 0, itemToRestore);
         return next;
       });
       return s.slice(0, -1);
@@ -1014,7 +1129,12 @@ export default function BulkSchedulePage() {
           const date = (patch.scheduledDate ?? (i as BulkItemBase).scheduledDate) as string;
           const time = (patch.scheduledTime ?? (i as BulkItemBase).scheduledTime) as string;
           const utc = wallClockToUTC(date, time, timezone);
-          (updated as BulkItemBase).scheduledAt = utc ? utc.toISOString() : `${date}T${time.slice(0, 5)}`;
+          if (utc) {
+            (updated as BulkItemBase).scheduledAt = utc.toISOString();
+          } else {
+            // Keep the previous scheduledAt and surface feedback — don't silently store a timezone-naive string.
+            toast({ title: "Invalid date/time", description: `Could not interpret ${date} ${time} in ${timezone}.`, tone: "error" });
+          }
         }
         // Keep top-level Pinterest board in sync with advanced panel's board id
         if ((patch as BulkItemBase).pinterestBoard !== undefined) {
@@ -1064,9 +1184,25 @@ export default function BulkSchedulePage() {
       toast({ title: "No items to schedule", tone: "warning" });
       return;
     }
-    if (!scheduledSlot(0)) {
-      toast({ title: "Invalid date or time", tone: "error" });
+    const firstSlot = scheduledSlot(0);
+    if (!firstSlot) {
+      toast({ title: "Invalid date or time", description: `Check Start Date/Time and timezone (${timezone}).`, tone: "error" });
       return;
+    }
+    // Guard: if any computed slot is in the past, warn and push to next valid future slot.
+    const nowMs = Date.now();
+    let hasPast = false;
+    let pastCount = 0;
+    const preview = items.map((_, idx) => scheduledSlot(idx));
+    for (const s of preview) {
+      if (!s) continue;
+      if (Date.parse(s.scheduledAt) <= nowMs + 60_000) {
+        hasPast = true;
+        pastCount++;
+      }
+    }
+    if (hasPast) {
+      toast({ title: `Schedule pushed ${pastCount} past slot(s) will still be blocked`, description: "Pick a future Start Date/Time — past times can't be scheduled.", tone: "warning" });
     }
     setItems((prev) => {
       return prev.map((item, idx) => {
@@ -1076,7 +1212,7 @@ export default function BulkSchedulePage() {
           : item;
       });
     });
-    toast({ title: "Schedule applied to all items", tone: "success" });
+    toast({ title: hasPast ? "Schedule applied (some slots still in the past)" : "Schedule applied to all items", tone: hasPast ? "warning" : "success" });
   }
 
   function applyAccountsToAll() {
@@ -1179,9 +1315,13 @@ export default function BulkSchedulePage() {
       }
       setItems((prev) => {
         const target2 = prev.find((p) => p.id === itemId);
-        if (target2?.source === "upload") URL.revokeObjectURL(target2.previewUrl);
+        if (target2?.source === "upload") {
+          try { URL.revokeObjectURL(target2.previewUrl); } catch {}
+        }
         return prev.filter((p) => p.id !== itemId);
       });
+      // Also remove any undo entries for this id to avoid reviving a scheduled post.
+      setUndoStack((prev) => prev.filter((e) => e.item.id !== itemId));
       toast({ title: "Post scheduled", tone: "success" });
     } catch (e) {
       toast({
@@ -1618,14 +1758,24 @@ export default function BulkSchedulePage() {
   }
 
   function clearAll() {
+    // Revoke all live blob URLs (including those in undo stack) to free memory.
     setItems((prev) => {
       for (const it of prev) {
-        if (it.source === "upload") URL.revokeObjectURL(it.previewUrl);
+        if (it.source === "upload") {
+          try { URL.revokeObjectURL(it.previewUrl); } catch {}
+        }
       }
       return [];
     });
-    setAccounts(new Set());
-    setUndoStack([]);
+    setUndoStack((prev) => {
+      for (const entry of prev) {
+        if (entry.item.source === "upload") {
+          try { URL.revokeObjectURL((entry.item as UploadedBulkItem).previewUrl); } catch {}
+        }
+      }
+      return [];
+    });
+    // Keep platform selection — users usually want to keep the same accounts after clearing media.
     clearPersistedDraft();
     toast({ title: "Cleared all items", tone: "info" });
   }
@@ -1713,6 +1863,8 @@ export default function BulkSchedulePage() {
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
+                min={todayISO()}
+                max="2030-12-31"
                 className="h-9 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
               />
             </SchedulerField>
@@ -1765,7 +1917,9 @@ export default function BulkSchedulePage() {
                 </button>
                 {tzOpen ? (
                   <ul role="listbox" className="absolute right-0 top-full mt-2 z-30 w-[220px] max-h-[260px] overflow-y-auto rounded-xl border border-zinc-200 bg-white shadow-lg p-1">
-                    {TIMEZONES.map((tz) => (
+                    {(() => {
+                      const list = TIMEZONES.some((tz) => tz.id === timezone) ? TIMEZONES : [{ id: timezone, label: timezone }, ...TIMEZONES];
+                      return list.map((tz) => (
                       <li key={tz.id}>
                         <button
                           type="button"
@@ -1778,7 +1932,8 @@ export default function BulkSchedulePage() {
                           {tz.label}
                         </button>
                       </li>
-                    ))}
+                    ));
+                    })()}
                   </ul>
                 ) : null}
               </div>
@@ -2874,7 +3029,7 @@ function PostRow({
   const overLimit = captionLen > charLimit;
   const previewSrc = item.source === "upload" ? item.previewUrl : item.url;
   const mediaKind: MediaKind = item.kind === "video" ? "video" : "image";
-  const readiness = useMemo(() => buildReadinessForItem(item, timezone), [item, timezone]);
+  const readiness = useMemo(() => buildReadinessForItem(item), [item]);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [extraOpen, setExtraOpen] = useState(false);
   const [customPlatformOpen, setCustomPlatformOpen] = useState(false);
@@ -2882,7 +3037,20 @@ function PostRow({
   const handleAutoFitPlatform = useCallback(
     (pid: PlatformId) => {
       const currentCap = item.captionByPlatform?.[pid] ?? item.caption;
+      // For Twitter, respect the per-item long-text toggle: if disabled, cap at 280; otherwise the matrix limit (25000) already governs fit.
+      // fitCaptionForPlatform uses PLATFORM_LIMITS=280 for twitter, which is correct for classic mode. When long-text is enabled,
+      // the caption will already be within the 25000 readiness limit, so no fit is needed. We keep classic fit for the blocked case.
       const fitted = fitCaptionForPlatform(currentCap, pid);
+      // If long-text is enabled and the fitted result is still over readiness but under 25000, don't overwrite with 280 trim.
+      const effectiveLim = getEffectiveLimit(pid, item);
+      if (effectiveLim > 280 && pid === "twitter") {
+        const curLen = Array.from(currentCap).length;
+        if (curLen <= effectiveLim && curLen > 280) {
+          // Already valid for long post — no need to trim.
+          toast({ title: `Caption already within limit for ${PLATFORMS.find((pl) => pl.id === pid)?.name ?? pid} (long post enabled)`, tone: "info" });
+          return;
+        }
+      }
       onUpdate({
         captionByPlatform: {
           ...(item.captionByPlatform ?? {}),
@@ -3031,6 +3199,7 @@ function PostRow({
               <input
                 type="date"
                 value={item.scheduledDate}
+                min={todayISO()}
                 onChange={(e) => onUpdate({ scheduledDate: e.target.value })}
                 className="mt-1 h-8 w-full rounded-xl border border-zinc-200 bg-white px-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
               />
@@ -3095,8 +3264,8 @@ function PostRow({
                 {item.accountIds.map((pid) => {
                   const pMeta = PLATFORMS.find((pl) => pl.id === pid);
                   const pidCaption = item.captionByPlatform?.[pid] ?? item.caption;
-                  const pidLen = pidCaption.length;
-                  const lim = pMeta?.charLimit ?? 2200;
+                  const pidLen = Array.from(pidCaption).length;
+                  const lim = getEffectiveLimit(pid, item);
                   const isPidOver = pidLen > lim;
                   const isOverridden = !!item.captionByPlatform?.[pid] && item.captionByPlatform[pid] !== item.caption;
                   return (
@@ -3158,8 +3327,8 @@ function PostRow({
                       {item.accountIds.map((pid) => {
                         const pMeta = PLATFORMS.find((pl) => pl.id === pid);
                         const val = item.captionByPlatform?.[pid] ?? item.caption;
-                        const lim = pMeta?.charLimit ?? 2200;
-                        const isOver = val.length > lim;
+                        const lim = getEffectiveLimit(pid, item);
+                        const isOver = Array.from(val).length > lim;
                         return (
                           <div key={pid} className="space-y-1 bg-white p-2.5 rounded-lg border border-zinc-200 shadow-2xs">
                             <div className="flex items-center justify-between">
@@ -3183,7 +3352,7 @@ function PostRow({
                                   ⚡ Smart-Fit
                                 </button>
                                 <span className={cn("text-[10px] font-mono", isOver ? "text-red-600 font-bold" : "text-zinc-500")}>
-                                  {val.length}/{lim}
+                                  {Array.from(val).length}/{lim}
                                 </span>
                               </div>
                             </div>
@@ -3280,11 +3449,9 @@ function PostRow({
                     </option>
                   ))
                 ) : (
-                  <>
-                    <option value="default">Default Board</option>
-                    <option value="inspiration">Inspiration</option>
-                    <option value="products">Products</option>
-                  </>
+                  <option value="" disabled>
+                    No boards — connect Pinterest in Accounts
+                  </option>
                 )}
               </select>
             </div>
