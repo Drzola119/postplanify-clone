@@ -36,6 +36,7 @@ import {
   Zap,
   Crop,
   RefreshCw,
+  Link2,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -2116,6 +2117,81 @@ export default function BulkSchedulePage() {
     [destinationOptions.boards, items, toast]
   );
 
+  const applySmartLinkToAll = useCallback(
+    (url: string, options: { instagramCta: boolean; customCtaText?: string }) => {
+      const cleanUrl = url.trim().match(/^https?:\/\//i) ? url.trim() : `https://${url.trim()}`;
+      if (!cleanUrl || cleanUrl === "https://") return;
+
+      const igCta = options.customCtaText?.trim() || "👇 Link in the comments below!";
+
+      // Update batch options for pinterest link
+      setBatchAdvancedByPlatform((prev) => {
+        const cur = (prev.pinterest ?? getDefaultOptions("pinterest")) as Record<string, unknown>;
+        return { ...prev, pinterest: { ...cur, pinterest_link: cleanUrl } };
+      });
+
+      setItems((prev) =>
+        prev.map((it) => {
+          const base = it as BulkItemBase;
+          const currentAdv = (base.advancedByPlatform ?? {}) as Record<string, Record<string, unknown>>;
+          const targetIds = it.accountIds;
+
+          // 1. Pinterest: set destination link in advanced options
+          const pinterestAdv = { ...(currentAdv.pinterest ?? {}), pinterest_link: cleanUrl };
+          const updatedAdv = { ...currentAdv, pinterest: pinterestAdv };
+
+          // 2. Instagram: First Comment gets the link
+          let nextFirstComment = base.firstComment;
+          if (targetIds.includes("instagram")) {
+            nextFirstComment = `🔗 Link: ${cleanUrl}`;
+          }
+
+          // 3. Caption routing for direct-preview platforms (LinkedIn, FB, X, Threads, Bluesky, YouTube, Reddit, Discord, Telegram)
+          let nextCaption = it.caption;
+          const captionTargets = targetIds.filter((p) =>
+            ["linkedin", "facebook", "twitter", "threads", "bluesky", "youtube", "reddit", "discord", "telegram"].includes(p)
+          );
+
+          if (captionTargets.length > 0) {
+            if (!nextCaption.includes(cleanUrl)) {
+              nextCaption = nextCaption.trim() ? `${nextCaption.trim()}\n\n${cleanUrl}` : cleanUrl;
+            }
+          }
+
+          // 4. Per-platform captions if customized or for Instagram CTA
+          const currentPlatformCaps = { ...(it.captionByPlatform ?? {}) };
+          for (const pid of targetIds) {
+            if (pid === "instagram" && options.instagramCta) {
+              const currentIgCap = currentPlatformCaps.instagram ?? it.caption;
+              if (!currentIgCap.includes(igCta)) {
+                currentPlatformCaps.instagram = currentIgCap.trim() ? `${currentIgCap.trim()}\n\n${igCta}` : igCta;
+              }
+            } else if (captionTargets.includes(pid)) {
+              if (currentPlatformCaps[pid] && !currentPlatformCaps[pid].includes(cleanUrl)) {
+                currentPlatformCaps[pid] = `${currentPlatformCaps[pid].trim()}\n\n${cleanUrl}`;
+              }
+            }
+          }
+
+          return {
+            ...it,
+            caption: nextCaption,
+            firstComment: nextFirstComment,
+            captionByPlatform: currentPlatformCaps,
+            advancedByPlatform: updatedAdv as BulkItem["advancedByPlatform"],
+          } as BulkItem;
+        })
+      );
+
+      toast({
+        title: "Smart Link applied to all posts",
+        description: `Auto-routed across ${items.length} post(s) (First Comment for IG, Destination Pin for Pinterest, and Captions for LinkedIn/FB/X)`,
+        tone: "success",
+      });
+    },
+    [items, toast]
+  );
+
   function updateAdvanced(id: string, platform: PlatformId, next: PlatformAdvancedOptions) {
     setItems((prev) =>
       prev.map((it) => {
@@ -3405,6 +3481,7 @@ export default function BulkSchedulePage() {
               batchAdvancedByPlatform={batchAdvancedByPlatform}
               onApplyBatchAdvanced={applyBatchAdvanced}
               onApplyPinterestBoardToAll={applyPinterestBoardToAll}
+              onApplySmartLinkToAll={applySmartLinkToAll}
               contentType={contentType}
               destinationOptions={destinationOptions}
               aiGeneratingItemId={aiGeneratingItemId}
@@ -3880,6 +3957,7 @@ interface PostsListProps {
   batchAdvancedByPlatform: Partial<Record<PlatformId, PlatformAdvancedOptions>>;
   onApplyBatchAdvanced: (platform: PlatformId, options: PlatformAdvancedOptions) => void;
   onApplyPinterestBoardToAll: (boardId: string) => void;
+  onApplySmartLinkToAll: (url: string, options: { instagramCta: boolean; customCtaText?: string }) => void;
   contentType: BulkContentType;
   destinationOptions: { boards: Array<{ value: string; label: string }>; pages: Array<{ value: string; label: string }> };
   aiGeneratingItemId: string | null;
@@ -3915,6 +3993,7 @@ function PostsList({
   batchAdvancedByPlatform,
   onApplyBatchAdvanced,
   onApplyPinterestBoardToAll,
+  onApplySmartLinkToAll,
   contentType,
   destinationOptions,
   aiGeneratingItemId,
@@ -3935,6 +4014,23 @@ function PostsList({
   const [showTagUsersInput, setShowTagUsersInput] = useState(false);
   const [showBatchAdvanced, setShowBatchAdvanced] = useState(false);
   const [selectedPlatformTab, setSelectedPlatformTab] = useState<PlatformId | null>(null);
+
+  // Smart Link Popover State
+  const [showSmartLinkPopover, setShowSmartLinkPopover] = useState(false);
+  const [smartLinkUrl, setSmartLinkUrl] = useState("");
+  const [smartLinkIgCta, setSmartLinkIgCta] = useState(true);
+  const smartLinkRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showSmartLinkPopover) return;
+    function onClick(e: MouseEvent) {
+      if (smartLinkRef.current && !smartLinkRef.current.contains(e.target as Node)) {
+        setShowSmartLinkPopover(false);
+      }
+    }
+    window.addEventListener("mousedown", onClick);
+    return () => window.removeEventListener("mousedown", onClick);
+  }, [showSmartLinkPopover]);
 
   const activePlatformIds = useMemo(() => {
     const set = new Set<PlatformId>();
@@ -4005,6 +4101,147 @@ function PostsList({
             size="sm"
             className="rounded-full font-bold shadow-sm"
           />
+
+          {/* Smart Link Tool with Interactive Routing Matrix Popover */}
+          <div className="relative" ref={smartLinkRef}>
+            <button
+              type="button"
+              onClick={() => setShowSmartLinkPopover((v) => !v)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full border px-3 h-8 text-xs font-bold shadow-sm transition-all cursor-pointer",
+                showSmartLinkPopover
+                  ? "bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-600/20"
+                  : "border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50"
+              )}
+            >
+              <Link2 className={cn("size-3.5", showSmartLinkPopover ? "text-white" : "text-blue-600")} />
+              <span>Smart Link</span>
+              <ChevronDown className={cn("size-3 opacity-60 transition-transform", showSmartLinkPopover && "rotate-180")} />
+            </button>
+
+            {showSmartLinkPopover && (
+              <div className="absolute right-0 sm:right-auto sm:left-0 top-full mt-2 z-40 w-[340px] sm:w-[410px] rounded-2xl border border-zinc-200 bg-white p-4 shadow-2xl space-y-3.5 animate-in fade-in zoom-in-95 duration-100">
+                <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
+                  <div className="flex items-center gap-2">
+                    <div className="size-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                      <Link2 className="size-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-zinc-900 leading-tight">Smart Multi-Platform Link</h4>
+                      <p className="text-[10px] text-zinc-500">Auto-routes URLs to optimal network placements</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowSmartLinkPopover(false)}
+                    className="size-6 inline-flex items-center justify-center rounded-full text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-zinc-700 block mb-1">
+                    Destination URL <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="url"
+                    value={smartLinkUrl}
+                    onChange={(e) => setSmartLinkUrl(e.target.value)}
+                    placeholder="https://example.com/your-product"
+                    className="w-full h-9 rounded-xl border border-zinc-200 bg-zinc-50/50 px-3 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:bg-white focus:border-blue-500"
+                  />
+                </div>
+
+                {/* Live Multi-Platform Routing Matrix */}
+                <div className="rounded-xl border border-zinc-100 bg-zinc-50/70 p-2.5 space-y-2">
+                  <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-wider block">
+                    Auto-Routing Strategy
+                  </span>
+                  <div className="grid grid-cols-1 gap-1.5 text-[11px]">
+                    <div className="flex items-center justify-between p-1.5 rounded-lg bg-white border border-zinc-200/70">
+                      <span className="flex items-center gap-1.5 font-medium text-zinc-800">
+                        <ProPlatformIcon platform="instagram" size={14} /> Instagram
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 border border-pink-200">
+                        💬 First Comment
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-1.5 rounded-lg bg-white border border-zinc-200/70">
+                      <span className="flex items-center gap-1.5 font-medium text-zinc-800">
+                        <ProPlatformIcon platform="pinterest" size={14} /> Pinterest
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
+                        📌 Destination Pin Link
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-1.5 rounded-lg bg-white border border-zinc-200/70">
+                      <span className="flex items-center gap-1.5 font-medium text-zinc-800">
+                        <div className="flex items-center gap-0.5">
+                          <ProPlatformIcon platform="linkedin" size={13} />
+                          <ProPlatformIcon platform="facebook" size={13} />
+                          <ProPlatformIcon platform="twitter" size={13} />
+                          <ProPlatformIcon platform="threads" size={13} />
+                          <ProPlatformIcon platform="youtube" size={13} />
+                          <ProPlatformIcon platform="bluesky" size={13} />
+                        </div>
+                        <span className="text-[10px] text-zinc-500 font-normal">Direct</span>
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                        📝 Caption (Rich Preview)
+                      </span>
+                    </div>
+                    {activePlatformIds.includes("tiktok") && (
+                      <div className="flex items-center justify-between p-1.5 rounded-lg bg-white/70 border border-zinc-200/50 opacity-80">
+                        <span className="flex items-center gap-1.5 font-medium text-zinc-600">
+                          <ProPlatformIcon platform="tiktok" size={14} /> TikTok
+                        </span>
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600">
+                          Bio link recommended
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Instagram CTA toggle */}
+                <label className="flex items-center gap-2.5 p-2 rounded-xl bg-purple-50/60 border border-purple-100 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={smartLinkIgCta}
+                    onChange={(e) => setSmartLinkIgCta(e.target.checked)}
+                    className="size-4 text-purple-600 rounded"
+                  />
+                  <div className="text-left">
+                    <span className="text-[11px] font-bold text-purple-950 block">Append CTA to Instagram captions</span>
+                    <span className="text-[10px] text-purple-700">&quot;👇 Link in the comments below!&quot;</span>
+                  </div>
+                </label>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={!smartLinkUrl.trim()}
+                    onClick={() => {
+                      onApplySmartLinkToAll(smartLinkUrl.trim(), { instagramCta: smartLinkIgCta });
+                      setShowSmartLinkPopover(false);
+                    }}
+                    className="flex-1 h-9 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs shadow-sm transition-all"
+                  >
+                    Apply Smart Link to All ({items.length}) Posts
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowSmartLinkPopover(false)}
+                    className="h-9 px-3 rounded-xl border border-zinc-200 text-zinc-600 text-xs font-semibold hover:bg-zinc-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <button
             type="button"
             onClick={() => setShowFirstCommentInput((v) => !v)}
