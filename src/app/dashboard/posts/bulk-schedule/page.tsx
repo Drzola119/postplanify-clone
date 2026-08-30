@@ -53,7 +53,7 @@ import { zonedDateTimeToDate } from "@/lib/datetime/zoned";
 import { AdvancedOptionsPanel } from "@/components/dashboard/advanced-options-panel";
 import { RequirementsPanel } from "@/components/dashboard/requirements-panel";
 import { AICaptionsDialog } from "@/components/dashboard/ai-captions-dialog";
-import { fitCaptionForPlatform } from "@/lib/ai/caption-fit";
+import { fitCaptionForPlatform, PLATFORM_LIMITS, getPlatformLimit } from "@/lib/ai/caption-fit";
 import { UnsplashDialog } from "@/components/dashboard/unsplash-dialog";
 import { CanvaDialog, type ImportedFile } from "@/components/dashboard/canva-dialog";
 import { GoogleDriveDialog } from "@/components/dashboard/google-drive-dialog";
