@@ -11,6 +11,7 @@ import {
   PlaySquare,
   Smartphone,
   Video,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BulkContentType, CarouselMediaMode } from "@/lib/bulk-schedule/content-types";
@@ -26,6 +27,7 @@ const CONTENT_TYPES: Array<{
   { id: "long_video", label: "Long video", hint: "Standard video", icon: <Video className="size-4" /> },
   { id: "short_video", label: "Shorts & Reels", hint: "Short-form video", icon: <PlaySquare className="size-4" /> },
   { id: "story", label: "Stories", hint: "Instagram · Facebook", icon: <Smartphone className="size-4" /> },
+  { id: "trial_reel", label: "Trial Reel", hint: "Instagram", icon: <Zap className="size-4 text-amber-500" /> },
   { id: "carousel", label: "Carousel", hint: "2+ media items", icon: <GalleryHorizontal className="size-4" /> },
   { id: "document", label: "Document", hint: "LinkedIn", icon: <FileText className="size-4" /> },
   { id: "community", label: "X Community", hint: "Community ID required", icon: <MessageCircleMore className="size-4" /> },
@@ -62,7 +64,7 @@ export function BulkContentTypeSelector({
         </span>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2" role="radiogroup" aria-label="Content type">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 xl:grid-cols-9 gap-2" role="radiogroup" aria-label="Content type">
         {CONTENT_TYPES.map((option) => {
           const active = value === option.id;
           return (

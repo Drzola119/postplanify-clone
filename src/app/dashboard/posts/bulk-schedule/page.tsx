@@ -197,12 +197,13 @@ const POST_TYPE_ALLOWED_PLATFORMS: Record<ComposerMode, PlatformId[] | null> = {
 function composerModeForContentType(type: BulkContentType): ComposerMode {
   if (type === "carousel") return "carousel";
   if (type === "document") return "document";
+  if (type === "trial_reel") return "trial_reel";
   return "standard";
 }
 
 function bulkAcceptForContentType(type: BulkContentType, carouselMode: CarouselMediaMode): string {
   if (type === "document") return [...ACCEPTED_DOCUMENT_EXTS, ...ACCEPTED_DOCUMENT_MIMES].join(",");
-  if (type === "long_video" || type === "short_video") return "video/mp4,video/quicktime,video/webm";
+  if (type === "long_video" || type === "short_video" || type === "trial_reel") return "video/mp4,video/quicktime,video/webm";
   if (type === "image") return "image/jpeg,image/png,image/webp,image/gif";
   if (type === "carousel") {
     if (carouselMode === "images") return "image/jpeg,image/png,image/webp,image/gif";
@@ -214,7 +215,7 @@ function bulkAcceptForContentType(type: BulkContentType, carouselMode: CarouselM
 function contentTypeForLegacyMode(mode: ComposerMode): BulkContentType {
   if (mode === "carousel") return "carousel";
   if (mode === "document") return "document";
-  if (mode === "trial_reel") return "short_video";
+  if (mode === "trial_reel") return "trial_reel";
   return "image";
 }
 
@@ -500,7 +501,7 @@ function validateItems(items: BulkItem[]): ValidationIssue[] {
           .join(", ");
         issues.push({
           itemId: it.id,
-          message: `${content === "community" ? "X Community" : content === "story" ? "Stories" : content === "short_video" ? "Shorts & Reels" : content === "long_video" ? "Long video" : pt === "carousel" ? "This carousel format" : pt === "trial_reel" ? "Trial Reel" : "Document"} is not supported on ${disallowedNames}`,
+          message: `${content === "community" ? "X Community" : content === "story" ? "Stories" : content === "short_video" ? "Shorts & Reels" : content === "long_video" ? "Long video" : content === "trial_reel" || pt === "trial_reel" ? "Trial Reel" : pt === "carousel" ? "This carousel format" : "Document"} is not supported on ${disallowedNames}`,
         });
       }
     }
@@ -513,8 +514,8 @@ function validateItems(items: BulkItem[]): ValidationIssue[] {
     if (content === "image" && it.kind !== "image") {
       issues.push({ itemId: it.id, message: "Image post requires an image" });
     }
-    if ((content === "long_video" || content === "short_video") && it.kind !== "video") {
-      issues.push({ itemId: it.id, message: `${content === "short_video" ? "Shorts & Reels" : "Long video"} requires a video` });
+    if ((content === "long_video" || content === "short_video" || content === "trial_reel") && it.kind !== "video") {
+      issues.push({ itemId: it.id, message: `${content === "trial_reel" ? "Trial Reel" : content === "short_video" ? "Shorts & Reels" : "Long video"} requires a video` });
     }
     if (pt === "carousel") {
       const slides = (it as BulkItemBase).carouselSlides ?? [];
@@ -953,6 +954,12 @@ export default function BulkSchedulePage() {
         } else if (contentType === "story") {
           advanced.instagram = { ...(advanced.instagram ?? {}), instagram_media_type: "STORIES" };
           advanced.facebook = { ...(advanced.facebook ?? {}), facebook_media_type: "STORIES" };
+        } else if (contentType === "trial_reel") {
+          advanced.instagram = {
+            ...(advanced.instagram ?? {}),
+            instagram_media_type: "REELS",
+            instagram_share_mode: base.trialMode ?? "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED",
+          };
         } else if (contentType === "community") {
           advanced.twitter = {
             ...(advanced.twitter ?? {}),
@@ -1771,9 +1778,9 @@ export default function BulkSchedulePage() {
           skipped.push(`${file.name} (Document needs PDF/DOC/PPT/TXT — got ${file.type || ext})`);
           continue;
         }
-      } else if (contentType === "long_video" || contentType === "short_video") {
+      } else if (contentType === "long_video" || contentType === "short_video" || contentType === "trial_reel") {
         if (!isVideo) {
-          skipped.push(`${file.name} (${contentType === "short_video" ? "Shorts & Reels" : "Long video"} needs video — got ${file.type || ext})`);
+          skipped.push(`${file.name} (${contentType === "trial_reel" ? "Trial Reel" : contentType === "short_video" ? "Shorts & Reels" : "Long video"} needs video — got ${file.type || ext})`);
           continue;
         }
       } else if (contentType === "carousel") {
@@ -1839,6 +1846,8 @@ export default function BulkSchedulePage() {
           toast({ title: "Carousel platforms auto-selected", description: `Compatible platforms selected for ${carouselMediaMode}.`, tone: "info" });
         } else if (contentType === "document") {
           toast({ title: "Document → LinkedIn auto-selected", description: "LinkedIn selected for Document (LinkedIn only).", tone: "info" });
+        } else if (contentType === "trial_reel") {
+          toast({ title: "Trial Reel → Instagram auto-selected", description: "Instagram selected for Trial Reel (Instagram only).", tone: "info" });
         } else {
           toast({ title: `Auto-selected ${filteredAccounts.length} compatible platform(s)`, tone: "info" });
         }
@@ -1867,6 +1876,14 @@ export default function BulkSchedulePage() {
       if (contentType === "document") {
         baseExtra.documentTitle = file.name.replace(/\.[^.]+$/, "");
         (baseExtra as BulkItemBase).documentPageCount = null;
+      }
+      if (contentType === "trial_reel") {
+        baseExtra.trialMode = "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED";
+        adv.instagram = {
+          ...(adv.instagram ?? {}),
+          instagram_media_type: "REELS",
+          instagram_share_mode: "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED",
+        };
       }
       if (contentType === "short_video") {
         adv.instagram = { ...(adv.instagram ?? {}), instagram_media_type: "REELS" };

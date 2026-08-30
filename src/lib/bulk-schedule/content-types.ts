@@ -6,6 +6,7 @@ export type BulkContentType =
   | "long_video"
   | "short_video"
   | "story"
+  | "trial_reel"
   | "carousel"
   | "document"
   | "community";
@@ -76,6 +77,7 @@ export const BULK_CONTENT_PLATFORM_MAP: Record<Exclude<BulkContentType, "carouse
   long_video: LONG_VIDEO_PLATFORMS,
   short_video: SHORT_VIDEO_PLATFORMS,
   story: STORY_PLATFORMS,
+  trial_reel: ["instagram"],
   document: ["linkedin"],
   community: ["twitter"],
 };
@@ -96,7 +98,7 @@ export function acceptsMediaKind(
 ): boolean {
   if (contentType === "text" || contentType === "community") return false;
   if (contentType === "image") return kind === "image";
-  if (contentType === "long_video" || contentType === "short_video") return kind === "video";
+  if (contentType === "long_video" || contentType === "short_video" || contentType === "trial_reel") return kind === "video";
   if (contentType === "story") return kind === "image" || kind === "video";
   if (contentType === "document") return kind === "document";
   if (carouselMode === "images") return kind === "image";
@@ -119,6 +121,9 @@ export function normalizeBulkContentType(value: string): BulkContentType | null 
     short_video: "short_video",
     story: "story",
     stories: "story",
+    trial_reel: "trial_reel",
+    trial_reels: "trial_reel",
+    trial: "trial_reel",
     carousel: "carousel",
     document: "document",
     community: "community",
