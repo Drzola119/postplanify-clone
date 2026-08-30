@@ -1291,9 +1291,14 @@ export default function BulkSchedulePage() {
 
   async function handleScheduleAll() {
     if (items.length === 0 || scheduleBusy) return;
-    const issues = validateItems(items);
-    if (issues.length > 0) {
-      const grouped = issues.reduce((acc, cur) => {
+    // Ecosystem-aware: only schedule items that are fully ready (like single-post does), keep blocked for later.
+    const allIssues = validateItems(items);
+    const blockedIds = new Set(allIssues.map((i) => i.itemId));
+    const readyPool = items.filter((it) => !blockedIds.has(it.id));
+    const blockedCountLocal = items.length - readyPool.length;
+
+    if (readyPool.length === 0) {
+      const grouped = allIssues.reduce((acc, cur) => {
         acc[cur.message] = (acc[cur.message] ?? 0) + 1;
         return acc;
       }, {} as Record<string, number>);
@@ -1302,13 +1307,28 @@ export default function BulkSchedulePage() {
         .slice(0, 3)
         .join("; ");
       toast({
-        title: "Can't schedule yet",
-        description: `${issues.length} issue(s): ${summary}`,
+        title: allIssues.length > 0 ? "Nothing ready to schedule" : "Can't schedule yet",
+        description: allIssues.length > 0 ? `${allIssues.length} issue(s): ${summary}. Fix the blocked posts (red badges) or remove them.` : `Fix ${blockedCountLocal} blocked post(s) first.`,
         tone: "error",
       });
       return;
     }
-    const readyItems = items.slice(0, MAX_BULK_PAYLOAD_FILES);
+    // If some are blocked, let the user know we'll schedule only the ready ones (parity with per-item scheduling)
+    if (blockedCountLocal > 0) {
+      toast({
+        title: `Scheduling ${readyPool.length} ready post(s) — ${blockedCountLocal} blocked will stay`,
+        description: "Blocked posts remain in bulk so you can fix them. Check red badges for details.",
+        tone: "warning",
+      });
+    }
+    const readyItems = readyPool.slice(0, MAX_BULK_PAYLOAD_FILES);
+    if (readyPool.length > MAX_BULK_PAYLOAD_FILES) {
+      toast({
+        title: `Scheduling first ${MAX_BULK_PAYLOAD_FILES} of ${readyPool.length} ready posts`,
+        description: `API limit is ${MAX_BULK_PAYLOAD_FILES} per batch. Remaining ready posts stay in bulk.`,
+        tone: "info",
+      });
+    }
     setScheduleBusy(true);
     const idempotencyKey = crypto.randomUUID();
     try {
@@ -1341,6 +1361,15 @@ export default function BulkSchedulePage() {
             extra.documentTitle = title;
           } else {
             mediaUrls = it.url ? [it.url] : [];
+          }
+          // Parity with create-post: translate postIn story to per-platform advanced (so worker publishes to Stories)
+          if (base.postIn === "story") {
+            if (it.accountIds.includes("instagram")) {
+              adv = { ...adv, instagram: { ...(adv.instagram ?? {}), instagram_media_type: "STORIES" } };
+            }
+            if (it.accountIds.includes("facebook")) {
+              adv = { ...adv, facebook: { ...(adv.facebook ?? {}), facebook_media_type: "STORIES" } };
+            }
           }
           return {
             caption: it.caption,
@@ -1384,20 +1413,38 @@ export default function BulkSchedulePage() {
       }
       const data = (await res.json()) as { count?: number; ids?: string[]; ok?: boolean };
       const n = data.count ?? readyItems.length;
+      const scheduledIds = new Set(readyItems.map((it) => it.id));
       setItems((prev) => {
+        const remaining = prev.filter((it) => !scheduledIds.has(it.id));
+        // Revoke only the scheduled ones that are leaving the UI
         for (const it of prev) {
-          if (it.source === "upload") {
+          if (scheduledIds.has(it.id) && it.source === "upload") {
             try { URL.revokeObjectURL(it.previewUrl); } catch {}
+            // Also revoke carousel slide blobs for this item
+            const base = it as BulkItemBase;
+            if (base.carouselSlides) {
+              for (const slide of base.carouselSlides) {
+                if (slide.previewUrl?.startsWith("blob:")) { try { URL.revokeObjectURL(slide.previewUrl); } catch {} }
+              }
+            }
           }
         }
-        return [];
+        return remaining;
       });
-      setUndoStack((prev) => {
-        for (const e of prev) if (e.item.source === "upload") { try { URL.revokeObjectURL((e.item as UploadedBulkItem).previewUrl); } catch {} }
-        return [];
-      });
-      toast({ title: t("posts.bulkSchedule.scheduled_n", { n }), tone: "success" });
-      clearPersistedDraft();
+      setUndoStack((prev) => prev.filter((e) => !scheduledIds.has(e.item.id)));
+      // Ecosystem linking: toast with deep links like single-post does, keep user in flow without losing context
+      const remainingCount = items.length - n;
+      if (remainingCount > 0) {
+        toast({
+          title: t("posts.bulkSchedule.scheduled_n", { n }),
+          description: `${remainingCount} post(s) remain in bulk (blocked or over batch limit). View scheduled in Queue & Calendar.`,
+          tone: "success",
+        });
+      } else {
+        toast({ title: t("posts.bulkSchedule.scheduled_n", { n }), description: "All posts scheduled — check Queue and Calendar.", tone: "success" });
+      }
+      // Only clear persisted draft when bulk is fully empty (all scheduled)
+      if (remainingCount === 0) clearPersistedDraft();
     } catch (e) {
       toast({
         title: t("posts.bulkSchedule.bulk_failed"),
@@ -1869,6 +1916,10 @@ export default function BulkSchedulePage() {
         extraT.documentTitle = titleT;
       } else {
         mediaUrlsT = target.url ? [target.url] : [];
+      }
+      if (baseT.postIn === "story") {
+        if (target.accountIds.includes("instagram")) advT = { ...advT, instagram: { ...(advT.instagram ?? {}), instagram_media_type: "STORIES" } };
+        if (target.accountIds.includes("facebook")) advT = { ...advT, facebook: { ...(advT.facebook ?? {}), facebook_media_type: "STORIES" } };
       }
       const payload = {
         items: [
@@ -2402,7 +2453,7 @@ export default function BulkSchedulePage() {
 
   return (
     <div className="min-h-0 flex-1 bg-[#fcfcfc] dark:bg-zinc-950">
-      <div className="max-w-[1600px] mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 space-y-4">
+      <div className={cn("max-w-[1600px] mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 space-y-4", items.length > 0 && "pb-24")}>
         {/* ── Pro Header — linked to ecosystem ── */}
         <div className="flex flex-col gap-3">
           <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
@@ -3018,12 +3069,17 @@ export default function BulkSchedulePage() {
               <button
                 type="button"
                 onClick={handleScheduleAll}
-                disabled={scheduleBusy || blockedCount > 0}
+                disabled={scheduleBusy || readyCount === 0}
+                title={readyCount === 0 && blockedCount > 0 ? "Fix blocked posts (see red badges) to enable scheduling" : undefined}
                 className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-5 h-10 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
                 <Calendar className="size-4" />
-                {scheduleBusy ? t("posts.bulkSchedule.scheduling") : t("posts.bulkSchedule.schedule_all")}
-                <span className="hidden sm:inline-flex items-center justify-center min-w-5 h-5 rounded-full bg-white/20 text-[11px] px-1.5">{items.length}</span>
+                {scheduleBusy
+                  ? t("posts.bulkSchedule.scheduling")
+                  : readyCount > 0 && blockedCount > 0
+                    ? `Schedule ${readyCount} ready`
+                    : t("posts.bulkSchedule.schedule_all")}
+                <span className="hidden sm:inline-flex items-center justify-center min-w-5 h-5 rounded-full bg-white/20 text-[11px] px-1.5">{readyCount > 0 && blockedCount > 0 ? `${readyCount}/${items.length}` : items.length}</span>
               </button>
             </div>
           </div>
