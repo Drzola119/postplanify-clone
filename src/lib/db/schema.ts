@@ -9,13 +9,19 @@ import "server-only";
  * per-collection modules.
  */
 
-export type PostStatus = "draft" | "queued" | "scheduled" | "publishing" | "published" | "partially_published" | "failed" | "archived" | "paused";
+export type PostStatus =
+  | "draft"
+  | "queued"
+  | "scheduled"
+  | "publishing"
+  | "published"
+  | "partially_published"
+  | "failed"
+  | "archived"
+  | "paused";
+
 /**
- * Platform identifiers used throughout trustiify. Includes the 9 most
- * common platforms surfaced in the composer UI plus 3 extras (discord,
- * telegram, google_business) supported via upload-post.com. Engine uses
- * "x" instead of "twitter"; trustiify PlatformId keeps "twitter" for
- * UI consistency. Engine-client translates at the boundary.
+ * Platform identifiers used throughout trustiify.
  */
 export type PlatformId =
   | "bluesky"
@@ -29,7 +35,8 @@ export type PlatformId =
   | "facebook"
   | "discord"
   | "telegram"
-  | "google_business";
+  | "google_business"
+  | "reddit";
 
 export type BoostStatus = "draft" | "active" | "completed" | "paused";
 

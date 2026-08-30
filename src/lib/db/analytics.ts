@@ -42,6 +42,10 @@ export async function getOverview(
     "linkedin",
     "threads",
     "facebook",
+    "discord",
+    "telegram",
+    "google_business",
+    "reddit",
   ];
 
   const byPlatform = await Promise.all(
