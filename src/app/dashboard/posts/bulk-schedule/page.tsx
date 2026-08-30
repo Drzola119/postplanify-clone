@@ -68,13 +68,29 @@ import { BrandIcons } from "@/components/dashboard/brand-icons";
 import { checkRequirements, type MediaMeta, type ReadinessReport } from "@/lib/publishing/requirements";
 import { getDefaultOptions, type PlatformAdvancedOptions } from "@/lib/publishing/advanced-options";
 import type { MediaKind } from "@/lib/publishing/capability-matrix";
+import { ComposerModeSelector, type ComposerMode } from "@/components/dashboard/composer-mode-selector";
+import type { TrialReelMode } from "@/components/dashboard/trial-reel-card";
 
 type BulkItemSource = "upload" | "csv";
+
+type BulkCarouselSlide = {
+  id: string;
+  file?: File;
+  previewUrl: string;
+  url: string;
+  kind: "image" | "video";
+  name: string;
+  size: number;
+  mimeType: string;
+  uploadStatus: "uploading" | "ready" | "error";
+  uploadError?: string;
+  storedPath?: string;
+};
 
 type BulkItemBase = {
   id: string;
   url: string;
-  kind: "image" | "video";
+  kind: "image" | "video" | "document";
   name: string;
   size: number;
   caption: string;
@@ -93,6 +109,15 @@ type BulkItemBase = {
   uploadStatus: "uploading" | "ready" | "error";
   uploadError?: string;
   uploadProgress?: number;
+  // ── Post Type (parity with Create Post) ──
+  postType: ComposerMode;
+  // Carousel — when postType === "carousel", holds the slides (2–10). `url`/`kind` mirror first slide for preview compat.
+  carouselSlides?: BulkCarouselSlide[];
+  // Trial Reel — when postType === "trial_reel"
+  trialMode?: TrialReelMode;
+  // Document — when postType === "document"
+  documentTitle?: string;
+  documentPageCount?: number | null;
   // ── Full-fidelity extensions (parity with Create Post) ──
   captionByPlatform?: Partial<Record<PlatformId, string>>;
   firstComment?: string;
@@ -133,6 +158,30 @@ const ACCEPTED_MIME_TYPES = [
   "video/quicktime",
   "video/webm",
 ] as const;
+
+const ACCEPTED_DOCUMENT_EXTS = [".pdf", ".doc", ".docx", ".ppt", ".pptx", ".txt"] as const;
+const ACCEPTED_DOCUMENT_MIMES = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+] as const;
+
+const POST_TYPE_ALLOWED_PLATFORMS: Record<ComposerMode, PlatformId[] | null> = {
+  standard: null, // no restriction (but image/video kind still filters video-only)
+  carousel: ["instagram", "facebook", "threads"],
+  trial_reel: ["instagram"],
+  document: ["linkedin"],
+};
+
+function bulkAcceptForMode(mode: ComposerMode): string {
+  if (mode === "document") return [...ACCEPTED_DOCUMENT_EXTS, ...ACCEPTED_DOCUMENT_MIMES].join(",");
+  if (mode === "trial_reel") return "video/mp4,video/quicktime,video/webm";
+  if (mode === "carousel") return "image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm";
+  return ACCEPTED_MIME_TYPES.join(",");
+}
 
 const TIMEZONES: Array<{ id: string; label: string }> = [
   { id: "Africa/Lagos", label: "Africa/Lagos" },
@@ -259,7 +308,20 @@ function pickCharLimitFor(item: BulkItem): number {
 }
 
 function getMediaKindForItem(item: BulkItem): MediaKind {
-  return item.kind === "video" ? "video" : "image";
+  const base = item as BulkItemBase;
+  const pt = (base.postType ?? "standard") as ComposerMode;
+  if (pt === "document") return "text";
+  if (pt === "carousel") {
+    const slides = base.carouselSlides;
+    if (!slides || slides.length === 0) return "image";
+    const hasVideo = slides.some((s) => s.kind === "video");
+    const allImages = slides.every((s) => s.kind === "image");
+    if (hasVideo && !allImages) return "video";
+    return hasVideo ? "video" : "image";
+  }
+  if (pt === "trial_reel") return "video";
+  // standard
+  return item.kind === "video" ? "video" : item.kind === "document" ? "text" : "image";
 }
 
 function isVideoOnlyPlatform(id: PlatformId): boolean {
@@ -271,16 +333,52 @@ function filterAccountsForKind(kind: BulkItem["kind"], ids: PlatformId[]): Platf
   return ids;
 }
 
+function allowedPlatformsForPostType(postType: ComposerMode): PlatformId[] | null {
+  return POST_TYPE_ALLOWED_PLATFORMS[postType] ?? null;
+}
+
+function filterAccountsForPostType(postType: ComposerMode, ids: PlatformId[]): PlatformId[] {
+  const allowed = allowedPlatformsForPostType(postType);
+  if (!allowed) return ids;
+  const set = new Set<string>(allowed);
+  return ids.filter((id) => set.has(id));
+}
+
+function filterAccountsForItem(item: BulkItemBase, ids: PlatformId[]): PlatformId[] {
+  let filtered = filterAccountsForKind(item.kind as BulkItem["kind"], ids);
+  filtered = filterAccountsForPostType((item.postType ?? "standard") as ComposerMode, filtered);
+  return filtered;
+}
+
 function buildReadinessForItem(item: BulkItem) {
+  const base = item as BulkItemBase;
+  const postType = (base.postType ?? "standard") as ComposerMode;
   const mediaKind = getMediaKindForItem(item);
-  const fakeMime = item.kind === "video" ? "video/mp4" : "image/jpeg";
-  const media: MediaMeta[] = [
-    {
-      kind: mediaKind,
-      mimeType: fakeMime,
-      sizeBytes: item.size || 1024 * 500,
-    },
-  ];
+  let media: MediaMeta[] = [];
+
+  if (postType === "document") {
+    media = [];
+  } else if (postType === "carousel") {
+    const slides = base.carouselSlides ?? [];
+    if (slides.length > 0) {
+      media = slides.map((s) => ({
+        kind: (s.kind === "video" ? "video" : "image") as MediaKind,
+        mimeType: s.mimeType ?? (s.kind === "video" ? "video/mp4" : "image/jpeg"),
+        sizeBytes: s.size || 1024 * 500,
+      }));
+    } else {
+      // Fallback single preview (standard compat)
+      const fakeMime = item.kind === "video" ? "video/mp4" : "image/jpeg";
+      media = [{ kind: mediaKind, mimeType: fakeMime, sizeBytes: item.size || 1024 * 500 }];
+    }
+  } else if (postType === "trial_reel") {
+    const fakeMime = "video/mp4";
+    media = [{ kind: "video" as MediaKind, mimeType: fakeMime, sizeBytes: item.size || 1024 * 500 }];
+  } else {
+    const fakeMime = item.kind === "video" ? "video/mp4" : "image/jpeg";
+    media = [{ kind: mediaKind, mimeType: fakeMime, sizeBytes: item.size || 1024 * 500 }];
+  }
+
   const captionByPlatform: Partial<Record<PlatformId, string>> = {};
   for (const pid of item.accountIds) {
     captionByPlatform[pid] = item.captionByPlatform?.[pid] ?? item.caption;
@@ -339,12 +437,85 @@ function validateItems(items: BulkItem[]): ValidationIssue[] {
     if (it.accountIds.length === 0) {
       issues.push({ itemId: it.id, message: "No platforms selected" });
     }
-    // Fallback simple checks for upload status & time
-    if (it.source === "upload" && it.uploadStatus !== "ready") {
-      issues.push({ itemId: it.id, message: "Still uploading to CDN" });
+    // ── Post Type specific validations ──
+    const pt = ((it as BulkItemBase).postType ?? "standard") as ComposerMode;
+    const allowed = allowedPlatformsForPostType(pt);
+    if (allowed) {
+      const hasDisallowed = it.accountIds.some((id) => !allowed.includes(id));
+      if (hasDisallowed) {
+        issues.push({ itemId: it.id, message: `${pt === "carousel" ? "Carousel" : pt === "trial_reel" ? "Trial Reel" : "Document"} only supports ${allowed.join(", ")}` });
+      }
     }
-    if (it.source === "upload" && !it.url.startsWith("https://")) {
-      issues.push({ itemId: it.id, message: "Media not on CDN" });
+    if (pt === "carousel") {
+      const slides = (it as BulkItemBase).carouselSlides ?? [];
+      // If no carouselSlides yet (migrated old item), fallback to single url as 1 slide → still blocked until 2
+      const effectiveCount = slides.length > 0 ? slides.length : 1;
+      if (effectiveCount < 2) {
+        issues.push({ itemId: it.id, message: "Carousel needs at least 2 slides" });
+      }
+      if (effectiveCount > 10) {
+        issues.push({ itemId: it.id, message: "Carousel supports at most 10 slides" });
+      }
+      for (const s of slides) {
+        if (s.uploadStatus !== "ready") {
+          issues.push({ itemId: it.id, message: `Carousel slide "${s.name}" still uploading` });
+          break;
+        }
+        if (!s.url.startsWith("https://")) {
+          issues.push({ itemId: it.id, message: `Carousel slide "${s.name}" not on CDN` });
+          break;
+        }
+      }
+      // Even when using legacy single-url carousel, ensure that url is CDN ready
+      if (slides.length === 0) {
+        if (it.source === "upload" && it.uploadStatus !== "ready") {
+          // already pushed below but avoid double
+        } else if (it.source === "upload" && !it.url.startsWith("https://")) {
+          // already
+        }
+      }
+    } else if (pt === "trial_reel") {
+      const base = it as BulkItemBase;
+      if (base.kind !== "video" && base.carouselSlides?.every((s) => s.kind !== "video")) {
+        // standard trial reel should be video
+        if ((it as BulkItemBase).kind !== "video") {
+          issues.push({ itemId: it.id, message: "Trial Reel requires a video" });
+        }
+      }
+      if (it.source === "upload" && it.uploadStatus !== "ready") {
+        // handled below generically, but also ensure trial specific
+      }
+    } else if (pt === "document") {
+      const base = it as BulkItemBase;
+      if (!base.documentTitle?.trim()) {
+        issues.push({ itemId: it.id, message: "Document title is required (LinkedIn)" });
+      }
+      if (it.source === "upload" && base.kind !== "document") {
+        // For document post, the file is stored as the main BulkItem file but kind should be document
+        // Accept if mime is pdf/doc etc; otherwise flag
+        const isDocMime = (base as unknown as { documentMime?: string }).documentMime;
+        // no extra check — kind guard is enough; readiness will also block
+      }
+      // documentPageCount >300 already flagged in readiness via media? But we also surface here
+      if (base.documentPageCount && base.documentPageCount > 300) {
+        issues.push({ itemId: it.id, message: `Document has ~${base.documentPageCount} pages — LinkedIn max 300` });
+      }
+    }
+    // Fallback simple checks for upload status & time (skip for carousel/document which handled per-slide)
+    if (pt !== "carousel" && pt !== "document") {
+      if (it.source === "upload" && it.uploadStatus !== "ready") {
+        issues.push({ itemId: it.id, message: "Still uploading to CDN" });
+      }
+      if (it.source === "upload" && !it.url.startsWith("https://")) {
+        issues.push({ itemId: it.id, message: "Media not on CDN" });
+      }
+    } else if (pt === "document") {
+      if (it.source === "upload" && it.uploadStatus !== "ready") {
+        issues.push({ itemId: it.id, message: "Document still uploading" });
+      }
+      if (it.source === "upload" && !it.url.startsWith("https://")) {
+        issues.push({ itemId: it.id, message: "Document not on CDN" });
+      }
     }
     const scheduled = Date.parse(it.scheduledAt);
     if (Number.isNaN(scheduled)) {
@@ -374,6 +545,7 @@ interface PersistedDraft {
   postsPerDay: number;
   interval: string;
   timezone: string;
+  composerMode?: ComposerMode;
 }
 
 function loadPersistedDraft(): PersistedDraft | null {
@@ -416,6 +588,7 @@ export default function BulkSchedulePage() {
   const [timezone, setTimezone] = useState<string>("Africa/Lagos");
   const [tzOpen, setTzOpen] = useState(false);
   const [accounts, setAccounts] = useState<Set<PlatformId>>(new Set());
+  const [composerMode, setComposerMode] = useState<ComposerMode>("standard");
   const [dragging, setDragging] = useState(false);
   const [csvBusy, setCsvBusy] = useState(false);
   const [scheduleBusy, setScheduleBusy] = useState(false);
@@ -545,10 +718,12 @@ export default function BulkSchedulePage() {
     setInterval(persisted.interval);
     setTimezone(persisted.timezone);
     setAccounts(new Set(persisted.accounts));
+    if (persisted.composerMode) setComposerMode(persisted.composerMode);
     if (persisted.csvItems.length > 0) {
-      // Rehydrate with defaults for new fields
+      // Rehydrate with defaults for new fields (including postType for older drafts)
       const rehydrated = persisted.csvItems.map((it) => ({
         ...it,
+        postType: (it as unknown as { postType?: ComposerMode }).postType ?? persisted.composerMode ?? "standard",
         firstComment: (it as unknown as { firstComment?: string }).firstComment ?? "",
         tagUsers: (it as unknown as { tagUsers?: string }).tagUsers ?? "",
         altText: (it as unknown as { altText?: string }).altText ?? "",
@@ -569,8 +744,9 @@ export default function BulkSchedulePage() {
       postsPerDay,
       interval,
       timezone,
+      composerMode,
     });
-  }, [items, accounts, startDate, startTime, postsPerDay, interval, timezone]);
+  }, [items, accounts, startDate, startTime, postsPerDay, interval, timezone, composerMode]);
 
   // Close TZ dropdown on outside click + Escape.
   useEffect(() => {
@@ -652,6 +828,219 @@ export default function BulkSchedulePage() {
     });
   }, []);
 
+  const handleComposerModeChange = useCallback((next: ComposerMode) => {
+    setComposerMode(next);
+    // Filter global accounts to what the new mode allows; keep existing if it still fits.
+    setAccounts((prev) => {
+      const allowed = allowedPlatformsForPostType(next);
+      if (!allowed) return prev;
+      const filtered = Array.from(prev).filter((id) => allowed.includes(id));
+      // If filtering empties the set but there are connected platforms that fit, auto-select them (like Create Post)
+      if (filtered.length === 0 && allowed.length > 0) {
+        // keep empty to let user pick, but don't auto-fill from connected — user can use Select All
+      }
+      return new Set(filtered);
+    });
+  }, []);
+
+  function applyComposerModeToAll() {
+    if (items.length === 0) {
+      toast({ title: "No posts to update", tone: "warning" });
+      return;
+    }
+    setItems((prev) =>
+      prev.map((it) => {
+        const base = it as BulkItemBase;
+        const nextPostType = composerMode;
+        // Filter accounts per new mode
+        const filteredAccounts = filterAccountsForPostType(nextPostType, base.accountIds as PlatformId[]);
+        // Carry over carouselSlides/documentTitle when switching away? Clear mismatched fields to keep state clean.
+        const patch: Partial<BulkItemBase> = {
+          postType: nextPostType,
+          accountIds: filteredAccounts,
+        };
+        // Seed defaults for carousel/document when switching into them
+        if (nextPostType === "carousel" && !base.carouselSlides) {
+          // Preserve current single media as first slide if available
+          const firstSlide: BulkCarouselSlide | null =
+            base.url && base.url.startsWith("https://")
+              ? {
+                  id: `slide-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                  previewUrl: base.url,
+                  url: base.url,
+                  kind: base.kind === "video" ? "video" : "image",
+                  name: base.name,
+                  size: base.size,
+                  mimeType: base.kind === "video" ? "video/mp4" : "image/jpeg",
+                  uploadStatus: "ready" as const,
+                }
+              : null;
+          patch.carouselSlides = firstSlide ? [firstSlide] : [];
+        }
+        if (nextPostType === "document" && !base.documentTitle) {
+          patch.documentTitle = base.name.replace(/\.[^.]+$/, "");
+        }
+        if (nextPostType === "trial_reel" && !base.trialMode) {
+          patch.trialMode = "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED";
+        }
+        // Clear stale advanced that no longer applies (e.g. youtube for image-only, etc.) — keep generic
+        return { ...it, ...patch } as BulkItem;
+      })
+    );
+    toast({ title: `Applied ${composerMode} to all ${items.length} post(s)`, tone: "success" });
+  }
+
+  // ── Per-item Post Type handlers ──
+  const handleChangePostType = useCallback((itemId: string, nextMode: ComposerMode) => {
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.id !== itemId) return it;
+        const base = it as BulkItemBase;
+        const filteredAccounts = filterAccountsForPostType(nextMode, base.accountIds as PlatformId[]);
+        // Also filter out youtube for image kind when switching to standard image
+        let extraPatch: Partial<BulkItemBase> = { postType: nextMode, accountIds: filteredAccounts };
+        if (nextMode === "carousel" && !base.carouselSlides) {
+          const firstSlide: BulkCarouselSlide | null =
+            base.url && base.url.startsWith("https://")
+              ? { id: `slide-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, previewUrl: base.url, url: base.url, kind: base.kind === "video" ? "video" : "image", name: base.name, size: base.size, mimeType: base.kind === "video" ? "video/mp4" : "image/jpeg", uploadStatus: "ready" as const }
+              : null;
+          extraPatch.carouselSlides = firstSlide ? [firstSlide] : [];
+        }
+        if (nextMode === "document" && !base.documentTitle) extraPatch.documentTitle = base.name.replace(/\.[^.]+$/, "");
+        if (nextMode === "trial_reel" && !base.trialMode) extraPatch.trialMode = "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED";
+        // When moving away from carousel, keep url as first slide's url for preview compat
+        if (nextMode !== "carousel" && base.carouselSlides && base.carouselSlides.length > 0) {
+          const first = base.carouselSlides[0];
+          if (first) {
+            extraPatch.url = first.url;
+            extraPatch.kind = first.kind as BulkItemBase["kind"];
+          }
+        }
+        return { ...it, ...extraPatch } as BulkItem;
+      })
+    );
+  }, []);
+
+  const handleAddCarouselSlides = useCallback(async (itemId: string, files: File[]) => {
+    if (files.length === 0) return;
+    const target = items.find((i) => i.id === itemId) as BulkItemBase | undefined;
+    const existingCount = (target?.carouselSlides?.length ?? 0);
+    if (existingCount + files.length > 10) {
+      toast({ title: "Carousel max 10 slides", description: `You can add ${10 - existingCount} more slide(s).`, tone: "warning" });
+      files = files.slice(0, Math.max(0, 10 - existingCount));
+      if (files.length === 0) return;
+    }
+    const pendingSlides: BulkCarouselSlide[] = files.map((file) => {
+      const blob = URL.createObjectURL(file);
+      return {
+        id: `slide-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        file,
+        previewUrl: blob,
+        url: blob,
+        kind: file.type.startsWith("video/") ? "video" : "image",
+        name: file.name,
+        size: file.size,
+        mimeType: file.type || "image/jpeg",
+        uploadStatus: "uploading" as const,
+      };
+    });
+    // Optimistically add to UI
+    setItems((prev) => prev.map((it) => (it.id === itemId ? ({ ...it, carouselSlides: [...((it as BulkItemBase).carouselSlides ?? []), ...pendingSlides] } as BulkItem) : it)));
+    // Upload each slide
+    for (const slide of pendingSlides) {
+      if (!slide.file) continue;
+      const result = await uploadFile(slide.file);
+      setItems((prev) =>
+        prev.map((it) => {
+          if (it.id !== itemId) return it;
+          const base = it as BulkItemBase;
+          const updatedSlides = (base.carouselSlides ?? []).map((s) => (s.id === slide.id ? { ...s, url: result?.url ?? s.previewUrl, uploadStatus: (result ? "ready" : "error"), storedPath: result?.storedPath } : s));
+          // Keep top-level url in sync with first slide
+          const firstUrl = updatedSlides[0]?.url ?? base.url;
+          const firstKind = updatedSlides[0]?.kind ?? base.kind;
+          return { ...it, url: firstUrl, kind: firstKind as BulkItemBase["kind"], carouselSlides: updatedSlides } as BulkItem;
+        })
+      );
+    }
+  }, [items, toast]);
+
+  const handleRemoveCarouselSlide = useCallback((itemId: string, slideId: string) => {
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.id !== itemId) return it;
+        const base = it as BulkItemBase;
+        const nextSlides = (base.carouselSlides ?? []).filter((s) => s.id !== slideId);
+        // Revoke previewUrl for removed slide if it's a blob
+        const removed = (base.carouselSlides ?? []).find((s) => s.id === slideId);
+        if (removed?.previewUrl?.startsWith("blob:")) { try { URL.revokeObjectURL(removed.previewUrl); } catch {} }
+        const first = nextSlides[0];
+        return {
+          ...it,
+          carouselSlides: nextSlides,
+          url: first?.url ?? base.url,
+          kind: (first?.kind as BulkItemBase["kind"]) ?? base.kind,
+        } as BulkItem;
+      })
+    );
+  }, []);
+
+  const handleReorderCarousel = useCallback((itemId: string, from: number, to: number) => {
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.id !== itemId) return it;
+        const base = it as BulkItemBase;
+        const slides = [...(base.carouselSlides ?? [])];
+        if (from < 0 || from >= slides.length || to < 0 || to >= slides.length) return it;
+        const [moved] = slides.splice(from, 1);
+        slides.splice(to, 0, moved);
+        const first = slides[0];
+        return { ...it, carouselSlides: slides, url: first?.url ?? base.url, kind: (first?.kind as BulkItemBase["kind"]) ?? base.kind } as BulkItem;
+      })
+    );
+  }, []);
+
+  const handleDocumentTitleChange = useCallback((itemId: string, title: string) => {
+    setItems((prev) => prev.map((it) => (it.id === itemId ? ({ ...it, documentTitle: title } as BulkItem) : it)));
+  }, []);
+
+  const handleDocumentFile = useCallback(async (itemId: string, file: File) => {
+    const previewUrl = URL.createObjectURL(file);
+    setItems((prev) => prev.map((it) => (it.id === itemId ? ({ ...it, file, previewUrl, url: previewUrl, name: file.name, size: file.size, kind: "document" as BulkItemBase["kind"], uploadStatus: "uploading" as const, documentTitle: (it as BulkItemBase).documentTitle || file.name.replace(/\.[^.]+$/, "") } as BulkItem) : it)));
+    const result = await uploadFile(file);
+    setItems((prev) =>
+      prev.map((it) =>
+        it.id === itemId
+          ? ({
+              ...it,
+              url: result?.url ?? previewUrl,
+              storedPath: result?.storedPath,
+              uploadStatus: (result ? "ready" : "error"),
+              uploadError: result ? undefined : "CDN upload failed",
+            } as BulkItem)
+          : it
+      )
+    );
+  }, []);
+
+  const handleTrialModeChange = useCallback((itemId: string, mode: TrialReelMode) => {
+    setItems((prev) => prev.map((it) => (it.id === itemId ? ({ ...it, trialMode: mode } as BulkItem) : it)));
+  }, []);
+
+  const handleReplaceTrialVideo = useCallback(async (itemId: string, file: File) => {
+    if (!file.type.startsWith("video/")) {
+      toast({ title: "Trial Reel needs video", tone: "warning" });
+      return;
+    }
+    const previewUrl = URL.createObjectURL(file);
+    setItems((prev) => prev.map((it) => (it.id === itemId ? ({ ...it, file, previewUrl, url: previewUrl, name: file.name, size: file.size, kind: "video" as BulkItemBase["kind"], uploadStatus: "uploading" as const } as BulkItem) : it)));
+    const result = await uploadFile(file);
+    setItems((prev) =>
+      prev.map((it) =>
+        it.id === itemId ? ({ ...it, url: result?.url ?? previewUrl, storedPath: result?.storedPath, uploadStatus: (result ? "ready" : "error") } as BulkItem) : it
+      )
+    );
+  }, []);
+
   const pickFiles = () => fileInputRef.current?.click();
   const pickMoreFiles = () => addMoreInputRef.current?.click();
   const pickCsvFile = () => csvInputRef.current?.click();
@@ -724,10 +1113,11 @@ export default function BulkSchedulePage() {
           errors.push(`Row ${i + 2}: no platforms (add a "platforms" column or select accounts above)`);
           continue;
         }
-        // Auto-filter video-only platforms for image rows (CSV defaults to image)
+        // Auto-filter video-only platforms for image rows (CSV defaults to image) + post type
         platforms = filterAccountsForKind("image", platforms);
+        platforms = filterAccountsForPostType(composerMode, platforms);
         if (platforms.length === 0) {
-          errors.push(`Row ${i + 2}: no compatible platforms after filtering video-only for image`);
+          errors.push(`Row ${i + 2}: no compatible platforms after filtering for ${composerMode}`);
           continue;
         }
         const rawScheduled = (scheduledIdx >= 0 ? r[scheduledIdx] : "").trim();
@@ -780,12 +1170,16 @@ export default function BulkSchedulePage() {
           }
         }
         const csvPinterestBoardId = (adv.pinterest as Record<string, unknown> | undefined)?.pinterest_board_id as string | undefined;
+        // CSV kind inherits global post type (defaults to standard)
+        const csvKind: BulkItemBase["kind"] = composerMode === "document" ? "document" : composerMode === "trial_reel" ? "video" : "image";
+        // For document CSV, mediaUrl may be a doc URL — still store as is
         newItems.push({
           id: `csv-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
           source: "csv",
           url: mediaUrl,
           mediaUrl,
-          kind: "image",
+          kind: csvKind,
+          postType: composerMode,
           name: `CSV row ${i + 2}`,
           size: 0,
           caption,
@@ -807,7 +1201,27 @@ export default function BulkSchedulePage() {
           altText: "",
           tagUsers: "",
           advancedByPlatform: adv,
-        });
+          ...(composerMode === "carousel" && mediaUrl
+            ? {
+                carouselSlides: [
+                  {
+                    id: `csv-slide-${i}-${Date.now()}`,
+                    previewUrl: mediaUrl,
+                    url: mediaUrl,
+                    kind: "image" as const,
+                    name: `Slide 1`,
+                    size: 0,
+                    mimeType: "image/jpeg",
+                    uploadStatus: "ready" as const,
+                  },
+                ],
+              }
+            : {}),
+          ...(composerMode === "document"
+            ? { documentTitle: `Document ${i + 2}`, documentPageCount: null }
+            : {}),
+          ...(composerMode === "trial_reel" ? { trialMode: "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED" as TrialReelMode } : {}),
+        } as CsvBulkItem);
       }
       const beforeCount = items.length;
       const remainingAtStart = Math.max(0, MAX_FILES - beforeCount);
@@ -873,26 +1287,57 @@ export default function BulkSchedulePage() {
     try {
       const idToken = await getIdToken();
       const payload = {
-        items: readyItems.map((it) => ({
-          caption: it.caption,
-          platforms: it.accountIds,
-          mediaUrls: it.url ? [it.url] : [],
-          scheduledAt: it.scheduledAt ? new Date(it.scheduledAt).toISOString() : undefined,
-          hashtags: it.hashtags ?? [],
-          status: "scheduled" as const,
-          postIn: it.postIn,
-          youtubeTitle: it.youtubeTitle || undefined,
-          youtubeTags: it.youtubeTags || undefined,
-          pinterestBoard: it.pinterestBoard || undefined,
-          autoAddMusic: it.autoAddMusic,
-          community: it.community ? "community" : undefined,
-          profile: it.profile,
-          firstComment: it.firstComment || undefined,
-          altText: it.altText ? [it.altText] : undefined,
-          tagUsers: it.tagUsers || undefined,
-          advancedByPlatform: it.advancedByPlatform,
-          captionsByPlatform: it.captionByPlatform,
-        })),
+        items: readyItems.map((it) => {
+          const base = it as BulkItemBase;
+          const pt = (base.postType ?? "standard") as ComposerMode;
+          // Derive mediaUrls per post type
+          let mediaUrls: string[] = [];
+          let extra: Record<string, unknown> = {};
+          let adv = { ...(base.advancedByPlatform ?? {}) } as Record<string, Record<string, unknown>>;
+          if (pt === "carousel") {
+            const slides = base.carouselSlides ?? [];
+            mediaUrls = slides.length > 0 ? slides.map((s) => s.url).filter((u) => !!u && u.startsWith("https://")) : it.url ? [it.url] : [];
+            if (slides.length > 0) extra.carouselItems = slides.map((s) => ({ url: s.url }));
+          } else if (pt === "trial_reel") {
+            mediaUrls = it.url ? [it.url] : [];
+            // Ensure Instagram trial fields are set (parity with /create)
+            const trialMode = base.trialMode ?? "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED";
+            const igAdv = { ...(adv.instagram ?? {}), instagram_media_type: "REELS", instagram_share_mode: trialMode } as Record<string, unknown>;
+            adv = { ...adv, instagram: igAdv };
+            extra.trialReel = { url: it.url };
+          } else if (pt === "document") {
+            mediaUrls = it.url ? [it.url] : [];
+            const title = base.documentTitle?.trim() || base.name.replace(/\.[^.]+$/, "") || "Document";
+            const linkedinAdv = { ...(adv.linkedin ?? {}), linkedin_document_title: title } as Record<string, unknown>;
+            adv = { ...adv, linkedin: linkedinAdv };
+            extra.document = { url: it.url, title, mimeType: (it as UploadedBulkItem).file?.type ?? "application/pdf" };
+            extra.documentTitle = title;
+          } else {
+            mediaUrls = it.url ? [it.url] : [];
+          }
+          return {
+            caption: it.caption,
+            platforms: it.accountIds,
+            mediaUrls,
+            scheduledAt: it.scheduledAt ? new Date(it.scheduledAt).toISOString() : undefined,
+            hashtags: it.hashtags ?? [],
+            status: "scheduled" as const,
+            postIn: it.postIn,
+            youtubeTitle: it.youtubeTitle || undefined,
+            youtubeTags: it.youtubeTags || undefined,
+            pinterestBoard: it.pinterestBoard || undefined,
+            autoAddMusic: it.autoAddMusic,
+            community: it.community ? "community" : undefined,
+            profile: it.profile,
+            firstComment: it.firstComment || undefined,
+            altText: it.altText ? [it.altText] : undefined,
+            tagUsers: it.tagUsers || undefined,
+            advancedByPlatform: adv,
+            captionsByPlatform: it.captionByPlatform,
+            postType: pt,
+            ...extra,
+          };
+        }),
       };
       const res = await fetch("/api/posts/bulk", {
         method: "POST",
@@ -977,19 +1422,55 @@ export default function BulkSchedulePage() {
         skipped.push(`${file.name} (${formatBytes(file.size)} > ${MAX_FILE_BYTES / 1024 / 1024}MB)`);
         continue;
       }
-      if (file.type && !ACCEPTED_MIME_TYPES.includes(file.type as (typeof ACCEPTED_MIME_TYPES)[number])) {
-        skipped.push(`${file.name} (unsupported type: ${file.type})`);
-        continue;
-      }
+      // ── Mode-aware file type gating ──
+      const ext = `.${file.name.split(".").pop()?.toLowerCase() ?? ""}`;
+      const isDocExt = (ACCEPTED_DOCUMENT_EXTS as readonly string[]).includes(ext);
+      const isDocMime = file.type ? (ACCEPTED_DOCUMENT_MIMES as readonly string[]).includes(file.type) : false;
       const isVideo = file.type.startsWith("video/");
-      const kind: "image" | "video" = isVideo ? "video" : "image";
+      const isImage = file.type.startsWith("image/") || (!file.type && /\.(jpe?g|png|webp|gif|heic)$/i.test(file.name));
+
+      if (composerMode === "document") {
+        if (!isDocExt && !isDocMime) {
+          skipped.push(`${file.name} (Document needs PDF/DOC/PPT/TXT — got ${file.type || ext})`);
+          continue;
+        }
+      } else if (composerMode === "trial_reel") {
+        if (!isVideo) {
+          skipped.push(`${file.name} (Trial Reel needs video — got ${file.type || ext})`);
+          continue;
+        }
+      } else if (composerMode === "carousel") {
+        if (!isImage && !isVideo) {
+          skipped.push(`${file.name} (Carousel needs image or video — got ${file.type || ext})`);
+          continue;
+        }
+      } else {
+        // standard
+        if (file.type && !ACCEPTED_MIME_TYPES.includes(file.type as (typeof ACCEPTED_MIME_TYPES)[number])) {
+          // Allow images with empty type via extension fallback
+          if (!isImage && !isVideo) {
+            skipped.push(`${file.name} (unsupported type: ${file.type || ext})`);
+            continue;
+          }
+        }
+      }
+
+      // Determine kind + postType for this item (inherits global composerMode at creation time)
+      let kind: BulkItemBase["kind"] = "image";
+      if (composerMode === "document") kind = "document";
+      else if (isVideo) kind = "video";
+      else kind = "image";
+
       const slot = scheduledSlot(items.length + counter);
       if (!slot) {
         skipped.push(`${file.name} (invalid schedule date, time, or timezone)`);
         continue;
       }
       const previewUrl = URL.createObjectURL(file);
-      const filteredAccounts = filterAccountsForKind(kind, Array.from(accounts));
+      // Filter accounts by kind + post type
+      let filteredAccounts = filterAccountsForKind(kind as BulkItem["kind"], Array.from(accounts));
+      filteredAccounts = filterAccountsForPostType(composerMode, filteredAccounts);
+      // If post type is restrictive and filtering empties the set, keep empty (user will see "No platforms" blocked)
       const adv: Record<string, Record<string, unknown>> = {};
       for (const pid of filteredAccounts) {
         const def = getDefaultOptions(pid);
@@ -1004,9 +1485,44 @@ export default function BulkSchedulePage() {
       const pinterestBoardId = (adv.pinterest as Record<string, unknown> | undefined)?.pinterest_board_id as string | undefined;
       // Inform once if we auto-dropped YouTube for image
       if (kind === "image" && accounts.has("youtube" as PlatformId) && !filteredAccounts.includes("youtube" as PlatformId)) {
-        // toast only once per batch
         if (counter === 0) toast({ title: "YouTube auto-removed for images", description: "YouTube only accepts video — auto-deselected for image posts. Add video to enable YouTube.", tone: "info" });
       }
+      if (composerMode === "trial_reel" && accounts.size > 0 && filteredAccounts.length === 0 && counter === 0) {
+        toast({ title: "Trial Reel → Instagram only", description: "Your selected accounts don't include Instagram. Auto-filtered to Instagram.", tone: "info" });
+      }
+      if (composerMode === "carousel" && accounts.size > 0 && filteredAccounts.length === 0 && counter === 0) {
+        toast({ title: "Carousel → IG/FB/Threads only", description: "Auto-filtered platforms to those supporting carousel.", tone: "info" });
+      }
+      if (composerMode === "document" && accounts.size > 0 && filteredAccounts.length === 0 && counter === 0) {
+        toast({ title: "Document → LinkedIn only", description: "Auto-filtered to LinkedIn.", tone: "info" });
+      }
+
+      // Build base item; carousel gets a carouselSlides array seeded with this first slide
+      const baseExtra: Partial<BulkItemBase> = {
+        postType: composerMode,
+      };
+      if (composerMode === "carousel") {
+        const firstSlide: BulkCarouselSlide = {
+          id: `slide-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          file,
+          previewUrl,
+          url: previewUrl,
+          kind: kind === "video" ? "video" : "image",
+          name: file.name,
+          size: file.size,
+          mimeType: file.type || (kind === "video" ? "video/mp4" : "image/jpeg"),
+          uploadStatus: "uploading" as const,
+        };
+        baseExtra.carouselSlides = [firstSlide];
+      }
+      if (composerMode === "document") {
+        baseExtra.documentTitle = file.name.replace(/\.[^.]+$/, "");
+        (baseExtra as BulkItemBase).documentPageCount = null;
+      }
+      if (composerMode === "trial_reel") {
+        baseExtra.trialMode = "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED";
+      }
+
       newItems.push({
         id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         source: "upload",
@@ -1034,7 +1550,8 @@ export default function BulkSchedulePage() {
         altText: "",
         tagUsers: "",
         advancedByPlatform: adv,
-      });
+        ...baseExtra,
+      } as UploadedBulkItem);
       counter++;
     }
     if (skipped.length > 0) {
@@ -1057,15 +1574,23 @@ export default function BulkSchedulePage() {
           prev.map((it) => {
             if (it.id !== item.id) return it;
             if (it.source !== "upload") return it;
-            // On success keep the blob alive until the user navigates away or removes the item
-            // (the blob is still referenced by previewUrl for crop/preview); CDN url is stored in `url`.
-            // If we switched previewUrl to CDN now, crop would break for files that haven't been re-fetched.
+            const base = it as BulkItemBase;
+            // Keep carousel first slide in sync with the main item's CDN url
+            let nextSlides = base.carouselSlides;
+            if (base.postType === "carousel" && nextSlides && nextSlides.length > 0) {
+              nextSlides = nextSlides.map((s, idx) =>
+                idx === 0
+                  ? { ...s, url: result?.url ?? s.previewUrl, uploadStatus: (result ? "ready" : "error"), storedPath: result?.storedPath }
+                  : s
+              );
+            }
             return {
               ...it,
               url: result?.url ?? it.previewUrl,
               storedPath: result?.storedPath,
               uploadStatus: result ? "ready" : "error",
               uploadError: result ? undefined : "CDN upload failed",
+              ...(nextSlides ? { carouselSlides: nextSlides } : {}),
             };
           })
         );
@@ -1235,7 +1760,8 @@ export default function BulkSchedulePage() {
     setItems((prev) =>
       prev.map((item) => {
         const base = item as BulkItemBase;
-        const filtered = filterAccountsForKind(base.kind as BulkItem["kind"], Array.from(accounts));
+        let filtered = filterAccountsForKind(base.kind as BulkItem["kind"], Array.from(accounts));
+        filtered = filterAccountsForPostType((base.postType ?? "standard") as ComposerMode, filtered);
         const filteredAdv: Record<string, Record<string, unknown>> = {};
         for (const pid of filtered) {
           if (advTemplate[pid]) filteredAdv[pid] = advTemplate[pid];
@@ -1274,12 +1800,35 @@ export default function BulkSchedulePage() {
     const idempotencyKey = crypto.randomUUID();
     try {
       const idToken = await getIdToken();
+      const baseT = target as BulkItemBase;
+      const ptT = (baseT.postType ?? "standard") as ComposerMode;
+      let mediaUrlsT: string[] = [];
+      let extraT: Record<string, unknown> = {};
+      let advT = { ...(baseT.advancedByPlatform ?? {}) } as Record<string, Record<string, unknown>>;
+      if (ptT === "carousel") {
+        const slides = baseT.carouselSlides ?? [];
+        mediaUrlsT = slides.length > 0 ? slides.map((s) => s.url).filter((u) => !!u && u.startsWith("https://")) : target.url ? [target.url] : [];
+        if (slides.length > 0) extraT.carouselItems = slides.map((s) => ({ url: s.url }));
+      } else if (ptT === "trial_reel") {
+        mediaUrlsT = target.url ? [target.url] : [];
+        const trialModeT = baseT.trialMode ?? "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED";
+        advT = { ...advT, instagram: { ...(advT.instagram ?? {}), instagram_media_type: "REELS", instagram_share_mode: trialModeT } };
+        extraT.trialReel = { url: target.url };
+      } else if (ptT === "document") {
+        mediaUrlsT = target.url ? [target.url] : [];
+        const titleT = baseT.documentTitle?.trim() || baseT.name.replace(/\.[^.]+$/, "") || "Document";
+        advT = { ...advT, linkedin: { ...(advT.linkedin ?? {}), linkedin_document_title: titleT } };
+        extraT.document = { url: target.url, title: titleT, mimeType: (target as UploadedBulkItem).file?.type ?? "application/pdf" };
+        extraT.documentTitle = titleT;
+      } else {
+        mediaUrlsT = target.url ? [target.url] : [];
+      }
       const payload = {
         items: [
           {
             caption: target.caption,
             platforms: target.accountIds,
-            mediaUrls: target.url ? [target.url] : [],
+            mediaUrls: mediaUrlsT,
             scheduledAt: new Date(target.scheduledAt).toISOString(),
             hashtags: target.hashtags ?? [],
             status: "scheduled" as const,
@@ -1293,8 +1842,10 @@ export default function BulkSchedulePage() {
             firstComment: (target as BulkItemBase).firstComment || undefined,
             altText: (target as BulkItemBase).altText ? [(target as BulkItemBase).altText as string] : undefined,
             tagUsers: (target as BulkItemBase).tagUsers || undefined,
-            advancedByPlatform: (target as BulkItemBase).advancedByPlatform,
+            advancedByPlatform: advT,
             captionsByPlatform: (target as BulkItemBase).captionByPlatform,
+            postType: ptT,
+            ...extraT,
           },
         ],
       };
@@ -1970,7 +2521,7 @@ export default function BulkSchedulePage() {
               getPreviewProps={(id) => ({
                 caption: items[0]?.captionByPlatform?.[id] ?? items[0]?.caption ?? "",
                 mediaUrl: items[0]?.url ?? null,
-                mediaKind: items[0]?.kind ?? null,
+                mediaKind: items[0]?.kind === "document" ? null : (items[0]?.kind as "image" | "video" | null) ?? null,
               })}
             />
             <div className="flex items-center gap-2 text-xs font-semibold pl-2 border-l border-zinc-200">
@@ -2003,6 +2554,22 @@ export default function BulkSchedulePage() {
               Apply to All ({items.length}) Posts
             </button>
           </div>
+        </div>
+
+        {/* ── Post Type selector (parity with /dashboard/posts/create) ── */}
+        <div className="rounded-[16px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.04)] p-2 sm:p-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex-1 min-w-[280px]">
+            <ComposerModeSelector mode={composerMode} onChange={handleComposerModeChange} />
+          </div>
+          <button
+            type="button"
+            onClick={applyComposerModeToAll}
+            disabled={items.length === 0}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 disabled:opacity-50 text-zinc-900 px-3.5 h-9 text-xs font-bold shadow-xs transition-colors cursor-pointer shrink-0"
+          >
+            <Layers className="size-3.5 text-zinc-600" />
+            Apply type to All ({items.length})
+          </button>
         </div>
 
         {/* ── AI + Campaign Rules + Undo bar ── */}
@@ -2282,6 +2849,16 @@ export default function BulkSchedulePage() {
                       toast({ title: "YouTube is video-only", description: "This post is an image — YouTube requires video. Upload a video to enable YouTube.", tone: "warning" });
                       return it;
                     }
+                    // Guard: post-type platform restrictions (carousel → IG/FB/Threads, trial → IG, doc → LinkedIn)
+                    if (!has) {
+                      const pt = ((it as BulkItemBase).postType ?? "standard") as ComposerMode;
+                      const allowed = allowedPlatformsForPostType(pt);
+                      if (allowed && !allowed.includes(platformId)) {
+                        const label = pt === "carousel" ? "Carousel (IG · FB · Threads only)" : pt === "trial_reel" ? "Trial Reel (Instagram only)" : pt === "document" ? "Document (LinkedIn only)" : pt;
+                        toast({ title: `${label} not supported on this platform`, description: `Switch post type to Standard to enable ${platformId}.`, tone: "warning" });
+                        return it;
+                      }
+                    }
                     const nextIds = has ? it.accountIds.filter((a) => a !== platformId) : [...it.accountIds, platformId];
                     // sync advanced defaults for newly added platform
                     let adv = (it as BulkItemBase).advancedByPlatform ?? {};
@@ -2317,16 +2894,24 @@ export default function BulkSchedulePage() {
               destinationOptions={destinationOptions}
               aiGeneratingItemId={aiGeneratingItemId}
               timezone={timezone}
+              onChangePostType={handleChangePostType}
+              onAddCarouselSlides={handleAddCarouselSlides}
+              onRemoveCarouselSlide={handleRemoveCarouselSlide}
+              onReorderCarousel={handleReorderCarousel}
+              onDocumentTitleChange={handleDocumentTitleChange}
+              onDocumentFile={handleDocumentFile}
+              onTrialModeChange={handleTrialModeChange}
+              onReplaceTrialVideo={handleReplaceTrialVideo}
             />
           </div>
         )}
 
-        {/* Hidden inputs */}
+        {/* Hidden inputs — accept changes with Post Type */}
         <input
           ref={fileInputRef}
           type="file"
           multiple
-          accept={ACCEPTED_MIME_TYPES.join(",")}
+          accept={bulkAcceptForMode(composerMode)}
           className="hidden"
           onChange={(e) => {
             const files = Array.from(e.target.files ?? []);
@@ -2338,7 +2923,7 @@ export default function BulkSchedulePage() {
           ref={addMoreInputRef}
           type="file"
           multiple
-          accept={ACCEPTED_MIME_TYPES.join(",")}
+          accept={bulkAcceptForMode(composerMode)}
           className="hidden"
           onChange={(e) => {
             const files = Array.from(e.target.files ?? []);
@@ -2755,6 +3340,14 @@ interface PostsListProps {
   destinationOptions: { boards: Array<{ value: string; label: string }>; pages: Array<{ value: string; label: string }> };
   aiGeneratingItemId: string | null;
   timezone: string;
+  onChangePostType: (itemId: string, mode: ComposerMode) => void;
+  onAddCarouselSlides: (itemId: string, files: File[]) => void;
+  onRemoveCarouselSlide: (itemId: string, slideId: string) => void;
+  onReorderCarousel: (itemId: string, from: number, to: number) => void;
+  onDocumentTitleChange: (itemId: string, title: string) => void;
+  onDocumentFile: (itemId: string, file: File) => void;
+  onTrialModeChange: (itemId: string, mode: TrialReelMode) => void;
+  onReplaceTrialVideo: (itemId: string, file: File) => void;
 }
 
 function PostsList({
@@ -2778,6 +3371,14 @@ function PostsList({
   destinationOptions,
   aiGeneratingItemId,
   timezone,
+  onChangePostType,
+  onAddCarouselSlides,
+  onRemoveCarouselSlide,
+  onReorderCarousel,
+  onDocumentTitleChange,
+  onDocumentFile,
+  onTrialModeChange,
+  onReplaceTrialVideo,
 }: PostsListProps) {
   const t = useTranslations("dashboard");
   const [firstCommentPrompt, setFirstCommentPrompt] = useState("");
@@ -2915,6 +3516,14 @@ function PostsList({
           destinationOptions={destinationOptions}
           aiGenerating={aiGeneratingItemId === item.id}
           timezone={timezone}
+          onChangePostType={(mode) => onChangePostType(item.id, mode)}
+          onAddCarouselSlides={(files) => onAddCarouselSlides(item.id, files)}
+          onRemoveCarouselSlide={(sid) => onRemoveCarouselSlide(item.id, sid)}
+          onReorderCarousel={(f, t) => onReorderCarousel(item.id, f, t)}
+          onDocumentTitleChange={(title) => onDocumentTitleChange(item.id, title)}
+          onDocumentFile={(file) => onDocumentFile(item.id, file)}
+          onTrialModeChange={(mode) => onTrialModeChange(item.id, mode)}
+          onReplaceTrialVideo={(file) => onReplaceTrialVideo(item.id, file)}
         />
       ))}
     </div>
@@ -3095,6 +3704,14 @@ function PostRow({
   destinationOptions,
   aiGenerating,
   timezone,
+  onChangePostType,
+  onAddCarouselSlides,
+  onRemoveCarouselSlide,
+  onReorderCarousel,
+  onDocumentTitleChange,
+  onDocumentFile,
+  onTrialModeChange,
+  onReplaceTrialVideo,
 }: {
   item: BulkItem;
   index: number;
@@ -3111,6 +3728,14 @@ function PostRow({
   destinationOptions: { boards: Array<{ value: string; label: string }>; pages: Array<{ value: string; label: string }> };
   aiGenerating: boolean;
   timezone: string;
+  onChangePostType: (mode: ComposerMode) => void;
+  onAddCarouselSlides: (files: File[]) => void;
+  onRemoveCarouselSlide: (slideId: string) => void;
+  onReorderCarousel: (from: number, to: number) => void;
+  onDocumentTitleChange: (title: string) => void;
+  onDocumentFile: (file: File) => void;
+  onTrialModeChange: (mode: TrialReelMode) => void;
+  onReplaceTrialVideo: (file: File) => void;
 }) {
   const t = useTranslations("dashboard");
   const { toast } = useToast();
@@ -3189,73 +3814,243 @@ function PostRow({
         </button>
       </div>
 
+      {/* ── Per-item Post Type (parity with /create) ── */}
+      <div className="px-3 py-2 border-b border-zinc-200 bg-white flex items-center gap-1.5 flex-wrap">
+        {(
+          [
+            { id: "standard" as ComposerMode, label: "Standard" } as { id: ComposerMode; label: string; sub?: string },
+            { id: "carousel" as ComposerMode, label: "Carousel", sub: "IG·FB·Threads" } as { id: ComposerMode; label: string; sub?: string },
+            { id: "trial_reel" as ComposerMode, label: "Trial Reel", sub: "IG Only" } as { id: ComposerMode; label: string; sub?: string },
+            { id: "document" as ComposerMode, label: "Document", sub: "LinkedIn" } as { id: ComposerMode; label: string; sub?: string },
+          ]
+        ).map((m) => {
+          const active = (item as BulkItemBase).postType === m.id || (!(item as BulkItemBase).postType && m.id === "standard");
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => onChangePostType(m.id)}
+              className={cn(
+                "relative inline-flex items-center gap-1 px-2.5 h-7 rounded-full text-[11px] font-bold border transition-all",
+                active ? "bg-zinc-900 text-white border-zinc-900 shadow-sm" : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50"
+              )}
+            >
+              {m.label}
+              {m.sub && <span className={cn("text-[8px] px-1 py-0 rounded-full ml-0.5", active ? "bg-white/20 text-white" : m.id === "trial_reel" ? "bg-amber-100 text-amber-700 border border-amber-200" : "bg-blue-50 text-blue-700 border border-blue-100")}>{m.sub}</span>}
+            </button>
+          );
+        })}
+        <span className="ml-auto text-[10px] font-semibold text-zinc-500 hidden sm:inline">
+          {(item as BulkItemBase).postType === "carousel"
+            ? `${(item as BulkItemBase).carouselSlides?.length ?? 0}/10 slides`
+            : (item as BulkItemBase).postType === "document"
+              ? "PDF/DOC/PPT"
+              : (item as BulkItemBase).postType === "trial_reel"
+                ? "Trial Reel"
+                : "Standard"}
+        </span>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-[180px_1fr] divide-y lg:divide-y-0 lg:divide-x divide-zinc-200">
         {/* Media + Schedule + Platforms */}
         <div className="p-3 space-y-3 bg-zinc-50/30">
-          <div className="relative rounded-xl overflow-hidden bg-zinc-100 aspect-[4/3] border border-zinc-200">
-            {item.kind === "image" ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={previewSrc} alt={item.name} className="w-full h-full object-cover" />
-            ) : (
-              <video src={previewSrc} className="w-full h-full object-cover" />
-            )}
-            <div className="absolute bottom-1 left-1 right-1 rounded-lg bg-black/60 backdrop-blur px-2 py-1">
-              <p className="text-[10px] font-semibold text-white truncate">{item.name}</p>
-              <p className="text-[10px] text-white/80 flex items-center gap-1">
-                {item.kind === "image" ? <ImageIcon className="size-3" /> : <Video className="size-3" />} {formatBytes(item.size)}
-                {item.source === "upload" && item.uploadStatus === "uploading" ? " • Uploading…" : ""}
-                {item.source === "upload" && item.uploadStatus === "error" ? " • Failed" : ""}
-              </p>
+          {(item as BulkItemBase).postType === "carousel" ? (
+            (() => {
+              const slides = (item as BulkItemBase).carouselSlides ?? [];
+              return (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {slides.map((slide, sidx) => (
+                      <div
+                        key={slide.id}
+                        className="relative group rounded-lg overflow-hidden bg-zinc-100 border border-zinc-200 aspect-square"
+                        draggable
+                        onDragStart={(e) => e.dataTransfer.setData("text/plain", String(sidx))}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const from = parseInt(e.dataTransfer.getData("text/plain"), 10);
+                          if (!Number.isNaN(from) && from !== sidx) onReorderCarousel(from, sidx);
+                        }}
+                      >
+                        {slide.kind === "image" ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={slide.url} alt={slide.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <video src={slide.url} className="w-full h-full object-cover" />
+                        )}
+                        <span className="absolute top-1 left-1 size-5 rounded-full bg-zinc-900/80 text-white text-[10px] font-bold flex items-center justify-center">
+                          {sidx + 1}
+                        </span>
+                        {slide.uploadStatus === "uploading" && (
+                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                            <span className="size-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => onRemoveCarouselSlide(slide.id)}
+                          className="absolute -top-1 -right-1 size-5 rounded-full bg-zinc-900 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 shadow"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </div>
+                    ))}
+                    {slides.length < 10 && (
+                      <label className="rounded-lg border-2 border-dashed border-zinc-300 hover:border-zinc-400 hover:bg-zinc-50 aspect-square flex flex-col items-center justify-center gap-1 cursor-pointer">
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            const files = Array.from(e.target.files ?? []);
+                            if (files.length) onAddCarouselSlides(files);
+                            e.target.value = "";
+                          }}
+                        />
+                        <ImageIcon className="size-5 text-zinc-400" />
+                        <span className="text-[10px] font-semibold text-zinc-600">Add</span>
+                      </label>
+                    )}
+                  </div>
+                  <p className={cn("text-[11px]", slides.length < 2 ? "text-amber-600" : "text-zinc-500")}>
+                    {slides.length < 2 ? "⚠️ Carousel needs at least 2 slides" : `${slides.length}/10 slides • IG · FB · Threads`}
+                  </p>
+                  {(item.frameCoverUrl || item.customCoverUrl) && (
+                    <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-zinc-200 text-[10px] font-medium text-emerald-700">
+                      <CheckCircle2 className="size-3 shrink-0 text-emerald-600" />
+                      <span className="truncate">{item.customCoverUrl ? "Custom cover set" : "Frame cover set"}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()
+          ) : (item as BulkItemBase).postType === "document" ? (
+            <div className="space-y-2">
+              <div className="rounded-xl border border-zinc-200 bg-white p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="size-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                    <FileText className="size-4 text-blue-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold truncate">{item.name}</p>
+                    <p className="text-[10px] text-zinc-500">{formatBytes(item.size)} • {(item as BulkItemBase).documentPageCount ? `${(item as BulkItemBase).documentPageCount} pages` : "PDF/DOC"}</p>
+                  </div>
+                  <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-bold border", item.uploadStatus === "ready" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : item.uploadStatus === "uploading" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-red-50 text-red-700 border-red-200")}>
+                    {item.uploadStatus}
+                  </span>
+                </div>
+                {item.uploadStatus === "uploading" && <div className="h-1 bg-zinc-200 rounded-full overflow-hidden"><div className="h-full bg-blue-500 animate-pulse w-full" /></div>}
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-zinc-700 flex items-center gap-1">Document Title <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={(item as BulkItemBase).documentTitle ?? ""}
+                  onChange={(e) => onDocumentTitleChange(e.target.value)}
+                  placeholder="e.g. 10 Growth Tips for 2025"
+                  className="mt-1 h-8 w-full rounded-lg border border-zinc-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                />
+              </div>
+              <label className="flex items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-zinc-300 hover:border-zinc-400 hover:bg-zinc-50 p-3 cursor-pointer">
+                <input type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onDocumentFile(f); e.target.value = ""; }} />
+                <Upload className="size-3.5 text-zinc-500" /> <span className="text-xs font-semibold text-zinc-700">Replace document</span>
+              </label>
             </div>
-          </div>
-
-          {/* Media tools buttons */}
-          <div className="space-y-1.5">
-            {item.kind === "image" ? (
-              <button
-                type="button"
-                onClick={onOpenCrop}
-                className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm"
-              >
-                <Crop className="size-3 text-zinc-500" /> Crop image
-              </button>
-            ) : (
-              <div className="grid grid-cols-2 gap-1">
-                <button
-                  type="button"
-                  onClick={onOpenCover}
-                  className="inline-flex items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-1.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm"
-                >
-                  <RefreshCw className="size-3 text-zinc-500" /> Frame
-                </button>
-                <button
-                  type="button"
-                  onClick={onPickCustomCover}
-                  className="inline-flex items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-1.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm"
-                >
-                  <Upload className="size-3 text-zinc-500" /> Cover
-                </button>
+          ) : (item as BulkItemBase).postType === "trial_reel" ? (
+            <div className="space-y-2">
+              <div className="relative rounded-xl overflow-hidden bg-zinc-900 aspect-[9/16] max-h-64 border border-zinc-200">
+                <video src={previewSrc} className="w-full h-full object-contain" controls />
+                {item.uploadStatus === "uploading" && (
+                  <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/70 to-transparent">
+                    <div className="h-1 bg-white/30 rounded-full overflow-hidden"><div className="h-full bg-white w-full animate-pulse" /></div>
+                  </div>
+                )}
+                <span className="absolute top-2 left-2 text-[10px] bg-amber-500 text-white px-2 py-0.5 rounded-full font-bold flex items-center gap-1"><Zap className="size-3" /> Trial Reel</span>
               </div>
-            )}
-
-            {(item.frameCoverUrl || item.customCoverUrl) && (
-              <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-zinc-200 text-[10px] font-medium text-emerald-700">
-                <CheckCircle2 className="size-3 shrink-0 text-emerald-600" />
-                <span className="truncate">{item.customCoverUrl ? "Custom cover set" : "Frame cover set"}</span>
+              <label className="flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs font-semibold hover:bg-zinc-50 cursor-pointer">
+                <input type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onReplaceTrialVideo(f); e.target.value = ""; }} />
+                <Upload className="size-3" /> Replace video
+              </label>
+              <div className="space-y-1 pt-1">
+                <p className="text-[11px] font-bold text-zinc-700 flex items-center gap-1"><Zap className="size-3 text-amber-500" /> Trial Mode</p>
+                {(["CUSTOM", "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED", "TRIAL_REELS_DONT_SHARE_TO_FOLLOWERS"] as TrialReelMode[]).map((mode) => (
+                  <label key={mode} className={cn("flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-xs", (item as BulkItemBase).trialMode === mode ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 hover:bg-zinc-50/60")}>
+                    <input type="radio" name={`trial-${item.id}`} checked={(item as BulkItemBase).trialMode === mode} onChange={() => onTrialModeChange(mode)} className="size-3" />
+                    <span className="font-medium">{mode === "CUSTOM" ? "Custom (Standard Reel)" : mode === "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED" ? "Share if Liked" : "Don't Share"}</span>
+                  </label>
+                ))}
               </div>
-            )}
+            </div>
+          ) : (
+            <>
+              <div className="relative rounded-xl overflow-hidden bg-zinc-100 aspect-[4/3] border border-zinc-200">
+                {item.kind === "image" ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={previewSrc} alt={item.name} className="w-full h-full object-cover" />
+                ) : (
+                  <video src={previewSrc} className="w-full h-full object-cover" />
+                )}
+                <div className="absolute bottom-1 left-1 right-1 rounded-lg bg-black/60 backdrop-blur px-2 py-1">
+                  <p className="text-[10px] font-semibold text-white truncate">{item.name}</p>
+                  <p className="text-[10px] text-white/80 flex items-center gap-1">
+                    {item.kind === "image" ? <ImageIcon className="size-3" /> : <Video className="size-3" />} {formatBytes(item.size)}
+                    {item.source === "upload" && item.uploadStatus === "uploading" ? " • Uploading…" : ""}
+                    {item.source === "upload" && item.uploadStatus === "error" ? " • Failed" : ""}
+                  </p>
+                </div>
+              </div>
 
-            {hasInstagram && (
-              <button
-                type="button"
-                onClick={onOpenCollaborators}
-                className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm"
-              >
-                <Users className="size-3 text-zinc-500" />
-                Collaborators {item.collaborators?.length ? `(${item.collaborators.length})` : ""}
-              </button>
-            )}
-          </div>
+              {/* Media tools buttons */}
+              <div className="space-y-1.5">
+                {item.kind === "image" ? (
+                  <button
+                    type="button"
+                    onClick={onOpenCrop}
+                    className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm"
+                  >
+                    <Crop className="size-3 text-zinc-500" /> Crop image
+                  </button>
+                ) : (
+                  <div className="grid grid-cols-2 gap-1">
+                    <button
+                      type="button"
+                      onClick={onOpenCover}
+                      className="inline-flex items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-1.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm"
+                    >
+                      <RefreshCw className="size-3 text-zinc-500" /> Frame
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onPickCustomCover}
+                      className="inline-flex items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-1.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm"
+                    >
+                      <Upload className="size-3 text-zinc-500" /> Cover
+                    </button>
+                  </div>
+                )}
+
+                {(item.frameCoverUrl || item.customCoverUrl) && (
+                  <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-zinc-200 text-[10px] font-medium text-emerald-700">
+                    <CheckCircle2 className="size-3 shrink-0 text-emerald-600" />
+                    <span className="truncate">{item.customCoverUrl ? "Custom cover set" : "Frame cover set"}</span>
+                  </div>
+                )}
+
+                {hasInstagram && (
+                  <button
+                    type="button"
+                    onClick={onOpenCollaborators}
+                    className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm"
+                  >
+                    <Users className="size-3 text-zinc-500" />
+                    Collaborators {item.collaborators?.length ? `(${item.collaborators.length})` : ""}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
