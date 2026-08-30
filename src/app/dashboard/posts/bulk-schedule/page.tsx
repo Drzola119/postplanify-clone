@@ -34,6 +34,8 @@ import {
   History as HistoryIcon,
   ListChecks,
   Zap,
+  Crop,
+  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -51,6 +53,17 @@ import { zonedDateTimeToDate } from "@/lib/datetime/zoned";
 import { AdvancedOptionsPanel } from "@/components/dashboard/advanced-options-panel";
 import { RequirementsPanel } from "@/components/dashboard/requirements-panel";
 import { AICaptionsDialog } from "@/components/dashboard/ai-captions-dialog";
+import { fitCaptionForPlatform } from "@/lib/ai/caption-fit";
+import { UnsplashDialog } from "@/components/dashboard/unsplash-dialog";
+import { CanvaDialog, type ImportedFile } from "@/components/dashboard/canva-dialog";
+import { GoogleDriveDialog } from "@/components/dashboard/google-drive-dialog";
+import { DropboxDialog } from "@/components/dashboard/dropbox-dialog";
+import { CropModal } from "@/components/dashboard/crop-modal";
+import { CoverImageModal } from "@/components/dashboard/cover-image-modal";
+import { CollaboratorsModal } from "@/components/dashboard/collaborators-modal";
+import { HashtagsDropdown } from "@/components/dashboard/hashtags-dropdown";
+import { MetadataRulesPanel, type MetadataRules } from "@/components/dashboard/metadata-rules-panel";
+import { BrandIcons } from "@/components/dashboard/brand-icons";
 import { checkRequirements, type MediaMeta } from "@/lib/publishing/requirements";
 import { getDefaultOptions, type PlatformAdvancedOptions } from "@/lib/publishing/advanced-options";
 import type { MediaKind } from "@/lib/publishing/capability-matrix";
@@ -80,9 +93,13 @@ type BulkItemBase = {
   uploadError?: string;
   uploadProgress?: number;
   // ── Full-fidelity extensions (parity with Create Post) ──
+  captionByPlatform?: Partial<Record<PlatformId, string>>;
   firstComment?: string;
   altText?: string;
   tagUsers?: string;
+  customCoverUrl?: string | null;
+  frameCoverUrl?: string | null;
+  collaborators?: string[];
   advancedByPlatform?: Partial<Record<PlatformId, PlatformAdvancedOptions>>;
   // per-item media kind override for advanced panel
   mediaKind?: MediaKind;
@@ -164,6 +181,32 @@ function fileToDataUri(file: File): Promise<string> {
   });
 }
 
+function dataUrlToFile(dataUrl: string, fallbackName: string): File {
+  const [meta, b64] = dataUrl.split(",");
+  const mimeMatch = meta.match(/data:([^;]+)(?:;base64)?/);
+  const mime = mimeMatch?.[1] ?? "image/jpeg";
+  const isBase64 = /;base64/.test(meta);
+  const ext = mime.includes("png")
+    ? "png"
+    : mime.includes("webp")
+    ? "webp"
+    : mime.includes("gif")
+    ? "gif"
+    : "jpg";
+  const name = /\.([a-z0-9]{2,5})$/i.test(fallbackName)
+    ? fallbackName
+    : `${fallbackName.replace(/\.[^.]+$/, "")}.${ext}`;
+  if (isBase64) {
+    const binary = atob(b64 ?? "");
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new File([bytes], name, { type: mime });
+  }
+  const decoded = decodeURIComponent(b64 ?? "");
+  const bytes = new TextEncoder().encode(decoded);
+  return new File([bytes], name, { type: mime });
+}
+
 function splitDateTime(dt: string): { date: string; time: string } {
   if (!dt || !dt.includes("T")) return { date: todayISO(), time: "08:00" };
   const [date, time] = dt.split("T");
@@ -179,12 +222,13 @@ function wallClockToUTC(date: string, time: string, timezone: string): Date | nu
 }
 
 function pickCharLimitFor(item: BulkItem): number {
-  let min = 2200;
+  if (item.accountIds.length === 0) return 2200;
+  let min = Infinity;
   for (const id of item.accountIds) {
     const p = PLATFORMS.find((pl) => pl.id === id);
     if (p && p.charLimit < min) min = p.charLimit;
   }
-  return min;
+  return min === Infinity ? 2200 : min;
 }
 
 function getMediaKindForItem(item: BulkItem): MediaKind {
@@ -211,7 +255,9 @@ function buildReadinessForItem(item: BulkItem, timezone: string) {
     },
   ];
   const captionByPlatform: Partial<Record<PlatformId, string>> = {};
-  for (const pid of item.accountIds) captionByPlatform[pid] = item.caption;
+  for (const pid of item.accountIds) {
+    captionByPlatform[pid] = item.captionByPlatform?.[pid] ?? item.caption;
+  }
   // Ensure youtube/pinterest required targets have sensible defaults if empty — validator will flag missing.
   return checkRequirements(item.accountIds, {
     captionByPlatform,
@@ -351,6 +397,23 @@ export default function BulkSchedulePage() {
   const [undoStack, setUndoStack] = useState<Array<{ kind: "remove"; item: BulkItem; index: number }>>([]);
   const [aiTarget, setAiTarget] = useState<BulkItem | null>(null);
   const [aiGeneratingItemId, setAiGeneratingItemId] = useState<string | null>(null);
+  const [batchAiOpen, setBatchAiOpen] = useState(false);
+  const [cropTarget, setCropTarget] = useState<BulkItem | null>(null);
+  const [coverTarget, setCoverTarget] = useState<BulkItem | null>(null);
+  const [collaboratorsTarget, setCollaboratorsTarget] = useState<BulkItem | null>(null);
+  const [unsplashOpen, setUnsplashOpen] = useState(false);
+  const [canvaOpen, setCanvaOpen] = useState(false);
+  const [driveOpen, setDriveOpen] = useState(false);
+  const [dropboxOpen, setDropboxOpen] = useState(false);
+  const [metadataRules, setMetadataRules] = useState<MetadataRules>({
+    enabled: false,
+    hashtags: [],
+    ctaLine: "",
+    mode: "append",
+    startDate: "",
+    endDate: "",
+  });
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [destinationOptions, setDestinationOptions] = useState<{
     boards: Array<{ value: string; label: string }>;
     pages: Array<{ value: string; label: string }>;
@@ -358,6 +421,8 @@ export default function BulkSchedulePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addMoreInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
+  const customCoverInputRef = useRef<HTMLInputElement>(null);
+  const customCoverTargetItemId = useRef<string | null>(null);
   const tzRef = useRef<HTMLDivElement>(null);
   const hydratedRef = useRef(false);
 
@@ -750,6 +815,7 @@ export default function BulkSchedulePage() {
           altText: it.altText ? [it.altText] : undefined,
           tagUsers: it.tagUsers || undefined,
           advancedByPlatform: it.advancedByPlatform,
+          captionsByPlatform: it.captionByPlatform,
         })),
       };
       const res = await fetch("/api/posts/bulk", {
@@ -1092,6 +1158,7 @@ export default function BulkSchedulePage() {
             altText: (target as BulkItemBase).altText ? [(target as BulkItemBase).altText as string] : undefined,
             tagUsers: (target as BulkItemBase).tagUsers || undefined,
             advancedByPlatform: (target as BulkItemBase).advancedByPlatform,
+            captionsByPlatform: (target as BulkItemBase).captionByPlatform,
           },
         ],
       };
@@ -1127,7 +1194,219 @@ export default function BulkSchedulePage() {
     }
   }
 
-  async function aiGenerateForAll() {
+  function applyMetadataRules(caption: string): string {
+    if (!metadataRules.enabled) return caption;
+    const now = new Date().toISOString().slice(0, 10);
+    if (metadataRules.startDate && now < metadataRules.startDate) return caption;
+    if (metadataRules.endDate && now > metadataRules.endDate) return caption;
+    const tagStr = metadataRules.hashtags.map((h) => (h.startsWith("#") ? h : `#${h}`)).join(" ");
+    const cta = metadataRules.ctaLine.trim();
+    const parts: string[] = [];
+    if (metadataRules.mode === "prioritize") {
+      if (tagStr) parts.push(tagStr);
+      if (cta) parts.push(cta);
+      parts.push(caption);
+    } else {
+      parts.push(caption);
+      if (cta) parts.push(cta);
+      if (tagStr) parts.push(tagStr);
+    }
+    return parts.filter(Boolean).join("\n\n");
+  }
+
+  function applyRulesToAllCaptions() {
+    if (items.length === 0) {
+      toast({ title: "No items to apply rules to", tone: "warning" });
+      return;
+    }
+    setItems((prev) =>
+      prev.map((it) => ({
+        ...it,
+        caption: applyMetadataRules(it.caption),
+      }))
+    );
+    toast({ title: "Campaign rules applied to all captions", tone: "success" });
+  }
+
+  function applyHashtagsToAll(tags: string[]) {
+    if (tags.length === 0 || items.length === 0) return;
+    setItems((prev) =>
+      prev.map((it) => {
+        const current = it.caption;
+        const tagText = tags.join(" ");
+        const nextCaption = current.trim() ? `${current.trim()} ${tagText}` : tagText;
+        const nextTags = Array.from(new Set([...(it.hashtags ?? []), ...tags.map((t) => t.replace(/^#/, ""))]));
+        return { ...it, caption: nextCaption, hashtags: nextTags };
+      })
+    );
+    toast({ title: `Applied ${tags.length} hashtag(s) to all posts`, tone: "success" });
+  }
+
+  function applyFirstCommentToAll(comment: string) {
+    if (!comment || items.length === 0) return;
+    setItems((prev) =>
+      prev.map((it) => ({
+        ...it,
+        firstComment: comment,
+      }))
+    );
+    toast({ title: "First comment applied to all posts", tone: "success" });
+  }
+
+  function applyTagUsersToAll(tagUsers: string) {
+    if (!tagUsers || items.length === 0) return;
+    setItems((prev) =>
+      prev.map((it) => ({
+        ...it,
+        tagUsers: tagUsers,
+      }))
+    );
+    toast({ title: "Tagged users applied to all posts", tone: "success" });
+  }
+
+  async function handleExternalImport(importedFiles: ImportedFile[]) {
+    if (importedFiles.length === 0) return;
+    toast({
+      title: `Importing ${importedFiles.length} file${importedFiles.length > 1 ? "s" : ""}…`,
+      tone: "info",
+    });
+    const fetched: File[] = [];
+    const failures: string[] = [];
+    await Promise.all(
+      importedFiles.map(async (item) => {
+        try {
+          const res = await fetch(item.url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const blob = await res.blob();
+          const mime = item.mimeType || blob.type || "image/jpeg";
+          fetched.push(new File([blob], item.name, { type: mime }));
+        } catch {
+          failures.push(item.name);
+        }
+      })
+    );
+    if (failures.length > 0) {
+      toast({
+        title: `${failures.length} import${failures.length === 1 ? "" : "s"} failed`,
+        description: failures.slice(0, 3).join(", ") + (failures.length > 3 ? "…" : ""),
+        tone: "warning",
+      });
+    }
+    if (fetched.length > 0) await handleFiles(fetched);
+  }
+
+  async function applyCroppedImage(dataUrl: string, itemId: string) {
+    const file = dataUrlToFile(dataUrl, `cropped_${Date.now()}.jpg`);
+    const uploadToastId = toast({
+      title: "Uploading cropped image…",
+      tone: "info",
+    });
+    const result = await uploadFile(file);
+    if (result) {
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === itemId
+            ? {
+                ...it,
+                url: result.url,
+                previewUrl: result.url,
+                storedPath: result.storedPath,
+                uploadStatus: "ready",
+              }
+            : it
+        )
+      );
+      toast({ title: "Crop applied", tone: "success" });
+    }
+  }
+
+  async function applyFrameCover(dataUrl: string, itemId: string) {
+    const file = dataUrlToFile(dataUrl, `frame_${Date.now()}.jpg`);
+    const uploadToastId = toast({
+      title: "Uploading cover frame…",
+      tone: "info",
+    });
+    const result = await uploadFile(file);
+    if (result) {
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === itemId
+            ? {
+                ...it,
+                frameCoverUrl: result.url,
+              }
+            : it
+        )
+      );
+      toast({ title: "Video cover frame applied", tone: "success" });
+    }
+  }
+
+  function handlePickCustomCover(itemId: string) {
+    customCoverTargetItemId.current = itemId;
+    customCoverInputRef.current?.click();
+  }
+
+  function handleSaveCollaborators(itemId: string, list: string[]) {
+    setItems((prev) =>
+      prev.map((it) =>
+        it.id === itemId
+          ? {
+              ...it,
+              collaborators: list,
+            }
+          : it
+      )
+    );
+    toast({
+      title: list.length === 0 ? "Collaborators cleared" : `${list.length} collaborator${list.length > 1 ? "s" : ""} saved`,
+      tone: "success",
+    });
+  }
+
+  function handleAutoFitAllOverLimit() {
+    let count = 0;
+    setItems((prev) =>
+      prev.map((it) => {
+        let changed = false;
+        const nextCaptionByPlatform = { ...(it.captionByPlatform ?? {}) };
+        for (const pid of it.accountIds) {
+          const lim = PLATFORM_LIMITS[pid] ?? 2200;
+          const currentCap = nextCaptionByPlatform[pid] ?? it.caption;
+          if (currentCap.length > lim) {
+            nextCaptionByPlatform[pid] = fitCaptionForPlatform(it.caption, pid);
+            changed = true;
+            count++;
+          }
+        }
+        return changed ? { ...it, captionByPlatform: nextCaptionByPlatform } : it;
+      })
+    );
+    if (count > 0) {
+      toast({
+        title: `Auto-fitted ${count} platform caption${count > 1 ? "s" : ""} to exact limits!`,
+        description: "All character limit warnings have been resolved.",
+        tone: "success",
+      });
+    } else {
+      toast({ title: "All platform captions are already within limits!", tone: "info" });
+    }
+  }
+
+  async function aiGenerateForAll(opts?: {
+    tone: string;
+    includeHashtags: boolean;
+    useEmojis: boolean;
+    multiPlatform?: boolean;
+    extra: string;
+  }) {
+    const options = opts ?? {
+      tone: "default",
+      includeHashtags: true,
+      useEmojis: true,
+      multiPlatform: true,
+      extra: "",
+    };
     const itemsToProcess = items.filter((item) => !item.caption.trim());
     if (itemsToProcess.length === 0) {
       toast({ title: "All captions already filled", tone: "info" });
@@ -1178,7 +1457,13 @@ export default function BulkSchedulePage() {
             const meta = PLATFORMS.find((p) => p.id === pid);
             return { id: pid, name: meta?.name ?? pid, charLimit: meta?.charLimit ?? 280 };
           });
-          const extraCtx = [item.name !== "CSV row 2" ? `File: ${item.name}` : null, (item.hashtags ?? []).length > 0 ? `Hashtags: ${(item.hashtags ?? []).join(" ")}` : null].filter(Boolean).join(" | ");
+          const extraCtx = [
+            options.extra,
+            item.name !== "CSV row 2" ? `File: ${item.name}` : null,
+            (item.hashtags ?? []).length > 0 ? `Hashtags: ${(item.hashtags ?? []).join(" ")}` : null,
+          ]
+            .filter(Boolean)
+            .join(" | ");
           const res = await fetch("/api/ai/caption", {
             method: "POST",
             headers: {
@@ -1187,9 +1472,10 @@ export default function BulkSchedulePage() {
               ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
             },
             body: JSON.stringify({
-              tone: "default",
-              includeHashtags: true,
-              useEmojis: true,
+              tone: options.tone,
+              includeHashtags: options.includeHashtags,
+              useEmojis: options.useEmojis,
+              multiPlatform: options.multiPlatform ?? true,
               extra: extraCtx,
               imageUrl,
               videoTitle,
@@ -1199,11 +1485,26 @@ export default function BulkSchedulePage() {
           const data = (await res.json().catch(() => ({}))) as {
             ok?: boolean;
             caption?: string;
+            captionsByPlatform?: Record<string, string>;
             error?: string;
           };
           if (res.ok && data.ok && data.caption) {
+            const baseCaption = data.caption.trim();
+            const returnedByPlatform = data.captionsByPlatform ?? {};
+            const finalByPlatform: Partial<Record<PlatformId, string>> = {};
+            for (const pid of item.accountIds) {
+              finalByPlatform[pid] = returnedByPlatform[pid]?.trim() || fitCaptionForPlatform(baseCaption, pid);
+            }
             setItems((prev) =>
-              prev.map((it) => (it.id === item.id ? { ...it, caption: data.caption!.trim() } : it))
+              prev.map((it) =>
+                it.id === item.id
+                  ? {
+                      ...it,
+                      caption: baseCaption,
+                      captionByPlatform: finalByPlatform,
+                    }
+                  : it
+              )
             );
             success++;
           } else {
@@ -1216,14 +1517,15 @@ export default function BulkSchedulePage() {
     }
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, itemsToProcess.length) }, () => worker()));
     setGenerating(false);
+    setBatchAiOpen(false);
     toast({
       title: t("posts.bulkSchedule.ai_generated", { n: success, m: itemsToProcess.length }),
-      description: failed.length > 0 ? `Failed: ${failed.slice(0, 3).join("; ")}` : undefined,
+      description: failed.length > 0 ? `Failed: ${failed.slice(0, 3).join("; ")}` : "Platform-tailored variations applied in 1 call per post!",
       tone: failed.length > 0 ? "warning" : "success",
     });
   }
 
-  async function aiGenerateForItem(item: BulkItem, opts: { tone: string; includeHashtags: boolean; useEmojis: boolean; extra: string }) {
+  async function aiGenerateForItem(item: BulkItem, opts: { tone: string; includeHashtags: boolean; useEmojis: boolean; multiPlatform?: boolean; extra: string }) {
     setAiGeneratingItemId(item.id);
     try {
       let imageUrl: string | undefined;
@@ -1268,16 +1570,42 @@ export default function BulkSchedulePage() {
           tone: opts.tone,
           includeHashtags: opts.includeHashtags,
           useEmojis: opts.useEmojis,
+          multiPlatform: opts.multiPlatform ?? true,
           extra: mergedExtra,
           imageUrl,
           videoTitle,
           platforms: platformsCtx,
         }),
       });
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; caption?: string; error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        caption?: string;
+        captionsByPlatform?: Record<string, string>;
+        error?: string;
+      };
       if (res.ok && data.ok && data.caption) {
-        setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, caption: data.caption!.trim() } : it)));
-        toast({ title: "Caption generated", tone: "success" });
+        const baseCaption = data.caption.trim();
+        const returnedByPlatform = data.captionsByPlatform ?? {};
+        const finalByPlatform: Partial<Record<PlatformId, string>> = {};
+        for (const pid of item.accountIds) {
+          finalByPlatform[pid] = returnedByPlatform[pid]?.trim() || fitCaptionForPlatform(baseCaption, pid);
+        }
+        setItems((prev) =>
+          prev.map((it) =>
+            it.id === item.id
+              ? {
+                  ...it,
+                  caption: baseCaption,
+                  captionByPlatform: finalByPlatform,
+                }
+              : it
+          )
+        );
+        toast({
+          title: "Platform-optimized captions generated",
+          description: "All platform limits matched in 1 single call!",
+          tone: "success",
+        });
         setAiTarget(null);
       } else {
         toast({ title: "Generation failed", description: data.error ?? `HTTP ${res.status}`, tone: "error" });
@@ -1478,36 +1806,84 @@ export default function BulkSchedulePage() {
           <p className="text-[11px] text-zinc-500 mt-2 hidden sm:block">Start date sets slot 1. We auto-space posts in your timezone ({timezone}), 30 min apart per day. <Link href="/dashboard/calendar" className="underline decoration-dotted hover:text-zinc-700">View in Calendar</Link> after scheduling.</p>
         </div>
 
-        {/* ── AI + Undo bar ── */}
+        {/* ── AI + Campaign Rules + Undo bar ── */}
         {items.length > 0 ? (
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={aiGenerateForAll}
-                disabled={generating}
-                className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 hover:bg-black disabled:opacity-50 text-white px-4 h-9 text-xs font-bold shadow-sm"
-              >
-                <Sparkles className="size-4" />
-                {generating ? t("posts.bulkSchedule.generating") : t("posts.bulkSchedule.generate_ai_captions", { n: items.length })}
-              </button>
-              <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-white border border-zinc-200 px-2.5 py-1 text-xs font-medium text-zinc-600">
-                <Zap className="size-3.5 text-amber-500" /> Per-post AI with tone & context
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              {undoStack.length > 0 ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
-                  onClick={undoRemove}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 h-9 text-xs font-semibold hover:bg-zinc-50 shadow-sm"
+                  onClick={() => setBatchAiOpen(true)}
+                  disabled={generating}
+                  className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 hover:bg-black disabled:opacity-50 text-white px-4 h-9 text-xs font-bold shadow-sm"
                 >
-                  <Undo2 className="size-3.5" />
-                  Undo remove ({undoStack.length})
+                  <Sparkles className="size-4" />
+                  {generating ? t("posts.bulkSchedule.generating") : t("posts.bulkSchedule.generate_ai_captions", { n: items.length })}
                 </button>
-              ) : null}
-              <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-zinc-900 text-white px-2.5 py-1 text-[11px] font-bold">{items.length}/{MAX_FILES} files</span>
+                <button
+                  type="button"
+                  onClick={() => setRulesOpen((v) => !v)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-xl border px-3 h-9 text-xs font-semibold shadow-sm transition-colors",
+                    metadataRules.enabled
+                      ? "bg-zinc-900 text-white border-zinc-900 hover:bg-black"
+                      : "bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-50"
+                  )}
+                >
+                  <Hash className="size-3.5" />
+                  Campaign Rules
+                  {metadataRules.enabled && (
+                    <span className="size-1.5 rounded-full bg-emerald-400" />
+                  )}
+                </button>
+                <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-white border border-zinc-200 px-2.5 py-1 text-xs font-medium text-zinc-600">
+                  <Zap className="size-3.5 text-amber-500" /> Per-post AI with tone & platform adaptation
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {undoStack.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={undoRemove}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 h-9 text-xs font-semibold hover:bg-zinc-50 shadow-sm"
+                  >
+                    <Undo2 className="size-3.5" />
+                    Undo remove ({undoStack.length})
+                  </button>
+                ) : null}
+                <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-zinc-900 text-white px-2.5 py-1 text-[11px] font-bold">{items.length}/{MAX_FILES} files</span>
+              </div>
             </div>
+
+            {/* Campaign Rules expandable panel */}
+            {rulesOpen && (
+              <div className="p-4 rounded-[16px] border border-zinc-200 bg-white shadow-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-zinc-900 flex items-center gap-1.5">
+                      <Hash className="size-3.5 text-zinc-600" /> Global Campaign & CTA Rules
+                    </h4>
+                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                      Auto-merge hashtags or call-to-action lines across all posts in your bulk batch.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={applyRulesToAllCaptions}
+                    disabled={!metadataRules.enabled}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-900 hover:bg-black disabled:opacity-50 text-white px-3 h-8 text-xs font-bold shadow-sm"
+                  >
+                    <CheckCircle2 className="size-3.5" /> Apply Rules to All Posts
+                  </button>
+                </div>
+                <MetadataRulesPanel
+                  rules={metadataRules}
+                  onChange={setMetadataRules}
+                  onApplyToPost={applyRulesToAllCaptions}
+                  defaultOpen={true}
+                />
+              </div>
+            )}
           </div>
         ) : null}
 
@@ -1584,6 +1960,41 @@ export default function BulkSchedulePage() {
                       </button>
                     </div>
                   ) : null}
+                </div>
+
+                {/* Cloud and stock integrations buttons */}
+                <div className="mb-3">
+                  <p className="text-[11px] font-semibold text-zinc-600 mb-1.5">Import from Cloud & Stock</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setUnsplashOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-[11px] font-semibold text-zinc-700 shadow-sm"
+                    >
+                      <BrandIcons.unsplash size={14} /> Unsplash
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCanvaOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-[11px] font-semibold text-zinc-700 shadow-sm"
+                    >
+                      <BrandIcons.canva size={14} /> Canva
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDriveOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-[11px] font-semibold text-zinc-700 shadow-sm"
+                    >
+                      <BrandIcons.googledrive size={14} /> Drive
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDropboxOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-[11px] font-semibold text-zinc-700 shadow-sm"
+                    >
+                      <BrandIcons.dropbox size={14} /> Dropbox
+                    </button>
+                  </div>
                 </div>
 
                 {items.length === 0 ? (
@@ -1831,6 +2242,14 @@ export default function BulkSchedulePage() {
               onApplyAccountsToAll={applyAccountsToAll}
               onScheduleSingle={scheduleSingle}
               onOpenAI={(item) => setAiTarget(item)}
+              onOpenCrop={(item) => setCropTarget(item)}
+              onOpenCover={(item) => setCoverTarget(item)}
+              onPickCustomCover={handlePickCustomCover}
+              onOpenCollaborators={(item) => setCollaboratorsTarget(item)}
+              onApplyHashtagsToAll={applyHashtagsToAll}
+              onApplyFirstCommentToAll={applyFirstCommentToAll}
+              onApplyTagUsersToAll={applyTagUsersToAll}
+              onAutoFitAllOverLimit={handleAutoFitAllOverLimit}
               destinationOptions={destinationOptions}
               aiGeneratingItemId={aiGeneratingItemId}
               timezone={timezone}
@@ -1867,6 +2286,14 @@ export default function BulkSchedulePage() {
           </div>
         ) : null}
 
+        {/* Batch AI dialog */}
+        <AICaptionsDialog
+          open={batchAiOpen}
+          onClose={() => setBatchAiOpen(false)}
+          isGenerating={generating}
+          onGenerate={(opts) => void aiGenerateForAll(opts)}
+        />
+
         {/* Per-item AI dialog */}
         <AICaptionsDialog
           open={!!aiTarget}
@@ -1876,6 +2303,86 @@ export default function BulkSchedulePage() {
           videoTitle={aiTarget?.kind === "video" ? aiTarget?.name.replace(/\.[^.]+$/, "") ?? null : null}
           onGenerate={(opts) => {
             if (aiTarget) void aiGenerateForItem(aiTarget, opts);
+          }}
+        />
+
+        {/* External Cloud media dialogs */}
+        <UnsplashDialog
+          open={unsplashOpen}
+          onClose={() => setUnsplashOpen(false)}
+          onImport={handleExternalImport}
+        />
+        <CanvaDialog
+          open={canvaOpen}
+          onClose={() => setCanvaOpen(false)}
+          onImport={handleExternalImport}
+        />
+        <GoogleDriveDialog
+          open={driveOpen}
+          onClose={() => setDriveOpen(false)}
+          onImport={handleExternalImport}
+        />
+        <DropboxDialog
+          open={dropboxOpen}
+          onClose={() => setDropboxOpen(false)}
+          onImport={handleExternalImport}
+        />
+
+        {/* Media editing modals */}
+        <CropModal
+          open={!!cropTarget}
+          onClose={() => setCropTarget(null)}
+          imageUrl={cropTarget ? (cropTarget.source === "upload" ? cropTarget.previewUrl : cropTarget.url) : null}
+          onApply={(dataUrl) => {
+            if (cropTarget) void applyCroppedImage(dataUrl, cropTarget.id);
+            setCropTarget(null);
+          }}
+        />
+        <CoverImageModal
+          open={!!coverTarget}
+          onClose={() => setCoverTarget(null)}
+          videoUrl={coverTarget ? (coverTarget.source === "upload" ? coverTarget.previewUrl : coverTarget.url) : null}
+          onApply={(dataUrl) => {
+            if (coverTarget) void applyFrameCover(dataUrl, coverTarget.id);
+            setCoverTarget(null);
+          }}
+        />
+        <CollaboratorsModal
+          open={!!collaboratorsTarget}
+          onClose={() => setCollaboratorsTarget(null)}
+          collaborators={collaboratorsTarget?.collaborators ?? []}
+          onSave={(list) => {
+            if (collaboratorsTarget) handleSaveCollaborators(collaboratorsTarget.id, list);
+            setCollaboratorsTarget(null);
+          }}
+        />
+
+        {/* Hidden custom cover input for video thumbnails */}
+        <input
+          ref={customCoverInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            const targetId = customCoverTargetItemId.current;
+            if (file && targetId) {
+              const res = await uploadFile(file);
+              if (res) {
+                setItems((prev) =>
+                  prev.map((it) =>
+                    it.id === targetId
+                      ? {
+                          ...it,
+                          customCoverUrl: res.url,
+                        }
+                      : it
+                  )
+                );
+                toast({ title: "Custom cover uploaded", tone: "success" });
+              }
+            }
+            e.target.value = "";
           }}
         />
       </div>
@@ -1964,6 +2471,14 @@ interface PostsListProps {
   onApplyAccountsToAll: () => void;
   onScheduleSingle: (itemId: string) => void;
   onOpenAI: (item: BulkItem) => void;
+  onOpenCrop: (item: BulkItem) => void;
+  onOpenCover: (item: BulkItem) => void;
+  onPickCustomCover: (itemId: string) => void;
+  onOpenCollaborators: (item: BulkItem) => void;
+  onApplyHashtagsToAll: (tags: string[]) => void;
+  onApplyFirstCommentToAll: (comment: string) => void;
+  onApplyTagUsersToAll: (tagUsers: string) => void;
+  onAutoFitAllOverLimit: () => void;
   destinationOptions: { boards: Array<{ value: string; label: string }>; pages: Array<{ value: string; label: string }> };
   aiGeneratingItemId: string | null;
   timezone: string;
@@ -1979,14 +2494,27 @@ function PostsList({
   onApplyAccountsToAll,
   onScheduleSingle,
   onOpenAI,
+  onOpenCrop,
+  onOpenCover,
+  onPickCustomCover,
+  onOpenCollaborators,
+  onApplyHashtagsToAll,
+  onApplyFirstCommentToAll,
+  onApplyTagUsersToAll,
+  onAutoFitAllOverLimit,
   destinationOptions,
   aiGeneratingItemId,
   timezone,
 }: PostsListProps) {
   const t = useTranslations("dashboard");
+  const [firstCommentPrompt, setFirstCommentPrompt] = useState("");
+  const [showFirstCommentInput, setShowFirstCommentInput] = useState(false);
+  const [tagUsersPrompt, setTagUsersPrompt] = useState("");
+  const [showTagUsersInput, setShowTagUsersInput] = useState(false);
+
   return (
     <div className="space-y-3 pb-6">
-      <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm p-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-bold tracking-tight flex items-center gap-2">
             <ProStatIcon tint="blue" size={28}>
@@ -1996,16 +2524,105 @@ function PostsList({
           </h3>
           <p className="text-xs text-zinc-500 mt-1">{t("posts.bulkSchedule.customize_subtitle")} • Advanced per-platform controls inside each card.</p>
         </div>
-        <button
-          type="button"
-          onClick={onApplyAccountsToAll}
-          disabled={accountsCount === 0}
-          className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 h-8 text-xs font-bold hover:bg-zinc-50 disabled:opacity-50 shadow-sm"
-        >
-          <Users className="size-3.5" />
-          {t("posts.bulkSchedule.apply_accounts_all")}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={onAutoFitAllOverLimit}
+            className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 px-3 h-8 text-xs font-bold shadow-sm"
+          >
+            <Zap className="size-3.5 text-amber-600" /> Auto-Fit Over-Limit
+          </button>
+          <HashtagsDropdown
+            onInsert={onApplyHashtagsToAll}
+            align="right"
+            size="sm"
+            className="rounded-full font-bold shadow-sm"
+          />
+          <button
+            type="button"
+            onClick={() => setShowFirstCommentInput((v) => !v)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 h-8 text-xs font-semibold hover:bg-zinc-50 shadow-sm"
+          >
+            <MessageSquare className="size-3.5" /> First comment
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowTagUsersInput((v) => !v)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 h-8 text-xs font-semibold hover:bg-zinc-50 shadow-sm"
+          >
+            <Users className="size-3.5" /> Tag users
+          </button>
+          <button
+            type="button"
+            onClick={onApplyAccountsToAll}
+            disabled={accountsCount === 0}
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 h-8 text-xs font-bold hover:bg-zinc-50 disabled:opacity-50 shadow-sm"
+          >
+            <Users className="size-3.5" />
+            {t("posts.bulkSchedule.apply_accounts_all")}
+          </button>
+        </div>
       </div>
+
+      {showFirstCommentInput && (
+        <div className="p-3 rounded-xl border border-zinc-200 bg-zinc-50 flex items-center gap-2">
+          <input
+            type="text"
+            value={firstCommentPrompt}
+            onChange={(e) => setFirstCommentPrompt(e.target.value)}
+            placeholder="Enter first comment to apply to all posts..."
+            className="flex-1 h-8 rounded-lg border border-zinc-200 bg-white px-3 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              onApplyFirstCommentToAll(firstCommentPrompt);
+              setShowFirstCommentInput(false);
+              setFirstCommentPrompt("");
+            }}
+            className="px-3 h-8 rounded-lg bg-zinc-900 text-white text-xs font-bold hover:bg-black"
+          >
+            Apply to All
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowFirstCommentInput(false)}
+            className="px-2 h-8 rounded-lg text-xs font-medium text-zinc-500 hover:bg-zinc-200"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {showTagUsersInput && (
+        <div className="p-3 rounded-xl border border-zinc-200 bg-zinc-50 flex items-center gap-2">
+          <input
+            type="text"
+            value={tagUsersPrompt}
+            onChange={(e) => setTagUsersPrompt(e.target.value)}
+            placeholder="Enter tagged users (e.g. @user1, @user2) for all posts..."
+            className="flex-1 h-8 rounded-lg border border-zinc-200 bg-white px-3 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              onApplyTagUsersToAll(tagUsersPrompt);
+              setShowTagUsersInput(false);
+              setTagUsersPrompt("");
+            }}
+            className="px-3 h-8 rounded-lg bg-zinc-900 text-white text-xs font-bold hover:bg-black"
+          >
+            Apply to All
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowTagUsersInput(false)}
+            className="px-2 h-8 rounded-lg text-xs font-medium text-zinc-500 hover:bg-zinc-200"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       {items.map((item, idx) => (
         <PostRow
@@ -2018,6 +2635,10 @@ function PostsList({
           onRemove={() => onRemove(item.id)}
           onScheduleSingle={() => onScheduleSingle(item.id)}
           onOpenAI={() => onOpenAI(item)}
+          onOpenCrop={() => onOpenCrop(item)}
+          onOpenCover={() => onOpenCover(item)}
+          onPickCustomCover={() => onPickCustomCover(item.id)}
+          onOpenCollaborators={() => onOpenCollaborators(item)}
           destinationOptions={destinationOptions}
           aiGenerating={aiGeneratingItemId === item.id}
           timezone={timezone}
@@ -2036,6 +2657,10 @@ function PostRow({
   onRemove,
   onScheduleSingle,
   onOpenAI,
+  onOpenCrop,
+  onOpenCover,
+  onPickCustomCover,
+  onOpenCollaborators,
   destinationOptions,
   aiGenerating,
   timezone,
@@ -2048,6 +2673,10 @@ function PostRow({
   onRemove: () => void;
   onScheduleSingle: () => void;
   onOpenAI: () => void;
+  onOpenCrop: () => void;
+  onOpenCover: () => void;
+  onPickCustomCover: () => void;
+  onOpenCollaborators: () => void;
   destinationOptions: { boards: Array<{ value: string; label: string }>; pages: Array<{ value: string; label: string }> };
   aiGenerating: boolean;
   timezone: string;
@@ -2068,6 +2697,7 @@ function PostRow({
   const readiness = useMemo(() => buildReadinessForItem(item, timezone), [item, timezone]);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [extraOpen, setExtraOpen] = useState(false);
+  const [customPlatformOpen, setCustomPlatformOpen] = useState(false);
 
   return (
     <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm overflow-hidden">
@@ -2097,7 +2727,7 @@ function PostRow({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[160px_1fr] divide-y lg:divide-y-0 lg:divide-x divide-zinc-200">
+      <div className="grid grid-cols-1 lg:grid-cols-[180px_1fr] divide-y lg:divide-y-0 lg:divide-x divide-zinc-200">
         {/* Media + Schedule + Platforms */}
         <div className="p-3 space-y-3 bg-zinc-50/30">
           <div className="relative rounded-xl overflow-hidden bg-zinc-100 aspect-[4/3] border border-zinc-200">
@@ -2117,11 +2747,59 @@ function PostRow({
             </div>
           </div>
 
+          {/* Media tools buttons */}
+          <div className="space-y-1.5">
+            {item.kind === "image" ? (
+              <button
+                type="button"
+                onClick={onOpenCrop}
+                className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm"
+              >
+                <Crop className="size-3 text-zinc-500" /> Crop image
+              </button>
+            ) : (
+              <div className="grid grid-cols-2 gap-1">
+                <button
+                  type="button"
+                  onClick={onOpenCover}
+                  className="inline-flex items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-1.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm"
+                >
+                  <RefreshCw className="size-3 text-zinc-500" /> Frame
+                </button>
+                <button
+                  type="button"
+                  onClick={onPickCustomCover}
+                  className="inline-flex items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-1.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm"
+                >
+                  <Upload className="size-3 text-zinc-500" /> Cover
+                </button>
+              </div>
+            )}
+
+            {(item.frameCoverUrl || item.customCoverUrl) && (
+              <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-zinc-200 text-[10px] font-medium text-emerald-700">
+                <CheckCircle2 className="size-3 shrink-0 text-emerald-600" />
+                <span className="truncate">{item.customCoverUrl ? "Custom cover set" : "Frame cover set"}</span>
+              </div>
+            )}
+
+            {hasInstagram && (
+              <button
+                type="button"
+                onClick={onOpenCollaborators}
+                className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm"
+              >
+                <Users className="size-3 text-zinc-500" />
+                Collaborators {item.collaborators?.length ? `(${item.collaborators.length})` : ""}
+              </button>
+            )}
+          </div>
+
           <div className="space-y-2">
             <h4 className="text-xs font-bold flex items-center gap-1.5">
               <Settings2 className="size-3.5 text-zinc-500" /> Platforms
             </h4>
-            <div className="space-y-1 max-h-[220px] overflow-y-auto pr-1">
+            <div className="space-y-1 max-h-[200px] overflow-y-auto pr-1">
               {PLATFORMS.map((p) => {
                 const isSel = item.accountIds.includes(p.id);
                 return (
@@ -2176,11 +2854,20 @@ function PostRow({
         <div className="p-3 sm:p-4 space-y-3 min-w-0">
           {/* Caption */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
               <label className="text-xs font-bold flex items-center gap-1.5">
                 <Hash className="size-3.5 text-zinc-500" /> Caption <span className="text-red-500">*</span>
               </label>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <HashtagsDropdown
+                  onInsert={(tags) => {
+                    const current = item.caption;
+                    const next = current.trim() ? `${current.trim()} ${tags.join(" ")}` : tags.join(" ");
+                    onUpdate({ caption: next });
+                  }}
+                  size="sm"
+                  className="rounded-full shadow-sm"
+                />
                 <button
                   type="button"
                   onClick={onOpenAI}
@@ -2199,15 +2886,139 @@ function PostRow({
               onChange={(e) => onUpdate({ caption: e.target.value })}
               placeholder={t("posts.bulkSchedule.caption_placeholder")}
               rows={4}
-              maxLength={2200}
+              maxLength={63206}
               className="w-full rounded-xl border border-zinc-200 bg-white p-2.5 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-300 resize-none leading-relaxed"
             />
-            <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
-              <span className="text-[11px] text-zinc-500">Per-post AI uses your image/video + tone & hashtags.</span>
-              <Link href="/dashboard/hashtags" className="inline-flex items-center gap-1 rounded-full bg-white border border-zinc-200 px-2 py-1 text-[10px] font-semibold hover:bg-zinc-50">
-                <Hash className="size-3" /> Hashtags
-              </Link>
-            </div>
+            {/* Per-platform character limits pill badges with inline 1-click Auto-Fit */}
+            {item.accountIds.length > 0 && (
+              <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                {item.accountIds.map((pid) => {
+                  const pMeta = PLATFORMS.find((pl) => pl.id === pid);
+                  const pidCaption = item.captionByPlatform?.[pid] ?? item.caption;
+                  const pidLen = pidCaption.length;
+                  const lim = pMeta?.charLimit ?? 2200;
+                  const isPidOver = pidLen > lim;
+                  const isOverridden = !!item.captionByPlatform?.[pid] && item.captionByPlatform[pid] !== item.caption;
+                  return (
+                    <span
+                      key={pid}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono border transition-colors",
+                        isPidOver
+                          ? "bg-red-50 text-red-700 border-red-200"
+                          : isOverridden
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : "bg-zinc-50 text-zinc-600 border-zinc-200"
+                      )}
+                    >
+                      <ProPlatformIcon platform={pid} size={12} />
+                      {pMeta?.name ?? pid}: {pidLen}/{lim}
+                      {isOverridden && !isPidOver && (
+                        <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Tailored</span>
+                      )}
+                      {isPidOver && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const fitted = fitCaptionForPlatform(pidCaption, pid);
+                            onUpdate({
+                              captionByPlatform: {
+                                ...(item.captionByPlatform ?? {}),
+                                [pid]: fitted,
+                              },
+                            } as Partial<BulkItem>);
+                            toast({ title: `Auto-fitted caption for ${pMeta?.name ?? pid}`, tone: "success" });
+                          }}
+                          className="ml-0.5 px-1.5 py-0.5 rounded bg-red-600 hover:bg-red-700 text-white font-bold text-[9px] uppercase tracking-wider shadow-xs"
+                          title={`Auto-fit caption for ${pMeta?.name ?? pid}`}
+                        >
+                          ⚡ Auto-Fit
+                        </button>
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Custom per-platform caption override accordion */}
+            {item.accountIds.length > 1 && (
+              <div className="mt-2 pt-2 border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={() => setCustomPlatformOpen((v) => !v)}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-700 hover:text-zinc-900"
+                >
+                  <ChevronDown className={cn("size-3.5 transition-transform", customPlatformOpen && "rotate-180")} />
+                  {customPlatformOpen ? "Hide platform overrides" : "Customize caption per platform"}
+                  {Object.keys(item.captionByPlatform ?? {}).length > 0 && (
+                    <span className="ml-1 px-1.5 py-0.2 rounded-full bg-zinc-900 text-white text-[10px] font-bold">
+                      {Object.keys(item.captionByPlatform ?? {}).length} custom
+                    </span>
+                  )}
+                </button>
+
+                {customPlatformOpen && (
+                  <div className="mt-2 space-y-2 p-3 rounded-xl bg-zinc-50 border border-zinc-200">
+                    <p className="text-[11px] text-zinc-500 mb-1">
+                      Customize captions for specific networks (e.g. keeping 280 chars for X/Bluesky while Instagram has the full caption).
+                    </p>
+                    <div className="grid grid-cols-1 gap-2">
+                      {item.accountIds.map((pid) => {
+                        const pMeta = PLATFORMS.find((pl) => pl.id === pid);
+                        const val = item.captionByPlatform?.[pid] ?? item.caption;
+                        const lim = pMeta?.charLimit ?? 2200;
+                        const isOver = val.length > lim;
+                        return (
+                          <div key={pid} className="space-y-1 bg-white p-2.5 rounded-lg border border-zinc-200 shadow-2xs">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold flex items-center gap-1.5 text-zinc-800">
+                                <ProPlatformIcon platform={pid} size={14} /> {pMeta?.name ?? pid}
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const fitted = fitCaptionForPlatform(val, pid);
+                                    onUpdate({
+                                      captionByPlatform: {
+                                        ...(item.captionByPlatform ?? {}),
+                                        [pid]: fitted,
+                                      },
+                                    } as Partial<BulkItem>);
+                                  }}
+                                  className="px-2 py-0.5 rounded text-[10px] font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-700"
+                                >
+                                  ⚡ Smart-Fit
+                                </button>
+                                <span className={cn("text-[10px] font-mono", isOver ? "text-red-600 font-bold" : "text-zinc-500")}>
+                                  {val.length}/{lim}
+                                </span>
+                              </div>
+                            </div>
+                            <textarea
+                              value={val}
+                              onChange={(e) => {
+                                onUpdate({
+                                  captionByPlatform: {
+                                    ...(item.captionByPlatform ?? {}),
+                                    [pid]: e.target.value,
+                                  },
+                                } as Partial<BulkItem>);
+                              }}
+                              rows={2}
+                              maxLength={63206}
+                              className="w-full rounded-md border border-zinc-200 p-2 text-xs focus:outline-none focus:ring-1 focus:ring-zinc-900 resize-none"
+                              placeholder={`Caption specifically for ${pMeta?.name ?? pid}...`}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Quick platform fields kept for speed */}

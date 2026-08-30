@@ -11,6 +11,10 @@ export const platformIdSchema = z.enum([
   "linkedin",
   "threads",
   "facebook",
+  "discord",
+  "telegram",
+  "reddit",
+  "google_business",
 ]);
 
 export type PlatformIdSchema = z.infer<typeof platformIdSchema>;
@@ -35,8 +39,8 @@ export const postCollaboratorSchema = z.object({
 
 export const createPostSchema = z
   .object({
-    caption: nonEmptyString.max(22000),
-    platforms: z.array(platformIdSchema).min(1).max(9),
+    caption: nonEmptyString.max(70000),
+    platforms: z.array(platformIdSchema).min(1).max(13),
     mediaUrls: urlArray.optional().default([]),
     hashtags: z.array(z.string().min(1).max(64)).max(30).optional().default([]),
     labels: z.array(z.string().min(1).max(64)).max(20).optional().default([]),
@@ -80,8 +84,8 @@ export const createPostSchema = z
 );
 
 export const updatePostSchema = z.object({
-  caption: nonEmptyString.max(22000).optional(),
-  platforms: z.array(platformIdSchema).min(1).max(9).optional(),
+  caption: nonEmptyString.max(70000).optional(),
+  platforms: z.array(platformIdSchema).min(1).max(13).optional(),
   mediaUrls: urlArray.optional(),
   hashtags: z.array(z.string().min(1).max(64)).max(30).optional(),
   labels: z.array(z.string().min(1).max(64)).max(20).optional(),

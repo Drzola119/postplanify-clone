@@ -52,6 +52,7 @@ export interface PromptInput {
   extra?: string | null;
   platforms?: { id: string; name: string; charLimit: number }[];
   hasMedia: boolean;
+  multiPlatform?: boolean;
 }
 
 export interface PromptOutput {
@@ -69,16 +70,48 @@ export function buildCaptionPrompt(input: PromptInput): PromptOutput {
   const tags = input.includeHashtags ? "End with 3–6 relevant hashtags on their own line." : "Do NOT include hashtags.";
   const emo = input.useEmojis ? "Sprinkle 2–5 fitting emojis throughout the caption." : "Do NOT use emojis.";
 
-  const platformHint =
-    input.platforms && input.platforms.length > 0
-      ? `Target platforms: ${input.platforms.map((p) => `${p.name} (≤${p.charLimit} chars)`).join(", ")}.`
-      : "Target multiple social platforms; keep the caption under 2200 chars.";
+  const minLimit = input.platforms && input.platforms.length > 0
+    ? Math.min(...input.platforms.map((p) => p.charLimit))
+    : 2200;
 
   const extra = input.extra?.trim() ? `\nAdditional context from the user: ${input.extra.trim().slice(0, MAX_EXTRA_LEN)}` : "";
 
   const mediaLine = input.hasMedia
     ? "Describe what's in the attached media, then frame it for the target audience."
     : "No media attached — infer a likely subject from the tone + platform + extra context.";
+
+  if (input.multiPlatform) {
+    const userPrompt = [
+      `Write social media captions in a ${toneHint} voice.`,
+      `Structure style: ${tplHint}`,
+      tags,
+      emo,
+      mediaLine,
+      extra,
+      `You MUST return ONLY a JSON object with this exact schema (no markdown, no other text):`,
+      `{`,
+      `  "base": "Universal engaging social caption (~300-500 chars).",`,
+      `  "short": "Short, punchy copy strictly UNDER 280 characters with 1-2 tags for Twitter/X, Bluesky, Threads.",`,
+      `  "visual": "Story-driven visual caption with line breaks and hashtags for Instagram, TikTok, Pinterest.",`,
+      `  "professional": "Polished, insightful post with line breaks or bullet takeaways for LinkedIn and Facebook."`,
+      `}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    return {
+      systemPrompt:
+        "You are an expert social-media copywriter for PostPlanify. " +
+        "You write high-converting, platform-tailored copy. " +
+        "Return ONLY a valid JSON object, no markdown backticks, no preamble.",
+      userPrompt,
+    };
+  }
+
+  const platformHint =
+    input.platforms && input.platforms.length > 0
+      ? `Target platforms: ${input.platforms.map((p) => `${p.name} (≤${p.charLimit} chars)`).join(", ")}. CRITICAL CONSTRAINT: The final caption MUST be under ${minLimit} characters to fit all selected platforms.`
+      : "Target multiple social platforms; keep the caption under 2200 chars.";
 
   const userPrompt = [
     `Write a social caption in a ${toneHint} voice.`,

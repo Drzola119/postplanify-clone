@@ -12,6 +12,7 @@ interface AICaptionsDialogProps {
     tone: string;
     includeHashtags: boolean;
     useEmojis: boolean;
+    multiPlatform: boolean;
     extra: string;
   }) => void | Promise<void>;
   /** Optional previews shown so the user knows what the model will see. */
@@ -42,6 +43,7 @@ export function AICaptionsDialog({
   const [tone, setTone] = useState("default");
   const [hashtags, setHashtags] = useState(true);
   const [emojis, setEmojis] = useState(true);
+  const [multiPlatform, setMultiPlatform] = useState(true);
   const [extra, setExtra] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
 
@@ -51,7 +53,7 @@ export function AICaptionsDialog({
 
   async function handleClick() {
     if (!canGenerate) return;
-    await onGenerate({ tone, includeHashtags: hashtags, useEmojis: emojis, extra });
+    await onGenerate({ tone, includeHashtags: hashtags, useEmojis: emojis, multiPlatform, extra });
   }
 
   return (
@@ -160,6 +162,12 @@ export function AICaptionsDialog({
           {/* Toggles */}
           <div className="space-y-2">
             <ToggleRow
+              label="Platform-Optimized Variations"
+              subtitle="1 single AI call: Short for X/Bluesky (≤280 chars), Visual for IG/TikTok, Professional for LinkedIn"
+              checked={multiPlatform}
+              onChange={setMultiPlatform}
+            />
+            <ToggleRow
               label="Include Hashtags"
               checked={hashtags}
               onChange={setHashtags}
@@ -240,23 +248,28 @@ export function AICaptionsDialog({
 
 function ToggleRow({
   label,
+  subtitle,
   checked,
   onChange,
 }: {
   label: string;
+  subtitle?: string;
   checked: boolean;
   onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-md border border-zinc-200 px-3 py-2">
-      <span className="text-sm font-medium">{label}</span>
+    <div className="flex items-center justify-between rounded-md border border-zinc-200 px-3 py-2 gap-3">
+      <div className="min-w-0 flex-1">
+        <span className="text-sm font-medium block">{label}</span>
+        {subtitle && <span className="text-[11px] text-zinc-500 block leading-tight mt-0.5">{subtitle}</span>}
+      </div>
       <button
         type="button"
         role="switch"
         aria-checked={checked}
         onClick={() => onChange(!checked)}
         className={cn(
-          "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
+          "relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0",
           checked ? "bg-zinc-950" : "bg-zinc-200"
         )}
       >

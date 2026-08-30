@@ -2141,6 +2141,7 @@ export default function CreatePostPage() {
     tone: string;
     includeHashtags: boolean;
     useEmojis: boolean;
+    multiPlatform: boolean;
     extra: string;
   }) {
     if (selectedPlatforms.length === 0) {
@@ -2220,6 +2221,7 @@ export default function CreatePostPage() {
           tone: opts.tone,
           includeHashtags: opts.includeHashtags,
           useEmojis: opts.useEmojis,
+          multiPlatform: opts.multiPlatform,
           extra: opts.extra,
           imageUrl,
           videoTitle,
@@ -2233,6 +2235,7 @@ export default function CreatePostPage() {
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         caption?: string;
+        captionsByPlatform?: Record<string, string>;
         error?: string;
       };
       if (!res.ok || !data.ok || !data.caption) {
@@ -2243,25 +2246,31 @@ export default function CreatePostPage() {
         });
         return;
       }
-      const caption = data.caption.trim();
+      const baseCaption = data.caption.trim();
+      const returnedByPlatform = data.captionsByPlatform ?? {};
       const captionsByPlatform = Object.fromEntries(
-        captionPlatforms.map((p) => [p.id, fitCaptionForPlatform(caption, p.id)])
+        captionPlatforms.map((p) => [
+          p.id,
+          returnedByPlatform[p.id]?.trim() || fitCaptionForPlatform(baseCaption, p.id),
+        ])
       ) as Record<PlatformId, string>;
-      const adapted = captionPlatforms.filter((p) => captionsByPlatform[p.id] !== caption);
 
-      if (sameForAll && adapted.length === 0) {
-        setCaptions((prev) => ({ ...prev, __all: caption }));
+      const adapted = captionPlatforms.filter((p) => captionsByPlatform[p.id] !== baseCaption);
+
+      if (opts.multiPlatform || adapted.length > 0) {
+        setSameForAll(false);
+        setCaptions((prev) => ({ ...prev, __all: baseCaption, ...captionsByPlatform }));
       } else {
-        // Platform-safe variants need separate fields so the user can review
-        // the shortened X/Threads copies before publishing.
-        if (sameForAll) setSameForAll(false);
-        setCaptions((prev) => ({ ...prev, ...captionsByPlatform }));
+        setCaptions((prev) => ({ ...prev, __all: baseCaption }));
       }
+
       toast({
         title: t("captionsGenerated"),
-        description: adapted.length > 0
-          ? `Applied with ${adapted.length} platform-safe version${adapted.length === 1 ? "" : "s"}`
-          : `Applied to ${captionPlatforms.length} account${captionPlatforms.length === 1 ? "" : "s"}`,
+        description: opts.multiPlatform
+          ? `Generated tailored copies for all ${captionPlatforms.length} platforms in 1 API call!`
+          : adapted.length > 0
+            ? `Applied with ${adapted.length} platform-safe version${adapted.length === 1 ? "" : "s"}`
+            : `Applied to ${captionPlatforms.length} account${captionPlatforms.length === 1 ? "" : "s"}`,
         tone: "success",
       });
       setAiDialogOpen(false);
