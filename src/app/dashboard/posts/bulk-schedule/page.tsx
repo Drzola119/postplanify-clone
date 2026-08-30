@@ -2086,6 +2086,36 @@ export default function BulkSchedulePage() {
     });
   }, [items, toast]);
 
+  const applyPinterestBoardToAll = useCallback(
+    (boardId: string) => {
+      setBatchAdvancedByPlatform((prev) => {
+        const cur = (prev.pinterest ?? getDefaultOptions("pinterest")) as Record<string, unknown>;
+        return { ...prev, pinterest: { ...cur, pinterest_board_id: boardId } };
+      });
+      setItems((prev) =>
+        prev.map((it) => {
+          const base = it as BulkItemBase;
+          const currentAdv = (base.advancedByPlatform ?? {}) as Record<string, Record<string, unknown>>;
+          const pinterestAdv = { ...(currentAdv.pinterest ?? {}), pinterest_board_id: boardId };
+          const updatedAdv = { ...currentAdv, pinterest: pinterestAdv };
+          return {
+            ...it,
+            pinterestBoard: boardId,
+            advancedByPlatform: updatedAdv as BulkItem["advancedByPlatform"],
+          } as BulkItem;
+        })
+      );
+      const boardLabel = destinationOptions.boards.find((b) => b.value === boardId)?.label ?? boardId;
+      const targetCount = items.filter((it) => it.accountIds.includes("pinterest")).length;
+      toast({
+        title: `Pinterest board set to "${boardLabel}"`,
+        description: `Applied automatically to ${targetCount} post(s)`,
+        tone: "success",
+      });
+    },
+    [destinationOptions.boards, items, toast]
+  );
+
   function updateAdvanced(id: string, platform: PlatformId, next: PlatformAdvancedOptions) {
     setItems((prev) =>
       prev.map((it) => {
@@ -3374,6 +3404,7 @@ export default function BulkSchedulePage() {
               onAutoFitAllOverLimit={handleAutoFitAllOverLimit}
               batchAdvancedByPlatform={batchAdvancedByPlatform}
               onApplyBatchAdvanced={applyBatchAdvanced}
+              onApplyPinterestBoardToAll={applyPinterestBoardToAll}
               contentType={contentType}
               destinationOptions={destinationOptions}
               aiGeneratingItemId={aiGeneratingItemId}
@@ -3848,6 +3879,7 @@ interface PostsListProps {
   onAutoFitAllOverLimit: () => void;
   batchAdvancedByPlatform: Partial<Record<PlatformId, PlatformAdvancedOptions>>;
   onApplyBatchAdvanced: (platform: PlatformId, options: PlatformAdvancedOptions) => void;
+  onApplyPinterestBoardToAll: (boardId: string) => void;
   contentType: BulkContentType;
   destinationOptions: { boards: Array<{ value: string; label: string }>; pages: Array<{ value: string; label: string }> };
   aiGeneratingItemId: string | null;
@@ -3882,6 +3914,7 @@ function PostsList({
   onAutoFitAllOverLimit,
   batchAdvancedByPlatform,
   onApplyBatchAdvanced,
+  onApplyPinterestBoardToAll,
   contentType,
   destinationOptions,
   aiGeneratingItemId,
@@ -3918,6 +3951,18 @@ function PostsList({
     }
     return Array.from(set);
   }, [items, accounts]);
+
+  const hasPinterestActive = useMemo(() => {
+    return activePlatformIds.includes("pinterest") || items.some((it) => it.accountIds.includes("pinterest"));
+  }, [activePlatformIds, items]);
+
+  const currentBatchPinterestBoard = useMemo(() => {
+    const fromBatch = (batchAdvancedByPlatform.pinterest as Record<string, unknown> | undefined)?.pinterest_board_id as string | undefined;
+    if (fromBatch) return fromBatch;
+    const firstWithBoard = items.find((it) => (it as BulkItemBase).pinterestBoard)?.pinterestBoard;
+    if (firstWithBoard) return firstWithBoard;
+    return destinationOptions.boards[0]?.value ?? "";
+  }, [batchAdvancedByPlatform, items, destinationOptions.boards]);
 
   useEffect(() => {
     if (activePlatformIds.length > 0) {
@@ -3974,6 +4019,29 @@ function PostsList({
           >
             <Users className="size-3.5" /> Tag users
           </button>
+
+          {/* Pinterest Board Selector — automatically applies to all posts */}
+          {hasPinterestActive && (
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50/80 hover:bg-red-100/70 text-red-950 px-3 h-8 text-xs font-bold shadow-sm transition-all">
+              <ProPlatformIcon platform="pinterest" size={14} />
+              <span className="text-[11px] text-red-800 shrink-0">Board:</span>
+              <select
+                value={currentBatchPinterestBoard}
+                onChange={(e) => onApplyPinterestBoardToAll(e.target.value)}
+                className="bg-transparent text-xs font-bold text-red-950 focus:outline-none cursor-pointer pr-1 truncate max-w-[150px]"
+              >
+                <option value="" disabled={destinationOptions.boards.length > 0}>
+                  {destinationOptions.boards.length > 0 ? "Select Board..." : "No boards found"}
+                </option>
+                {destinationOptions.boards.map((b) => (
+                  <option key={b.value} value={b.value} className="text-zinc-900 bg-white font-medium">
+                    {b.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <button
             type="button"
             onClick={onApplyAccountsToAll}
@@ -4974,27 +5042,6 @@ function PostRow({
             )}
           </div>
 
-          {/* Quick platform fields kept for speed */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="flex items-center gap-3 p-2 rounded-xl bg-zinc-50 border border-zinc-200">
-              <label className="text-xs font-semibold flex items-center gap-1.5">
-                <Send className="size-3.5 text-zinc-500" /> Post in
-              </label>
-              <label className="flex items-center gap-1 cursor-pointer ml-auto">
-                <input type="radio" name={`post-in-${item.id}`} checked={item.postIn === "feed"} onChange={() => onUpdate({ postIn: "feed" })} className="size-3.5" />
-                <span className="text-xs font-medium">{t("posts.bulkSchedule.feed")}</span>
-              </label>
-              <label className={cn("flex items-center gap-1", hasInstagram || hasFacebook ? "cursor-pointer" : "opacity-50")}>
-                <input type="radio" name={`post-in-${item.id}`} checked={item.postIn === "story"} onChange={() => onUpdate({ postIn: "story" })} disabled={!(hasInstagram || hasFacebook)} className="size-3.5" />
-                <span className="text-xs font-medium">{t("posts.bulkSchedule.story")}</span>
-              </label>
-            </div>
-            <label className="flex items-center gap-2 p-2 rounded-xl bg-zinc-50 border border-zinc-200 cursor-pointer">
-              <input type="checkbox" checked={item.autoAddMusic} onChange={(e) => onUpdate({ autoAddMusic: e.target.checked })} className="size-3.5" />
-              <span className="text-xs font-semibold">{t("posts.bulkSchedule.auto_music")}</span>
-            </label>
-          </div>
-
           {hasYouTube && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
@@ -5021,32 +5068,6 @@ function PostRow({
                   className="mt-1 h-9 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
                 />
               </div>
-            </div>
-          )}
-
-          {hasPinterest && (
-            <div>
-              <label className="text-[11px] font-bold block mb-1">
-                {t("posts.bulkSchedule.pinterest_board")} <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={item.pinterestBoard}
-                onChange={(e) => onUpdate({ pinterestBoard: e.target.value })}
-                className="h-9 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
-              >
-                <option value="">{t("posts.bulkSchedule.select_board")}</option>
-                {destinationOptions.boards.length > 0 ? (
-                  destinationOptions.boards.map((b) => (
-                    <option key={b.value} value={b.value}>
-                      {b.label}
-                    </option>
-                  ))
-                ) : (
-                  <option value="" disabled>
-                    No boards — connect Pinterest in Accounts
-                  </option>
-                )}
-              </select>
             </div>
           )}
 
