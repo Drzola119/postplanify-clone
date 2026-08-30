@@ -62,6 +62,7 @@ import { CoverImageModal } from "@/components/dashboard/cover-image-modal";
 import { CollaboratorsModal } from "@/components/dashboard/collaborators-modal";
 import { HashtagsDropdown } from "@/components/dashboard/hashtags-dropdown";
 import { MetadataRulesPanel, type MetadataRules } from "@/components/dashboard/metadata-rules-panel";
+import { PlatformTileBar } from "@/components/dashboard/platform-tile-bar";
 import { BrandIcons } from "@/components/dashboard/brand-icons";
 import { checkRequirements, type MediaMeta, type ReadinessReport } from "@/lib/publishing/requirements";
 import { getDefaultOptions, type PlatformAdvancedOptions } from "@/lib/publishing/advanced-options";
@@ -1805,6 +1806,50 @@ export default function BulkSchedulePage() {
           <p className="text-[11px] text-zinc-500 mt-2 hidden sm:block">Start date sets slot 1. We auto-space posts in your timezone ({timezone}), 30 min apart per day. <Link href="/dashboard/calendar" className="underline decoration-dotted hover:text-zinc-700">View in Calendar</Link> after scheduling.</p>
         </div>
 
+        {/* ── Global Platform Selector Bar (Parity with Create Post) ── */}
+        <div className="rounded-[16px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.04)] p-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <PlatformTileBar
+              selected={accounts}
+              onToggle={toggleAccount}
+              getPreviewProps={(id) => ({
+                caption: items[0]?.captionByPlatform?.[id] ?? items[0]?.caption ?? "",
+                mediaUrl: items[0]?.url ?? null,
+                mediaKind: items[0]?.kind ?? null,
+              })}
+            />
+            <div className="flex items-center gap-2 text-xs font-semibold pl-2 border-l border-zinc-200">
+              <button
+                type="button"
+                onClick={() => setAccounts(new Set(PLATFORMS.map((p) => p.id)))}
+                className="text-zinc-600 hover:text-zinc-900 underline-offset-2 hover:underline cursor-pointer"
+              >
+                Select All
+              </button>
+              <span className="text-zinc-300">•</span>
+              <button
+                type="button"
+                onClick={() => setAccounts(new Set())}
+                className="text-zinc-600 hover:text-zinc-900 underline-offset-2 hover:underline cursor-pointer"
+              >
+                Deselect All
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={applyAccountsToAll}
+              disabled={accounts.size === 0 || items.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 disabled:opacity-50 text-zinc-900 px-3.5 h-9 text-xs font-bold shadow-xs transition-colors cursor-pointer"
+            >
+              <CheckCircle2 className="size-3.5 text-emerald-600" />
+              Apply to All ({items.length}) Posts
+            </button>
+          </div>
+        </div>
+
         {/* ── AI + Campaign Rules + Undo bar ── */}
         {items.length > 0 ? (
           <div className="space-y-3">
@@ -1888,50 +1933,14 @@ export default function BulkSchedulePage() {
         <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4 items-start">
           {/* Left */}
           <div className="space-y-4 lg:sticky lg:top-4">
-            {/* Accounts */}
-            <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm overflow-hidden">
-              <div className="p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="size-7 inline-flex items-center justify-center rounded-full bg-zinc-900 text-white text-xs font-bold">1</span>
-                  <h3 className="text-sm font-bold tracking-tight">{t("posts.bulkSchedule.accounts_title")}</h3>
-                  <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-1 text-[10px] font-bold text-zinc-600">{accounts.size} selected</span>
-                </div>
-                <div className="max-h-[320px] overflow-y-auto -mx-1 px-1 space-y-1">
-                  {PLATFORMS.map((p) => {
-                    const isSel = accounts.has(p.id);
-                    return (
-                      <label
-                        key={p.id}
-                        className={cn(
-                          "flex items-center gap-2.5 w-full p-2 rounded-xl cursor-pointer transition-colors border",
-                          isSel ? "bg-zinc-900 text-white border-zinc-900" : "bg-white border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50"
-                        )}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isSel}
-                          onChange={() => toggleAccount(p.id)}
-                          className="sr-only"
-                        />
-                        <span className={cn("size-[18px] rounded-[6px] border-2 flex items-center justify-center shrink-0", isSel ? "bg-white border-white text-zinc-900" : "bg-white border-zinc-300")}>
-                          {isSel && <CheckCircle2 className="size-3 fill-zinc-900 text-white" />}
-                        </span>
-                        <ProPlatformIcon platform={p.id} size={24} />
-                        <span className={cn("text-xs font-semibold truncate", isSel ? "text-white" : "text-zinc-700")}>{p.handle}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-                <p className="text-[11px] text-zinc-500 mt-2">Default for new uploads. Use “Apply to all” to overwrite each post’s platforms. <Link href="/dashboard/accounts" className="underline decoration-dotted hover:text-zinc-700">Manage connections</Link></p>
-              </div>
-            </div>
-
             {/* Media Files */}
             <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm overflow-hidden">
               <div className="p-4">
                 <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
                   <div className="flex items-center gap-2">
-                    <span className="size-7 inline-flex items-center justify-center rounded-full bg-zinc-900 text-white text-xs font-bold">2</span>
+                    <span className="size-7 inline-flex items-center justify-center rounded-full bg-zinc-900 text-white text-xs font-bold">
+                      <ImageIcon className="size-3.5" />
+                    </span>
                     <h3 className="text-sm font-bold tracking-tight">{t("posts.bulkSchedule.media_files_title")}</h3>
                     <span className="text-xs font-mono text-zinc-500">
                       {items.length}/{MAX_FILES}
@@ -2983,28 +2992,31 @@ function PostRow({
             )}
           </div>
 
-          <div className="space-y-2">
-            <h4 className="text-xs font-bold flex items-center gap-1.5">
-              <Settings2 className="size-3.5 text-zinc-500" /> Platforms
-            </h4>
-            <div className="space-y-1 max-h-[200px] overflow-y-auto pr-1">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold flex items-center gap-1.5">
+                <Settings2 className="size-3.5 text-zinc-500" /> Platforms
+              </h4>
+              <span className="text-[10px] font-semibold text-zinc-500">{item.accountIds.length} active</span>
+            </div>
+            <div className="flex items-center gap-1 flex-wrap">
               {PLATFORMS.map((p) => {
                 const isSel = item.accountIds.includes(p.id);
                 return (
-                  <label
+                  <button
                     key={p.id}
+                    type="button"
+                    onClick={() => onToggleAccount(p.id)}
+                    title={`${p.name} (${isSel ? "active" : "disabled"})`}
                     className={cn(
-                      "flex items-center gap-2 px-2 py-1.5 rounded-xl cursor-pointer text-xs border transition-colors",
-                      isSel ? "bg-zinc-900 text-white border-zinc-900" : "bg-white border-zinc-200 hover:bg-zinc-50"
+                      "size-7 rounded-lg flex items-center justify-center transition-all cursor-pointer border",
+                      isSel
+                        ? "bg-white border-zinc-300 shadow-xs scale-100 opacity-100"
+                        : "bg-zinc-100/60 border-transparent grayscale opacity-30 hover:opacity-75 hover:grayscale-0"
                     )}
                   >
-                    <span className={cn("size-4 rounded-[6px] border-2 flex items-center justify-center shrink-0", isSel ? "bg-white border-white text-zinc-900" : "bg-white border-zinc-300")}>
-                      {isSel && <CheckCircle2 className="size-3 fill-zinc-900 text-white" />}
-                    </span>
                     <ProPlatformIcon platform={p.id} size={18} />
-                    <span className={cn("truncate flex-1 text-[11px] font-semibold", isSel ? "text-white" : "text-zinc-700")}>{p.handle}</span>
-                    <input type="checkbox" checked={isSel} onChange={() => onToggleAccount(p.id)} className="sr-only" />
-                  </label>
+                  </button>
                 );
               })}
             </div>
