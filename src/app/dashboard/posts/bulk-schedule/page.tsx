@@ -1371,7 +1371,7 @@ export default function BulkSchedulePage() {
         let changed = false;
         const nextCaptionByPlatform = { ...(it.captionByPlatform ?? {}) };
         for (const pid of it.accountIds) {
-          const lim = PLATFORM_LIMITS[pid] ?? 2200;
+          const lim = getPlatformLimit(pid);
           const currentCap = nextCaptionByPlatform[pid] ?? it.caption;
           if (currentCap.length > lim) {
             nextCaptionByPlatform[pid] = fitCaptionForPlatform(it.caption, pid);
