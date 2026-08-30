@@ -4015,22 +4015,10 @@ function PostsList({
   const [showBatchAdvanced, setShowBatchAdvanced] = useState(false);
   const [selectedPlatformTab, setSelectedPlatformTab] = useState<PlatformId | null>(null);
 
-  // Smart Link Popover State
-  const [showSmartLinkPopover, setShowSmartLinkPopover] = useState(false);
+  // Smart Link Input State
+  const [showSmartLinkInput, setShowSmartLinkInput] = useState(false);
   const [smartLinkUrl, setSmartLinkUrl] = useState("");
   const [smartLinkIgCta, setSmartLinkIgCta] = useState(true);
-  const smartLinkRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!showSmartLinkPopover) return;
-    function onClick(e: MouseEvent) {
-      if (smartLinkRef.current && !smartLinkRef.current.contains(e.target as Node)) {
-        setShowSmartLinkPopover(false);
-      }
-    }
-    window.addEventListener("mousedown", onClick);
-    return () => window.removeEventListener("mousedown", onClick);
-  }, [showSmartLinkPopover]);
 
   const activePlatformIds = useMemo(() => {
     const set = new Set<PlatformId>();
@@ -4102,157 +4090,54 @@ function PostsList({
             className="rounded-full font-bold shadow-sm"
           />
 
-          {/* Smart Link Tool with Interactive Routing Matrix Popover */}
-          <div className="relative" ref={smartLinkRef}>
-            <button
-              type="button"
-              onClick={() => setShowSmartLinkPopover((v) => !v)}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-full border px-3 h-8 text-xs font-bold shadow-sm transition-all cursor-pointer",
-                showSmartLinkPopover
-                  ? "bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-600/20"
-                  : "border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50"
-              )}
-            >
-              <Link2 className={cn("size-3.5", showSmartLinkPopover ? "text-white" : "text-blue-600")} />
-              <span>Smart Link</span>
-              <ChevronDown className={cn("size-3 opacity-60 transition-transform", showSmartLinkPopover && "rotate-180")} />
-            </button>
-
-            {showSmartLinkPopover && (
-              <div className="absolute right-0 sm:right-auto sm:left-0 top-full mt-2 z-40 w-[340px] sm:w-[410px] rounded-2xl border border-zinc-200 bg-white p-4 shadow-2xl space-y-3.5 animate-in fade-in zoom-in-95 duration-100">
-                <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
-                  <div className="flex items-center gap-2">
-                    <div className="size-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                      <Link2 className="size-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-zinc-900 leading-tight">Smart Multi-Platform Link</h4>
-                      <p className="text-[10px] text-zinc-500">Auto-routes URLs to optimal network placements</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowSmartLinkPopover(false)}
-                    className="size-6 inline-flex items-center justify-center rounded-full text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100"
-                  >
-                    <X className="size-3.5" />
-                  </button>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-bold text-zinc-700 block mb-1">
-                    Destination URL <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="url"
-                    value={smartLinkUrl}
-                    onChange={(e) => setSmartLinkUrl(e.target.value)}
-                    placeholder="https://example.com/your-product"
-                    className="w-full h-9 rounded-xl border border-zinc-200 bg-zinc-50/50 px-3 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:bg-white focus:border-blue-500"
-                  />
-                </div>
-
-                {/* Live Multi-Platform Routing Matrix */}
-                <div className="rounded-xl border border-zinc-100 bg-zinc-50/70 p-2.5 space-y-2">
-                  <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-wider block">
-                    Auto-Routing Strategy
-                  </span>
-                  <div className="grid grid-cols-1 gap-1.5 text-[11px]">
-                    <div className="flex items-center justify-between p-1.5 rounded-lg bg-white border border-zinc-200/70">
-                      <span className="flex items-center gap-1.5 font-medium text-zinc-800">
-                        <ProPlatformIcon platform="instagram" size={14} /> Instagram
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 border border-pink-200">
-                        💬 First Comment
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between p-1.5 rounded-lg bg-white border border-zinc-200/70">
-                      <span className="flex items-center gap-1.5 font-medium text-zinc-800">
-                        <ProPlatformIcon platform="pinterest" size={14} /> Pinterest
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
-                        📌 Destination Pin Link
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between p-1.5 rounded-lg bg-white border border-zinc-200/70">
-                      <span className="flex items-center gap-1.5 font-medium text-zinc-800">
-                        <div className="flex items-center gap-0.5">
-                          <ProPlatformIcon platform="linkedin" size={13} />
-                          <ProPlatformIcon platform="facebook" size={13} />
-                          <ProPlatformIcon platform="twitter" size={13} />
-                          <ProPlatformIcon platform="threads" size={13} />
-                          <ProPlatformIcon platform="youtube" size={13} />
-                          <ProPlatformIcon platform="bluesky" size={13} />
-                        </div>
-                        <span className="text-[10px] text-zinc-500 font-normal">Direct</span>
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                        📝 Caption (Rich Preview)
-                      </span>
-                    </div>
-                    {activePlatformIds.includes("tiktok") && (
-                      <div className="flex items-center justify-between p-1.5 rounded-lg bg-white/70 border border-zinc-200/50 opacity-80">
-                        <span className="flex items-center gap-1.5 font-medium text-zinc-600">
-                          <ProPlatformIcon platform="tiktok" size={14} /> TikTok
-                        </span>
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600">
-                          Bio link recommended
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Instagram CTA toggle */}
-                <label className="flex items-center gap-2.5 p-2 rounded-xl bg-purple-50/60 border border-purple-100 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={smartLinkIgCta}
-                    onChange={(e) => setSmartLinkIgCta(e.target.checked)}
-                    className="size-4 text-purple-600 rounded"
-                  />
-                  <div className="text-left">
-                    <span className="text-[11px] font-bold text-purple-950 block">Append CTA to Instagram captions</span>
-                    <span className="text-[10px] text-purple-700">&quot;👇 Link in the comments below!&quot;</span>
-                  </div>
-                </label>
-
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    disabled={!smartLinkUrl.trim()}
-                    onClick={() => {
-                      onApplySmartLinkToAll(smartLinkUrl.trim(), { instagramCta: smartLinkIgCta });
-                      setShowSmartLinkPopover(false);
-                    }}
-                    className="flex-1 h-9 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs shadow-sm transition-all"
-                  >
-                    Apply Smart Link to All ({items.length}) Posts
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowSmartLinkPopover(false)}
-                    className="h-9 px-3 rounded-xl border border-zinc-200 text-zinc-600 text-xs font-semibold hover:bg-zinc-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
+          {/* Smart Link Tool Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setShowSmartLinkInput((v) => !v);
+              setShowFirstCommentInput(false);
+              setShowTagUsersInput(false);
+            }}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border px-3 h-8 text-xs font-bold shadow-sm transition-all cursor-pointer",
+              showSmartLinkInput
+                ? "bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-600/20"
+                : "border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50"
             )}
-          </div>
+          >
+            <Link2 className={cn("size-3.5", showSmartLinkInput ? "text-white" : "text-blue-600")} />
+            <span>Smart Link</span>
+          </button>
 
           <button
             type="button"
-            onClick={() => setShowFirstCommentInput((v) => !v)}
-            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 h-8 text-xs font-semibold hover:bg-zinc-50 shadow-sm"
+            onClick={() => {
+              setShowFirstCommentInput((v) => !v);
+              setShowSmartLinkInput(false);
+              setShowTagUsersInput(false);
+            }}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border px-3 h-8 text-xs font-semibold shadow-sm transition-all cursor-pointer",
+              showFirstCommentInput
+                ? "bg-zinc-900 text-white border-zinc-900"
+                : "border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50"
+            )}
           >
             <MessageSquare className="size-3.5" /> First comment
           </button>
           <button
             type="button"
-            onClick={() => setShowTagUsersInput((v) => !v)}
-            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 h-8 text-xs font-semibold hover:bg-zinc-50 shadow-sm"
+            onClick={() => {
+              setShowTagUsersInput((v) => !v);
+              setShowSmartLinkInput(false);
+              setShowFirstCommentInput(false);
+            }}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border px-3 h-8 text-xs font-semibold shadow-sm transition-all cursor-pointer",
+              showTagUsersInput
+                ? "bg-zinc-900 text-white border-zinc-900"
+                : "border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50"
+            )}
           >
             <Users className="size-3.5" /> Tag users
           </button>
@@ -4421,6 +4306,101 @@ function PostsList({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {showSmartLinkInput && (
+        <div className="rounded-[16px] border border-blue-200 bg-gradient-to-br from-blue-50/60 via-white to-blue-50/30 p-4 shadow-sm space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-blue-100/80">
+            <div className="flex items-center gap-2.5">
+              <span className="size-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold shadow-xs shrink-0">
+                <Link2 className="size-4" />
+              </span>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-xs font-bold text-zinc-900">Smart Multi-Platform Link Routing</h4>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-800 border border-blue-200 px-2 py-0.5 text-[10px] font-bold">
+                    Auto-Applied to All {items.length} Posts
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-500 mt-0.5">
+                  Distributes your link according to each platform&apos;s native capabilities: First Comment for Instagram, Destination Pin for Pinterest, and direct Clickable Captions for LinkedIn, Facebook, X, and Threads.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowSmartLinkInput(false)}
+              className="inline-flex items-center justify-center size-7 rounded-lg border border-zinc-200 bg-white text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors cursor-pointer self-end sm:self-center"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+
+          <div className="flex flex-col md:flex-row md:items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <input
+                type="url"
+                value={smartLinkUrl}
+                onChange={(e) => setSmartLinkUrl(e.target.value)}
+                placeholder="Enter destination URL (e.g. https://yourbrand.com/sale)..."
+                className="w-full h-9 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-500"
+              />
+            </div>
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
+              <label className="flex items-center gap-2 px-3 h-9 rounded-xl bg-white border border-zinc-200 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={smartLinkIgCta}
+                  onChange={(e) => setSmartLinkIgCta(e.target.checked)}
+                  className="size-3.5 text-purple-600 rounded"
+                />
+                <span className="text-xs font-medium text-zinc-700">
+                  Instagram caption CTA (<span className="text-purple-700 font-semibold">👇 Link in comments</span>)
+                </span>
+              </label>
+              <button
+                type="button"
+                disabled={!smartLinkUrl.trim()}
+                onClick={() => {
+                  onApplySmartLinkToAll(smartLinkUrl.trim(), { instagramCta: smartLinkIgCta });
+                  setShowSmartLinkInput(false);
+                }}
+                className="px-4 h-9 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs shadow-sm transition-all"
+              >
+                Apply to All ({items.length}) Posts
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSmartLinkInput(false)}
+                className="px-3 h-9 rounded-xl border border-zinc-200 text-zinc-600 text-xs font-semibold hover:bg-zinc-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+
+          {/* Platform distribution matrix preview chips */}
+          <div className="flex items-center gap-2 flex-wrap pt-1 text-[11px]">
+            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wide">Routing Engine:</span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-pink-50 text-pink-700 border border-pink-200 font-semibold">
+              <ProPlatformIcon platform="instagram" size={13} /> Instagram → 💬 First Comment
+            </span>
+            {hasPinterestActive && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-50 text-red-700 border border-red-200 font-semibold">
+                <ProPlatformIcon platform="pinterest" size={13} /> Pinterest → 📌 Destination Pin Link
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-semibold">
+              <ProPlatformIcon platform="linkedin" size={13} />
+              <ProPlatformIcon platform="facebook" size={13} />
+              <ProPlatformIcon platform="twitter" size={13} />
+              <ProPlatformIcon platform="threads" size={13} />
+              <ProPlatformIcon platform="youtube" size={13} />
+              <ProPlatformIcon platform="bluesky" size={13} />
+              <span>Direct Link in Caption (Rich Preview)</span>
+            </span>
+          </div>
         </div>
       )}
 
