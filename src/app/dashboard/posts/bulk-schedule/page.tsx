@@ -690,6 +690,9 @@ export default function BulkSchedulePage() {
   });
   const [rulesOpen, setRulesOpen] = useState(false);
   const [matrixModalOpen, setMatrixModalOpen] = useState(false);
+  const [batchAdvancedByPlatform, setBatchAdvancedByPlatform] = useState<
+    Partial<Record<PlatformId, PlatformAdvancedOptions>>
+  >({});
   const [destinationOptions, setDestinationOptions] = useState<{
     boards: Array<{ value: string; label: string }>;
     pages: Array<{ value: string; label: string }>;
@@ -1827,7 +1830,8 @@ export default function BulkSchedulePage() {
       const adv: Record<string, Record<string, unknown>> = {};
       for (const pid of filteredAccounts) {
         const def = getDefaultOptions(pid);
-        if (Object.keys(def).length > 0) adv[pid] = { ...def };
+        const batchSaved = (batchAdvancedByPlatform[pid] ?? {}) as Record<string, unknown>;
+        adv[pid] = { ...def, ...batchSaved };
         if (pid === "pinterest" && destinationOptions.boards[0] && !adv[pid]?.pinterest_board_id) {
           adv[pid] = { ...(adv[pid] ?? def), pinterest_board_id: destinationOptions.boards[0].value };
         }
@@ -2053,6 +2057,35 @@ export default function BulkSchedulePage() {
     );
   }
 
+  const applyBatchAdvanced = useCallback((platform: PlatformId, next: PlatformAdvancedOptions) => {
+    setBatchAdvancedByPlatform((prev) => ({ ...prev, [platform]: next }));
+    setItems((prev) =>
+      prev.map((it) => {
+        const base = it as BulkItemBase;
+        const currentAdv = (base.advancedByPlatform ?? {}) as Record<string, Record<string, unknown>>;
+        const mergedPlatformAdv = { ...(currentAdv[platform] ?? {}), ...(next as Record<string, unknown>) };
+        const updatedAdv = { ...currentAdv, [platform]: mergedPlatformAdv };
+        const updated: BulkItemBase = { ...base, advancedByPlatform: updatedAdv as BulkItem["advancedByPlatform"] };
+
+        if (platform === "pinterest") {
+          const boardId = (next as Record<string, unknown>).pinterest_board_id;
+          if (boardId) updated.pinterestBoard = String(boardId);
+        }
+        if (platform === "instagram") {
+          const shareMode = (next as Record<string, unknown>).instagram_share_mode as TrialReelMode | undefined;
+          if (shareMode) updated.trialMode = shareMode;
+        }
+        return updated as BulkItem;
+      })
+    );
+    const targetCount = items.filter((it) => it.accountIds.includes(platform)).length;
+    toast({
+      title: `Updated ${getPlatform(platform)?.name ?? platform} options`,
+      description: `Applied automatically to ${targetCount} post(s)`,
+      tone: "success",
+    });
+  }, [items, toast]);
+
   function updateAdvanced(id: string, platform: PlatformId, next: PlatformAdvancedOptions) {
     setItems((prev) =>
       prev.map((it) => {
@@ -2120,7 +2153,8 @@ export default function BulkSchedulePage() {
     const advTemplate: Record<string, Record<string, unknown>> = {};
     for (const pid of accounts) {
       const def = getDefaultOptions(pid);
-      advTemplate[pid] = { ...def };
+      const batchSaved = (batchAdvancedByPlatform[pid] ?? {}) as Record<string, unknown>;
+      advTemplate[pid] = { ...def, ...batchSaved };
       if (pid === "pinterest" && destinationOptions.boards[0] && !advTemplate[pid]?.pinterest_board_id) {
         advTemplate[pid] = { ...advTemplate[pid], pinterest_board_id: destinationOptions.boards[0].value };
       }
@@ -3338,6 +3372,9 @@ export default function BulkSchedulePage() {
               onApplyFirstCommentToAll={applyFirstCommentToAll}
               onApplyTagUsersToAll={applyTagUsersToAll}
               onAutoFitAllOverLimit={handleAutoFitAllOverLimit}
+              batchAdvancedByPlatform={batchAdvancedByPlatform}
+              onApplyBatchAdvanced={applyBatchAdvanced}
+              contentType={contentType}
               destinationOptions={destinationOptions}
               aiGeneratingItemId={aiGeneratingItemId}
               timezone={timezone}
@@ -3809,6 +3846,9 @@ interface PostsListProps {
   onApplyFirstCommentToAll: (comment: string) => void;
   onApplyTagUsersToAll: (tagUsers: string) => void;
   onAutoFitAllOverLimit: () => void;
+  batchAdvancedByPlatform: Partial<Record<PlatformId, PlatformAdvancedOptions>>;
+  onApplyBatchAdvanced: (platform: PlatformId, options: PlatformAdvancedOptions) => void;
+  contentType: BulkContentType;
   destinationOptions: { boards: Array<{ value: string; label: string }>; pages: Array<{ value: string; label: string }> };
   aiGeneratingItemId: string | null;
   timezone: string;
@@ -3840,6 +3880,9 @@ function PostsList({
   onApplyFirstCommentToAll,
   onApplyTagUsersToAll,
   onAutoFitAllOverLimit,
+  batchAdvancedByPlatform,
+  onApplyBatchAdvanced,
+  contentType,
   destinationOptions,
   aiGeneratingItemId,
   timezone,
@@ -3857,6 +3900,33 @@ function PostsList({
   const [showFirstCommentInput, setShowFirstCommentInput] = useState(false);
   const [tagUsersPrompt, setTagUsersPrompt] = useState("");
   const [showTagUsersInput, setShowTagUsersInput] = useState(false);
+  const [showBatchAdvanced, setShowBatchAdvanced] = useState(false);
+  const [selectedPlatformTab, setSelectedPlatformTab] = useState<PlatformId | null>(null);
+
+  const activePlatformIds = useMemo(() => {
+    const set = new Set<PlatformId>();
+    for (const item of items) {
+      for (const pid of item.accountIds) {
+        set.add(pid);
+      }
+    }
+    return Array.from(set);
+  }, [items]);
+
+  useEffect(() => {
+    if (activePlatformIds.length > 0) {
+      if (!selectedPlatformTab || !activePlatformIds.includes(selectedPlatformTab)) {
+        setSelectedPlatformTab(activePlatformIds[0]);
+      }
+    }
+  }, [activePlatformIds, selectedPlatformTab]);
+
+  const bulkMediaKind = useMemo((): MediaKind => {
+    if (contentType === "long_video" || contentType === "short_video" || contentType === "trial_reel") return "video";
+    if (items.some((it) => it.kind === "video")) return "video";
+    if (contentType === "document" || items.some((it) => it.kind === "document")) return "text";
+    return "image";
+  }, [contentType, items]);
 
   return (
     <div className="space-y-3 pb-6">
@@ -3907,8 +3977,141 @@ function PostsList({
             <Users className="size-3.5" />
             {t("posts.bulkSchedule.apply_accounts_all")}
           </button>
+          <button
+            type="button"
+            onClick={() => setShowBatchAdvanced((v) => !v)}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border px-3.5 h-8 text-xs font-bold shadow-sm transition-all cursor-pointer",
+              showBatchAdvanced
+                ? "bg-zinc-950 text-white border-zinc-950 shadow-md ring-2 ring-zinc-950/20"
+                : "border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50 hover:border-zinc-300"
+            )}
+          >
+            <Settings2 className={cn("size-3.5", showBatchAdvanced ? "text-white" : "text-zinc-700")} />
+            Advanced for each platform
+            <span
+              className={cn(
+                "ml-0.5 inline-flex items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold border",
+                showBatchAdvanced
+                  ? "bg-white/20 text-white border-white/30"
+                  : "bg-zinc-100 text-zinc-700 border-zinc-200"
+              )}
+            >
+              {activePlatformIds.length}
+            </span>
+            <ChevronDown className={cn("size-3.5 transition-transform", showBatchAdvanced && "rotate-180")} />
+          </button>
         </div>
       </div>
+
+      {showBatchAdvanced && (
+        <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="p-3.5 sm:p-4 bg-gradient-to-r from-zinc-50 via-white to-zinc-50 border-b border-zinc-200 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="size-8 rounded-xl bg-zinc-950 text-white flex items-center justify-center shadow-xs shrink-0">
+                <Settings2 className="size-4" />
+              </span>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-xs font-bold text-zinc-900">Advanced Platform Settings (Applied to All Posts)</h4>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                    <CheckCircle2 className="size-3" /> Auto-applied to all {items.length} post(s)
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-500 mt-0.5">
+                  Customize publishing preferences for each platform. Changes are instantly applied to all matching posts in your queue.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowBatchAdvanced(false)}
+              className="inline-flex items-center justify-center size-7 rounded-lg border border-zinc-200 bg-white text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors cursor-pointer"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+
+          {activePlatformIds.length === 0 ? (
+            <div className="p-6 text-center text-xs text-zinc-500">
+              No platforms currently selected on your posts. Select platforms on your posts to configure their advanced options.
+            </div>
+          ) : (
+            <div className="p-4 space-y-4">
+              {/* Platform tabs */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                {activePlatformIds.map((pid) => {
+                  const meta = getPlatform(pid);
+                  const isTabActive = selectedPlatformTab === pid;
+                  const postCount = items.filter((it) => it.accountIds.includes(pid)).length;
+                  return (
+                    <button
+                      key={pid}
+                      type="button"
+                      onClick={() => setSelectedPlatformTab(pid)}
+                      className={cn(
+                        "inline-flex items-center gap-2 px-3.5 h-9 rounded-xl text-xs font-bold transition-all shrink-0 border cursor-pointer",
+                        isTabActive
+                          ? "bg-zinc-950 text-white border-zinc-950 shadow-sm ring-2 ring-zinc-950/20"
+                          : "bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50 hover:border-zinc-300"
+                      )}
+                    >
+                      <ProPlatformIcon platform={pid} size={15} />
+                      <span>{meta?.name ?? pid}</span>
+                      <span
+                        className={cn(
+                          "text-[10px] px-1.5 py-0.5 rounded-full font-semibold",
+                          isTabActive ? "bg-white/20 text-white" : "bg-zinc-100 text-zinc-600"
+                        )}
+                      >
+                        {postCount}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Active platform panel */}
+              {selectedPlatformTab && (
+                <div className="rounded-xl border border-zinc-200 bg-zinc-50/60 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2 border-b border-zinc-200/80 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <ProPlatformIcon platform={selectedPlatformTab} size={16} />
+                      <span className="text-xs font-bold text-zinc-900">
+                        {getPlatform(selectedPlatformTab)?.name ?? selectedPlatformTab} Options
+                      </span>
+                      <span className="text-[11px] text-zinc-500">
+                        • Updating {items.filter((it) => it.accountIds.includes(selectedPlatformTab)).length} post(s)
+                      </span>
+                    </div>
+                  </div>
+
+                  <AdvancedOptionsPanel
+                    platform={selectedPlatformTab}
+                    platformName={getPlatform(selectedPlatformTab)?.name ?? selectedPlatformTab}
+                    mediaKind={bulkMediaKind}
+                    value={
+                      batchAdvancedByPlatform[selectedPlatformTab] ??
+                      items.find((it) => it.accountIds.includes(selectedPlatformTab))?.advancedByPlatform?.[selectedPlatformTab] ??
+                      getDefaultOptions(selectedPlatformTab)
+                    }
+                    onChange={(next) => onApplyBatchAdvanced(selectedPlatformTab, next)}
+                    selectOptions={
+                      selectedPlatformTab === "pinterest" && destinationOptions.boards.length > 0
+                        ? { pinterest_board_id: destinationOptions.boards }
+                        : selectedPlatformTab === "facebook" && destinationOptions.pages.length > 0
+                          ? { facebook_page_id: destinationOptions.pages }
+                          : undefined
+                    }
+                    collapsible={false}
+                    defaultOpen={true}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {showFirstCommentInput && (
         <div className="p-3 rounded-xl border border-zinc-200 bg-zinc-50 flex items-center gap-2">
@@ -4957,7 +5160,7 @@ function PostRow({
               className="w-full flex items-center justify-between px-3 py-2.5 bg-white hover:bg-zinc-50 text-left"
             >
               <span className="text-xs font-bold flex items-center gap-1.5">
-                <Settings2 className="size-3.5" /> Advanced for each platform • {item.accountIds.length} selected
+                <Settings2 className="size-3.5" /> Advanced for this post • {item.accountIds.length} selected
                 <span className={cn("ml-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border", readiness.blockedCount > 0 ? "bg-red-50 text-red-700 border-red-200" : "bg-emerald-50 text-emerald-700 border-emerald-200")}>
                   {readiness.blockedCount > 0 ? `${readiness.blockedCount} blocked` : "Ready"}
                 </span>
