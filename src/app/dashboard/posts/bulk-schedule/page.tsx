@@ -51,7 +51,6 @@ import { getOverrideHeaders } from "@/lib/security/client-overrides";
 import { parseCsv, normalizePlatforms, normalizeHashtags } from "@/lib/bulk-schedule/csv";
 import { zonedDateTimeToDate } from "@/lib/datetime/zoned";
 import { AdvancedOptionsPanel } from "@/components/dashboard/advanced-options-panel";
-import { RequirementsPanel } from "@/components/dashboard/requirements-panel";
 import { AICaptionsDialog } from "@/components/dashboard/ai-captions-dialog";
 import { fitCaptionForPlatform, PLATFORM_LIMITS, getPlatformLimit } from "@/lib/ai/caption-fit";
 import { UnsplashDialog } from "@/components/dashboard/unsplash-dialog";
@@ -64,7 +63,7 @@ import { CollaboratorsModal } from "@/components/dashboard/collaborators-modal";
 import { HashtagsDropdown } from "@/components/dashboard/hashtags-dropdown";
 import { MetadataRulesPanel, type MetadataRules } from "@/components/dashboard/metadata-rules-panel";
 import { BrandIcons } from "@/components/dashboard/brand-icons";
-import { checkRequirements, type MediaMeta } from "@/lib/publishing/requirements";
+import { checkRequirements, type MediaMeta, type ReadinessReport } from "@/lib/publishing/requirements";
 import { getDefaultOptions, type PlatformAdvancedOptions } from "@/lib/publishing/advanced-options";
 import type { MediaKind } from "@/lib/publishing/capability-matrix";
 
@@ -2661,6 +2660,164 @@ function PostsList({
   );
 }
 
+function ReadinessBadgePopover({
+  readiness,
+  item,
+  onAutoFitPlatform,
+}: {
+  readiness: ReadinessReport;
+  item: BulkItem;
+  onAutoFitPlatform: (pid: PlatformId) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onClick(e: MouseEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("mousedown", onClick);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onClick);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  // Aggregate issues
+  const issuesList = useMemo(() => {
+    const list: {
+      platform: PlatformId;
+      severity: "blocked" | "warning";
+      code: string;
+      message: string;
+    }[] = [];
+    for (const p of readiness.perPlatform) {
+      for (const iss of p.issues) {
+        list.push({
+          platform: p.platform as PlatformId,
+          severity: iss.severity,
+          code: iss.code,
+          message: iss.message,
+        });
+      }
+    }
+    return list;
+  }, [readiness]);
+
+  const isBlocked = readiness.overall === "blocked";
+  const isWarning = readiness.overall === "warning";
+  const isReady = readiness.overall === "ready";
+
+  return (
+    <div className="relative ml-auto" ref={popoverRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold border transition-all shadow-xs cursor-pointer select-none",
+          isBlocked
+            ? "bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
+            : isWarning
+              ? "bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200"
+              : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200"
+        )}
+        title="Click to view platform readiness details"
+      >
+        {isBlocked ? (
+          <AlertCircle className="size-3 text-red-600" />
+        ) : isWarning ? (
+          <AlertTriangle className="size-3 text-amber-600" />
+        ) : (
+          <CheckCircle2 className="size-3 text-emerald-600" />
+        )}
+        <span>
+          {isBlocked
+            ? `${readiness.blockedCount} blocked`
+            : isWarning
+              ? `${readiness.warningCount} warning${readiness.warningCount > 1 ? "s" : ""}`
+              : "Ready"}
+        </span>
+        <ChevronDown className={cn("size-3 opacity-60 transition-transform", open && "rotate-180")} />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1.5 z-40 w-72 sm:w-80 rounded-xl border border-zinc-200 bg-white p-3 shadow-xl space-y-2 animate-in fade-in zoom-in-95 duration-100">
+          <div className="flex items-center justify-between pb-1.5 border-b border-zinc-100">
+            <span className="text-xs font-bold text-zinc-900 flex items-center gap-1.5">
+              {isReady ? (
+                <>
+                  <CheckCircle2 className="size-3.5 text-emerald-600" /> All Platforms Ready
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="size-3.5 text-red-600" /> Platform Requirements ({issuesList.length})
+                </>
+              )}
+            </span>
+            <span className="text-[10px] font-medium text-zinc-400">
+              {item.accountIds.length} network{item.accountIds.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+
+          {isReady ? (
+            <p className="text-xs text-zinc-600 py-1">
+              All {item.accountIds.length} connected platform{item.accountIds.length !== 1 ? "s" : ""} meet caption and media requirements.
+            </p>
+          ) : (
+            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+              {issuesList.map((iss, i) => {
+                const pMeta = PLATFORMS.find((p) => p.id === iss.platform);
+                const isCharLimit = iss.code.includes("char_limit") || iss.code.includes("length") || iss.message.includes("characters");
+                return (
+                  <div
+                    key={`${iss.platform}-${iss.code}-${i}`}
+                    className={cn(
+                      "p-2 rounded-lg border text-xs flex items-start justify-between gap-2",
+                      iss.severity === "blocked"
+                        ? "bg-red-50/60 border-red-200/80 text-red-900"
+                        : "bg-amber-50/60 border-amber-200/80 text-amber-900"
+                    )}
+                  >
+                    <div className="flex items-start gap-1.5 min-w-0">
+                      <ProPlatformIcon platform={iss.platform} size={14} className="mt-0.5 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="font-semibold text-[11px]">
+                          {pMeta?.name ?? iss.platform}
+                        </div>
+                        <div className="text-[11px] leading-tight text-zinc-700 mt-0.5">
+                          {iss.message}
+                        </div>
+                      </div>
+                    </div>
+                    {isCharLimit && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onAutoFitPlatform(iss.platform);
+                        }}
+                        className="shrink-0 px-2 py-0.5 rounded bg-red-600 hover:bg-red-700 text-white font-bold text-[9px] uppercase tracking-wider shadow-xs"
+                      >
+                        ⚡ Auto-Fit
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PostRow({
   item,
   index,
@@ -2713,6 +2870,22 @@ function PostRow({
   const [extraOpen, setExtraOpen] = useState(false);
   const [customPlatformOpen, setCustomPlatformOpen] = useState(false);
 
+  const handleAutoFitPlatform = useCallback(
+    (pid: PlatformId) => {
+      const currentCap = item.captionByPlatform?.[pid] ?? item.caption;
+      const fitted = fitCaptionForPlatform(currentCap, pid);
+      onUpdate({
+        captionByPlatform: {
+          ...(item.captionByPlatform ?? {}),
+          [pid]: fitted,
+        },
+      } as Partial<BulkItem>);
+      const pMeta = PLATFORMS.find((pl) => pl.id === pid);
+      toast({ title: `Auto-fitted caption for ${pMeta?.name ?? pid}`, tone: "success" });
+    },
+    [item.captionByPlatform, item.caption, onUpdate, toast]
+  );
+
   return (
     <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm overflow-hidden">
       {/* Card header with media + platforms summary */}
@@ -2727,10 +2900,11 @@ function PostRow({
             {item.accountIds.length} platform{item.accountIds.length !== 1 ? "s" : ""}
           </span>
         </div>
-        <span className={cn("ml-auto inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold border", readiness.overall === "blocked" ? "bg-red-50 text-red-700 border-red-200" : readiness.overall === "warning" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200")}>
-          {readiness.overall === "blocked" ? <AlertCircle className="size-3" /> : readiness.overall === "warning" ? <AlertTriangle className="size-3" /> : <CheckCircle2 className="size-3" />}
-          {readiness.overall === "blocked" ? `${readiness.blockedCount} blocked` : readiness.overall === "warning" ? `${readiness.warningCount} warnings` : "Ready"}
-        </span>
+        <ReadinessBadgePopover
+          readiness={readiness}
+          item={item}
+          onAutoFitPlatform={handleAutoFitPlatform}
+        />
         <button
           type="button"
           onClick={onRemove}
@@ -2933,16 +3107,7 @@ function PostRow({
                       {isPidOver && (
                         <button
                           type="button"
-                          onClick={() => {
-                            const fitted = fitCaptionForPlatform(pidCaption, pid);
-                            onUpdate({
-                              captionByPlatform: {
-                                ...(item.captionByPlatform ?? {}),
-                                [pid]: fitted,
-                              },
-                            } as Partial<BulkItem>);
-                            toast({ title: `Auto-fitted caption for ${pMeta?.name ?? pid}`, tone: "success" });
-                          }}
+                          onClick={() => handleAutoFitPlatform(pid)}
                           className="ml-0.5 px-1.5 py-0.5 rounded bg-red-600 hover:bg-red-700 text-white font-bold text-[9px] uppercase tracking-wider shadow-xs"
                           title={`Auto-fit caption for ${pMeta?.name ?? pid}`}
                         >
@@ -3243,12 +3408,7 @@ function PostRow({
             )}
           </div>
 
-          {/* Requirements */}
-          <RequirementsPanel
-            report={readiness}
-            platformNames={Object.fromEntries(PLATFORMS.map((p) => [p.id, p.name])) as Record<PlatformId, string>}
-            className="rounded-xl"
-          />
+
 
           <div className="flex items-center gap-2">
             <button
