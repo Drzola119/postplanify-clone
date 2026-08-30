@@ -39,6 +39,11 @@ const STORAGE_KEY = "postplanify.hashtagGroups.v1";
 
 interface HashtagsDropdownProps {
   onInsert: (tags: string[]) => void;
+  /** Optional alignment hint for the dropdown panel (unused by component but accepted for API consistency) */
+  align?: "left" | "right";
+  /** Optional size variant hint (unused by component but accepted for API consistency) */
+  size?: "sm" | "md" | "lg";
+  className?: string;
 }
 
 export function HashtagsDropdown({ onInsert }: HashtagsDropdownProps) {

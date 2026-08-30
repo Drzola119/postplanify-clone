@@ -76,6 +76,7 @@ const PLATFORM_LABELS: Record<CalendarPlatform, string> = {
   discord: "Discord",
   telegram: "Telegram",
   google_business: "Google Business",
+  reddit: "Reddit",
 };
 
 const STATUS_META: Record<CalendarPost["status"], { bg: string; text: string; border: string; label: string }> = {

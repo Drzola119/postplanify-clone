@@ -2680,6 +2680,7 @@ function PostRow({
   timezone: string;
 }) {
   const t = useTranslations("dashboard");
+  const { toast } = useToast();
   const hasYouTube = item.accountIds.includes("youtube");
   const hasPinterest = item.accountIds.includes("pinterest");
   const hasInstagram = item.accountIds.includes("instagram");

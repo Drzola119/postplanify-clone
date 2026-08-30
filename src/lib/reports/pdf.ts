@@ -16,6 +16,7 @@ const PLATFORM_LABELS: Record<PlatformId, string> = {
   discord: "Discord",
   telegram: "Telegram",
   google_business: "Google Business",
+  reddit: "Reddit",
 };
 
 export interface RenderReportPdfInput {
