@@ -3358,8 +3358,8 @@ export default function BulkSchedulePage() {
                   })
                 );
               }}
+              accounts={accounts}
               onUpdateItem={updateItem}
-              onUpdateAdvanced={updateAdvanced}
               onRemove={removeItem}
               onApplyAccountsToAll={applyAccountsToAll}
               onScheduleSingle={scheduleSingle}
@@ -3831,9 +3831,9 @@ function EmptyUploaderState({
 interface PostsListProps {
   items: BulkItem[];
   accountsCount: number;
+  accounts: Set<PlatformId>;
   onToggleAccount: (itemId: string, platformId: PlatformId) => void;
   onUpdateItem: (id: string, patch: Partial<BulkItem>) => void;
-  onUpdateAdvanced: (id: string, platform: PlatformId, next: PlatformAdvancedOptions) => void;
   onRemove: (id: string) => void;
   onApplyAccountsToAll: () => void;
   onScheduleSingle: (itemId: string) => void;
@@ -3865,9 +3865,9 @@ interface PostsListProps {
 function PostsList({
   items,
   accountsCount,
+  accounts,
   onToggleAccount,
   onUpdateItem,
-  onUpdateAdvanced,
   onRemove,
   onApplyAccountsToAll,
   onScheduleSingle,
@@ -3910,8 +3910,14 @@ function PostsList({
         set.add(pid);
       }
     }
+    // Also add accounts selected at top level if not already present
+    if (accounts) {
+      for (const pid of accounts) {
+        set.add(pid);
+      }
+    }
     return Array.from(set);
-  }, [items]);
+  }, [items, accounts]);
 
   useEffect(() => {
     if (activePlatformIds.length > 0) {
@@ -3930,7 +3936,7 @@ function PostsList({
 
   return (
     <div className="space-y-3 pb-6">
-      <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-bold tracking-tight flex items-center gap-2">
             <ProStatIcon tint="blue" size={28}>
@@ -3938,7 +3944,7 @@ function PostsList({
             </ProStatIcon>
             {t("posts.bulkSchedule.posts_ready", { n: items.length })}
           </h3>
-          <p className="text-xs text-zinc-500 mt-1">{t("posts.bulkSchedule.customize_subtitle")} • Advanced per-platform controls inside each card.</p>
+          <p className="text-xs text-zinc-500 mt-1">{t("posts.bulkSchedule.customize_subtitle")}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button
@@ -4034,12 +4040,12 @@ function PostsList({
 
           {activePlatformIds.length === 0 ? (
             <div className="p-6 text-center text-xs text-zinc-500">
-              No platforms currently selected on your posts. Select platforms on your posts to configure their advanced options.
+              No platforms currently selected on your posts. Select platforms to configure their advanced options.
             </div>
           ) : (
             <div className="p-4 space-y-4">
-              {/* Platform tabs */}
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+              {/* Platform tabs — wraps cleanly so ALL platforms are visible */}
+              <div className="flex flex-wrap items-center gap-2">
                 {activePlatformIds.map((pid) => {
                   const meta = getPlatform(pid);
                   const isTabActive = selectedPlatformTab === pid;
@@ -4180,7 +4186,6 @@ function PostsList({
           index={idx}
           onToggleAccount={(id) => onToggleAccount(item.id, id)}
           onUpdate={(patch) => onUpdateItem(item.id, patch)}
-          onUpdateAdvanced={(pid, next) => onUpdateAdvanced(item.id, pid, next)}
           onRemove={() => onRemove(item.id)}
           onScheduleSingle={() => onScheduleSingle(item.id)}
           onOpenAI={() => onOpenAI(item)}
@@ -4368,7 +4373,6 @@ function PostRow({
   index,
   onToggleAccount,
   onUpdate,
-  onUpdateAdvanced,
   onRemove,
   onScheduleSingle,
   onOpenAI,
@@ -4392,7 +4396,6 @@ function PostRow({
   index: number;
   onToggleAccount: (id: PlatformId) => void;
   onUpdate: (patch: Partial<BulkItem>) => void;
-  onUpdateAdvanced: (platform: PlatformId, next: PlatformAdvancedOptions) => void;
   onRemove: () => void;
   onScheduleSingle: () => void;
   onOpenAI: () => void;
@@ -4427,7 +4430,6 @@ function PostRow({
   const previewSrc = item.source === "upload" ? item.previewUrl : item.url;
   const mediaKind: MediaKind = item.kind === "video" ? "video" : item.kind === "text" || item.kind === "document" ? "text" : "image";
   const readiness = useMemo(() => buildReadinessForItem(item), [item]);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [extraOpen, setExtraOpen] = useState(false);
   const [customPlatformOpen, setCustomPlatformOpen] = useState(false);
 
@@ -5116,8 +5118,14 @@ function PostRow({
                         type="text"
                         value={String(((item as BulkItemBase).advancedByPlatform?.twitter as Record<string, unknown> | undefined)?.twitter_community ?? "")}
                         onChange={(event) => {
-                          const current = ((item as BulkItemBase).advancedByPlatform?.twitter ?? getDefaultOptions("twitter")) as PlatformAdvancedOptions;
-                          onUpdateAdvanced("twitter", { ...current, twitter_community: event.target.value });
+                          const currentAdv = (item as BulkItemBase).advancedByPlatform ?? {};
+                          const twitterAdv = (currentAdv.twitter ?? getDefaultOptions("twitter")) as PlatformAdvancedOptions;
+                          onUpdate({
+                            advancedByPlatform: {
+                              ...currentAdv,
+                              twitter: { ...twitterAdv, twitter_community: event.target.value },
+                            },
+                          } as Partial<BulkItem>);
                         }}
                         placeholder="Community ID"
                         className="mt-1 h-8 w-full rounded-lg border border-sky-200 bg-white px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-sky-500/20"
@@ -5128,8 +5136,14 @@ function PostRow({
                         type="checkbox"
                         checked={Boolean(((item as BulkItemBase).advancedByPlatform?.twitter as Record<string, unknown> | undefined)?.twitter_share_with_followers)}
                         onChange={(event) => {
-                          const current = ((item as BulkItemBase).advancedByPlatform?.twitter ?? getDefaultOptions("twitter")) as PlatformAdvancedOptions;
-                          onUpdateAdvanced("twitter", { ...current, twitter_share_with_followers: event.target.checked });
+                          const currentAdv = (item as BulkItemBase).advancedByPlatform ?? {};
+                          const twitterAdv = (currentAdv.twitter ?? getDefaultOptions("twitter")) as PlatformAdvancedOptions;
+                          onUpdate({
+                            advancedByPlatform: {
+                              ...currentAdv,
+                              twitter: { ...twitterAdv, twitter_share_with_followers: event.target.checked },
+                            },
+                          } as Partial<BulkItem>);
                         }}
                       />
                       Share community post with followers
@@ -5151,55 +5165,6 @@ function PostRow({
               </div>
             )}
           </div>
-
-          {/* Advanced per-platform — FULL parity with Create Post */}
-          <div className="rounded-xl border border-zinc-200 overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setAdvancedOpen((v) => !v)}
-              className="w-full flex items-center justify-between px-3 py-2.5 bg-white hover:bg-zinc-50 text-left"
-            >
-              <span className="text-xs font-bold flex items-center gap-1.5">
-                <Settings2 className="size-3.5" /> Advanced for this post • {item.accountIds.length} selected
-                <span className={cn("ml-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border", readiness.blockedCount > 0 ? "bg-red-50 text-red-700 border-red-200" : "bg-emerald-50 text-emerald-700 border-emerald-200")}>
-                  {readiness.blockedCount > 0 ? `${readiness.blockedCount} blocked` : "Ready"}
-                </span>
-              </span>
-              <ChevronDown className={cn("size-4 text-zinc-500 transition-transform", advancedOpen && "rotate-180")} />
-            </button>
-            {advancedOpen && (
-              <div className="p-3 space-y-3 bg-zinc-50/40 border-t border-zinc-200">
-                {item.accountIds.length === 0 ? (
-                  <p className="text-xs text-zinc-500">Select platforms to see advanced options.</p>
-                ) : (
-                  item.accountIds.map((pid) => {
-                    const meta = getPlatform(pid);
-                    const val = (item as BulkItemBase).advancedByPlatform?.[pid] ?? getDefaultOptions(pid);
-                    const destOpts =
-                      pid === "pinterest" && destinationOptions.boards.length > 0
-                        ? { pinterest_board_id: destinationOptions.boards }
-                        : pid === "facebook" && destinationOptions.pages.length > 0
-                          ? { facebook_page_id: destinationOptions.pages }
-                          : undefined;
-                    return (
-                      <AdvancedOptionsPanel
-                        key={pid}
-                        platform={pid}
-                        platformName={meta?.name ?? pid}
-                        mediaKind={mediaKind}
-                        value={val}
-                        onChange={(next) => onUpdateAdvanced(pid, next)}
-                        selectOptions={destOpts as never}
-                        defaultOpen={false}
-                      />
-                    );
-                  })
-                )}
-              </div>
-            )}
-          </div>
-
-
 
           <div className="flex items-center gap-2">
             <button
