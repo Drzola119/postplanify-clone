@@ -1879,8 +1879,6 @@ export default function BulkSchedulePage() {
                 <MetadataRulesPanel
                   rules={metadataRules}
                   onChange={setMetadataRules}
-                  onApplyToPost={applyRulesToAllCaptions}
-                  defaultOpen={true}
                 />
               </div>
             )}
