@@ -2084,29 +2084,41 @@ export default function BulkSchedulePage() {
           </div>
         ) : null}
 
-        {/* ── Two-column layout ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4 items-start">
-          {/* Left */}
-          <div className="space-y-4 lg:sticky lg:top-4">
-            {/* Media Files */}
-            <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm overflow-hidden">
-              <div className="p-4">
-                <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="size-7 inline-flex items-center justify-center rounded-full bg-zinc-900 text-white text-xs font-bold">
-                      <ImageIcon className="size-3.5" />
-                    </span>
-                    <h3 className="text-sm font-bold tracking-tight">{t("posts.bulkSchedule.media_files_title")}</h3>
-                    <span className="text-xs font-mono text-zinc-500">
-                      {items.length}/{MAX_FILES}
-                    </span>
-                  </div>
-                  {items.length > 0 ? (
+        {/* ── Main Content Area: Unified Hero Uploader when empty, 2-column studio when populated ── */}
+        {items.length === 0 ? (
+          <EmptyUploaderState
+            onDrop={onDrop}
+            dragging={dragging}
+            pickFiles={pickFiles}
+            setUnsplashOpen={setUnsplashOpen}
+            setCanvaOpen={setCanvaOpen}
+            setDriveOpen={setDriveOpen}
+            setDropboxOpen={setDropboxOpen}
+            downloadCsvTemplate={downloadCsvTemplate}
+            pickCsvFile={pickCsvFile}
+            csvBusy={csvBusy}
+          />
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4 items-start">
+            {/* Left: Media Hub */}
+            <div className="space-y-4 lg:sticky lg:top-4">
+              <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm overflow-hidden">
+                <div className="p-4">
+                  <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="size-7 inline-flex items-center justify-center rounded-full bg-zinc-900 text-white text-xs font-bold">
+                        <ImageIcon className="size-3.5" />
+                      </span>
+                      <h3 className="text-sm font-bold tracking-tight">{t("posts.bulkSchedule.media_files_title")}</h3>
+                      <span className="text-xs font-mono text-zinc-500">
+                        {items.length}/{MAX_FILES}
+                      </span>
+                    </div>
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
                         onClick={pickMoreFiles}
-                        className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-2.5 h-7 text-xs font-semibold hover:bg-zinc-50"
+                        className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-2.5 h-7 text-xs font-semibold hover:bg-zinc-50 cursor-pointer"
                       >
                         <Plus className="size-3" />
                         {t("posts.bulkSchedule.add_more")}
@@ -2114,258 +2126,149 @@ export default function BulkSchedulePage() {
                       <button
                         type="button"
                         onClick={clearAll}
-                        className="inline-flex items-center gap-1 px-2 h-7 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-full"
+                        className="inline-flex items-center gap-1 px-2 h-7 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-full cursor-pointer"
                       >
                         <Trash2 className="size-3" />
                         {t("posts.bulkSchedule.clear_all")}
                       </button>
                     </div>
-                  ) : null}
-                </div>
-
-                {/* Cloud and stock integrations buttons */}
-                <div className="mb-3">
-                  <p className="text-[11px] font-semibold text-zinc-600 mb-1.5">Import from Cloud & Stock</p>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setUnsplashOpen(true)}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-[11px] font-semibold text-zinc-700 shadow-sm"
-                    >
-                      <BrandIcons.unsplash size={14} /> Unsplash
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCanvaOpen(true)}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-[11px] font-semibold text-zinc-700 shadow-sm"
-                    >
-                      <BrandIcons.canva size={14} /> Canva
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDriveOpen(true)}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-[11px] font-semibold text-zinc-700 shadow-sm"
-                    >
-                      <BrandIcons.googledrive size={14} /> Drive
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDropboxOpen(true)}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-[11px] font-semibold text-zinc-700 shadow-sm"
-                    >
-                      <BrandIcons.dropbox size={14} /> Dropbox
-                    </button>
                   </div>
-                </div>
 
-                {items.length === 0 ? (
-                  <>
-                    <div
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        setDragging(true);
-                      }}
-                      onDragEnter={(e) => {
-                        e.preventDefault();
-                        setDragging(true);
-                      }}
-                      onDragLeave={(e) => {
-                        if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-                        setDragging(false);
-                      }}
-                      onDrop={onDrop}
-                      onClick={pickFiles}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          pickFiles();
-                        }
-                      }}
-                      className={cn(
-                        "rounded-[14px] border-2 border-dashed p-6 text-center cursor-pointer transition-colors",
-                        dragging ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50/50"
-                      )}
-                    >
-                      <span className="mx-auto size-10 rounded-xl bg-zinc-900 text-white flex items-center justify-center shadow-sm">
-                        <UploadCloud className="size-5" />
-                      </span>
-                      <p className="mt-3 text-sm font-semibold text-zinc-900">{t("posts.bulkSchedule.drop_zone")}</p>
-                      <p className="mt-1 text-xs text-zinc-500">
-                        {t("posts.bulkSchedule.drop_zone_desc", { max: MAX_FILES })}
-                      </p>
-                      <p className="mt-1 text-[11px] text-zinc-400">
-                        {t("posts.bulkSchedule.drop_zone_footnote", { maxSize: Math.round(MAX_FILE_BYTES / 1024 / 1024) })}
-                      </p>
+                  {/* Cloud and stock integrations buttons */}
+                  <div className="mb-3">
+                    <p className="text-[11px] font-semibold text-zinc-600 mb-1.5">Import from Cloud & Stock</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setUnsplashOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-[11px] font-semibold text-zinc-700 shadow-sm cursor-pointer"
+                      >
+                        <BrandIcons.unsplash size={14} /> Unsplash
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCanvaOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-[11px] font-semibold text-zinc-700 shadow-sm cursor-pointer"
+                      >
+                        <BrandIcons.canva size={14} /> Canva
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDriveOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-[11px] font-semibold text-zinc-700 shadow-sm cursor-pointer"
+                      >
+                        <BrandIcons.googledrive size={14} /> Drive
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDropboxOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-[11px] font-semibold text-zinc-700 shadow-sm cursor-pointer"
+                      >
+                        <BrandIcons.dropbox size={14} /> Dropbox
+                      </button>
                     </div>
-                    <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3 flex flex-col gap-2">
-                      <p className="text-xs font-semibold text-zinc-700 flex items-center gap-1.5">
-                        <FileText className="size-3.5" /> CSV bulk? We got you.
-                      </p>
-                      <p className="text-xs text-zinc-600">{t("posts.bulkSchedule.csv_hint")}</p>
-                      <div className="flex items-center gap-2">
+                  </div>
+
+                  {/* Selected media items list */}
+                  <div className="flex items-center justify-between text-xs mb-2">
+                    <span className="font-semibold text-zinc-700 flex items-center gap-1.5">
+                      <ImageIcon className="size-3.5" /> {t("posts.bulkSchedule.selected_media")}
+                    </span>
+                    <span className="text-zinc-500">{t("posts.bulkSchedule.manage_uploads")}</span>
+                  </div>
+                  <div className="max-h-[320px] overflow-y-auto -mx-1 px-1 space-y-1.5">
+                    {items.map((item, idx) => (
+                      <div
+                        key={item.id}
+                        className={cn(
+                          "flex items-center gap-2.5 p-2 rounded-xl border transition-colors",
+                          item.uploadStatus === "error" ? "bg-red-50 border-red-200" : "bg-white border-zinc-200 hover:border-zinc-300"
+                        )}
+                      >
+                        <div className="relative size-10 flex-shrink-0 rounded-lg bg-zinc-100 overflow-hidden border border-zinc-200">
+                          {item.kind === "image" ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={item.source === "upload" ? item.previewUrl : item.url} alt={item.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <video src={item.source === "upload" ? item.previewUrl : item.url} className="w-full h-full object-cover" />
+                          )}
+                          {item.source === "upload" && item.uploadStatus === "uploading" ? (
+                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                              <span className="size-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                            </div>
+                          ) : null}
+                          {item.source === "upload" && item.uploadStatus === "error" ? (
+                            <div className="absolute inset-0 bg-red-500/70 flex items-center justify-center">
+                              <X className="size-3.5 text-white" />
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold truncate">{item.name}</p>
+                          <p className="text-[10px] text-zinc-500 flex items-center gap-1">
+                            {item.source === "upload" && item.uploadStatus === "uploading" ? (
+                              <span className="inline-flex items-center gap-1 text-amber-600">
+                                <span className="size-2 rounded-full bg-amber-500 animate-pulse" /> Uploading…
+                              </span>
+                            ) : item.source === "upload" && item.uploadStatus === "error" ? (
+                              <span className="text-red-600">Upload failed</span>
+                            ) : (
+                              formatBytes(item.size)
+                            )}
+                            <span>•</span> {item.kind === "image" ? "Image" : "Video"} #{idx + 1}
+                          </p>
+                        </div>
                         <button
                           type="button"
-                          onClick={downloadCsvTemplate}
-                          className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-3 h-7 text-xs font-semibold hover:bg-zinc-50"
+                          onClick={() => removeItem(item.id)}
+                          aria-label={`Remove ${item.name}`}
+                          className="size-7 inline-flex items-center justify-center rounded-full hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900 shrink-0 cursor-pointer"
                         >
-                          <Download className="size-3.5" />
-                          Template
-                        </button>
-                        <button
-                          type="button"
-                          onClick={pickCsvFile}
-                          disabled={csvBusy}
-                          className="inline-flex items-center gap-1.5 rounded-full bg-zinc-900 text-white px-3 h-7 text-xs font-bold hover:bg-black disabled:opacity-50"
-                        >
-                          <Upload className="size-3.5" />
-                          {csvBusy ? t("posts.bulkSchedule.reading") : t("posts.bulkSchedule.upload_csv")}
+                          <X className="size-3.5" />
                         </button>
                       </div>
-                      <input
-                        ref={csvInputRef}
-                        type="file"
-                        accept=".csv,text/csv"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleCsvFile(file);
-                          e.target.value = "";
-                        }}
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between text-xs mb-2">
-                      <span className="font-semibold text-zinc-700 flex items-center gap-1.5">
-                        <ImageIcon className="size-3.5" /> {t("posts.bulkSchedule.selected_media")}
-                      </span>
-                      <span className="text-zinc-500">{t("posts.bulkSchedule.manage_uploads")}</span>
-                    </div>
-                    <div className="max-h-[320px] overflow-y-auto -mx-1 px-1 space-y-1.5">
-                      {items.map((item, idx) => (
-                        <div
-                          key={item.id}
-                          className={cn(
-                            "flex items-center gap-2.5 p-2 rounded-xl border transition-colors",
-                            item.uploadStatus === "error" ? "bg-red-50 border-red-200" : "bg-white border-zinc-200 hover:border-zinc-300"
-                          )}
-                        >
-                          <div className="relative size-10 flex-shrink-0 rounded-lg bg-zinc-100 overflow-hidden border border-zinc-200">
-                            {item.kind === "image" ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={item.source === "upload" ? item.previewUrl : item.url} alt={item.name} className="w-full h-full object-cover" />
-                            ) : (
-                              <video src={item.source === "upload" ? item.previewUrl : item.url} className="w-full h-full object-cover" />
-                            )}
-                            {item.source === "upload" && item.uploadStatus === "uploading" ? (
-                              <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                                <span className="size-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                              </div>
-                            ) : null}
-                            {item.source === "upload" && item.uploadStatus === "error" ? (
-                              <div className="absolute inset-0 bg-red-500/70 flex items-center justify-center">
-                                <X className="size-3.5 text-white" />
-                              </div>
-                            ) : null}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-semibold truncate">{item.name}</p>
-                            <p className="text-[10px] text-zinc-500 flex items-center gap-1">
-                              {item.source === "upload" && item.uploadStatus === "uploading" ? (
-                                <span className="inline-flex items-center gap-1 text-amber-600">
-                                  <span className="size-2 rounded-full bg-amber-500 animate-pulse" /> Uploading…
-                                </span>
-                              ) : item.source === "upload" && item.uploadStatus === "error" ? (
-                                <span className="text-red-600">Upload failed</span>
-                              ) : (
-                                formatBytes(item.size)
-                              )}
-                              <span>•</span> {item.kind === "image" ? "Image" : "Video"} #{idx + 1}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeItem(item.id)}
-                            aria-label={`Remove ${item.name}`}
-                            className="size-7 inline-flex items-center justify-center rounded-full hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900 shrink-0"
-                          >
-                            <X className="size-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    <div
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        setDragging(true);
-                      }}
-                      onDragEnter={(e) => {
-                        e.preventDefault();
-                        setDragging(true);
-                      }}
-                      onDragLeave={(e) => {
-                        if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-                        setDragging(false);
-                      }}
-                      onDrop={onAddMoreDrop}
-                      onClick={pickMoreFiles}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          pickMoreFiles();
-                        }
-                      }}
-                      className={cn(
-                        "mt-3 rounded-xl border-2 border-dashed p-4 text-center cursor-pointer transition-colors flex flex-col items-center gap-1",
-                        dragging ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 hover:bg-zinc-50"
-                      )}
-                    >
-                      <ImagePlus className="size-4 text-zinc-400" />
-                      <p className="text-xs font-semibold text-zinc-700">Drop to add more media files</p>
-                      <p className="text-[11px] text-zinc-500">
-                        Add to your existing {items.length} file{items.length === 1 ? "" : "s"}
-                      </p>
-                    </div>
-                  </>
-                )}
+                    ))}
+                  </div>
 
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept={ACCEPTED_MIME_TYPES.join(",")}
-                  className="hidden"
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files ?? []);
-                    if (files.length > 0) handleFiles(files);
-                    e.target.value = "";
-                  }}
-                />
-                <input
-                  ref={addMoreInputRef}
-                  type="file"
-                  multiple
-                  accept={ACCEPTED_MIME_TYPES.join(",")}
-                  className="hidden"
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files ?? []);
-                    if (files.length > 0) handleFiles(files);
-                    e.target.value = "";
-                  }}
-                />
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setDragging(true);
+                    }}
+                    onDragEnter={(e) => {
+                      e.preventDefault();
+                      setDragging(true);
+                    }}
+                    onDragLeave={(e) => {
+                      if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                      setDragging(false);
+                    }}
+                    onDrop={onAddMoreDrop}
+                    onClick={pickMoreFiles}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        pickMoreFiles();
+                      }
+                    }}
+                    className={cn(
+                      "mt-3 rounded-xl border-2 border-dashed p-4 text-center cursor-pointer transition-colors flex flex-col items-center gap-1",
+                      dragging ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 hover:bg-zinc-50"
+                    )}
+                  >
+                    <ImagePlus className="size-4 text-zinc-400" />
+                    <p className="text-xs font-semibold text-zinc-700">Drop to add more media files</p>
+                    <p className="text-[11px] text-zinc-500">
+                      Add to your existing {items.length} file{items.length === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Right */}
-          {items.length === 0 ? (
-            <EmptyState />
-          ) : (
+            {/* Right: Post Cards List */}
             <PostsList
               items={items}
               accountsCount={accountsArr.length}
@@ -2415,8 +2318,45 @@ export default function BulkSchedulePage() {
               aiGeneratingItemId={aiGeneratingItemId}
               timezone={timezone}
             />
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* Hidden inputs */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept={ACCEPTED_MIME_TYPES.join(",")}
+          className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            if (files.length > 0) handleFiles(files);
+            e.target.value = "";
+          }}
+        />
+        <input
+          ref={addMoreInputRef}
+          type="file"
+          multiple
+          accept={ACCEPTED_MIME_TYPES.join(",")}
+          className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            if (files.length > 0) handleFiles(files);
+            e.target.value = "";
+          }}
+        />
+        <input
+          ref={csvInputRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleCsvFile(file);
+            e.target.value = "";
+          }}
+        />
 
         {/* Sticky bottom bar */}
         {items.length > 0 ? (
@@ -2575,63 +2515,220 @@ function SchedulerField({ label, children }: { label: string; children: React.Re
   );
 }
 
-function EmptyState() {
+function EmptyUploaderState({
+  onDrop,
+  dragging,
+  pickFiles,
+  setUnsplashOpen,
+  setCanvaOpen,
+  setDriveOpen,
+  setDropboxOpen,
+  downloadCsvTemplate,
+  pickCsvFile,
+  csvBusy,
+}: {
+  onDrop: (e: React.DragEvent) => void;
+  dragging: boolean;
+  pickFiles: () => void;
+  setUnsplashOpen: (v: boolean) => void;
+  setCanvaOpen: (v: boolean) => void;
+  setDriveOpen: (v: boolean) => void;
+  setDropboxOpen: (v: boolean) => void;
+  downloadCsvTemplate: () => void;
+  pickCsvFile: () => void;
+  csvBusy: boolean;
+}) {
   const t = useTranslations("dashboard");
+
   return (
     <div className="space-y-4">
-      <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm p-8 sm:p-12 text-center">
-        <span className="mx-auto size-12 rounded-[14px] bg-zinc-900 text-white flex items-center justify-center shadow-sm">
-          <Upload className="size-6" />
-        </span>
-        <h3 className="mt-4 text-lg font-bold tracking-tight">{t("posts.bulkSchedule.empty_title")}</h3>
-        <p className="mt-2 text-sm text-zinc-500 max-w-md mx-auto leading-relaxed">
-          {t("posts.bulkSchedule.empty_subtitle")}
-        </p>
-        <div className="mt-4 flex items-center justify-center gap-2 text-xs">
-          <Link href="/dashboard/posts/create" className="inline-flex items-center gap-1.5 rounded-full bg-zinc-900 text-white px-3 py-1.5 font-bold">
-            <Plus className="size-3.5" /> Create single post
-          </Link>
-          <Link href="/dashboard/assets" className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 font-semibold hover:bg-zinc-50">
-            <Eye className="size-3.5" /> Media Library
-          </Link>
+      {/* Unified Hero Uploader Card */}
+      <div className="rounded-[20px] border border-zinc-200 bg-white shadow-sm p-6 sm:p-10 space-y-6">
+        <div className="text-center max-w-xl mx-auto space-y-2">
+          <span className="mx-auto size-12 rounded-[16px] bg-zinc-900 text-white flex items-center justify-center shadow-md">
+            <UploadCloud className="size-6" />
+          </span>
+          <h3 className="text-xl font-bold tracking-tight text-zinc-900">
+            {t("posts.bulkSchedule.empty_title")}
+          </h3>
+          <p className="text-xs sm:text-sm text-zinc-500 leading-relaxed">
+            {t("posts.bulkSchedule.empty_subtitle")}
+          </p>
+          <div className="pt-1 flex items-center justify-center gap-2 text-xs">
+            <Link
+              href="/dashboard/posts/create"
+              className="inline-flex items-center gap-1.5 rounded-full bg-zinc-900 text-white px-3.5 py-1.5 font-bold shadow-xs hover:bg-black"
+            >
+              <Plus className="size-3.5" /> Create single post
+            </Link>
+            <Link
+              href="/dashboard/assets"
+              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 font-semibold text-zinc-700 hover:bg-zinc-50"
+            >
+              <Eye className="size-3.5" /> Media Library
+            </Link>
+          </div>
+        </div>
+
+        {/* Central Large Drag & Drop Box */}
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+          }}
+          onDrop={onDrop}
+          onClick={pickFiles}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              pickFiles();
+            }
+          }}
+          className={cn(
+            "rounded-[16px] border-2 border-dashed p-8 sm:p-12 text-center cursor-pointer transition-all duration-150 flex flex-col items-center justify-center gap-2",
+            dragging
+              ? "border-zinc-900 bg-zinc-50 scale-[1.01]"
+              : "border-zinc-200 hover:border-zinc-400 hover:bg-zinc-50/50"
+          )}
+        >
+          <div className="size-14 rounded-2xl bg-zinc-100 flex items-center justify-center text-zinc-700 mb-1 shadow-xs">
+            <UploadCloud className="size-7" />
+          </div>
+          <p className="text-base font-bold text-zinc-900">
+            {t("posts.bulkSchedule.drop_zone")}
+          </p>
+          <p className="text-xs text-zinc-500 max-w-sm">
+            {t("posts.bulkSchedule.drop_zone_desc", { max: MAX_FILES })}
+          </p>
+          <p className="text-[11px] text-zinc-400 font-medium">
+            {t("posts.bulkSchedule.drop_zone_footnote", {
+              maxSize: Math.round(MAX_FILE_BYTES / 1024 / 1024),
+            })}
+          </p>
+          <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-zinc-900 text-white px-4 py-2 text-xs font-bold shadow-xs hover:bg-black">
+            <Plus className="size-3.5" /> Browse Files
+          </span>
+        </div>
+
+        {/* Cloud & CSV Integrations Toolbar */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+          {/* Cloud sources */}
+          <div className="p-4 rounded-xl border border-zinc-200 bg-zinc-50/60 space-y-2.5">
+            <p className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+              <Upload className="size-3.5 text-zinc-500" /> Import from Cloud & Stock
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <button
+                type="button"
+                onClick={() => setUnsplashOpen(true)}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-xs font-semibold text-zinc-700 shadow-xs cursor-pointer"
+              >
+                <BrandIcons.unsplash size={14} /> Unsplash
+              </button>
+              <button
+                type="button"
+                onClick={() => setCanvaOpen(true)}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-xs font-semibold text-zinc-700 shadow-xs cursor-pointer"
+              >
+                <BrandIcons.canva size={14} /> Canva
+              </button>
+              <button
+                type="button"
+                onClick={() => setDriveOpen(true)}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-xs font-semibold text-zinc-700 shadow-xs cursor-pointer"
+              >
+                <BrandIcons.googledrive size={14} /> Drive
+              </button>
+              <button
+                type="button"
+                onClick={() => setDropboxOpen(true)}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-xs font-semibold text-zinc-700 shadow-xs cursor-pointer"
+              >
+                <BrandIcons.dropbox size={14} /> Dropbox
+              </button>
+            </div>
+          </div>
+
+          {/* CSV Bulk */}
+          <div className="p-4 rounded-xl border border-zinc-200 bg-zinc-50/60 space-y-2.5 flex flex-col justify-between">
+            <div>
+              <p className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                <FileText className="size-3.5 text-zinc-500" /> CSV Bulk Upload
+              </p>
+              <p className="text-xs text-zinc-500 mt-1">{t("posts.bulkSchedule.csv_hint")}</p>
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={downloadCsvTemplate}
+                className="inline-flex items-center gap-1 rounded-xl border border-zinc-200 bg-white px-3 h-8 text-xs font-semibold hover:bg-zinc-50 shadow-xs cursor-pointer"
+              >
+                <Download className="size-3.5" /> Template
+              </button>
+              <button
+                type="button"
+                onClick={pickCsvFile}
+                disabled={csvBusy}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-900 text-white px-3.5 h-8 text-xs font-bold hover:bg-black disabled:opacity-50 shadow-xs cursor-pointer"
+              >
+                <Upload className="size-3.5" />
+                {csvBusy ? t("posts.bulkSchedule.reading") : t("posts.bulkSchedule.upload_csv")}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
+      {/* 3 Step Workflow guidance cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <StepCard n={1} title={t("posts.bulkSchedule.empty_step1_title")} desc={t("posts.bulkSchedule.empty_step1_desc")} />
-        <StepCard n={2} title={t("posts.bulkSchedule.empty_step2_title")} desc={t("posts.bulkSchedule.empty_step2_desc", { max: 20 })} />
-        <StepCard n={3} title={t("posts.bulkSchedule.empty_step3_title")} desc={t("posts.bulkSchedule.empty_step3_desc")} />
+        <div className="rounded-[16px] border border-zinc-200 bg-white p-4 space-y-2 shadow-xs">
+          <span className="size-6 rounded-full bg-zinc-900 text-white flex items-center justify-center text-xs font-bold">
+            1
+          </span>
+          <h4 className="text-xs font-bold text-zinc-900">{t("posts.bulkSchedule.empty_step1_title")}</h4>
+          <p className="text-xs text-zinc-500 leading-relaxed">{t("posts.bulkSchedule.empty_step1_desc")}</p>
+        </div>
+        <div className="rounded-[16px] border border-zinc-200 bg-white p-4 space-y-2 shadow-xs">
+          <span className="size-6 rounded-full bg-zinc-900 text-white flex items-center justify-center text-xs font-bold">
+            2
+          </span>
+          <h4 className="text-xs font-bold text-zinc-900">{t("posts.bulkSchedule.empty_step2_title")}</h4>
+          <p className="text-xs text-zinc-500 leading-relaxed">{t("posts.bulkSchedule.empty_step2_desc", { max: MAX_FILES })}</p>
+        </div>
+        <div className="rounded-[16px] border border-zinc-200 bg-white p-4 space-y-2 shadow-xs">
+          <span className="size-6 rounded-full bg-zinc-900 text-white flex items-center justify-center text-xs font-bold">
+            3
+          </span>
+          <h4 className="text-xs font-bold text-zinc-900">{t("posts.bulkSchedule.empty_step3_title")}</h4>
+          <p className="text-xs text-zinc-500 leading-relaxed">{t("posts.bulkSchedule.empty_step3_desc")}</p>
+        </div>
       </div>
 
+      {/* Feature perks banner */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <TipCard icon={<Clock className="size-4 text-blue-600" />} title={t("posts.bulkSchedule.tip_scheduler_title")} desc={t("posts.bulkSchedule.tip_scheduler_desc")} />
-        <TipCard icon={<Sparkles className="size-4 text-violet-600" />} title={t("posts.bulkSchedule.tip_ai_title")} desc={t("posts.bulkSchedule.tip_ai_desc")} />
-      </div>
-    </div>
-  );
-}
-
-function StepCard({ n, title, desc }: { n: number; title: string; desc: string }) {
-  return (
-    <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm p-5">
-      <div className="size-8 inline-flex items-center justify-center rounded-full bg-zinc-900 text-white text-sm font-bold mb-3">
-        {n}
-      </div>
-      <p className="text-sm font-bold">{title}</p>
-      <p className="mt-1 text-xs text-zinc-500 leading-relaxed">{desc}</p>
-    </div>
-  );
-}
-
-function TipCard({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
-  return (
-    <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm p-4 flex items-start gap-3">
-      <div className="size-8 rounded-xl bg-zinc-100 inline-flex items-center justify-center flex-shrink-0">
-        {icon}
-      </div>
-      <div className="min-w-0">
-        <p className="text-sm font-bold">{title}</p>
-        <p className="mt-1 text-xs text-zinc-500 leading-relaxed">{desc}</p>
+        <div className="rounded-[16px] border border-zinc-200 bg-white p-4 flex items-start gap-3 shadow-xs">
+          <div className="size-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
+            <Clock className="size-4" />
+          </div>
+          <div>
+            <h5 className="text-xs font-bold text-zinc-900">Use the Date Scheduler</h5>
+            <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">
+              Set start date, posts per day, and intervals. Then click Apply to automatically assign date & time to all your posts at once.
+            </p>
+          </div>
+        </div>
+        <div className="rounded-[16px] border border-zinc-200 bg-white p-4 flex items-start gap-3 shadow-xs">
+          <div className="size-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+            <Sparkles className="size-4" />
+          </div>
+          <div>
+            <h5 className="text-xs font-bold text-zinc-900">AI Caption Generation</h5>
+            <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">
+              Generate captions for all posts using AI after uploading your media files.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
