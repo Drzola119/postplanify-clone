@@ -4252,7 +4252,6 @@ function PostsList({
           key={item.id}
           item={item}
           index={idx}
-          onToggleAccount={(id) => onToggleAccount(item.id, id)}
           onUpdate={(patch) => onUpdateItem(item.id, patch)}
           onRemove={() => onRemove(item.id)}
           onScheduleSingle={() => onScheduleSingle(item.id)}
@@ -4264,7 +4263,6 @@ function PostsList({
           destinationOptions={destinationOptions}
           aiGenerating={aiGeneratingItemId === item.id}
           timezone={timezone}
-          onChangePostType={(mode) => onChangePostType(item.id, mode)}
           onAddCarouselSlides={(files) => onAddCarouselSlides(item.id, files)}
           onRemoveCarouselSlide={(sid) => onRemoveCarouselSlide(item.id, sid)}
           onReorderCarousel={(f, t) => onReorderCarousel(item.id, f, t)}
@@ -4439,7 +4437,6 @@ function ReadinessBadgePopover({
 function PostRow({
   item,
   index,
-  onToggleAccount,
   onUpdate,
   onRemove,
   onScheduleSingle,
@@ -4451,7 +4448,6 @@ function PostRow({
   destinationOptions,
   aiGenerating,
   timezone,
-  onChangePostType,
   onAddCarouselSlides,
   onRemoveCarouselSlide,
   onReorderCarousel,
@@ -4462,7 +4458,6 @@ function PostRow({
 }: {
   item: BulkItem;
   index: number;
-  onToggleAccount: (id: PlatformId) => void;
   onUpdate: (patch: Partial<BulkItem>) => void;
   onRemove: () => void;
   onScheduleSingle: () => void;
@@ -4474,7 +4469,6 @@ function PostRow({
   destinationOptions: { boards: Array<{ value: string; label: string }>; pages: Array<{ value: string; label: string }> };
   aiGenerating: boolean;
   timezone: string;
-  onChangePostType: (mode: ComposerMode) => void;
   onAddCarouselSlides: (files: File[]) => void;
   onRemoveCarouselSlide: (slideId: string) => void;
   onReorderCarousel: (from: number, to: number) => void;
@@ -4559,47 +4553,8 @@ function PostRow({
         </button>
       </div>
 
-      {/* ── Per-item Post Type (parity with /create) ── */}
-      <div className="px-3 py-2 border-b border-zinc-200 bg-white flex items-center gap-1.5 flex-wrap">
-        {(
-          [
-            { id: "standard" as ComposerMode, label: "Standard" } as { id: ComposerMode; label: string; sub?: string },
-            { id: "carousel" as ComposerMode, label: "Carousel", sub: "Smart platforms" } as { id: ComposerMode; label: string; sub?: string },
-            { id: "trial_reel" as ComposerMode, label: "Trial Reel", sub: "IG Only" } as { id: ComposerMode; label: string; sub?: string },
-            { id: "document" as ComposerMode, label: "Document", sub: "LinkedIn" } as { id: ComposerMode; label: string; sub?: string },
-          ]
-        ).map((m) => {
-          const active = (item as BulkItemBase).postType === m.id || (!(item as BulkItemBase).postType && m.id === "standard");
-          return (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => onChangePostType(m.id)}
-              className={cn(
-                "relative inline-flex items-center gap-1 px-2.5 h-7 rounded-full text-[11px] font-bold border transition-all cursor-pointer",
-                active ? "bg-zinc-900 text-white border-zinc-900 shadow-sm" : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50"
-              )}
-            >
-              {m.label}
-              {m.sub && <span className={cn("text-[8px] px-1 py-0 rounded-full ml-0.5", active ? "bg-white/20 text-white" : m.id === "trial_reel" ? "bg-amber-100 text-amber-700 border border-amber-200" : "bg-blue-50 text-blue-700 border border-blue-100")}>{m.sub}</span>}
-            </button>
-          );
-        })}
-        <span className="ml-auto text-[10px] font-semibold text-zinc-500 hidden sm:inline">
-          {(item as BulkItemBase).contentType
-            ? (item as BulkItemBase).contentType!.replaceAll("_", " ")
-            : (item as BulkItemBase).postType === "carousel"
-            ? `${(item as BulkItemBase).carouselSlides?.length ?? 0}/10 slides`
-            : (item as BulkItemBase).postType === "document"
-              ? "PDF/DOC/PPT"
-              : (item as BulkItemBase).postType === "trial_reel"
-                ? "Trial Reel"
-                : "Standard"}
-        </span>
-      </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-[180px_1fr] divide-y lg:divide-y-0 lg:divide-x divide-zinc-200">
-        {/* Media + Schedule + Platforms */}
+        {/* Media + Schedule */}
         <div className="p-3 space-y-3 bg-zinc-50/30">
           {(item as BulkItemBase).postType === "carousel" ? (
             (() => {
@@ -4814,42 +4769,6 @@ function PostRow({
               </div> : null}
             </>
           )}
-
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold flex items-center gap-1.5">
-                <Settings2 className="size-3.5 text-zinc-500" /> Platforms
-              </h4>
-              <span className="text-[10px] font-semibold text-zinc-500">{item.accountIds.length} active</span>
-            </div>
-            <div className="flex items-center gap-1 flex-wrap">
-              {PLATFORMS.map((p) => {
-                const isSel = item.accountIds.includes(p.id);
-                const allowed = allowedPlatformsForItem(item as BulkItemBase);
-                const isDisallowedByMode = allowed !== null && !allowed.includes(p.id);
-                const isDisallowedByKind = (item as BulkItemBase).kind === "image" && isVideoOnlyPlatform(p.id);
-                const isBlocked = isDisallowedByMode || isDisallowedByKind;
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => onToggleAccount(p.id)}
-                    title={`${p.name} (${isSel ? "active" : isBlocked ? "unsupported for current post format" : "click to enable"})`}
-                    className={cn(
-                      "size-7 rounded-lg flex items-center justify-center transition-all cursor-pointer border",
-                      isSel
-                        ? "bg-white border-zinc-300 shadow-xs scale-100 opacity-100"
-                        : isBlocked
-                          ? "bg-zinc-100/40 border-transparent grayscale opacity-20 hover:opacity-40"
-                          : "bg-zinc-100/60 border-transparent grayscale opacity-40 hover:opacity-90 hover:grayscale-0"
-                    )}
-                  >
-                    <ProPlatformIcon platform={p.id} size={18} />
-                  </button>
-                );
-              })}
-            </div>
-          </div>
 
           <div className="space-y-2 pt-2 border-t border-zinc-200">
             <h4 className="text-xs font-bold flex items-center gap-1.5">
