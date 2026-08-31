@@ -9,30 +9,42 @@ export async function GET(
   // Support both async (Next.js 15+) and sync (Next.js 13/14) params
   const resolvedParams = params && typeof params.then === "function" ? await params : params;
   const pathSegments = (resolvedParams && resolvedParams.path) || [];
-  const fileName = pathSegments.join("/");
+  const rawFileName = pathSegments.join("/");
+
+  // Sanitize: normalize, strip leading slashes/dots, block traversal
+  const normalized = path.normalize(rawFileName).replace(/^(\.\.[\/\\])+/, "").replace(/^[\/\\]+/, "");
+  if (!normalized || normalized.includes("..") || normalized.includes("\0") || /[<>:"|?*]/.test(normalized)) {
+    return new NextResponse("Not Found", { status: 404 });
+  }
+  // Only allow js/css and their maps/sourcemaps inside chunks
+  if (!/^[a-zA-Z0-9._\-\/]+\.(js|css)(\.map)?$/.test(normalized)) {
+    return new NextResponse("Not Found", { status: 404 });
+  }
+  const fileName = normalized;
 
   // Define candidate file paths where the static chunks could be located
-  const candidates = [
-    path.join(process.cwd(), ".next", "static", "chunks", fileName),
-    path.join(process.cwd(), ".next", "standalone", ".next", "static", "chunks", fileName),
-    path.join(process.cwd(), "..", ".next", "static", "chunks", fileName),
-    path.join(process.cwd(), ".next", "standalone", "static", "chunks", fileName),
-    path.join(process.cwd(), "static", "chunks", fileName),
-    path.resolve(process.cwd(), ".next/static/chunks", fileName),
+  const allowedBases = [
+    path.join(process.cwd(), ".next", "static", "chunks"),
+    path.join(process.cwd(), ".next", "standalone", ".next", "static", "chunks"),
+    path.join(process.cwd(), ".next", "standalone", "static", "chunks"),
   ];
+  const candidates = allowedBases.map((base) => path.join(base, fileName));
 
   let filePath = "";
   for (const candidate of candidates) {
+    // Ensure candidate stays within allowed base
+    const isInside = allowedBases.some((base) => candidate.startsWith(base + path.sep) || candidate === path.join(base, fileName));
+    if (!isInside) continue;
     if (fs.existsSync(candidate)) {
+      // Double-check realpath is inside base (symlink guard)
+      try {
+        const real = fs.realpathSync(candidate);
+        if (!allowedBases.some((base) => real.startsWith(base))) continue;
+      } catch {}
       filePath = candidate;
       break;
     }
   }
-
-  // Log details to server logs for diagnostics
-  console.log(
-    `[Chunk Proxy] Request: "${fileName}" | Resolved: "${filePath || "NOT FOUND"}" | cwd: "${process.cwd()}"`
-  );
 
   // If the file exists, read and serve it
   if (filePath) {

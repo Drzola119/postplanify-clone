@@ -103,7 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (displayName) {
           await updateProfile(cred.user, { displayName });
         }
-        await sendEmailVerification(cred.user).catch(() => {});
+        await sendEmailVerification(cred.user).catch((err) => console.warn("[auth] sendEmailVerification failed (non-fatal)", err));
       },
       async signInWithGoogle() {
         if (!auth) throw new Error("Firebase is not configured");
@@ -113,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async signOut() {
         if (!auth) return;
         await fbSignOut(auth);
-        await fetch("/api/auth/session", { method: "DELETE" }).catch(() => {});
+        await fetch("/api/auth/session", { method: "DELETE" }).catch((err) => console.warn("[auth] session delete failed (non-fatal)", err));
       },
       async getIdToken() {
         if (!auth || !auth.currentUser) return null;

@@ -22,8 +22,10 @@ import { videoGenerateRequestSchema } from "@/lib/validation/video-gen";
 import { buildShotPlanFromPhotos } from "@/lib/video-gen/real-estate/shot-plan";
 import type { PropertyShotPlan } from "@/lib/video-gen/real-estate/types";
 import { createLogger } from "@/lib/log";
+import { checkQuota } from "@/lib/billing/quota";
 
 const logger = createLogger("api:videos:real-estate");
+const ESTIMATED_VIDEO_COST_USD = 0.5;
 
 // Shot plan posted back from the wizard after preview — only the bits
 // the user can edit (room labels, camera direction overrides). The
@@ -92,9 +94,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Database not configured" }, { status: 503 });
     }
     const userSnap = await db.collection("users").doc(user.uid).get();
-    const workspaceId: string | undefined = userSnap.data()?.workspaceId;
+    const workspaceId: string | undefined = (userSnap.data()?.primaryWorkspaceId ??
+      userSnap.data()?.workspaceId) as string | undefined;
     if (!workspaceId) {
       return NextResponse.json({ error: "No workspace found" }, { status: 400 });
+    }
+    const quota = await checkQuota(workspaceId, "video", ESTIMATED_VIDEO_COST_USD);
+    if (!quota.allowed) {
+      return NextResponse.json({ error: quota.reason }, { status: 402 });
     }
 
     let plan: PropertyShotPlan;

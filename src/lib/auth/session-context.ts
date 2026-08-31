@@ -12,7 +12,17 @@ export interface SessionContext {
   workspaceId: string;
 }
 
-const FALLBACK_WORKSPACE_ID = "xkksLA9bPvHLwx4nThvU";
+/**
+ * Shared fallback workspace removed — using a single hard-coded ID breaks tenant isolation
+ * (all quota-exhausted users would share one workspace). Workspace resolution now fails
+ * closed with 503 so the caller can surface a retry, rather than leaking data.
+ */
+export class WorkspaceUnavailableError extends Error {
+  constructor(message = "Workspace unavailable — Firestore quota or configuration error") {
+    super(message);
+    this.name = "WorkspaceUnavailableError";
+  }
+}
 
 async function readWorkspaceClaim(uid: string): Promise<string | null> {
   if (!adminAuth) return null;
@@ -48,26 +58,42 @@ export async function getSessionContext(): Promise<SessionContext | null> {
       try {
         workspaceId = await ensureDefaultWorkspace(user.uid, user.email);
       } catch (err) {
-        log.warn("ensureDefaultWorkspace failed (e.g. quota exceeded), using fallback workspaceId", { err });
+        log.warn("ensureDefaultWorkspace failed (e.g. quota exceeded)", { err });
       }
     }
 
-    // 4. Default fallback when Firestore is unavailable/quota-exhausted
+    // 4. No shared fallback — fail closed to avoid tenant isolation breach.
     if (!workspaceId) {
-      workspaceId = FALLBACK_WORKSPACE_ID;
+      log.error("Workspace resolution failed — no workspaceId after all strategies", {
+        uid: user.uid,
+      });
+      throw new WorkspaceUnavailableError();
     }
 
     return { uid: user.uid, email: user.email, workspaceId };
   } catch (err) {
+    if (err instanceof WorkspaceUnavailableError) throw err;
     log.error(err, { step: "resolveWorkspace" });
-    return { uid: user.uid, email: user.email, workspaceId: FALLBACK_WORKSPACE_ID };
+    throw new WorkspaceUnavailableError();
   }
 }
 
 export async function requireSession(): Promise<SessionContext | Response> {
-  const ctx = await getSessionContext();
-  if (!ctx) {
-    return Response.json({ ok: false, error: { status: 401, message: "Unauthorized" } }, { status: 401 });
+  try {
+    const ctx = await getSessionContext();
+    if (!ctx) {
+      return Response.json({ ok: false, error: { status: 401, message: "Unauthorized" } }, { status: 401 });
+    }
+    return ctx;
+  } catch (err) {
+    if (err instanceof WorkspaceUnavailableError) {
+      return Response.json(
+        { ok: false, error: { status: 503, message: (err as Error).message } },
+        { status: 503 }
+      );
+    }
+    // Auth failure already handled as 401 above; unknown errors are 503
+    log.error(err, { step: "requireSession" });
+    return Response.json({ ok: false, error: { status: 503, message: "Internal error resolving session" } }, { status: 503 });
   }
-  return ctx;
 }

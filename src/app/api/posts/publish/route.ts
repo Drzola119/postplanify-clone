@@ -5,7 +5,7 @@ import { requireSession } from "@/lib/auth/session-context";
 import { MissingServerSecretError, resolvers } from "@/lib/security/server-config";
 import { createPost, updatePost } from "@/lib/db/posts";
 import { createLogger } from "@/lib/log";
-import { parseBody } from "@/lib/validation/helpers";
+import { parseBody, validateCaptionsByPlatform } from "@/lib/validation/helpers";
 import { readProfile } from "@/lib/db/upload-post-profiles";
 import { publishToUploadPost } from "@/lib/uploadpost/publisher";
 
@@ -88,40 +88,9 @@ export async function POST(request: Request) {
   }
   const body = parsed.data;
 
-  // --- Caption validation: enforce per-platform map consistency ---
-  const platformsArr = (body.platforms ?? []) as string[];
-  const captMap = body.captionsByPlatform as Record<string, string> | undefined;
-  const same = Boolean(body.sameForAll);
-  if (!same && !captMap) {
-    return NextResponse.json(
-      { error: "captionsByPlatform is required when sameForAll is false" },
-      { status: 400 }
-    );
-  }
-  if (captMap) {
-    // Reject unknown platform keys (must be subset of declared platforms + legacy __all)
-    const knownSet = new Set(platformsArr);
-    for (const k of Object.keys(captMap)) {
-      if (k === "__all") continue;
-      if (!knownSet.has(k)) {
-        return NextResponse.json({ error: `Unknown platform key in captionsByPlatform: ${k}` }, { status: 400 });
-      }
-    }
-    if (!same) {
-      for (const p of platformsArr) {
-        const v = captMap[p];
-        if (v == null || v.trim().length === 0) {
-          return NextResponse.json({ error: `Missing caption for platform: ${p}` }, { status: 400 });
-        }
-      }
-    } else {
-      // sameForAll: shared caption must be non-empty (check __all or top-level)
-      const shared = captMap.__all ?? captMap[platformsArr[0]] ?? body.caption;
-      if (!shared || shared.trim().length === 0) {
-        return NextResponse.json({ error: "Missing shared caption" }, { status: 400 });
-      }
-    }
-  }
+  // Shared captions validation (D deduplicated)
+  const captionsErr = validateCaptionsByPlatform(body.platforms as string[], body.captionsByPlatform as Record<string, string> | undefined, body.sameForAll as boolean | undefined, body.caption);
+  if (captionsErr) return captionsErr;
 
   const workspaceProfile = await readProfile(workspaceId).catch(() => null);
   const uploadPostUsername =

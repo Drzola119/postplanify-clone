@@ -270,7 +270,7 @@ function platformTitle(platform: string, caption: string, endpoint: string): str
     instagram: 2200,
     discord: 2000,
     telegram: photoPost ? 1024 : undefined,
-    googlebusiness: 255,
+    google_business: 255,
   };
   const maxChars = limits[platform] ?? 255;
   return truncateText(caption, maxChars);

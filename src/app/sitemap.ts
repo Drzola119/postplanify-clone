@@ -1,6 +1,6 @@
 import { type MetadataRoute } from "next";
 
-const BASE = "https://postplanify.com";
+const BASE = (process.env.NEXT_PUBLIC_APP_URL || "https://postplanify.com").replace(/\/$/, "");
 
 const STATIC_ROUTES = [
   "",
@@ -16,10 +16,7 @@ const STATIC_ROUTES = [
   "/login",
   "/signup",
   "/affiliates",
-  "/social-media-holidays",
-  "/social-media-terms",
   "/tools",
-  "/dashboard",
   "/compare",
 ];
 

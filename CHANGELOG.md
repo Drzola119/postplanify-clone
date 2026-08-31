@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Streaming `loading.tsx`/`not-found.tsx` at root + dashboard/admin segments
+- Firestore composite indexes for `posts` `status+createdAt` family and `videoJobs`/`analytics`
+
 ### Changed
 - Raised the project Node.js baseline to 24 across local development, CI, Docker, and contributor-facing documentation
+- `postplanify-clone` version to 1.0.0 — production hardening (tenant IDOR, SSRF, traversal, quota, i18n)
 
 ## [0.3.1] - 2026-03-29
 

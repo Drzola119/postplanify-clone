@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireSession } from "@/lib/auth/session-context";
 import { createPost } from "@/lib/db/posts";
 import { createLogger } from "@/lib/log";
-import { parseBody } from "@/lib/validation/helpers";
+import { parseBody, validateCaptionsByPlatform } from "@/lib/validation/helpers";
 
 const log = createLogger("posts/schedule");
 
@@ -66,25 +66,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const captionMap = body.captionsByPlatform;
-  if (body.sameForAll === false && !captionMap) {
-    return NextResponse.json({ error: "captionsByPlatform is required when sameForAll is false" }, { status: 400 });
-  }
-  if (captionMap) {
-    const platforms = new Set(body.platforms);
-    for (const key of Object.keys(captionMap)) {
-      if (key !== "__all" && !platforms.has(key)) {
-        return NextResponse.json({ error: `Unknown platform key in captionsByPlatform: ${key}` }, { status: 400 });
-      }
-    }
-    if (body.sameForAll === false) {
-      for (const platform of body.platforms) {
-        if (!captionMap[platform]?.trim()) {
-          return NextResponse.json({ error: `Missing caption for platform: ${platform}` }, { status: 400 });
-        }
-      }
-    }
-  }
+  const captionsErr = validateCaptionsByPlatform(body.platforms, body.captionsByPlatform as Record<string, string> | undefined, body.sameForAll, body.caption);
+  if (captionsErr) return captionsErr;
 
   try {
     const postId = await createPost(session.workspaceId, session.uid, {
@@ -130,20 +113,19 @@ export async function POST(request: Request) {
 
     // Map known Firestore failure modes to the most actionable status.
     // Permission-denied (security rules) -> 403, not 503.
+    // Details are logged server-side only to avoid leaking project/collection paths.
     if (/PERMISSION_DENIED|permission/i.test(message)) {
       return NextResponse.json(
-        { error: "Firestore permission denied. Check firestore.rules for workspaces/{workspaceId}/posts.", details: message },
+        { error: "Firestore permission denied. Please contact support." },
         { status: 403 }
       );
     }
     if (/adminDb not configured|FIREBASE/i.test(message)) {
       return NextResponse.json(
-        { error: "Unable to save scheduled post", details: `Database not configured on server. Check FIREBASE_PRIVATE_KEY env var. (${message})` },
+        { error: "Unable to save scheduled post. Database not configured on server." },
         { status: 503 }
       );
     }
-    // Include the underlying message so the client toast can surface it
-    // instead of the opaque "Unable to save scheduled post".
-    return NextResponse.json({ error: "Unable to save scheduled post", details: message }, { status: 503 });
+    return NextResponse.json({ error: "Unable to save scheduled post" }, { status: 503 });
   }
 }

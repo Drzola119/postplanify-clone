@@ -14,10 +14,8 @@ const log = createLogger("firebase-admin");
  */
 const PLACEHOLDER_KEY = "[REDACTED PRIVATE KEY]";
 
-const projectId = process.env.FIREBASE_PROJECT_ID || "postplanify-best";
-const clientEmail =
-  process.env.FIREBASE_CLIENT_EMAIL ||
-  "firebase-adminsdk-fbsvc@postplanify-best.iam.gserviceaccount.com";
+const projectId = process.env.FIREBASE_PROJECT_ID || "";
+const clientEmail = process.env.FIREBASE_CLIENT_EMAIL || "";
 let privateKey = process.env.FIREBASE_PRIVATE_KEY || "";
 
 // Normalize the value: strip surrounding quotes (in case the operator

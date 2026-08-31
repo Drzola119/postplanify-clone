@@ -3,16 +3,19 @@ import createNextIntlPlugin from "next-intl/plugin";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
+// Short aliases for tools — the page components live at the long “-calculator / -checker”
+// paths (e.g. /tools/instagram-engagement-calculator). These rewrites let the
+// short forms resolve without creating duplicate page folders.
 const TOOL_ALIASES: Record<string, string> = {
-  "/tools/instagram-engagement-calculator": "/tools/instagram-engagement",
-  "/tools/instagram-grid-maker": "/tools/instagram-grid",
-  "/tools/tiktok-engagement-calculator": "/tools/tiktok-engagement",
-  "/tools/youtube-engagement-calculator": "/tools/youtube-engagement",
-  "/tools/linkedin-engagement-calculator": "/tools/linkedin-engagement",
-  "/tools/tiktok-safe-zone-checker": "/tools/tiktok-safe-zone",
-  "/tools/instagram-safe-zone-checker": "/tools/instagram-safe-zone",
-  "/tools/youtube-shorts-safe-zone-checker": "/tools/youtube-shorts-safe-zone",
-  "/tools/tiktok-money-calculator": "/tools/tiktok-money",
+  "/tools/instagram-engagement": "/tools/instagram-engagement-calculator",
+  "/tools/instagram-grid": "/tools/instagram-grid-maker",
+  "/tools/tiktok-engagement": "/tools/tiktok-engagement-calculator",
+  "/tools/youtube-engagement": "/tools/youtube-engagement-calculator",
+  "/tools/linkedin-engagement": "/tools/linkedin-engagement-calculator",
+  "/tools/tiktok-safe-zone": "/tools/tiktok-safe-zone-checker",
+  "/tools/instagram-safe-zone": "/tools/instagram-safe-zone-checker",
+  "/tools/youtube-shorts-safe-zone": "/tools/youtube-shorts-safe-zone-checker",
+  "/tools/tiktok-money": "/tools/tiktok-money-calculator",
 };
 
 const nextConfig: NextConfig = {
@@ -32,7 +35,8 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: "/((?!api|_next|static|.*\\..*$).*)",
+        // No-store for app pages only — exclude static SEO/data assets so CDN can cache them
+        source: "/((?!api|_next|static|sitemap\\.xml|robots\\.txt|.*\\..*$).*)",
         headers: [
           { key: "Cache-Control", value: "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" },
           { key: "Pragma", value: "no-cache" },
@@ -56,17 +60,10 @@ const nextConfig: NextConfig = {
       // built-in handler intercepts rewrites before they can match.
       { source: "/_next/static/chunks/:path*", destination: "/api/chunks/:path*" },
       // Link in Bio public page: /@username → /username (Next.js App Router
-      // reserves `@` for parallel route slots, so we use a rewrite).\
+      // reserves `@` for parallel route slots, so we use a rewrite).
       { source: "/@:username", destination: "/:username" },
-      { source: "/tools/instagram-engagement-calculator", destination: "/tools/instagram-engagement" },
-      { source: "/tools/instagram-grid-maker", destination: "/tools/instagram-grid" },
-      { source: "/tools/tiktok-engagement-calculator", destination: "/tools/tiktok-engagement" },
-      { source: "/tools/youtube-engagement-calculator", destination: "/tools/youtube-engagement" },
-      { source: "/tools/linkedin-engagement-calculator", destination: "/tools/linkedin-engagement" },
-      { source: "/tools/tiktok-safe-zone-checker", destination: "/tools/tiktok-safe-zone" },
-      { source: "/tools/instagram-safe-zone-checker", destination: "/tools/instagram-safe-zone" },
-      { source: "/tools/youtube-shorts-safe-zone-checker", destination: "/tools/youtube-shorts-safe-zone" },
-      { source: "/tools/tiktok-money-calculator", destination: "/tools/tiktok-money" },
+      // Short tool aliases → real page folders (no duplicate pages)
+      ...Object.entries(TOOL_ALIASES).map(([source, destination]) => ({ source, destination })),
     ];
   },
 };

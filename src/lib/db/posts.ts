@@ -3,6 +3,9 @@ import { toIso } from "@/lib/db/date-utils";
 import { adminDb, FieldValue } from "@/lib/db";
 import { calculateCaptionDeadlines, calculatePriorityScore } from "@/lib/ai/fair-scheduler";
 import type { PostDoc, PostStatus, PlatformId } from "@/lib/db/schema";
+import { createLogger } from "@/lib/log";
+
+const log = createLogger("db:posts");
 
 const SERVER_TIMESTAMP = FieldValue.serverTimestamp();
 
@@ -68,9 +71,60 @@ export async function listPosts(workspaceId: string, filters: ListPostsFilters =
     const coll = collection(workspaceId);
     const pageSize = Math.min(Math.max(filters.pageSize ?? 25, 1), 100);
 
+    const wantedStatuses = filters.status
+      ? new Set(Array.isArray(filters.status) ? filters.status : [filters.status])
+      : null;
+
+    // Try indexed query first when filters allow server-side narrowing.
+    // Falls back to in-memory 1000-doc fetch on missing-index errors so the
+    // UI never hard-fails while indexes deploy.
+    const tryIndexed = Boolean(wantedStatuses || filters.platform);
+    if (tryIndexed) {
+      try {
+        let q: unknown = coll as unknown;
+        if (wantedStatuses) {
+          const arr = [...wantedStatuses];
+          if (arr.length === 1) q = (q as { where: Function }).where("status", "==", arr[0]);
+          else q = (q as { where: Function }).where("status", "in", arr.slice(0, 10));
+        }
+        if (filters.platform) {
+          q = (q as { where: Function }).where("platforms", "array-contains", filters.platform);
+        }
+        let ordered: unknown = (q as { orderBy: Function }).orderBy("createdAt", "desc");
+        if (filters.cursor) {
+          try {
+            const cursorSnap = await coll.doc(filters.cursor).get();
+            if (cursorSnap.exists) ordered = (ordered as { startAfter: Function }).startAfter(cursorSnap);
+          } catch {}
+        }
+        const snap = await (ordered as { limit: Function }).limit(pageSize + 1).get() as { docs: Array<{ id: string; data: () => unknown; ref?: unknown }> };
+        // filter soft-delete + date range in-memory (small)
+        const docs = snap.docs.filter((d) => {
+          const data = d.data() as unknown as PostDoc;
+          if (data.deletedAt) return false;
+          const createdMs = Date.parse(toIso(data.createdAt));
+          if (filters.sinceDate && createdMs < filters.sinceDate.getTime()) return false;
+          if (filters.untilDate && createdMs > filters.untilDate.getTime()) return false;
+          return true;
+        });
+        const hasMore = docs.length > pageSize;
+        const pageDocs = hasMore ? docs.slice(0, pageSize) : docs;
+        const items = pageDocs.map((d) => serialize(workspaceId, d.id, d.data() as unknown as PostDoc));
+        const nextCursor = hasMore ? items[items.length - 1]?.id ?? null : null;
+        return { items, nextCursor };
+      } catch (idxErr) {
+        const msg = idxErr instanceof Error ? idxErr.message : String(idxErr);
+        // Missing index → fall through to broad fetch. Other errors also fall through to avoid hard 500.
+        if (!/requires an index|FAILED_PRECONDITION/i.test(msg)) {
+          log.warn("listPosts indexed query fallback", { err: msg });
+        }
+      }
+    }
+
+    // Broad fetch fallback (in-memory filter) — up to 1000 most recent.
     let snap;
     try {
-      let q = coll.orderBy("createdAt", "desc").limit(500);
+      let q = coll.orderBy("createdAt", "desc").limit(1000);
       if (filters.cursor) {
         try {
           const cursorSnap = await coll.doc(filters.cursor).get();
@@ -81,13 +135,10 @@ export async function listPosts(workspaceId: string, filters: ListPostsFilters =
       }
       snap = await q.get();
     } catch (orderErr) {
-      console.warn("[listPosts orderBy fallback]", orderErr);
-      snap = await coll.limit(500).get();
+      log.warn("listPosts orderBy fallback", { err: String(orderErr) });
+      snap = await coll.limit(1000).get();
     }
 
-    const wantedStatuses = filters.status
-      ? new Set(Array.isArray(filters.status) ? filters.status : [filters.status])
-      : null;
     const filtered = snap.docs.filter((d) => {
       const data = d.data() as PostDoc;
       if (data.deletedAt) return false;
@@ -102,7 +153,7 @@ export async function listPosts(workspaceId: string, filters: ListPostsFilters =
     const nextCursor = filtered.length > pageSize ? items[items.length - 1]?.id ?? null : null;
     return { items, nextCursor };
   } catch (err) {
-    console.error("[listPosts error]", err);
+    log.error(err, { where: "listPosts" });
     return { items: [], nextCursor: null };
   }
 }
@@ -141,7 +192,7 @@ export async function listPostsHistory(
       .map((d) => serialize(workspaceId, d.id, d.data() as PostDoc));
     return { items };
   } catch (err) {
-    console.error("[listPostsHistory error]", err);
+    log.error(err, { where: "listPostsHistory" });
     return { items: [] };
   }
 }
@@ -154,7 +205,7 @@ export async function getPost(workspaceId: string, postId: string): Promise<Post
     if (!snap.exists) return null;
     return serialize(workspaceId, snap.id, snap.data() as PostDoc);
   } catch (err) {
-    console.error("[getPost error]", err);
+    log.error(err, { where: "getPost" });
     return null;
   }
 }
@@ -241,7 +292,7 @@ export async function updatePost(workspaceId: string, postId: string, patch: Par
         await batch.commit();
       }
     } catch (err) {
-      console.warn("[updatePost captionJob deadline propagation error]", err);
+      log.warn("updatePost captionJob deadline propagation error", { err: String(err) });
     }
   }
 }
@@ -390,7 +441,7 @@ export async function listScheduledDue(workspaceId: string, now: Date): Promise<
       })
       .map((d) => serialize(workspaceId, d.id, d.data() as PostDoc));
   } catch (err) {
-    console.error("[listScheduledDue error]", err);
+    log.error(err, { where: "listScheduledDue" });
     return [];
   }
 }
@@ -451,7 +502,7 @@ export async function resetStuckClaims(workspaceId: string, olderThanMs: number)
     if (count > 0) await batch.commit();
     return count;
   } catch (err) {
-    console.error("[resetStuckClaims error]", err);
+    log.error(err, { where: "resetStuckClaims" });
     return 0;
   }
 }

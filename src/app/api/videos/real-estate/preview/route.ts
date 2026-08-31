@@ -51,7 +51,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Database not configured" }, { status: 503 });
     }
     const userSnap = await db.collection("users").doc(user.uid).get();
-    const workspaceId: string | undefined = userSnap.data()?.workspaceId;
+    const workspaceId: string | undefined = (userSnap.data()?.primaryWorkspaceId ??
+      userSnap.data()?.workspaceId) as string | undefined;
     if (!workspaceId) {
       return NextResponse.json({ error: "No workspace found" }, { status: 400 });
     }

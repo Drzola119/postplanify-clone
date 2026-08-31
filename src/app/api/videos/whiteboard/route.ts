@@ -13,8 +13,10 @@ import { resolvers } from "@/lib/security/server-config";
 import { resolveProvider, resolveClipSpec } from "@/lib/video-gen/whiteboard/clip-matrix";
 import { generateWhiteboardScript } from "@/lib/video-gen/whiteboard/script-gen";
 import { createLogger } from "@/lib/log";
+import { checkQuota } from "@/lib/billing/quota";
 
 const logger = createLogger("api:videos:whiteboard");
+const ESTIMATED_VIDEO_COST_USD = 0.5;
 
 export async function POST(req: NextRequest) {
   try {
@@ -45,9 +47,15 @@ export async function POST(req: NextRequest) {
     }
 
     const userSnap = await db.collection("users").doc(user.uid).get();
-    const workspaceId: string | undefined = userSnap.data()?.workspaceId;
+    const workspaceId: string | undefined = (userSnap.data()?.primaryWorkspaceId ??
+      userSnap.data()?.workspaceId) as string | undefined;
     if (!workspaceId) {
       return NextResponse.json({ error: "No workspace found" }, { status: 400 });
+    }
+
+    const quota = await checkQuota(workspaceId, "video", ESTIMATED_VIDEO_COST_USD);
+    if (!quota.allowed) {
+      return NextResponse.json({ error: quota.reason }, { status: 402 });
     }
 
     const groqApiKey = resolvers.groqApiKey(req.headers);

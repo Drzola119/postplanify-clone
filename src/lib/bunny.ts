@@ -1,10 +1,11 @@
 import "server-only";
 
-const ZONE = process.env.BUNNY_STORAGE_ZONE!;
+const ZONE = process.env.BUNNY_STORAGE_ZONE ?? "";
 const HOSTNAME = process.env.BUNNY_STORAGE_HOSTNAME ?? "storage.bunnycdn.com";
-const PASSWORD = process.env.BUNNY_STORAGE_PASSWORD!;
+const PASSWORD = process.env.BUNNY_STORAGE_PASSWORD ?? "";
 function normalizeCdnBase(value: string | undefined): string {
-  const raw = (value ?? "https://zzar.b-cdn.net").trim();
+  const raw = (value ?? "").trim();
+  if (!raw) return "";
   const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
   // Hostinger commonly stores a DNS hostname with a final dot; that dot is
   // valid DNS syntax but must not be part of the public CDN URL hostname.
@@ -12,6 +13,10 @@ function normalizeCdnBase(value: string | undefined): string {
 }
 
 const CDN = normalizeCdnBase(process.env.BUNNY_CDN_HOSTNAME);
+if (!CDN && process.env.NODE_ENV !== "production") {
+  // eslint-disable-next-line no-console -- dev-only warning for missing CDN env
+  console.warn("[bunny] BUNNY_CDN_HOSTNAME not set — upload URLs will be empty until configured");
+}
 
 const MAX_BYTES = 100 * 1024 * 1024; // 100 MB
 

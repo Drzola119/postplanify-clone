@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
       .doc(session.workspaceId)
       .collection("carousels");
     const existing = await carouselsRef.where("jobId", "==", body.jobId).limit(1).get();
-    const docRef = existing.empty ? carouselsRef.doc() : existing.docs[0]!.ref;
+    const docRef = existing.empty ? carouselsRef.doc() : (existing.docs[0]?.ref ?? carouselsRef.doc());
 
     const payload: Record<string, unknown> = {
       workspaceId: session.workspaceId,

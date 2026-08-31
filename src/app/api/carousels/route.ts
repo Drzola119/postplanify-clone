@@ -193,7 +193,8 @@ async function tryGetSession(): Promise<{
   if (!user) return null;
   if (!adminDb) return null;
   const userSnap = await adminDb.collection("users").doc(user.uid).get();
-  const workspaceId = userSnap.data()?.workspaceId as string | undefined;
+  const workspaceId = (userSnap.data()?.primaryWorkspaceId ??
+    userSnap.data()?.workspaceId) as string | undefined;
   if (!workspaceId) return null;
   return { uid: user.uid, workspaceId };
 }

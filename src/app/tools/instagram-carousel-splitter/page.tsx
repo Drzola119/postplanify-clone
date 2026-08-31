@@ -672,7 +672,7 @@ export default function InstagramCarouselSplitterPage() {
         <section className="py-12 lg:py-16">
           <Container>
             <Link
-              href="/blog/instagram-carousel-guide"
+              href="/blog"
               className="block max-w-4xl mx-auto rounded-2xl border bg-gradient-to-br from-primary/5 via-background to-primary/10 p-6 sm:p-8 hover:shadow-md transition-shadow group"
             >
               <div className="flex items-start gap-4">
@@ -787,7 +787,7 @@ export default function InstagramCarouselSplitterPage() {
               </ul>
               <p className="text-sm text-muted-foreground">
                 For a deeper dive, see our{" "}
-                <Link href="/blog/instagram-image-sizes" className="text-primary hover:underline">
+                <Link href="/blog" className="text-primary hover:underline">
                   complete Instagram image size guide
                 </Link>{" "}
                 and{" "}

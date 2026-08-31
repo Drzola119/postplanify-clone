@@ -82,8 +82,10 @@ service cloud.firestore {
       }
 
       match /drafts/{draftId} {
-        allow read, write: if isMember(workspaceId)
-                            && resource.data.authorUid == uid();
+        allow create: if isMember(workspaceId)
+                      && request.resource.data.authorUid == uid();
+        allow read, update, delete: if isMember(workspaceId)
+                      && resource.data.authorUid == uid();
       }
 
       match /mediaAssets/{assetId} {
@@ -102,6 +104,11 @@ service cloud.firestore {
       }
 
       match /hashtagsTrending/{trendId} {
+        allow read: if isMember(workspaceId);
+        allow write: if isEditor(workspaceId);
+      }
+
+      match /autoDmCampaigns/{campaignId} {
         allow read: if isMember(workspaceId);
         allow write: if isEditor(workspaceId);
       }
@@ -211,9 +218,6 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read, write: if false;
       }
-    }
-    match /supportTickets/{docId} {
-      allow read, write: if false;
     }
     match /dataRequests/{docId} {
       allow read, write: if false;

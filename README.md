@@ -14,7 +14,7 @@ A Next.js 16 + React 19 + Tailwind CSS 4 clone of postplanify.com — a social m
 
 ## Routes
 
-178 routes total, including:
+~200 routes total (180+ pages + API), including:
 
 - **80 tools** (`/tools/*`) — Instagram, Facebook, TikTok, YouTube, Twitter/X, LinkedIn, Pinterest, Threads, Bluesky generators and analyzers
 - **11 features** (`/features/*`)
@@ -28,7 +28,7 @@ A Next.js 16 + React 19 + Tailwind CSS 4 clone of postplanify.com — a social m
 ## Local development
 
 ```bash
-# Install dependencies (Node.js 20+ required, 24+ recommended)
+# Install dependencies (Node.js 24+ required)
 npm install
 
 # Start dev server on http://localhost:3000
@@ -50,7 +50,7 @@ npm start
 2. Create new application, point to this GitHub repo
 3. Build command: `npm install && npm run build`
 4. Start command: `npm start`
-5. Set Node.js version to **20 or higher**
+5. Set Node.js version to **24 or higher**
 
 ### Docker
 
@@ -62,7 +62,7 @@ docker-compose up -d
 
 ```
 src/
-  app/          # Next.js App Router pages (178 routes)
+  app/          # Next.js App Router pages (~200 routes)
   components/   # React components (dashboard, marketing, sections, tools, ui)
   data/         # Static data (terms, holidays, alternatives, etc.)
   hooks/        # Custom React hooks

@@ -139,15 +139,27 @@ export async function checkQuota(
   }
 
   if (feature === "video") {
-    // Fast-follow: video-gen quota enforcement isn't wired in this pass
-    // (existing video-gen/usage.ts continues to track its own seconds +
-    // cost counters). Until that lands, allow all video requests so
-    // existing flows keep working — the counters are still typed in
-    // schema.ts and updated by the existing code path.
-    logger.debug("checkQuota: video enforcement not yet wired (fast-follow)", {
-      workspaceId,
-      plan,
-    });
+    const storedMonth = (data.videoGenMonth as string | undefined) ?? "";
+    const isSameMonth = storedMonth === monthKey;
+    const usedCost = isSameMonth ? ((data.videoGenCostThisMonthUsd as number | undefined) ?? 0) : 0;
+    // videoGenUsedThisMonth is not yet populated by legacy video-gen/usage.ts (uses seconds),
+    // so derive count as lifetime / month-aware fallback to avoid blocking valid users on upgrade
+    const usedCount = isSameMonth
+      ? ((data.videoGenUsedThisMonth as number | undefined) ?? 0)
+      : 0;
+
+    if (usedCount + 1 > limits.videoGens) {
+      return {
+        allowed: false,
+        reason: `Video quota reached for this month (${usedCount}/${limits.videoGens} videos). Upgrade your plan or wait for the next billing cycle.`,
+      };
+    }
+    if (usedCost + Math.max(0, estimatedCostUsd) > limits.videoCostCapUsd) {
+      return {
+        allowed: false,
+        reason: `Video cost cap reached for this month (~$${usedCost.toFixed(2)} of $${limits.videoCostCapUsd} used). Upgrade your plan or wait for the next billing cycle.`,
+      };
+    }
     return { allowed: true };
   }
 

@@ -78,6 +78,13 @@ export const createPostSchema = z
     videoTitle: optionalString,
   })
   .passthrough()
+  .transform((data) => {
+    // Strip prototype-pollution keys that could survive .passthrough() and be
+    // persisted via Firestore's `set()` with raw user JSON.
+    const FORBIDDEN = new Set(["__proto__", "constructor", "prototype"]);
+    for (const k of Object.keys(data)) if (FORBIDDEN.has(k)) delete (data as Record<string, unknown>)[k];
+    return data;
+  })
   .refine(
     (p) => {
       const hasCaption = typeof p.caption === "string" && p.caption.trim().length > 0;

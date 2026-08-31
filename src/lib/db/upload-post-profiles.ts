@@ -229,7 +229,8 @@ export async function generateConnectUrl(
   // Attempt 1: with profile.username
   const firstAttempt = await requestJwt(profile.username);
   if (firstAttempt.ok) {
-    return { url: firstAttempt.data.access_url!, duration: firstAttempt.data.duration ?? 172800 };
+    const _url1 = firstAttempt.data.access_url; if (!_url1) throw new Error("upload-post generate-jwt missing access_url (attempt 1)");
+    return { url: _url1, duration: firstAttempt.data.duration ?? 172800 };
   }
 
   // Retry only the recoverable "profile not found" case. Retrying auth,
@@ -245,7 +246,8 @@ export async function generateConnectUrl(
   } catch {}
   const secondAttempt = await requestJwt(profile.username);
   if (secondAttempt.ok) {
-    return { url: secondAttempt.data.access_url!, duration: secondAttempt.data.duration ?? 172800 };
+    const _url2 = secondAttempt.data.access_url; if (!_url2) throw new Error("upload-post generate-jwt missing access_url (attempt 2)");
+    return { url: _url2, duration: secondAttempt.data.duration ?? 172800 };
   }
 
   // Attempt 3: fallback to default username (e.g. trustiify_test)
@@ -255,7 +257,8 @@ export async function generateConnectUrl(
   } catch {}
   const thirdAttempt = await requestJwt(defaultUser);
   if (thirdAttempt.ok) {
-    return { url: thirdAttempt.data.access_url!, duration: thirdAttempt.data.duration ?? 172800 };
+    const _url3 = thirdAttempt.data.access_url; if (!_url3) throw new Error("upload-post generate-jwt missing access_url (attempt 3)");
+    return { url: _url3, duration: thirdAttempt.data.duration ?? 172800 };
   }
 
   const msg =

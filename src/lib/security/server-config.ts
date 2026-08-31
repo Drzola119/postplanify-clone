@@ -136,10 +136,9 @@ export const resolvers = {
     return resolveOptional("SENTRY_DSN", "x-sentry-dsn", h);
   },
   /**
-   * Base URL of the adsify outpainting engine (Express service at
-   * C:\Users\zicko\Desktop\PROJECTS\adsify poster web app). The composer
-   * calls it via /api/images/outpaint to generate platform-ratio variants
-   * before publishing.
+   * Base URL of the adsify outpainting engine (separate Express service).
+   * The composer calls it via /api/images/outpaint to generate platform-ratio
+   * variants before publishing.
    */
   engineBaseUrl(h: Headers): string | undefined {
     return resolveOptional("ADSIFY_ENGINE_URL", "x-engine-url", h);

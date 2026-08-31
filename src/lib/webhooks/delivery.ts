@@ -118,7 +118,9 @@ export async function deliverWebhook(
           if (res.ok) {
             await markDestinationDelivered(workspaceId, d.id);
             await resetConsecutiveFailures(workspaceId, d.id);
-            void logDelivery(workspaceId, d.id, d.url, payload.event, true, res.status).catch(() => {});
+            void logDelivery(workspaceId, d.id, d.url, payload.event, true, res.status).catch((err) =>
+              log.warn("logDelivery failed (success path)", { err, workspaceId, destinationId: d.id })
+            );
             return { url: d.url, success: true, attempts: attempt + 1, status: res.status };
           }
           lastStatus = res.status;
@@ -137,7 +139,9 @@ export async function deliverWebhook(
         attempts: retryDelays.length,
       });
       await incrementConsecutiveFailures(workspaceId, d.id);
-      void logDelivery(workspaceId, d.id, d.url, payload.event, false, lastStatus, lastError).catch(() => {});
+      void logDelivery(workspaceId, d.id, d.url, payload.event, false, lastStatus, lastError).catch((err) =>
+        log.warn("logDelivery failed (failure path)", { err, workspaceId, destinationId: d.id })
+      );
       return {
         url: d.url,
         success: false,

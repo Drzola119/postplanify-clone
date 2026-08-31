@@ -575,7 +575,7 @@ export function YouTubeShortsSafeZoneCheckerClient() {
                 YouTube&apos;s subscribe button is also <strong>larger and more prominent in 2026</strong> than previous years, sitting in the bottom-right corner and consuming roughly 180×80 pixels. Avoid placing logos or branded elements in this area.
               </p>
               <p>
-                For the full technical breakdown across all platforms — including TikTok and Instagram Reels — see our <Link href="/blog/social-media-safe-zones-2026-complete-guide" className="text-blue-600 underline">social media safe zones complete guide</Link>.
+                For the full technical breakdown across all platforms — including TikTok and Instagram Reels — see our <Link href="/blog" className="text-blue-600 underline">blog</Link>.
               </p>
             </div>
 
@@ -626,7 +626,7 @@ export function YouTubeShortsSafeZoneCheckerClient() {
         {/* Blog guide callout */}
         <section className="w-full max-w-4xl mx-auto my-4 px-4">
           <Link
-            href="/blog/social-media-safe-zones-2026-complete-guide"
+            href="/blog"
             className="group block p-4 border-2 border-blue-400 rounded-lg hover:border-primary hover:shadow-md transition-all"
           >
             <div className="flex items-center justify-between gap-4">
@@ -659,7 +659,7 @@ export function YouTubeShortsSafeZoneCheckerClient() {
                 <li><strong>Cross-posting requires separate checks.</strong> A Short that looks perfect on YouTube may have text covered on TikTok (wider right column) or Instagram Reels (different bottom bar height). Use our <Link href="/tools/tiktok-safe-zone-checker" className="text-blue-600 underline">TikTok safe zone checker</Link> and <Link href="/tools/instagram-safe-zone-checker" className="text-blue-600 underline">Instagram safe zone checker</Link> for those platforms.</li>
               </ul>
               <p>
-                For scheduling your Shorts after checking safe zones, see our guides on <Link href="/blog/how-to-schedule-youtube-shorts-in-2025" className="text-blue-600 underline">how to schedule YouTube Shorts</Link> and best YouTube scheduling tools. Posting at the best time for your audience combined with proper safe zone compliance gives your Shorts the strongest possible start.
+                For scheduling your Shorts after checking safe zones, see our <Link href="/youtube-scheduler" className="text-blue-600 underline">how to schedule YouTube Shorts</Link> guide. Posting at the best time for your audience combined with proper safe zone compliance gives your Shorts the strongest possible start.
               </p>
             </div>
           </Container>
@@ -672,7 +672,7 @@ export function YouTubeShortsSafeZoneCheckerClient() {
               Safe zone checked — ready to schedule your YouTube Shorts?
             </h3>
             <p className="text-sm md:text-base leading-relaxed text-muted-foreground">
-              Now that your Shorts content sits properly inside the crop-safe areas, the final step is scheduling across YouTube, TikTok, and Instagram Reels. If you&apos;re evaluating schedulers, we wrote a detailed <Link href="/compare/buffer-vs-later" className="text-blue-600 underline underline-offset-2 hover:text-blue-700 font-medium">Buffer vs Later comparison</Link> — only one of them actually supports YouTube. See <Link href="/alternative-to-buffer" className="text-blue-600 underline underline-offset-2 hover:text-blue-700 font-medium">the best Buffer alternatives for YouTube creators</Link>, or read our <Link href="/hootsuite-pricing" className="text-blue-600 underline underline-offset-2 hover:text-blue-700 font-medium">Hootsuite pricing analysis for 2026</Link> to decide if enterprise-tier pricing fits your budget.
+              Now that your Shorts content sits properly inside the crop-safe areas, the final step is scheduling across YouTube, TikTok, and Instagram Reels. If you&apos;re evaluating schedulers, see our <Link href="/compare" className="text-blue-600 underline underline-offset-2 hover:text-blue-700 font-medium">scheduler comparison</Link> — only some actually support YouTube. See <Link href="/alternative-to-buffer" className="text-blue-600 underline underline-offset-2 hover:text-blue-700 font-medium">the best Buffer alternatives for YouTube creators</Link>, or read our <Link href="/pricing" className="text-blue-600 underline underline-offset-2 hover:text-blue-700 font-medium">pricing analysis for 2026</Link> to decide if enterprise-tier pricing fits your budget.
             </p>
           </div>
         </section>

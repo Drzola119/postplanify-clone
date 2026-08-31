@@ -25,15 +25,11 @@ export async function getWorkspace(wid: string): Promise<WorkspaceLite | null> {
 
 export async function listWorkspacesForUser(uid: string): Promise<WorkspaceLite[]> {
   if (!adminDb) return [];
-  let membersSnap = null;
-  try {
-    membersSnap = await adminDb
-      .collectionGroup("members")
-      .where("__name__", "==", uid)
-      .get();
-  } catch (err) {
-    // Ignore synchronous validation errors or missing index errors
-  }
+  // Legacy collectionGroup("__name__ == uid") is invalid — __name__ is the full
+  // document path (workspaces/xyz/members/uid), never equal to bare uid.
+  // The reliable path is the user's primaryWorkspaceId pointer. Keep group
+  // query only for future multi-workspace where we query members where uid field exists.
+  // (No dead query executed here to avoid confusing error logs.)
 
   // Fallback: scan user's known workspace subcollection (when workspaceId is
   // stored on the user doc). Firestore collection-group queries need an index

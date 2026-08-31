@@ -129,8 +129,9 @@ const TESTIMONIALS = [
   { name: "Oguz Doruk", avatar: "https://postplanify.com/_next/image?url=%2Ftestimonials%2Foguz-doruk.jpg&w=96&q=75", text: "Been on the $79 plan for 2 months. <highlight>API access and MCP support</highlight> is something most alternatives don't have. Didn't think I'd pay $80/mo just to post on social media, but it <highlight>saves a lot of time</highlight>." },
 ];
 
+function escapeHtml(s: string){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
 function highlightToHtml(s: string) {
-  return s.replace(/<highlight>([^<]+)<\/highlight>/g, '<span class="bg-yellow-100 px-1 rounded font-medium text-primary">$1</span>');
+  const e = escapeHtml(s); return e.replace(/&lt;highlight&gt;([^&]+)&lt;\/highlight&gt;/g, '<span class="bg-yellow-100 px-1 rounded font-medium text-primary">$1</span>');
 }
 
 /* ------------------------------------------------------------------ */

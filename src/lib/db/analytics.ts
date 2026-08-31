@@ -96,7 +96,14 @@ export async function getOverview(
       postsPublished: 0,
     }
   );
-  totals.engagementRate = byPlatform.length > 0 ? totals.engagementRate / byPlatform.length : 0;
+  // Weighted by impressions — a platform with 0 impressions should not pull the avg
+  const totalImpressions = byPlatform.reduce((a, p) => a + p.impressions, 0);
+  totals.engagementRate =
+    totalImpressions > 0
+      ? byPlatform.reduce((a, p) => a + p.engagementRate * p.impressions, 0) / totalImpressions
+      : byPlatform.length > 0
+        ? totals.engagementRate / byPlatform.length
+        : 0;
 
   // postsPublished: count posts in range with status=published
   if (adminDb) {

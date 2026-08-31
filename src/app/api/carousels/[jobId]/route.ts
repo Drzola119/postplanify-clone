@@ -33,7 +33,8 @@ export async function GET(
       return NextResponse.json({ error: "Database not configured" }, { status: 503 });
     }
     const userSnap = await adminDb.collection("users").doc(user.uid).get();
-    const workspaceId = userSnap.data()?.workspaceId as string | undefined;
+    const workspaceId = (userSnap.data()?.primaryWorkspaceId ??
+      userSnap.data()?.workspaceId) as string | undefined;
     if (!workspaceId) {
       return NextResponse.json({ error: "No workspace found" }, { status: 400 });
     }
