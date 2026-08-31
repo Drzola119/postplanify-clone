@@ -211,7 +211,7 @@ function bulkAcceptForContentType(type: BulkContentType, carouselMode: CarouselM
   if (type === "image") return "image/jpeg,image/png,image/webp,image/gif";
   if (type === "carousel") {
     if (carouselMode === "images") return "image/jpeg,image/png,image/webp,image/gif";
-    if (carouselMode === "videos") return "video/mp4,video/quicktime,video/webm";
+    return ACCEPTED_MIME_TYPES.join(",");
   }
   return ACCEPTED_MIME_TYPES.join(",");
 }
@@ -621,9 +621,6 @@ function validateItems(items: BulkItem[]): ValidationIssue[] {
       const carouselMode = (it as BulkItemBase).carouselMediaMode ?? "images";
       if (carouselMode === "images" && slides.some((slide) => slide.kind !== "image")) {
         issues.push({ itemId: it.id, message: "Images-only carousel cannot contain video" });
-      }
-      if (carouselMode === "videos" && slides.some((slide) => slide.kind !== "video")) {
-        issues.push({ itemId: it.id, message: "Videos-only carousel cannot contain images" });
       }
       if (carouselMode === "mixed" && slides.length > 1) {
         const kinds = new Set(slides.map((slide) => slide.kind));
