@@ -39,7 +39,7 @@ export const postCollaboratorSchema = z.object({
 
 export const createPostSchema = z
   .object({
-    caption: nonEmptyString.max(70000),
+    caption: z.string().max(70000).optional().default(""),
     platforms: z.array(platformIdSchema).min(1).max(13),
     mediaUrls: urlArray.optional().default([]),
     hashtags: z.array(z.string().min(1).max(64)).max(30).optional().default([]),
@@ -68,20 +68,38 @@ export const createPostSchema = z
     tagUsers: z.union([z.string(), z.array(z.string())]).optional(),
     firstCommentByPlatform: z.record(z.string(), z.string()).optional(),
     altTextByPlatform: z.record(z.string(), z.string()).optional(),
+    // ── Async AI Caption Generation options ──
+    captionGenerationMode: z.enum(["automatic", "manual"]).optional().default("manual"),
+    captionFallback: z.enum(["hold", "publish_without_caption"]).optional(),
+    captionTone: z.string().max(32).optional(),
+    captionIncludeHashtags: z.boolean().optional(),
+    captionUseEmojis: z.boolean().optional(),
+    captionExtra: z.string().max(500).optional(),
+    videoTitle: optionalString,
   })
   .passthrough()
   .refine(
-  (p) => {
-    if (p.status === "scheduled" || p.status === "queued") {
-      if (!p.scheduledAt) return false;
-      const t = Date.parse(p.scheduledAt);
-      if (Number.isNaN(t)) return false;
-      return t > Date.now() - 60_000;
-    }
-    return true;
-  },
-  { message: "scheduledAt must be a future ISO date when status is scheduled/queued", path: ["scheduledAt"] }
-);
+    (p) => {
+      const hasCaption = typeof p.caption === "string" && p.caption.trim().length > 0;
+      if (!hasCaption) {
+        return p.captionGenerationMode === "automatic";
+      }
+      return true;
+    },
+    { message: "Caption is required unless automatic caption generation is enabled", path: ["caption"] }
+  )
+  .refine(
+    (p) => {
+      if (p.status === "scheduled" || p.status === "queued") {
+        if (!p.scheduledAt) return false;
+        const t = Date.parse(p.scheduledAt);
+        if (Number.isNaN(t)) return false;
+        return t > Date.now() - 60_000;
+      }
+      return true;
+    },
+    { message: "scheduledAt must be a future ISO date when status is scheduled/queued", path: ["scheduledAt"] }
+  );
 
 export const updatePostSchema = z.object({
   caption: nonEmptyString.max(70000).optional(),

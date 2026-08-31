@@ -8,6 +8,8 @@ import { createLogger } from "@/lib/log";
 import { evaluateAlertRules } from "@/lib/alerts/evaluate";
 import { buildPublishPayload, resolveCaptionsForPayload } from "@/lib/publishing/payload";
 import { getUploadPostStatus, publishToUploadPost } from "@/lib/uploadpost/publisher";
+import { runCaptionWorkerTick } from "@/lib/queue/caption-worker";
+import { generateCaptionViaGateway } from "@/lib/ai/grok-gateway";
 
 const log = createLogger("queue-worker");
 
@@ -81,6 +83,13 @@ async function tickOnce(): Promise<TickResult> {
     log.error(err, { step: "reap" });
   }
 
+  // Run asynchronous caption generation tick before publishing
+  try {
+    await runCaptionWorkerTick();
+  } catch (err) {
+    log.error(err, { step: "caption-worker-tick" });
+  }
+
   const due = await collectDuePosts();
   result.scanned = due.length;
 
@@ -105,11 +114,60 @@ async function tickOnce(): Promise<TickResult> {
     if (!claimed) continue;
     const doc = await adminDb.doc(`workspaces/${workspaceId}/posts/${postId}`).get();
     const data = doc.data() ?? {};
+
+    // Caption readiness check & emergency fallback
+    let effectiveCaption = data.caption;
+    let effectiveCaptionsByPlatform = data.captionsByPlatform;
+
+    if ((!effectiveCaption || !effectiveCaption.trim()) && data.captionGenerationMode === "automatic") {
+      if (data.captionFallback === "publish_without_caption") {
+        log.info("Publishing without caption per user fallback config", { postId, workspaceId });
+      } else {
+        try {
+          const emergencyRes = await generateCaptionViaGateway({
+            userId: data.authorUid,
+            snapshot: {
+              mediaUrls: data.mediaUrls,
+              imageUrl: data.mediaUrls?.[0],
+              videoTitle: data.videoTitle || (data.mediaType === "video" ? "Video Post" : undefined),
+              platforms: (data.platforms ?? []).map((p: string) => ({ id: p, name: p, charLimit: 280 })),
+              multiPlatform: true,
+            },
+          });
+          if (emergencyRes.ok && emergencyRes.caption) {
+            effectiveCaption = emergencyRes.caption;
+            effectiveCaptionsByPlatform = emergencyRes.captionsByPlatform ?? {};
+            await updatePost(workspaceId, postId, {
+              caption: effectiveCaption,
+              captionsByPlatform: effectiveCaptionsByPlatform,
+              captionJobStatus: "ready",
+            });
+          } else {
+            log.warn("Emergency caption generation unavailable; holding post pending", { postId, workspaceId });
+            await updatePost(workspaceId, postId, {
+              status: "queued",
+              workerId: null,
+              claimedAt: null,
+            });
+            continue;
+          }
+        } catch {
+          log.warn("Emergency caption generation failed; holding post pending", { postId, workspaceId });
+          await updatePost(workspaceId, postId, {
+            status: "queued",
+            workerId: null,
+            claimedAt: null,
+          });
+          continue;
+        }
+      }
+    }
+
     const uploadPostUsername = await resolveUploadPostUsername(workspaceId, apiKey);
     // Resolve captions with legacy fallback
     const resolvedCaptions = resolveCaptionsForPayload({
-      caption: data.caption,
-      captionsByPlatform: data.captionsByPlatform,
+      caption: effectiveCaption,
+      captionsByPlatform: effectiveCaptionsByPlatform,
       sameForAll: data.sameForAll,
       platforms: data.platforms,
     });

@@ -215,22 +215,72 @@ export async function softDeletePost(workspaceId: string, postId: string): Promi
 export async function bulkCreatePosts(
   workspaceId: string,
   authorUid: string,
-  items: Array<Partial<PostDoc>>
+  items: Array<Partial<PostDoc> & {
+    captionGenerationMode?: "automatic" | "manual";
+    captionFallback?: "hold" | "publish_without_caption";
+    captionTone?: string;
+    captionIncludeHashtags?: boolean;
+    captionUseEmojis?: boolean;
+    captionExtra?: string;
+    videoTitle?: string;
+  }>
 ): Promise<string[]> {
   const coll = collection(workspaceId);
   const batch = adminDb!.batch();
   const ids: string[] = [];
   const now = SERVER_TIMESTAMP;
+  const captionJobsToCreate: Array<{
+    postId: string;
+    scheduledAt: Date | string;
+    inputSnapshot: {
+      tone?: string;
+      includeHashtags?: boolean;
+      useEmojis?: boolean;
+      extra?: string;
+      videoTitle?: string;
+      mediaUrls?: string[];
+      imageUrl?: string | null;
+      platforms?: Array<{ id: string; name: string; charLimit: number }>;
+      multiPlatform?: boolean;
+    };
+  }> = [];
+
   for (const item of items) {
     const ref = coll.doc();
-    ids.push(ref.id);
+    const postId = ref.id;
+    ids.push(postId);
+
     // Firestore queries (listScheduledDue) compare scheduledAt as Timestamp — coerce ISO strings to Date.
     const scheduledAtRaw = item.scheduledAt as unknown;
     const scheduledAt = typeof scheduledAtRaw === "string" ? new Date(scheduledAtRaw) : (scheduledAtRaw as Date | undefined);
     const scheduledAtValid = scheduledAt instanceof Date && !Number.isNaN(scheduledAt.getTime()) ? scheduledAt : undefined;
+
+    const isAutoCaption = item.captionGenerationMode === "automatic" || (!item.caption?.trim() && (item.status === "scheduled" || item.status === "queued"));
+
+    if (isAutoCaption && scheduledAtValid) {
+      captionJobsToCreate.push({
+        postId,
+        scheduledAt: scheduledAtValid,
+        inputSnapshot: {
+          tone: item.captionTone ?? "default",
+          includeHashtags: item.captionIncludeHashtags ?? true,
+          useEmojis: item.captionUseEmojis ?? true,
+          extra: item.captionExtra,
+          videoTitle: item.videoTitle || (item.youtubeTitle ?? undefined),
+          mediaUrls: item.mediaUrls ?? [],
+          imageUrl: item.mediaUrls?.[0] ?? null,
+          platforms: (item.platforms ?? []).map((p) => ({ id: p, name: p, charLimit: 280 })),
+          multiPlatform: true,
+        },
+      });
+    }
+
     const raw: Record<string, unknown> = {
       authorUid,
       caption: item.caption ?? "",
+      captionGenerationMode: isAutoCaption ? "automatic" : "manual",
+      captionJobStatus: isAutoCaption ? "pending" : undefined,
+      captionFallback: item.captionFallback ?? "hold",
       platforms: item.platforms ?? [],
       mediaUrls: item.mediaUrls ?? [],
       mediaType: (item as unknown as { mediaType?: string }).mediaType ?? (item.carouselItems ? "carousel" : item.trialReel ? "trial_reel" : item.document ? "document" : undefined),
@@ -262,7 +312,27 @@ export async function bulkCreatePosts(
     };
     batch.set(ref, stripUndefined(raw));
   }
+
   await batch.commit();
+
+  // Create caption jobs non-blockingly for all auto-caption items
+  if (captionJobsToCreate.length > 0) {
+    const { createCaptionJob } = await import("@/lib/db/caption-jobs");
+    await Promise.all(
+      captionJobsToCreate.map((job) =>
+        createCaptionJob({
+          workspaceId,
+          userId: authorUid,
+          postId: job.postId,
+          scheduledAt: job.scheduledAt,
+          inputSnapshot: job.inputSnapshot,
+        }).catch((err) => {
+          console.warn(`[bulkCreatePosts] Failed to enqueue caption job for post ${job.postId}:`, err);
+        })
+      )
+    );
+  }
+
   return ids;
 }
 

@@ -67,7 +67,6 @@ export interface PostDoc {
   scheduledAt?: Date | string;
   publishedAt?: Date | string;
   firstComment?: string;
-  /** Per-platform first comments (preferred over the flat `firstComment`). */
   firstCommentByPlatform?: Record<string, string>;
   /** Per-platform alt text keyed by platform id. */
   altTextByPlatform?: Record<string, string>;
@@ -110,6 +109,11 @@ export interface PostDoc {
   uploadPostRequestId?: string;
   uploadPostJobId?: string;
   boostConfig?: BoostConfig;
+  /** Asynchronous AI caption generation configuration and status */
+  captionGenerationMode?: "automatic" | "manual";
+  captionJobId?: string;
+  captionJobStatus?: "pending" | "generating" | "ready" | "failed" | "skipped";
+  captionFallback?: "hold" | "publish_without_caption";
   /**
    * Per-platform delivery results populated when a post is published via
    * the AI outpainting flow. Each entry records the platform-specific
@@ -121,6 +125,75 @@ export interface PostDoc {
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date | null;
+}
+
+export type CaptionJobStatus =
+  | "pending"
+  | "ready_to_run"
+  | "processing"
+  | "retrying"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "skipped";
+
+export interface CaptionJobInputSnapshot {
+  tone?: string;
+  voice?: string | null;
+  template?: string | null;
+  includeHashtags?: boolean;
+  useEmojis?: boolean;
+  multiPlatform?: boolean;
+  extra?: string;
+  platforms?: Array<{ id: string; name: string; charLimit: number }>;
+  imageUrl?: string | null;
+  videoTitle?: string | null;
+  mediaUrls?: string[];
+  filename?: string;
+}
+
+export interface CaptionJobUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  costInUsdTicks?: number;
+  durationMs?: number;
+}
+
+export interface CaptionJobDoc {
+  id?: string;
+  workspaceId: string;
+  userId: string;
+  postId: string;
+  status: CaptionJobStatus;
+  priorityScore: number;
+  scheduledAt: Date | string;
+  generationRecommendedAt: Date | string;
+  generationDeadline: Date | string;
+  emergencyDeadline: Date | string;
+  attempts: number;
+  maxAttempts: number;
+  nextAttemptAt?: Date | string | null;
+  provider: "xai" | "groq";
+  model: string;
+  idempotencyKey: string;
+  promptVersion: string;
+  generationConfigHash: string;
+  contentHash: string;
+  fingerprint: string;
+  inputSnapshot: CaptionJobInputSnapshot;
+  generatedCaption?: string;
+  generatedCaptionsByPlatform?: Record<string, string>;
+  workerId?: string | null;
+  claimedAt?: Date | string | null;
+  startedAt?: Date | string | null;
+  completedAt?: Date | string | null;
+  failedAt?: Date | string | null;
+  lastErrorCode?: string | null;
+  lastErrorMessage?: string | null;
+  usage?: CaptionJobUsage;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface PerPlatformResult {

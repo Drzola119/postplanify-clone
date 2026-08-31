@@ -68,6 +68,7 @@ function resolveOptional(envVar: string, headerName: string, headers: Headers): 
 
 export interface Secrets {
   groqApiKey: string;
+  xaiApiKey?: string;
   n8nWebhookUrl: string;
   uploadPostApiKey: string;
   bunnyZone?: string;
@@ -77,6 +78,7 @@ export interface Secrets {
 export function resolveSecrets(headers: Headers): Secrets {
   return {
     groqApiKey: resolve("GROQ_API_KEY", "GROQ_API_KEY", "x-groq-key", headers),
+    xaiApiKey: resolveOptional("XAI_API_KEY", "x-xai-key", headers) || resolveOptional("GROK_API_KEY", "x-grok-key", headers),
     n8nWebhookUrl: resolve(
       "N8N_WEBHOOK_URL",
       "N8N_WEBHOOK_URL",
@@ -101,6 +103,19 @@ export function resolveSecrets(headers: Headers): Secrets {
 export const resolvers = {
   groqApiKey(h: Headers): string {
     return resolve("GROQ_API_KEY", "GROQ_API_KEY", "x-groq-key", h);
+  },
+  xaiApiKey(h: Headers): string {
+    const key = resolveOptional("XAI_API_KEY", "x-xai-key", h) || resolveOptional("GROK_API_KEY", "x-grok-key", h);
+    if (!key) {
+      // Fallback to Groq API key if xAI is not explicitly set
+      const groq = resolveOptional("GROQ_API_KEY", "x-groq-key", h);
+      if (groq) return groq;
+      throw new MissingServerSecretError("XAI_API_KEY");
+    }
+    return key;
+  },
+  xaiApiKeyOptional(h: Headers): string | undefined {
+    return resolveOptional("XAI_API_KEY", "x-xai-key", h) || resolveOptional("GROK_API_KEY", "x-grok-key", h);
   },
   n8nWebhookUrl(h: Headers): string {
     return resolve("N8N_WEBHOOK_URL", "N8N_WEBHOOK_URL", "x-n8n-webhook-url", h);

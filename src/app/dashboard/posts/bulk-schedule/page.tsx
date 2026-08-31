@@ -487,24 +487,26 @@ interface ValidationIssue {
   message: string;
 }
 
-function validateItems(items: BulkItem[]): ValidationIssue[] {
+function validateItems(items: BulkItem[], captionGenerationMode: "automatic" | "manual" = "automatic"): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const now = Date.now();
   for (const it of items) {
     const readiness = buildReadinessForItem(it);
     // Deduplicate caption per item (one global caption field, not per-platform)
-    const hasMissingCaption = readiness.perPlatform.some((per) =>
-      per.issues.some((iss) => iss.code === "missing_caption" && iss.severity === "blocked")
-    );
-    if (hasMissingCaption) {
-      issues.push({ itemId: it.id, message: "Caption is required" });
+    if (captionGenerationMode !== "automatic") {
+      const hasMissingCaption = readiness.perPlatform.some((per) =>
+        per.issues.some((iss) => iss.code === "missing_caption" && iss.severity === "blocked")
+      );
+      if (hasMissingCaption) {
+        issues.push({ itemId: it.id, message: "Caption is required" });
+      }
     }
     // Other blocked issues — one per distinct code per item (avoid 9x duplication)
     const seenCodes = new Set<string>();
     for (const per of readiness.perPlatform) {
       for (const iss of per.issues) {
         if (iss.severity !== "blocked") continue;
-        if (iss.code === "missing_caption") continue; // already handled globally
+        if (iss.code === "missing_caption") continue; // handled above or skipped for auto-caption
         // Pinterest board: top-level field satisfies requirement; don't double-report
         if (iss.code === "missing_target_pinterest_board_id" && it.pinterestBoard.trim()) continue;
         const key = iss.code;
@@ -761,6 +763,7 @@ export default function BulkSchedulePage() {
   const [tzOpen, setTzOpen] = useState(false);
   const [accounts, setAccounts] = useState<Set<PlatformId>>(new Set());
   const [connectedPlatforms, setConnectedPlatforms] = useState<Set<PlatformId>>(new Set());
+  const [captionMode, setCaptionMode] = useState<"automatic" | "manual">("automatic");
   const [composerMode, setComposerMode] = useState<ComposerMode>("standard");
   const [contentType, setContentType] = useState<BulkContentType>("image");
   const [carouselMediaMode, setCarouselMediaMode] = useState<CarouselMediaMode>("images");
@@ -1643,7 +1646,7 @@ export default function BulkSchedulePage() {
   async function handleScheduleAll() {
     if (items.length === 0 || scheduleBusy) return;
     // Ecosystem-aware: only schedule items that are fully ready (like single-post does), keep blocked for later.
-    const allIssues = validateItems(items);
+    const allIssues = validateItems(items, captionMode);
     const blockedIds = new Set(allIssues.map((i) => i.itemId));
     const readyPool = items.filter((it) => !blockedIds.has(it.id));
     const blockedCountLocal = items.length - readyPool.length;
@@ -1742,6 +1745,9 @@ export default function BulkSchedulePage() {
           }
           return {
             caption: it.caption,
+            captionGenerationMode: captionMode,
+            captionFallback: "hold" as const,
+            videoTitle: it.name?.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim(),
             platforms: it.accountIds,
             mediaUrls,
             scheduledAt: it.scheduledAt ? new Date(it.scheduledAt).toISOString() : undefined,
@@ -2532,7 +2538,7 @@ export default function BulkSchedulePage() {
   async function scheduleSingle(itemId: string) {
     const target = items.find((i) => i.id === itemId);
     if (!target) return;
-    const issues = validateItems([target]);
+    const issues = validateItems([target], captionMode);
     if (issues.length > 0) {
       toast({
         title: "Can't schedule this post yet",
@@ -2594,6 +2600,9 @@ export default function BulkSchedulePage() {
         items: [
           {
             caption: target.caption,
+            captionGenerationMode: captionMode,
+            captionFallback: "hold" as const,
+            videoTitle: target.name?.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim(),
             platforms: target.accountIds,
             mediaUrls: mediaUrlsT,
             scheduledAt: new Date(target.scheduledAt).toISOString(),
@@ -3118,7 +3127,7 @@ export default function BulkSchedulePage() {
   }
 
   const accountsArr = useMemo(() => Array.from(accounts), [accounts]);
-  const totalIssues = useMemo(() => validateItems(items), [items]);
+  const totalIssues = useMemo(() => validateItems(items, captionMode), [items, captionMode]);
   const readyCount = items.length - new Set(totalIssues.map((i) => i.itemId)).size;
   const blockedCount = items.length - readyCount;
 
@@ -3299,6 +3308,27 @@ export default function BulkSchedulePage() {
                   </ul>
                 ) : null}
               </div>
+            </SchedulerField>
+
+            <SchedulerField label="Caption Mode">
+              <button
+                type="button"
+                onClick={() => setCaptionMode((prev) => (prev === "automatic" ? "manual" : "automatic"))}
+                className={cn(
+                  "inline-flex items-center gap-1.5 h-9 rounded-xl border px-2.5 text-xs font-semibold transition-colors cursor-pointer",
+                  captionMode === "automatic"
+                    ? "border-purple-200 bg-purple-50/70 text-purple-900 hover:bg-purple-100/70"
+                    : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"
+                )}
+                title={
+                  captionMode === "automatic"
+                    ? "Captions will be generated in the background before publishing"
+                    : "Only manual captions will be used"
+                }
+              >
+                <Sparkles className={cn("size-3.5", captionMode === "automatic" ? "text-purple-600 animate-pulse" : "text-zinc-400")} />
+                <span>{captionMode === "automatic" ? "✨ Auto-generate" : "Manual captions"}</span>
+              </button>
             </SchedulerField>
 
             <button

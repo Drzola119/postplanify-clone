@@ -61,9 +61,21 @@ describe("validation/posts - createPostSchema", () => {
     }
   });
 
-  it("rejects empty caption", () => {
+  it("rejects empty caption when captionGenerationMode is manual or omitted", () => {
     const result = parseValue({ caption: "", platforms: ["twitter"] }, createPostSchema);
     expect(result.ok).toBe(false);
+  });
+
+  it("accepts empty caption when captionGenerationMode is automatic", () => {
+    const result = parseValue(
+      { caption: "", platforms: ["twitter"], captionGenerationMode: "automatic" },
+      createPostSchema
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.caption).toBe("");
+      expect(result.data.captionGenerationMode).toBe("automatic");
+    }
   });
 
   it("rejects when no platforms provided", () => {
