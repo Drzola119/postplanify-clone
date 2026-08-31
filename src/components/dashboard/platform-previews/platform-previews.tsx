@@ -564,6 +564,78 @@ export function BlueskyPreview({ platform, caption, mediaUrl }: PreviewProps) {
   );
 }
 
+// Google Business Profile
+export function GoogleBusinessPreview({ platform, caption, mediaUrl }: PreviewProps) {
+  return (
+    <div className="w-[400px] bg-white text-zinc-900 rounded-2xl shadow-xl border border-zinc-200 overflow-hidden font-sans">
+      {/* Top Google header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 bg-zinc-50/70">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="size-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
+            {platform.handle ? platform.handle.slice(0, 2).toUpperCase() : "GB"}
+          </div>
+          <div className="flex flex-col min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="font-semibold text-sm text-zinc-900 truncate">
+                {platform.handle || "Your Business"}
+              </span>
+              <CheckCircle2 className="size-4 text-blue-500 shrink-0" fill="#3B82F6" stroke="#fff" />
+            </div>
+            <span className="text-[11px] text-zinc-500 flex items-center gap-1 font-medium">
+              <span>Google Search & Maps</span> · <span>Update</span>
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 text-zinc-400">
+          <Globe className="size-4 text-blue-600" />
+        </div>
+      </div>
+
+      {/* Media view */}
+      {mediaUrl ? (
+        <div className="relative w-full aspect-[4/3] bg-zinc-100 overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={mediaUrl} alt="" className="w-full h-full object-cover" />
+        </div>
+      ) : null}
+
+      {/* Post body */}
+      <div className="p-4 space-y-3">
+        <p className="text-sm text-zinc-700 leading-relaxed whitespace-pre-wrap">
+          {caption || "What's new with your business..."}
+        </p>
+
+        {/* Action button */}
+        <div className="pt-1">
+          <button
+            type="button"
+            tabIndex={-1}
+            className="w-full py-2 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+          >
+            Learn More
+          </button>
+        </div>
+      </div>
+
+      {/* Google Maps quick action bar */}
+      <div className="grid grid-cols-3 border-t border-zinc-100 bg-zinc-50/50 py-2.5 px-3 text-center text-xs font-medium text-blue-600">
+        <div className="flex items-center justify-center gap-1 hover:text-blue-700 cursor-pointer">
+          <Sparkles className="size-3.5" />
+          <span>Updates</span>
+        </div>
+        <div className="flex items-center justify-center gap-1 hover:text-blue-700 cursor-pointer border-x border-zinc-200">
+          <Share2 className="size-3.5" />
+          <span>Share</span>
+        </div>
+        <div className="flex items-center justify-center gap-1 hover:text-blue-700 cursor-pointer">
+          <Globe className="size-3.5" />
+          <span>Website</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PlatformPreviewRouter(props: PreviewProps) {
   switch (props.platform.id) {
     case "instagram":
@@ -584,6 +656,8 @@ export function PlatformPreviewRouter(props: PreviewProps) {
       return <ThreadsPreview {...props} />;
     case "bluesky":
       return <BlueskyPreview {...props} />;
+    case "google_business":
+      return <GoogleBusinessPreview {...props} />;
     default:
       return null;
   }

@@ -65,6 +65,7 @@ const IMAGE_CAROUSEL_PLATFORMS: PlatformId[] = [
   "bluesky",
   "discord",
   "telegram",
+  "google_business",
 ];
 
 // Upload-Post currently accepts video files inside the photo/carousel endpoint
