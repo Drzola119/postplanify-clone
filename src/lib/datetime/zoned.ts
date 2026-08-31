@@ -57,3 +57,43 @@ export function zonedDateTimeToDate(value: WallClockDateTime, timeZone: string):
     return null;
   }
 }
+
+/** Convert an absolute Date into its wall-clock parts and formatted strings in an IANA timezone. */
+export function dateToZonedDateTime(date: Date, timeZone: string): {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  date: string;
+  time: string;
+} | null {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(date);
+    const v = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+    const year = Number(v.year);
+    const month = Number(v.month);
+    const day = Number(v.day);
+    const hour = Number(v.hour);
+    const minute = Number(v.minute);
+    return {
+      year,
+      month,
+      day,
+      hour,
+      minute,
+      date: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+      time: `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`,
+    };
+  } catch {
+    return null;
+  }
+}

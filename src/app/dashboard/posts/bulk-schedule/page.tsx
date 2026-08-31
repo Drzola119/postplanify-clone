@@ -835,10 +835,6 @@ export default function BulkSchedulePage() {
         : ["instagram" as PlatformId];
 
     const totalDays = Math.max(1, Math.ceil((index + 1) / perDay));
-    const effectiveCountry: CountryConfig = {
-      ...selectedCountry,
-      timezone,
-    };
 
     const res = generateSmartSchedule({
       startDate,
@@ -846,7 +842,8 @@ export default function BulkSchedulePage() {
       postsPerDay: perDay,
       intervalDays,
       platforms: targetPlatforms,
-      country: effectiveCountry,
+      country: selectedCountry,
+      displayTimezone: timezone,
       strategy: smartStrategy,
       schedulingMode,
       manualTime: startTime,
@@ -854,17 +851,7 @@ export default function BulkSchedulePage() {
 
     if (res.items.length === 0) return null;
 
-    let assigned: ScheduledItemSlot | undefined;
-    if (smartStrategy === "per_platform" && targetPlatforms.length > 0) {
-      const platformSlots = res.items.filter((s) => targetPlatforms.includes(s.platform));
-      assigned = platformSlots[index] ?? res.items[index];
-    } else {
-      assigned = res.items[index];
-    }
-
-    if (!assigned) {
-      assigned = res.items[res.items.length - 1];
-    }
+    const assigned = res.items[index] ?? res.items[res.items.length - 1];
 
     return assigned
       ? {
@@ -2422,35 +2409,79 @@ export default function BulkSchedulePage() {
       toast({ title: "No items to schedule", tone: "warning" });
       return;
     }
-    const firstSlot = scheduledSlot(0);
-    if (!firstSlot) {
-      toast({ title: "Invalid date or time", description: `Check Start Date/Time and timezone (${timezone}).`, tone: "error" });
+
+    const intervalDays = parseInt(interval, 10) || 1;
+    const effectiveGlobalPlatforms =
+      Array.from(accounts).length > 0 ? Array.from(accounts) : ["instagram" as PlatformId];
+
+    const smartRes = generateSmartSchedule({
+      startDate,
+      postsPerDay: Math.max(1, postsPerDay),
+      intervalDays,
+      platforms: effectiveGlobalPlatforms,
+      country: selectedCountry,
+      displayTimezone: timezone,
+      strategy: smartStrategy,
+      schedulingMode,
+      manualTime: startTime,
+      items: items.map((it) => ({
+        id: it.id,
+        targetPlatforms: it.accountIds.length > 0 ? it.accountIds : effectiveGlobalPlatforms,
+      })),
+    });
+
+    if (smartRes.items.length === 0) {
+      toast({
+        title: "Invalid date or time",
+        description: `Check Start Date/Time and timezone (${timezone}).`,
+        tone: "error",
+      });
       return;
     }
-    // Guard: if any computed slot is in the past, warn and push to next valid future slot.
+
     const nowMs = Date.now();
     let hasPast = false;
     let pastCount = 0;
-    const preview = items.map((_, idx) => scheduledSlot(idx));
-    for (const s of preview) {
-      if (!s) continue;
-      if (Date.parse(s.scheduledAt) <= nowMs + 60_000) {
+
+    for (const s of smartRes.items) {
+      if (Date.parse(s.isoTimestamp) <= nowMs + 60_000) {
         hasPast = true;
         pastCount++;
       }
     }
+
     if (hasPast) {
-      toast({ title: `Schedule pushed ${pastCount} past slot(s) will still be blocked`, description: "Pick a future Start Date/Time — past times can't be scheduled.", tone: "warning" });
+      toast({
+        title: `Schedule pushed ${pastCount} past slot(s) will still be blocked`,
+        description: "Pick a future Start Date/Time — past times can't be scheduled.",
+        tone: "warning",
+      });
     }
+
+    const slotByItemId = new Map(smartRes.items.map((s) => [s.itemId, s]));
+
     setItems((prev) => {
       return prev.map((item, idx) => {
-        const slot = scheduledSlot(idx);
+        const slot = slotByItemId.get(item.id) ?? smartRes.items[idx];
         return slot
-          ? { ...item, scheduledAt: slot.scheduledAt, scheduledDate: slot.date, scheduledTime: slot.time }
+          ? {
+              ...item,
+              scheduledAt: slot.isoTimestamp,
+              scheduledDate: slot.date,
+              scheduledTime: slot.time,
+            }
           : item;
       });
     });
-    toast({ title: hasPast ? "Schedule applied (some slots still in the past)" : "Schedule applied to all items", tone: hasPast ? "warning" : "success" });
+
+    toast({
+      title: hasPast
+        ? "Schedule applied (some slots still in the past)"
+        : schedulingMode === "smart"
+        ? "✨ Smart schedule applied to all items"
+        : "Schedule applied to all items",
+      tone: hasPast ? "warning" : "success",
+    });
   }
 
   function applyAccountsToAll() {

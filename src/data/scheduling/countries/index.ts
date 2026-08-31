@@ -29,5 +29,5 @@ export function getDefaultCountry(): CountryConfig {
 }
 
 export function getCountryBenchmarks(countryId: string): PlatformDaySchedule[] {
-  return COUNTRIES[countryId.toUpperCase()]?.benchmarks ?? ALGERIA_BENCHMARKS;
+  return COUNTRIES[countryId.toUpperCase()]?.benchmarks ?? [];
 }
