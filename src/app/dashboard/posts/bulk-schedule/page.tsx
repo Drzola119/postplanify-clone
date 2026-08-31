@@ -4466,6 +4466,7 @@ function PostsList({
                           ? { facebook_page_id: destinationOptions.pages }
                           : undefined
                     }
+                    excludeFieldKeys={["instagram_media_type", "facebook_media_type", "pinterest_board_id"]}
                     collapsible={false}
                     defaultOpen={true}
                   />

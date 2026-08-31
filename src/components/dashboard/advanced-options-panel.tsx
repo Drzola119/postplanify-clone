@@ -19,6 +19,7 @@ interface AdvancedOptionsPanelProps {
   className?: string;
   defaultOpen?: boolean;
   selectOptions?: Partial<Record<string, Array<{ value: string; label: string }>>>;
+  excludeFieldKeys?: string[];
 }
 
 export function AdvancedOptionsPanel({
@@ -31,13 +32,17 @@ export function AdvancedOptionsPanel({
   className,
   defaultOpen = false,
   selectOptions,
+  excludeFieldKeys,
 }: AdvancedOptionsPanelProps) {
   const [open, setOpen] = React.useState(defaultOpen);
   const [showAdvanced, setShowAdvanced] = React.useState(false);
 
   const visible = React.useMemo(
-    () => getVisibleSpecs(platform, mediaKind, value, true),
-    [platform, mediaKind, value]
+    () =>
+      getVisibleSpecs(platform, mediaKind, value, true).filter(
+        (s) => !excludeFieldKeys?.includes(s.key)
+      ),
+    [platform, mediaKind, value, excludeFieldKeys]
   );
   const coreSpecs = visible.filter((s) => !s.advanced);
   const advancedSpecs = visible.filter((s) => s.advanced);
