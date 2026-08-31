@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { acceptsMediaKind, normalizeBulkContentType, platformsForBulkContent } from "@/lib/bulk-schedule/content-types";
+import { getExcludedFieldsForContentType } from "@/lib/publishing/advanced-options";
 
 describe("bulk content platform auto-selection", () => {
   it("selects only text-capable platforms for text posts", () => {
@@ -56,5 +57,27 @@ describe("bulk content platform auto-selection", () => {
     expect(normalizeBulkContentType("Shorts-Reels")).toBe("short_video");
     expect(normalizeBulkContentType("X Community")).toBe("community");
     expect(normalizeBulkContentType("unknown")).toBeNull();
+  });
+});
+
+describe("getExcludedFieldsForContentType", () => {
+  it("excludes non-applicable fields for stories on Instagram and Facebook", () => {
+    const igStoryExcluded = getExcludedFieldsForContentType("instagram", "story");
+    expect(igStoryExcluded).toContain("instagram_cover_url");
+    expect(igStoryExcluded).toContain("instagram_audio_name");
+    expect(igStoryExcluded).toContain("instagram_shop_tag");
+
+    const fbStoryExcluded = getExcludedFieldsForContentType("facebook", "story");
+    expect(fbStoryExcluded).toContain("facebook_thumbnail_url");
+    expect(fbStoryExcluded).toContain("facebook_album_id");
+    expect(fbStoryExcluded).toContain("facebook_form_type");
+    expect(fbStoryExcluded).toContain("facebook_description");
+  });
+
+  it("excludes slideshow cover index on video and single image for TikTok", () => {
+    expect(getExcludedFieldsForContentType("tiktok", "short_video")).toContain("tiktok_photo_cover_index");
+    expect(getExcludedFieldsForContentType("tiktok", "image")).toContain("tiktok_photo_cover_index");
+    expect(getExcludedFieldsForContentType("tiktok", "image")).toContain("tiktok_disable_duet");
+    expect(getExcludedFieldsForContentType("tiktok", "carousel")).not.toContain("tiktok_photo_cover_index");
   });
 });

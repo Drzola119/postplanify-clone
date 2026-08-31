@@ -4453,6 +4453,7 @@ function PostsList({
                     platform={selectedPlatformTab}
                     platformName={getPlatform(selectedPlatformTab)?.name ?? selectedPlatformTab}
                     mediaKind={bulkMediaKind}
+                    contentType={contentType}
                     value={
                       batchAdvancedByPlatform[selectedPlatformTab] ??
                       items.find((it) => it.accountIds.includes(selectedPlatformTab))?.advancedByPlatform?.[selectedPlatformTab] ??

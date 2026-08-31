@@ -1,12 +1,18 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, ChevronRight, Settings2, Plus, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Settings2, Plus, X, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PPInput } from "@/components/ui/pp-input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { type FieldSpec, type PlatformAdvancedOptions, getVisibleSpecs } from "@/lib/publishing/advanced-options";
+import {
+  type FieldSpec,
+  type PlatformAdvancedOptions,
+  getVisibleSpecs,
+  getExcludedFieldsForContentType,
+} from "@/lib/publishing/advanced-options";
 import type { MediaKind } from "@/lib/publishing/capability-matrix";
+import type { BulkContentType } from "@/lib/bulk-schedule/content-types";
 import { getPlatform, type PlatformId } from "@/lib/platforms";
 
 interface AdvancedOptionsPanelProps {
@@ -20,6 +26,7 @@ interface AdvancedOptionsPanelProps {
   defaultOpen?: boolean;
   selectOptions?: Partial<Record<string, Array<{ value: string; label: string }>>>;
   excludeFieldKeys?: string[];
+  contentType?: BulkContentType;
 }
 
 export function AdvancedOptionsPanel({
@@ -33,16 +40,23 @@ export function AdvancedOptionsPanel({
   defaultOpen = false,
   selectOptions,
   excludeFieldKeys,
+  contentType,
 }: AdvancedOptionsPanelProps) {
   const [open, setOpen] = React.useState(defaultOpen);
   const [showAdvanced, setShowAdvanced] = React.useState(false);
 
+  const dynamicExcluded = React.useMemo(() => {
+    const fromProps = excludeFieldKeys ?? [];
+    const fromContentType = getExcludedFieldsForContentType(platform, contentType);
+    return new Set([...fromProps, ...fromContentType]);
+  }, [excludeFieldKeys, platform, contentType]);
+
   const visible = React.useMemo(
     () =>
       getVisibleSpecs(platform, mediaKind, value, true).filter(
-        (s) => !excludeFieldKeys?.includes(s.key)
+        (s) => !dynamicExcluded.has(s.key)
       ),
-    [platform, mediaKind, value, excludeFieldKeys]
+    [platform, mediaKind, value, dynamicExcluded]
   );
   const coreSpecs = visible.filter((s) => !s.advanced);
   const advancedSpecs = visible.filter((s) => s.advanced);
@@ -77,41 +91,50 @@ export function AdvancedOptionsPanel({
       ) : null}
       {open ? (
         <div className="border-t border-zinc-200 p-3 space-y-3 bg-zinc-50/30">
-          {coreSpecs.map((spec) => (
-            <FieldRenderer
-              key={spec.key}
-              spec={spec}
-              value={value[spec.key]}
-              options={selectOptions?.[spec.key]}
-              onChange={(v) => onChange({ ...value, [spec.key]: v })}
-            />
-          ))}
-          {hasAdvanced ? (
+          {visible.length === 0 ? (
+            <div className="py-2.5 px-3 rounded-lg border border-zinc-200/80 bg-zinc-50 flex items-center gap-2 text-zinc-600 text-xs font-medium">
+              <Sparkles className="size-3.5 text-zinc-400 shrink-0" />
+              <span>All publishing preferences for {platformName} are automatically configured for this format.</span>
+            </div>
+          ) : (
             <>
-              <button
-                type="button"
-                onClick={() => setShowAdvanced((v) => !v)}
-                className="text-xs font-medium text-zinc-500 hover:text-zinc-900 transition-colors"
-              >
-                {showAdvanced
-                  ? "Hide advanced options"
-                  : `Show ${advancedSpecs.length} advanced option${advancedSpecs.length === 1 ? "" : "s"}`}
-              </button>
-              {showAdvanced ? (
-                <div className="space-y-3 pt-2 border-t border-zinc-200">
-                  {advancedSpecs.map((spec) => (
-                    <FieldRenderer
-                      key={spec.key}
-                      spec={spec}
-                      value={value[spec.key]}
-                      options={selectOptions?.[spec.key]}
-                      onChange={(v) => onChange({ ...value, [spec.key]: v })}
-                    />
-                  ))}
-                </div>
+              {coreSpecs.map((spec) => (
+                <FieldRenderer
+                  key={spec.key}
+                  spec={spec}
+                  value={value[spec.key]}
+                  options={selectOptions?.[spec.key]}
+                  onChange={(v) => onChange({ ...value, [spec.key]: v })}
+                />
+              ))}
+              {hasAdvanced ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvanced((v) => !v)}
+                    className="text-xs font-medium text-zinc-500 hover:text-zinc-900 transition-colors cursor-pointer"
+                  >
+                    {showAdvanced
+                      ? "Hide advanced options"
+                      : `Show ${advancedSpecs.length} advanced option${advancedSpecs.length === 1 ? "" : "s"}`}
+                  </button>
+                  {showAdvanced ? (
+                    <div className="space-y-3 pt-2 border-t border-zinc-200">
+                      {advancedSpecs.map((spec) => (
+                        <FieldRenderer
+                          key={spec.key}
+                          spec={spec}
+                          value={value[spec.key]}
+                          options={selectOptions?.[spec.key]}
+                          onChange={(v) => onChange({ ...value, [spec.key]: v })}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                </>
               ) : null}
             </>
-          ) : null}
+          )}
         </div>
       ) : null}
     </div>

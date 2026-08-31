@@ -18,6 +18,7 @@
 
 import type { PlatformId } from "@/lib/platforms";
 import type { MediaKind } from "@/lib/publishing/capability-matrix";
+import type { BulkContentType } from "@/lib/bulk-schedule/content-types";
 
 export type FieldKind =
   | "segmented"
@@ -739,4 +740,104 @@ export function getVisibleSpecs(
     if (sw.fieldEquals && current[sw.fieldEquals.key] !== sw.fieldEquals.value) return false;
     return true;
   });
+}
+
+/**
+ * Returns the list of field keys that should be hidden from advanced settings
+ * based on the chosen BulkContentType (e.g. Stories hide cover URLs, albums, forms, and descriptions).
+ */
+export function getExcludedFieldsForContentType(
+  platform: PlatformId,
+  contentType?: BulkContentType
+): string[] {
+  if (!contentType) return [];
+  const excluded: string[] = [];
+
+  if (platform === "instagram") {
+    excluded.push("instagram_media_type");
+    if (contentType === "story") {
+      excluded.push(
+        "instagram_cover_url",
+        "instagram_audio_name",
+        "instagram_thumbnail_offset_ms",
+        "instagram_share_to_feed",
+        "instagram_trial_reels_enabled",
+        "instagram_trial_reels_audience",
+        "instagram_shop_tag",
+        "instagram_partners_paid",
+        "instagram_collab_username",
+        "instagram_user_tags",
+        "instagram_location_id",
+        "instagram_trial_content_tag",
+        "instagram_share_mode"
+      );
+    } else if (contentType === "image") {
+      excluded.push(
+        "instagram_cover_url",
+        "instagram_audio_name",
+        "instagram_thumbnail_offset_ms",
+        "instagram_share_to_feed",
+        "instagram_trial_reels_enabled",
+        "instagram_trial_reels_audience",
+        "instagram_trial_content_tag",
+        "instagram_share_mode"
+      );
+    } else if (contentType === "carousel") {
+      excluded.push(
+        "instagram_cover_url",
+        "instagram_audio_name",
+        "instagram_thumbnail_offset_ms",
+        "instagram_share_to_feed",
+        "instagram_trial_reels_enabled",
+        "instagram_trial_reels_audience",
+        "instagram_share_mode"
+      );
+    } else if (contentType === "long_video") {
+      excluded.push(
+        "instagram_share_to_feed",
+        "instagram_trial_reels_enabled",
+        "instagram_trial_reels_audience",
+        "instagram_trial_content_tag",
+        "instagram_share_mode"
+      );
+    }
+  }
+
+  if (platform === "facebook") {
+    excluded.push("facebook_media_type");
+    if (contentType === "story") {
+      excluded.push(
+        "facebook_thumbnail_url",
+        "facebook_album_id",
+        "facebook_form_type",
+        "facebook_description"
+      );
+    } else if (contentType === "image" || contentType === "carousel" || contentType === "text") {
+      excluded.push("facebook_thumbnail_url");
+    }
+  }
+
+  if (platform === "pinterest") {
+    excluded.push("pinterest_board_id");
+    if (contentType === "long_video" || contentType === "short_video") {
+      excluded.push("pinterest_alt_text");
+    }
+  }
+
+  if (platform === "tiktok") {
+    if (contentType === "image" || contentType === "long_video" || contentType === "short_video") {
+      excluded.push("tiktok_photo_cover_index");
+    }
+    if (contentType === "image") {
+      excluded.push("tiktok_disable_duet", "tiktok_disable_stitch");
+    }
+  }
+
+  if (platform === "twitter") {
+    if (contentType === "text") {
+      excluded.push("twitter_tagged_user_ids");
+    }
+  }
+
+  return excluded;
 }
