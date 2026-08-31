@@ -238,7 +238,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     hardCapPer24h: 50,
     requiredTargets: [],
     media: {
-      image: { maxBytes: 5 * MB, formats: ["image/jpeg", "image/png"], maxItems: 10 },
+      image: { maxBytes: 5 * MB, formats: ["image/jpeg", "image/png", "image/webp"], maxItems: 10 },
       video: { maxBytes: 100 * MB, formats: ["video/mp4"], maxDurationSec: 30 },
     },
   },
