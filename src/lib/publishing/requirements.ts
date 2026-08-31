@@ -154,11 +154,45 @@ function checkMediaForPlatform(
           if (req.minDurationSec != null && m.durationSec < req.minDurationSec) badDuration++;
           if (req.maxDurationSec != null && m.durationSec > req.maxDurationSec) badDuration++;
         }
-        // Aspect ratio checks
+        // Aspect ratio & platform-specific placement checks
+        const igType = options?.instagram_media_type;
+        const fbType = options?.facebook_media_type;
+
+        // Facebook Reels 90s ceiling & Stories 60s ceiling
+        if (platform === "facebook" && m.durationSec != null) {
+          if (fbType === "REELS" && m.durationSec > 90) {
+            badDuration++;
+          } else if (fbType === "STORIES" && m.durationSec > 60) {
+            badDuration++;
+          }
+        }
+
+        // LinkedIn aspect ratio constraints (1:2.4 to 2.4:1)
+        if (platform === "linkedin" && m.aspectRatioValue != null) {
+          if (m.aspectRatioValue < 0.40 || m.aspectRatioValue > 2.45) {
+            issues.push({
+              code: "linkedin_aspect_ratio_out_of_bounds",
+              severity: "blocked",
+              message: `LinkedIn rejects videos outside 1:2.4–2.4:1 ratio (got ${m.aspectRatio || m.aspectRatioValue}).`,
+              actionLabel: "Deselect LinkedIn",
+            });
+          }
+        }
+
+        // YouTube auto-Short notice for vertical/square <= 180s
+        if (platform === "youtube" && m.durationSec != null && m.durationSec <= 180) {
+          if (m.orientation === "vertical" || m.aspectRatio === "9:16" || m.aspectRatio === "1:1") {
+            issues.push({
+              code: "youtube_auto_short_notice",
+              severity: "warning",
+              message: "Vertical or square video (≤ 3 min) will auto-publish as a YouTube Short (custom thumbnails are ignored on Shorts).",
+              actionLabel: "Switch to Shorts & Reels",
+            });
+          }
+        }
+
         if (m.aspectRatio && m.orientation) {
           const isHorizontal = m.orientation === "horizontal" || m.aspectRatio === "16:9";
-          const igType = options?.instagram_media_type;
-          const fbType = options?.facebook_media_type;
           if (platform === "instagram" && (igType === "REELS" || igType === "STORIES") && isHorizontal) {
             badAspect++;
             badAspectMsg = `Instagram Reels & Stories require a 9:16 vertical video (got ${m.aspectRatio}).`;
@@ -184,7 +218,7 @@ function checkMediaForPlatform(
       issues.push({
         code: `${kind}_too_large`,
         severity: "blocked",
-        message: `${badBytes} ${kind} file${badBytes === 1 ? " exceeds" : "s exceed"} ${cap.displayName}'s size limit.`,
+        message: `${badBytes} ${kind} file${badBytes === 1 ? " exceeds" : "s exceed"} ${cap.displayName}'s size limit (${Math.round(req.maxBytes / (1024 * 1024))} MB).`,
         actionLabel: "Re-encode media",
       });
     }
@@ -197,17 +231,25 @@ function checkMediaForPlatform(
       });
     }
     if (badDuration > 0) {
-      const min = req.minDurationSec ?? 0;
-      const max = req.maxDurationSec ?? Infinity;
-      const durText = min > 0 && Number.isFinite(max)
-        ? `${min}s–${max}s`
-        : min > 0 ? `at least ${min}s`
-        : Number.isFinite(max) ? `at most ${max}s` : "";
+      const fbType = options?.facebook_media_type;
+      let durText = "";
+      if (platform === "facebook" && fbType === "REELS") {
+        durText = "at most 90s for Facebook Reels";
+      } else if (platform === "facebook" && fbType === "STORIES") {
+        durText = "at most 60s for Facebook Stories";
+      } else {
+        const min = req.minDurationSec ?? 0;
+        const max = req.maxDurationSec ?? Infinity;
+        durText = min > 0 && Number.isFinite(max)
+          ? `${min}s–${max}s`
+          : min > 0 ? `at least ${min}s`
+          : Number.isFinite(max) ? `at most ${max}s` : "";
+      }
       issues.push({
         code: `${kind}_bad_duration`,
         severity: "blocked",
         message: `${cap.displayName} requires video duration of ${durText}.`,
-        actionLabel: "Re-edit video",
+        actionLabel: platform === "facebook" && (fbType === "REELS" || fbType === "STORIES") ? "Deselect Facebook" : "Re-edit video",
       });
     }
     // Handle video metadata states: loading / error / unknown

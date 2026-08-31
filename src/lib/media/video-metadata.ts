@@ -14,7 +14,11 @@ export interface VideoMetadata {
   aspectRatioValue: number; // width / height
   orientation: VideoOrientation;
   formattedDuration: string;
+  sizeBytes?: number;
+  bitrateKbps?: number;
   fps?: number;
+  isLinkedInRatioValid: boolean;
+  isExtremeVertical: boolean;
 }
 
 /**
@@ -25,9 +29,17 @@ export function classifyAspectRatio(width: number, height: number): {
   aspectRatio: ClassifiedAspectRatio;
   orientation: VideoOrientation;
   aspectRatioValue: number;
+  isLinkedInRatioValid: boolean;
+  isExtremeVertical: boolean;
 } {
   if (width <= 0 || height <= 0) {
-    return { aspectRatio: "custom", orientation: "custom", aspectRatioValue: 1 };
+    return {
+      aspectRatio: "custom",
+      orientation: "custom",
+      aspectRatioValue: 1,
+      isLinkedInRatioValid: true,
+      isExtremeVertical: false,
+    };
   }
 
   const ratio = width / height;
@@ -55,10 +67,16 @@ export function classifyAspectRatio(width: number, height: number): {
     orientation = "square";
   }
 
+  // LinkedIn requires ratio between 1:2.4 (0.416) and 2.4:1 (2.40)
+  const isLinkedInRatioValid = ratio >= 0.40 && ratio <= 2.45;
+  const isExtremeVertical = ratio < 0.40;
+
   return {
     aspectRatio,
     orientation,
     aspectRatioValue: Math.round(ratio * 100) / 100,
+    isLinkedInRatioValid,
+    isExtremeVertical,
   };
 }
 
@@ -82,6 +100,8 @@ export function probeVideoMetadataClient(
     if (typeof window === "undefined") {
       return reject(new Error("probeVideoMetadataClient must be run in the browser"));
     }
+
+    const sizeBytes = typeof source !== "string" && source ? source.size : undefined;
 
     const video = document.createElement("video");
     video.preload = "metadata";
@@ -120,8 +140,14 @@ export function probeVideoMetadataClient(
       const height = video.videoHeight || 0;
       const durationSec = video.duration || 0;
 
-      const { aspectRatio, orientation, aspectRatioValue } = classifyAspectRatio(width, height);
+      const { aspectRatio, orientation, aspectRatioValue, isLinkedInRatioValid, isExtremeVertical } =
+        classifyAspectRatio(width, height);
       const formattedDuration = formatVideoDuration(durationSec);
+
+      const bitrateKbps =
+        durationSec > 0 && sizeBytes
+          ? Math.round((sizeBytes * 8) / (durationSec * 1000))
+          : undefined;
 
       cleanup();
       resolve({
@@ -132,6 +158,10 @@ export function probeVideoMetadataClient(
         aspectRatioValue,
         orientation,
         formattedDuration,
+        sizeBytes,
+        bitrateKbps,
+        isLinkedInRatioValid,
+        isExtremeVertical,
       });
     };
 

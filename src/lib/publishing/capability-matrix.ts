@@ -127,7 +127,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     requiredTargets: [],
     media: {
       image: { maxBytes: 5 * MB, formats: ["image/jpeg", "image/png", "image/gif", "image/webp"], maxItems: 4 },
-      video: { maxBytes: 100 * MB, formats: ["video/mp4"], maxDurationSec: 140 },
+      video: { maxBytes: 1 * GB, formats: ["video/mp4", "video/quicktime"], minDurationSec: 1, maxDurationSec: 14400 },
     },
   },
   linkedin: {
@@ -141,7 +141,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     requiredTargets: [],
     media: {
       image: { maxBytes: 5 * MB, formats: ["image/jpeg", "image/png", "image/gif"], maxItems: 10 },
-      video: { maxBytes: 5 * GB, formats: ["video/mp4"], maxDurationSec: 600 },
+      video: { maxBytes: 5 * GB, formats: ["video/mp4", "video/x-matroska", "video/webm"], minDurationSec: 3, maxDurationSec: 600 },
     },
   },
   threads: {
@@ -155,7 +155,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     requiredTargets: [],
     media: {
       image: { maxBytes: 8 * MB, formats: ["image/jpeg", "image/png"], maxItems: 10 },
-      video: { maxBytes: 100 * MB, formats: ["video/mp4", "video/quicktime"], maxDurationSec: 300, maxItems: 10 },
+      video: { maxBytes: 1 * GB, formats: ["video/mp4", "video/quicktime"], minDurationSec: 1, maxDurationSec: 300, maxItems: 10 },
     },
   },
   facebook: {
@@ -169,7 +169,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     requiredTargets: [{ optionKey: "facebook_page_id", label: "Page" }],
     media: {
       image: { maxBytes: 30 * MB, formats: ["image/jpeg", "image/png", "image/gif", "image/webp"], maxItems: 10 },
-      video: { maxBytes: 1 * GB, formats: ["video/mp4", "video/quicktime"], maxDurationSec: 14400 },
+      video: { maxBytes: 10 * GB, formats: ["video/mp4", "video/quicktime", "video/x-msvideo"], minDurationSec: 3, maxDurationSec: 14400 },
     },
   },
   bluesky: {
@@ -183,7 +183,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     requiredTargets: [],
     media: {
       image: { maxBytes: 1 * MB, formats: ["image/jpeg", "image/png", "image/gif", "image/webp"], maxItems: 4 },
-      video: { maxBytes: 100 * MB, formats: ["video/mp4", "video/quicktime", "video/webm"], maxDurationSec: 180 },
+      video: { maxBytes: 100 * MB, formats: ["video/mp4", "video/quicktime", "video/webm"], minDurationSec: 1, maxDurationSec: 180 },
     },
   },
   discord: {

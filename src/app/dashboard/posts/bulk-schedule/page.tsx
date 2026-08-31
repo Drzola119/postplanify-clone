@@ -544,14 +544,58 @@ function validateItems(items: BulkItem[]): ValidationIssue[] {
     // ── Video Metadata & Aspect Ratio Validations ──
     const meta = (it as BulkItemBase).mediaMetadata;
     if (meta && it.kind === "video") {
+      // 1. Shorts & Reels / Trial Reel must be vertical 9:16
       if (content === "short_video" || content === "trial_reel" || pt === "trial_reel") {
         if (meta.orientation === "horizontal" || meta.aspectRatio === "16:9") {
           issues.push({ itemId: it.id, message: "Shorts & Reels require a 9:16 vertical video (detected 16:9 horizontal)" });
         }
       }
+      // 2. Stories must be vertical 9:16
+      if (content === "story") {
+        if (meta.orientation === "horizontal" || meta.aspectRatio === "16:9") {
+          issues.push({ itemId: it.id, message: "Stories require a 9:16 vertical video (detected 16:9 horizontal)" });
+        }
+      }
+      // 3. YouTube Shorts 3-minute cap
       if (it.accountIds.includes("youtube" as PlatformId) && content === "short_video") {
         if (meta.durationSec > 180) {
           issues.push({ itemId: it.id, message: `YouTube Shorts cannot exceed 3 minutes (detected ${meta.formattedDuration})` });
+        }
+      }
+      // 4. Facebook Reels 90s cap & Stories 60s cap
+      if (it.accountIds.includes("facebook" as PlatformId)) {
+        if (content === "short_video" && meta.durationSec > 90) {
+          issues.push({ itemId: it.id, message: `Facebook Reels cannot exceed 90 seconds (detected ${meta.formattedDuration})` });
+        }
+        if (content === "story" && meta.durationSec > 60) {
+          issues.push({ itemId: it.id, message: `Facebook Stories cannot exceed 60 seconds (detected ${meta.formattedDuration})` });
+        }
+      }
+      // 5. LinkedIn aspect ratio (1:2.4 to 2.4:1) and 10-minute cap
+      if (it.accountIds.includes("linkedin" as PlatformId)) {
+        if (meta.isLinkedInRatioValid === false || meta.isExtremeVertical) {
+          issues.push({ itemId: it.id, message: `LinkedIn does not support extreme aspect ratios outside 1:2.4–2.4:1 (got ${meta.aspectRatio})` });
+        }
+        if (meta.durationSec > 600) {
+          issues.push({ itemId: it.id, message: `LinkedIn video cannot exceed 10 minutes (detected ${meta.formattedDuration})` });
+        }
+      }
+      // 6. Instagram 300 MB and 15-minute cap
+      if (it.accountIds.includes("instagram" as PlatformId)) {
+        if (meta.sizeBytes && meta.sizeBytes > 300 * 1024 * 1024) {
+          issues.push({ itemId: it.id, message: `Instagram video exceeds 300 MB limit (${Math.round(meta.sizeBytes / (1024 * 1024))} MB)` });
+        }
+        if (meta.durationSec > 900) {
+          issues.push({ itemId: it.id, message: `Instagram video cannot exceed 15 minutes (detected ${meta.formattedDuration})` });
+        }
+      }
+      // 7. Bluesky 100 MB and 180s cap
+      if (it.accountIds.includes("bluesky" as PlatformId)) {
+        if (meta.sizeBytes && meta.sizeBytes > 100 * 1024 * 1024) {
+          issues.push({ itemId: it.id, message: `Bluesky video exceeds 100 MB limit (${Math.round(meta.sizeBytes / (1024 * 1024))} MB)` });
+        }
+        if (meta.durationSec > 180) {
+          issues.push({ itemId: it.id, message: `Bluesky video cannot exceed 180 seconds (detected ${meta.formattedDuration})` });
         }
       }
     }
@@ -5013,58 +5057,158 @@ function PostRow({
                 ) : null}
               </div>
 
-              {/* Quick-Fix Toolkit when aspect ratio or duration mismatch occurs */}
+              {/* Quick-Fix Toolkit for all presets and platforms */}
               {item.kind === "video" && item.mediaMetadata ? (
                 (() => {
+                  const meta = item.mediaMetadata;
                   const isShortsMode = item.contentType === "short_video" || item.contentType === "trial_reel";
-                  const isHorizontal = item.mediaMetadata.aspectRatio === "16:9" || item.mediaMetadata.orientation === "horizontal";
-                  const isYTShortsOver = hasYouTube && isShortsMode && item.mediaMetadata.durationSec > 180;
-                  const hasMismatch = (isShortsMode && isHorizontal) || isYTShortsOver;
+                  const isLongVideoMode = item.contentType === "long_video";
+                  const isHorizontal = meta.aspectRatio === "16:9" || meta.orientation === "horizontal";
+                  const isVerticalOrSquare = meta.aspectRatio === "9:16" || meta.orientation === "vertical" || meta.aspectRatio === "1:1";
+                  const isYTShortsOver = hasYouTube && isShortsMode && meta.durationSec > 180;
+                  const isFBReelsOver = item.accountIds.includes("facebook") && isShortsMode && meta.durationSec > 90;
+                  const isLinkedInRatioInvalid = item.accountIds.includes("linkedin") && (meta.isLinkedInRatioValid === false || meta.isExtremeVertical);
+                  const isLongVideoShortNotice = isLongVideoMode && isVerticalOrSquare && meta.durationSec <= 180;
 
-                  if (!hasMismatch) return null;
+                  // 1. Shorts / Reels Format Mismatch (16:9 uploaded for Shorts)
+                  if ((isShortsMode && isHorizontal) || isYTShortsOver) {
+                    return (
+                      <div className="rounded-xl border border-red-200 bg-red-50/80 p-2.5 space-y-2 text-left animate-in fade-in duration-150">
+                        <div className="flex items-start gap-1.5 text-red-800">
+                          <AlertCircle className="size-3.5 mt-0.5 shrink-0 text-red-600" />
+                          <div className="text-[11px] leading-tight">
+                            <span className="font-bold">Format Mismatch:</span>{" "}
+                            {isHorizontal && isShortsMode
+                              ? "16:9 (horizontal) video uploaded for Shorts/Reels (needs 9:16 vertical)."
+                              : `Duration (${meta.formattedDuration}) exceeds YouTube Shorts limit (3m).`}
+                          </div>
+                        </div>
 
-                  return (
-                    <div className="rounded-xl border border-red-200 bg-red-50/80 p-2.5 space-y-2 text-left animate-in fade-in duration-150">
-                      <div className="flex items-start gap-1.5 text-red-800">
-                        <AlertCircle className="size-3.5 mt-0.5 shrink-0 text-red-600" />
-                        <div className="text-[11px] leading-tight">
-                          <span className="font-bold">Format Mismatch:</span>{" "}
-                          {isHorizontal && isShortsMode
-                            ? "16:9 (horizontal) video uploaded for Shorts/Reels (needs 9:16 vertical)."
-                            : isYTShortsOver
-                              ? `Duration (${item.mediaMetadata.formattedDuration}) exceeds YouTube Shorts limit (3m).`
-                              : "Video specifications do not match format."}
+                        <div className="flex flex-col gap-1">
+                          <button
+                            type="button"
+                            onClick={onOpenCrop}
+                            className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
+                          >
+                            <Crop className="size-3" /> Launch Cropper (9:16)
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const compatible = platformsForBulkContent("long_video", "images");
+                              const nextAccounts = item.accountIds.filter((id) => compatible.includes(id));
+                              onUpdate({
+                                contentType: "long_video",
+                                postType: "standard",
+                                accountIds: nextAccounts.length > 0 ? nextAccounts : compatible,
+                              } as Partial<BulkItem>);
+                              toast({ title: "Switched to Long-Form Video", description: "Post type and platform requirements adjusted for 16:9.", tone: "success" });
+                            }}
+                            className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-white border border-red-200 hover:bg-red-100/50 text-red-900 px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
+                          >
+                            <RefreshCw className="size-3" /> Switch to Long Video
+                          </button>
                         </div>
                       </div>
+                    );
+                  }
 
-                      <div className="flex flex-col gap-1">
-                        <button
-                          type="button"
-                          onClick={onOpenCrop}
-                          className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
-                        >
-                          <Crop className="size-3" /> Launch Cropper (9:16)
-                        </button>
+                  // 2. Long Video Preset + Vertical/Square clip (<= 3 min) Notice
+                  if (isLongVideoShortNotice) {
+                    return (
+                      <div className="rounded-xl border border-sky-200 bg-sky-50/85 p-2.5 space-y-2 text-left animate-in fade-in duration-150">
+                        <div className="flex items-start gap-1.5 text-sky-900">
+                          <Info className="size-3.5 mt-0.5 shrink-0 text-sky-600" />
+                          <div className="text-[11px] leading-tight">
+                            <span className="font-bold">Vertical Video in Long Video:</span>{" "}
+                            {hasYouTube
+                              ? "YouTube will auto-classify this as a Short (custom thumbnails ignored). Facebook will be set to Page Video."
+                              : "This vertical video will publish as standard Page Video on selected platforms."}
+                          </div>
+                        </div>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const compatible = platformsForBulkContent("long_video", "images");
-                            const nextAccounts = item.accountIds.filter((id) => compatible.includes(id));
-                            onUpdate({
-                              contentType: "long_video",
-                              postType: "standard",
-                              accountIds: nextAccounts.length > 0 ? nextAccounts : compatible,
-                            } as Partial<BulkItem>);
-                            toast({ title: "Switched to Long-Form Video", description: "Post type and platform requirements adjusted for 16:9.", tone: "success" });
-                          }}
-                          className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-white border border-red-200 hover:bg-red-100/50 text-red-900 px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
-                        >
-                          <RefreshCw className="size-3" /> Switch to Long Video
-                        </button>
+                        <div className="flex flex-col gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const compatible = platformsForBulkContent("short_video", "images");
+                              const nextAccounts = item.accountIds.filter((id) => compatible.includes(id));
+                              onUpdate({
+                                contentType: "short_video",
+                                postType: "standard",
+                                accountIds: nextAccounts.length > 0 ? nextAccounts : compatible,
+                              } as Partial<BulkItem>);
+                              toast({ title: "Switched to Shorts & Reels", description: "Configured for vertical short-form placements.", tone: "success" });
+                            }}
+                            className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
+                          >
+                            <RefreshCw className="size-3" /> Switch to Shorts & Reels
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  );
+                    );
+                  }
+
+                  // 3. Facebook Reels Over 90s Warning & 1-Click Deselection
+                  if (isFBReelsOver) {
+                    return (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50/85 p-2.5 space-y-2 text-left animate-in fade-in duration-150">
+                        <div className="flex items-start gap-1.5 text-amber-900">
+                          <AlertCircle className="size-3.5 mt-0.5 shrink-0 text-amber-600" />
+                          <div className="text-[11px] leading-tight">
+                            <span className="font-bold">Facebook Reels Limit:</span>{" "}
+                            Facebook Reels caps at 90s (your video is {meta.formattedDuration}).
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nextAccounts = item.accountIds.filter((id) => id !== "facebook");
+                              onUpdate({ accountIds: nextAccounts } as Partial<BulkItem>);
+                              toast({ title: "Deselected Facebook", description: "Post remains active for other ready platforms.", tone: "neutral" });
+                            }}
+                            className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
+                          >
+                            <X className="size-3" /> Deselect Facebook
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // 4. LinkedIn Unsupported Aspect Ratio
+                  if (isLinkedInRatioInvalid) {
+                    return (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50/85 p-2.5 space-y-2 text-left animate-in fade-in duration-150">
+                        <div className="flex items-start gap-1.5 text-amber-900">
+                          <AlertCircle className="size-3.5 mt-0.5 shrink-0 text-amber-600" />
+                          <div className="text-[11px] leading-tight">
+                            <span className="font-bold">LinkedIn Ratio Limit:</span>{" "}
+                            LinkedIn does not support extreme aspect ratios outside 1:2.4–2.4:1.
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nextAccounts = item.accountIds.filter((id) => id !== "linkedin");
+                              onUpdate({ accountIds: nextAccounts } as Partial<BulkItem>);
+                              toast({ title: "Deselected LinkedIn", description: "Post remains active for other ready platforms.", tone: "neutral" });
+                            }}
+                            className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
+                          >
+                            <X className="size-3" /> Deselect LinkedIn
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return null;
                 })()
               ) : null}
 
