@@ -17,13 +17,15 @@ interface UserDetail {
   device: string;
 }
 
-export async function generateMetadata({ params }: { params: { id: string } }) {
-  return { title: `User ${params.id} — PostPlanify Admin` };
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return { title: `User ${id} — PostPlanify Admin` };
 }
 
-export default async function UserDetailPage({ params }: { params: { id: string } }) {
+export default async function UserDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const users = await getUsersData();
-  const user = users.find((u: UserDetail) => u.id === params.id || u.uid === params.id);
+  const user = users.find((u: UserDetail) => u.id === id || u.uid === id);
 
   if (!user) notFound();
 

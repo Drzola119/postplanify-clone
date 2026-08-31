@@ -73,6 +73,7 @@ describe("lib/ai/fair-scheduler", () => {
         generationConfigHash: "h1",
         contentHash: "h2",
         fingerprint: `fp_a_${i}`,
+        inputSnapshot: {},
         createdAt: now,
         updatedAt: now,
       });
@@ -99,6 +100,7 @@ describe("lib/ai/fair-scheduler", () => {
         generationConfigHash: "h1",
         contentHash: "h2",
         fingerprint: `fp_b_${i}`,
+        inputSnapshot: {},
         createdAt: now,
         updatedAt: now,
       });

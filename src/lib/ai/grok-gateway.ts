@@ -84,7 +84,7 @@ function buildUserPrompt(snapshot: CaptionJobInputSnapshot): string {
     multiPlatform: snapshot.multiPlatform,
     extra: snapshot.extra?.slice(0, MAX_EXTRA_LEN) ?? null,
     platforms: snapshot.platforms,
-    hasMedia: !!snapshot.imageUrl || !!snapshot.videoTitle || (snapshot.mediaUrls && snapshot.mediaUrls.length > 0),
+    hasMedia: !!snapshot.imageUrl || !!snapshot.videoTitle || !!(snapshot.mediaUrls && snapshot.mediaUrls.length > 0),
   });
 
   if (snapshot.imageUrl) {

@@ -102,8 +102,8 @@ export interface PostDoc {
   sameForAll?: boolean;
   /** Per-platform advanced options snapshot, persisted so scheduled posts don't drift. */
   advancedByPlatform?: Record<string, Record<string, unknown>>;
-  workerId?: string;
-  claimedAt?: Date;
+  workerId?: string | null;
+  claimedAt?: Date | null;
   failureReason?: string;
   /** UploadPost identifiers used to reconcile asynchronous/scheduled delivery. */
   uploadPostRequestId?: string;

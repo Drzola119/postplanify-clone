@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { globalGrokRateLimiter } from "@/lib/ai/rate-limiter";
+import { globalGrokRateLimiter, type RateLimitLease } from "@/lib/ai/rate-limiter";
 import { CAPTION_CONFIG } from "@/lib/config/caption-config";
 
 describe("lib/ai/rate-limiter - GlobalGrokRateLimiter", () => {
@@ -16,7 +16,7 @@ describe("lib/ai/rate-limiter - GlobalGrokRateLimiter", () => {
   });
 
   it("enforces per-user concurrency limit", () => {
-    const leases: Array<{ release: () => void }> = [];
+    const leases: RateLimitLease[] = [];
 
     for (let i = 0; i < CAPTION_CONFIG.MAX_PER_USER_CONCURRENCY; i++) {
       const lease = globalGrokRateLimiter.tryAcquire("user_busy");
