@@ -1013,11 +1013,58 @@ export default function BulkSchedulePage() {
     setAccounts(new Set(connectedPlatforms.size > 0 ? connected : compatible));
   }, [connectedPlatforms]);
 
-  const handleContentTypeChange = useCallback((next: BulkContentType) => {
+  const handleContentTypeChange = useCallback((next: BulkContentType, updateAllPosts = true) => {
     setContentType(next);
-    setComposerMode(composerModeForContentType(next));
+    const nextComposerMode = composerModeForContentType(next);
+    setComposerMode(nextComposerMode);
     selectCompatibleAccounts(next, carouselMediaMode);
-  }, [carouselMediaMode, selectCompatibleAccounts]);
+
+    if (updateAllPosts) {
+      setItems((prev) =>
+        prev.map((it) => {
+          const base = it as BulkItemBase;
+          const compatible = platformsForBulkContent(next, carouselMediaMode);
+          const connectedCompatible = compatible.filter((id) => connectedPlatforms.has(id));
+          const filteredAccounts = it.accountIds.filter((id) => compatible.includes(id));
+          const finalAccounts = filteredAccounts.length > 0
+            ? filteredAccounts
+            : (connectedCompatible.length > 0 ? connectedCompatible : compatible);
+
+          let advanced = { ...(base.advancedByPlatform ?? {}) } as Record<string, Record<string, unknown>>;
+          if (next === "short_video") {
+            advanced.instagram = { ...(advanced.instagram ?? {}), instagram_media_type: "REELS" };
+            advanced.facebook = { ...(advanced.facebook ?? {}), facebook_media_type: "REELS" };
+          } else if (next === "long_video") {
+            advanced.facebook = { ...(advanced.facebook ?? {}), facebook_media_type: "VIDEO" };
+          } else if (next === "story") {
+            advanced.instagram = { ...(advanced.instagram ?? {}), instagram_media_type: "STORIES" };
+            advanced.facebook = { ...(advanced.facebook ?? {}), facebook_media_type: "STORIES" };
+          } else if (next === "trial_reel") {
+            advanced.instagram = {
+              ...(advanced.instagram ?? {}),
+              instagram_media_type: "REELS",
+              instagram_share_mode: base.trialMode ?? "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED",
+            };
+          } else if (next === "community") {
+            advanced.twitter = {
+              ...(advanced.twitter ?? {}),
+              twitter_community: xCommunityId,
+              twitter_share_with_followers: shareCommunityWithFollowers,
+            };
+          }
+
+          return {
+            ...it,
+            contentType: next,
+            postType: nextComposerMode,
+            accountIds: finalAccounts,
+            postIn: next === "story" ? "story" : "feed",
+            advancedByPlatform: advanced as BulkItem["advancedByPlatform"],
+          } as BulkItem;
+        })
+      );
+    }
+  }, [carouselMediaMode, connectedPlatforms, selectCompatibleAccounts, shareCommunityWithFollowers, xCommunityId]);
 
   const handleCarouselMediaModeChange = useCallback((next: CarouselMediaMode) => {
     setCarouselMediaMode(next);
@@ -3616,6 +3663,7 @@ export default function BulkSchedulePage() {
               onDocumentFile={handleDocumentFile}
               onTrialModeChange={handleTrialModeChange}
               onReplaceTrialVideo={handleReplaceTrialVideo}
+              onSwitchContentType={handleContentTypeChange}
             />
           </div>
         )}
@@ -4092,6 +4140,7 @@ interface PostsListProps {
   onDocumentFile: (itemId: string, file: File) => void;
   onTrialModeChange: (itemId: string, mode: TrialReelMode) => void;
   onReplaceTrialVideo: (itemId: string, file: File) => void;
+  onSwitchContentType?: (type: BulkContentType) => void;
 }
 
 function PostsList({
@@ -4128,6 +4177,7 @@ function PostsList({
   onDocumentFile,
   onTrialModeChange,
   onReplaceTrialVideo,
+  onSwitchContentType,
 }: PostsListProps) {
   const t = useTranslations("dashboard");
   const [firstCommentPrompt, setFirstCommentPrompt] = useState("");
@@ -4609,6 +4659,7 @@ function PostsList({
           onDocumentFile={(file) => onDocumentFile(item.id, file)}
           onTrialModeChange={(mode) => onTrialModeChange(item.id, mode)}
           onReplaceTrialVideo={(file) => onReplaceTrialVideo(item.id, file)}
+          onSwitchContentType={onSwitchContentType}
         />
       ))}
     </div>
@@ -4794,6 +4845,7 @@ function PostRow({
   onDocumentFile,
   onTrialModeChange,
   onReplaceTrialVideo,
+  onSwitchContentType,
 }: {
   item: BulkItem;
   index: number;
@@ -4815,6 +4867,7 @@ function PostRow({
   onDocumentFile: (file: File) => void;
   onTrialModeChange: (mode: TrialReelMode) => void;
   onReplaceTrialVideo: (file: File) => void;
+  onSwitchContentType?: (type: BulkContentType) => void;
 }) {
   const t = useTranslations("dashboard");
   const { toast } = useToast();
@@ -5103,13 +5156,17 @@ function PostRow({
                           <button
                             type="button"
                             onClick={() => {
-                              const compatible = platformsForBulkContent("long_video", "images");
-                              const nextAccounts = item.accountIds.filter((id) => compatible.includes(id));
-                              onUpdate({
-                                contentType: "long_video",
-                                postType: "standard",
-                                accountIds: nextAccounts.length > 0 ? nextAccounts : compatible,
-                              } as Partial<BulkItem>);
+                              if (onSwitchContentType) {
+                                onSwitchContentType("long_video");
+                              } else {
+                                const compatible = platformsForBulkContent("long_video", "images");
+                                const nextAccounts = item.accountIds.filter((id) => compatible.includes(id));
+                                onUpdate({
+                                  contentType: "long_video",
+                                  postType: "standard",
+                                  accountIds: nextAccounts.length > 0 ? nextAccounts : compatible,
+                                } as Partial<BulkItem>);
+                              }
                               toast({ title: "Switched to Long-Form Video", description: "Post type and platform requirements adjusted for 16:9.", tone: "success" });
                             }}
                             className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-white border border-red-200 hover:bg-red-100/50 text-red-900 px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
@@ -5139,13 +5196,17 @@ function PostRow({
                           <button
                             type="button"
                             onClick={() => {
-                              const compatible = platformsForBulkContent("short_video", "images");
-                              const nextAccounts = item.accountIds.filter((id) => compatible.includes(id));
-                              onUpdate({
-                                contentType: "short_video",
-                                postType: "standard",
-                                accountIds: nextAccounts.length > 0 ? nextAccounts : compatible,
-                              } as Partial<BulkItem>);
+                              if (onSwitchContentType) {
+                                onSwitchContentType("short_video");
+                              } else {
+                                const compatible = platformsForBulkContent("short_video", "images");
+                                const nextAccounts = item.accountIds.filter((id) => compatible.includes(id));
+                                onUpdate({
+                                  contentType: "short_video",
+                                  postType: "standard",
+                                  accountIds: nextAccounts.length > 0 ? nextAccounts : compatible,
+                                } as Partial<BulkItem>);
+                              }
                               toast({ title: "Switched to Shorts & Reels", description: "Configured for vertical short-form placements.", tone: "success" });
                             }}
                             className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
