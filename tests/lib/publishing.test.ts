@@ -44,15 +44,34 @@ describe("lib/publishing/capability-matrix", () => {
     }
   });
 
-  it("hard caps are positive numbers within sane bounds", () => {
+  it("hard caps are positive numbers within sane bounds and match Upload-Post limits", () => {
     for (const p of PLATFORMS) {
       const cap = CAPABILITY_MATRIX[p.id];
       expect(cap.hardCapPer24h).toBeGreaterThan(0);
       expect(cap.hardCapPer24h).toBeLessThanOrEqual(150);
     }
+    expect(CAPABILITY_MATRIX.linkedin.hardCapPer24h).toBe(150);
+    expect(CAPABILITY_MATRIX.instagram.hardCapPer24h).toBe(50);
+    expect(CAPABILITY_MATRIX.twitter.hardCapPer24h).toBe(50);
+    expect(CAPABILITY_MATRIX.threads.hardCapPer24h).toBe(50);
+    expect(CAPABILITY_MATRIX.bluesky.hardCapPer24h).toBe(50);
+    expect(CAPABILITY_MATRIX.reddit.hardCapPer24h).toBe(40);
+    expect(CAPABILITY_MATRIX.facebook.hardCapPer24h).toBe(25);
+    expect(CAPABILITY_MATRIX.pinterest.hardCapPer24h).toBe(20);
+    expect(CAPABILITY_MATRIX.tiktok.hardCapPer24h).toBe(15);
   });
 
   it("every media requirement has positive byte limits and valid mime prefixes", () => {
+    const MB = 1024 * 1024;
+    expect(CAPABILITY_MATRIX.instagram.media.image?.maxBytes).toBe(8 * MB);
+    expect(CAPABILITY_MATRIX.pinterest.media.image?.maxBytes).toBe(20 * MB);
+    expect(CAPABILITY_MATRIX.facebook.media.image?.maxBytes).toBe(10 * MB);
+    expect(CAPABILITY_MATRIX.reddit.media.image?.maxBytes).toBe(10 * MB);
+    expect(CAPABILITY_MATRIX.linkedin.media.image?.maxBytes).toBe(8 * MB);
+    expect(CAPABILITY_MATRIX.threads.media.image?.maxBytes).toBe(8 * MB);
+    expect(CAPABILITY_MATRIX.twitter.media.image?.maxBytes).toBe(5 * MB);
+    expect(CAPABILITY_MATRIX.bluesky.media.image?.maxBytes).toBe(1 * MB);
+
     for (const p of PLATFORMS) {
       const cap = CAPABILITY_MATRIX[p.id];
       for (const kind of ["image", "video"] as const) {

@@ -62,7 +62,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     hardCapPer24h: 50,
     requiredTargets: [],
     media: {
-      image: { maxBytes: 30 * MB, formats: ["image/jpeg", "image/png", "image/webp"], maxItems: 10 },
+      image: { maxBytes: 8 * MB, formats: ["image/jpeg", "image/png"], maxItems: 10 },
       video: { maxBytes: 300 * MB, formats: ["video/mp4", "video/quicktime"], minDurationSec: 3, maxDurationSec: 900, maxItems: 10 },
     },
   },
@@ -108,8 +108,8 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     requiredTargets: [{ optionKey: "pinterest_board_id", label: "Board" }],
     media: {
       image: {
-        maxBytes: 32 * MB,
-        formats: ["image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp", "image/tiff"],
+        maxBytes: 20 * MB,
+        formats: ["image/jpeg", "image/png", "image/gif", "image/webp"],
         maxItems: 5,
       },
       video: { maxBytes: 1 * GB, formats: ["video/mp4", "video/quicktime"], minDurationSec: 4, maxDurationSec: 900 },
@@ -121,9 +121,9 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     supportsImage: true,
     supportsVideo: true,
     maxTitleLength: 0,
-    // Long-text-as-post is on by default in Adsify, so we use the extended cap.
+    // Long-text-as-post is on by default, so we use the extended cap.
     maxCaptionLength: 25000,
-    hardCapPer24h: 10,
+    hardCapPer24h: 50,
     requiredTargets: [],
     media: {
       image: { maxBytes: 5 * MB, formats: ["image/jpeg", "image/png", "image/gif", "image/webp"], maxItems: 4 },
@@ -140,7 +140,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     hardCapPer24h: 150,
     requiredTargets: [],
     media: {
-      image: { maxBytes: 5 * MB, formats: ["image/jpeg", "image/png", "image/gif"], maxItems: 10 },
+      image: { maxBytes: 8 * MB, formats: ["image/jpeg", "image/png", "image/gif"], maxItems: 10 },
       video: { maxBytes: 5 * GB, formats: ["video/mp4", "video/x-matroska", "video/webm"], minDurationSec: 3, maxDurationSec: 600 },
     },
   },
@@ -168,7 +168,7 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     hardCapPer24h: 25,
     requiredTargets: [{ optionKey: "facebook_page_id", label: "Page" }],
     media: {
-      image: { maxBytes: 30 * MB, formats: ["image/jpeg", "image/png", "image/gif", "image/webp"], maxItems: 10 },
+      image: { maxBytes: 10 * MB, formats: ["image/jpeg", "image/png", "image/gif", "image/webp"], maxItems: 10 },
       video: { maxBytes: 10 * GB, formats: ["video/mp4", "video/quicktime", "video/x-msvideo"], minDurationSec: 3, maxDurationSec: 14400 },
     },
   },
@@ -221,10 +221,10 @@ export const CAPABILITY_MATRIX: Record<PlatformId, PlatformCapability> = {
     supportsVideo: true,
     maxTitleLength: 300,
     maxCaptionLength: 40000,
-    hardCapPer24h: 50,
+    hardCapPer24h: 40,
     requiredTargets: [],
     media: {
-      image: { maxBytes: 20 * MB, formats: ["image/jpeg", "image/png", "image/gif"], maxItems: 10 },
+      image: { maxBytes: 10 * MB, formats: ["image/jpeg", "image/png", "image/gif", "image/webp"], maxItems: 10 },
       video: { maxBytes: 1 * GB, formats: ["video/mp4"], maxDurationSec: 900 },
     },
   },

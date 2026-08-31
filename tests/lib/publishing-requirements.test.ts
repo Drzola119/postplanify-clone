@@ -167,4 +167,76 @@ describe("checkRequirements regression suite", () => {
     const ig = report.perPlatform.find((p) => p.platform === "instagram");
     expect(ig?.issues.find((i) => i.code === "missing_media")).toBeDefined();
   });
+
+  it("blocks Instagram image exceeding 8MB size limit", () => {
+    const report = checkRequirements(["instagram"], {
+      captionByPlatform: { instagram: "Great shot!" },
+      media: [
+        {
+          kind: "image",
+          mimeType: "image/jpeg",
+          sizeBytes: 9 * 1024 * 1024, // 9MB > 8MB
+        },
+      ],
+    });
+
+    expect(report.overall).toBe("blocked");
+    const ig = report.perPlatform.find((p) => p.platform === "instagram");
+    const tooLarge = ig?.issues.find((i) => i.code === "image_too_large");
+    expect(tooLarge).toBeDefined();
+    expect(tooLarge?.message).toContain("8 MB");
+  });
+
+  it("blocks Threads image with extreme aspect ratio outside 1:10 to 10:1", () => {
+    const report = checkRequirements(["threads"], {
+      captionByPlatform: { threads: "Ultra wide panoramic" },
+      media: [
+        {
+          kind: "image",
+          mimeType: "image/jpeg",
+          sizeBytes: 1024 * 1024,
+          aspectRatioValue: 12.0, // 12:1 is outside 10:1
+        },
+      ],
+    });
+
+    expect(report.overall).toBe("blocked");
+    const th = report.perPlatform.find((p) => p.platform === "threads");
+    expect(th?.issues.find((i) => i.code === "threads_aspect_ratio_out_of_bounds")).toBeDefined();
+  });
+
+  it("warns when Threads image width exceeds 1440px", () => {
+    const report = checkRequirements(["threads"], {
+      captionByPlatform: { threads: "High resolution image" },
+      media: [
+        {
+          kind: "image",
+          mimeType: "image/jpeg",
+          sizeBytes: 2 * 1024 * 1024,
+          width: 2048,
+          height: 1536,
+          aspectRatioValue: 2048 / 1536,
+        },
+      ],
+    });
+
+    const th = report.perPlatform.find((p) => p.platform === "threads");
+    expect(th?.issues.find((i) => i.code === "threads_image_width_notice")).toBeDefined();
+  });
+
+  it("enforces updated 24h hard caps for Twitter (50) and Reddit (40)", () => {
+    const report = checkRequirements(["twitter", "reddit"], {
+      captionByPlatform: { twitter: "Post", reddit: "Post" },
+      media: [],
+      recent24hCounts: {
+        twitter: 50,
+        reddit: 40,
+      },
+    });
+
+    const tw = report.perPlatform.find((p) => p.platform === "twitter");
+    const rd = report.perPlatform.find((p) => p.platform === "reddit");
+    expect(tw?.issues.find((i) => i.code === "hard_cap_reached")).toBeDefined();
+    expect(rd?.issues.find((i) => i.code === "hard_cap_reached")).toBeDefined();
+  });
 });

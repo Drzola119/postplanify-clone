@@ -217,6 +217,25 @@ function checkMediaForPlatform(
             badAspectMsg = `TikTok feed requires a 9:16 vertical video (got ${m.aspectRatio}).`;
           }
         }
+      } else if (kind === "image") {
+        const ratioVal = m.aspectRatioValue ?? (m.width && m.height ? m.width / m.height : undefined);
+        if (platform === "threads") {
+          if (ratioVal != null && (ratioVal < 0.10 || ratioVal > 10.0)) {
+            issues.push({
+              code: "threads_aspect_ratio_out_of_bounds",
+              severity: "blocked",
+              message: `Threads rejects images outside 1:10 to 10:1 aspect ratio (got ${m.aspectRatio || ratioVal.toFixed(2)}).`,
+              actionLabel: "Crop image",
+            });
+          }
+          if (m.width != null && m.width > 1440) {
+            issues.push({
+              code: "threads_image_width_notice",
+              severity: "warning",
+              message: `Image width (${m.width}px) exceeds 1440px and will be scaled down to sRGB by Threads.`,
+            });
+          }
+        }
       }
     }
     if (badAspect > 0) {
