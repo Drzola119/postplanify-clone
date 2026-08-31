@@ -4643,6 +4643,7 @@ function PostsList({
           key={item.id}
           item={item}
           index={idx}
+          contentType={contentType}
           onUpdate={(patch) => onUpdateItem(item.id, patch)}
           onRemove={() => onRemove(item.id)}
           onScheduleSingle={() => onScheduleSingle(item.id)}
@@ -4829,6 +4830,7 @@ function ReadinessBadgePopover({
 function PostRow({
   item,
   index,
+  contentType,
   onUpdate,
   onRemove,
   onScheduleSingle,
@@ -4851,6 +4853,7 @@ function PostRow({
 }: {
   item: BulkItem;
   index: number;
+  contentType: BulkContentType;
   onUpdate: (patch: Partial<BulkItem>) => void;
   onRemove: () => void;
   onScheduleSingle: () => void;
@@ -4883,25 +4886,43 @@ function PostRow({
   const ytTagsLen = item.youtubeTags.length;
   const charLimit = pickCharLimitFor(item);
   const overLimit = captionLen > charLimit;
-  const previewSrc = item.source === "upload" ? item.previewUrl : item.url;
-  const mediaKind: MediaKind = item.kind === "video" ? "video" : item.kind === "text" || item.kind === "document" ? "text" : "image";
+  const previewSrc =
+    item.kind === "image" && item.customCoverUrl
+      ? item.customCoverUrl
+      : item.kind === "video" && item.customCoverUrl
+        ? item.customCoverUrl
+        : item.frameCoverUrl || item.url || (item.source === "upload" ? item.previewUrl : "");
+
   const readiness = useMemo(() => buildReadinessForItem(item), [item]);
+  const hasValidationErrors = readiness.blockedCount > 0;
+
+  const effectiveContentType: BulkContentType =
+    (item as BulkItemBase).contentType ||
+    ((item as BulkItemBase).postType === "trial_reel"
+      ? "trial_reel"
+      : (item as BulkItemBase).postType === "carousel"
+        ? "carousel"
+        : (item as BulkItemBase).postType === "document"
+          ? "document"
+          : contentType);
+
+  const isVerticalPhoneView =
+    effectiveContentType === "short_video" ||
+    effectiveContentType === "story" ||
+    effectiveContentType === "trial_reel" ||
+    (item as BulkItemBase).postType === "trial_reel";
+
   const [extraOpen, setExtraOpen] = useState(false);
   const [customPlatformOpen, setCustomPlatformOpen] = useState(false);
 
   const handleAutoFitPlatform = useCallback(
     (pid: PlatformId) => {
       const currentCap = item.captionByPlatform?.[pid] ?? item.caption;
-      // For Twitter, respect the per-item long-text toggle: if disabled, cap at 280; otherwise the matrix limit (25000) already governs fit.
-      // fitCaptionForPlatform uses PLATFORM_LIMITS=280 for twitter, which is correct for classic mode. When long-text is enabled,
-      // the caption will already be within the 25000 readiness limit, so no fit is needed. We keep classic fit for the blocked case.
       const fitted = fitCaptionForPlatform(currentCap, pid);
-      // If long-text is enabled and the fitted result is still over readiness but under 25000, don't overwrite with 280 trim.
       const effectiveLim = getEffectiveLimit(pid, item);
       if (effectiveLim > 280 && pid === "twitter") {
         const curLen = Array.from(currentCap).length;
         if (curLen <= effectiveLim && curLen > 280) {
-          // Already valid for long post — no need to trim.
           toast({ title: `Caption already within limit for ${PLATFORMS.find((pl) => pl.id === pid)?.name ?? pid} (long post enabled)`, tone: "info" });
           return;
         }
@@ -4915,42 +4936,55 @@ function PostRow({
       const pMeta = PLATFORMS.find((pl) => pl.id === pid);
       toast({ title: `Auto-fitted caption for ${pMeta?.name ?? pid}`, tone: "success" });
     },
-    [item.captionByPlatform, item.caption, onUpdate, toast]
+    [item.captionByPlatform, item.caption, item, onUpdate, toast]
   );
 
   return (
-    <div className="rounded-[16px] border border-zinc-200 bg-white shadow-sm overflow-hidden">
-      {/* Card header with media + platforms summary */}
-      <div className="flex items-center gap-3 px-3 py-2.5 border-b border-zinc-200 bg-zinc-50/50">
-        <span className="inline-flex items-center justify-center size-7 rounded-full bg-zinc-900 text-white text-xs font-bold">#{index + 1}</span>
-        <div className="flex items-center gap-1 flex-wrap">
-          {item.accountIds.slice(0, 5).map((pid) => (
-            <ProPlatformIcon key={pid} platform={pid} size={22} />
-          ))}
-          {item.accountIds.length > 5 && <ProOverflowBadge count={item.accountIds.length - 5} size={22} />}
-          <span className="text-xs font-semibold text-zinc-700 ml-1">
-            {item.accountIds.length} platform{item.accountIds.length !== 1 ? "s" : ""}
+    <div
+      className={cn(
+        "rounded-2xl border bg-white shadow-xs transition-all overflow-hidden",
+        hasValidationErrors ? "border-red-200 ring-1 ring-red-100" : "border-zinc-200 hover:border-zinc-300"
+      )}
+    >
+      {/* ── Header row ── */}
+      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-zinc-100 bg-zinc-50/50">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="size-6 rounded-md bg-zinc-900 text-white text-xs font-bold flex items-center justify-center shrink-0">
+            #{index + 1}
           </span>
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+            {item.accountIds.slice(0, 5).map((pid) => (
+              <ProPlatformIcon key={pid} platform={pid} size={22} />
+            ))}
+            {item.accountIds.length > 5 && <ProOverflowBadge count={item.accountIds.length - 5} size={22} />}
+            <span className="text-xs text-zinc-500 font-medium">
+              {item.accountIds.length} {item.accountIds.length === 1 ? "platform" : "platforms"}
+            </span>
+          </div>
         </div>
-        <ReadinessBadgePopover
-          readiness={readiness}
-          item={item}
-          onAutoFitPlatform={handleAutoFitPlatform}
-        />
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label="Remove"
-          className="size-7 inline-flex items-center justify-center rounded-full bg-white border border-zinc-200 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
-        >
-          <X className="size-3.5" />
-        </button>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <ReadinessBadgePopover
+            readiness={readiness}
+            item={item}
+            onAutoFitPlatform={handleAutoFitPlatform}
+          />
+
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label="Remove post"
+            className="size-7 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center transition-colors cursor-pointer"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[180px_1fr] divide-y lg:divide-y-0 lg:divide-x divide-zinc-200">
         {/* Media + Schedule */}
         <div className="p-3 space-y-3 bg-zinc-50/30">
-          {(item as BulkItemBase).postType === "carousel" ? (
+          {effectiveContentType === "carousel" ? (
             (() => {
               const slides = (item as BulkItemBase).carouselSlides ?? [];
               return (
@@ -5015,74 +5049,10 @@ function PostRow({
                       ? "⚠️ Carousel needs at least 2 slides"
                       : `${slides.length}/10 slides • ${(item as BulkItemBase).carouselMediaMode ?? "images"}`}
                   </p>
-
-                  {/* Carousel Quick-Fix Toolkit when < 2 slides */}
-                  {slides.length < 2 && (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50/85 p-2.5 space-y-2 text-left animate-in fade-in duration-150">
-                      <div className="flex items-start gap-1.5 text-amber-900">
-                        <AlertCircle className="size-3.5 mt-0.5 shrink-0 text-amber-600" />
-                        <div className="text-[11px] leading-tight">
-                          <span className="font-bold">Carousel Needs 2+ Slides:</span>{" "}
-                          Carousels require at least 2 slides (currently has {slides.length}).
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col gap-1">
-                        <label className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer">
-                          <input
-                            type="file"
-                            accept={bulkAcceptForContentType("carousel", (item as BulkItemBase).carouselMediaMode ?? "images")}
-                            multiple
-                            className="hidden"
-                            onChange={(e) => {
-                              const files = Array.from(e.target.files ?? []);
-                              if (files.length) onAddCarouselSlides(files);
-                              e.target.value = "";
-                            }}
-                          />
-                          <Plus className="size-3" /> Add Another Slide
-                        </label>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const firstKind = slides[0]?.kind ?? item.kind;
-                            const targetType: BulkContentType = firstKind === "video" ? "long_video" : "image";
-                            if (onSwitchContentType) {
-                              onSwitchContentType(targetType);
-                            } else {
-                              const compatible = platformsForBulkContent(targetType, "images");
-                              onUpdate({
-                                contentType: targetType,
-                                postType: "standard",
-                                kind: firstKind === "video" ? "video" : "image",
-                                accountIds: item.accountIds.filter((id) => compatible.includes(id)),
-                              } as Partial<BulkItem>);
-                            }
-                            toast({
-                              title: `Switched to Single ${firstKind === "video" ? "Video" : "Image"} Post`,
-                              description: "Converted carousel to single-post format.",
-                              tone: "success",
-                            });
-                          }}
-                          className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-white border border-amber-300 hover:bg-amber-100/60 text-amber-950 px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
-                        >
-                          <RefreshCw className="size-3" /> Switch to Single {slides[0]?.kind === "video" ? "Video" : "Image"} Post
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {(item.frameCoverUrl || item.customCoverUrl) && (
-                    <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-zinc-200 text-[10px] font-medium text-emerald-700">
-                      <CheckCircle2 className="size-3 shrink-0 text-emerald-600" />
-                      <span className="truncate">{item.customCoverUrl ? "Custom cover set" : "Frame cover set"}</span>
-                    </div>
-                  )}
                 </div>
               );
             })()
-          ) : (item as BulkItemBase).postType === "document" ? (
+          ) : effectiveContentType === "document" ? (
             <div className="space-y-2">
               <div className="rounded-xl border border-zinc-200 bg-white p-3 space-y-2">
                 <div className="flex items-center gap-2">
@@ -5099,174 +5069,102 @@ function PostRow({
                 </div>
                 {item.uploadStatus === "uploading" && <div className="h-1 bg-zinc-200 rounded-full overflow-hidden"><div className="h-full bg-blue-500 animate-pulse w-full" /></div>}
               </div>
-              <div>
-                <label className="text-[10px] font-bold text-zinc-700 flex items-center gap-1">Document Title <span className="text-red-500">*</span></label>
-                <input
-                  type="text"
-                  value={(item as BulkItemBase).documentTitle ?? ""}
-                  onChange={(e) => onDocumentTitleChange(e.target.value)}
-                  placeholder="e.g. 10 Growth Tips for 2025"
-                  className="mt-1 h-8 w-full rounded-lg border border-zinc-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
-                />
-              </div>
               <label className="flex items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-zinc-300 hover:border-zinc-400 hover:bg-zinc-50 p-3 cursor-pointer">
                 <input type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onDocumentFile(f); e.target.value = ""; }} />
                 <Upload className="size-3.5 text-zinc-500" /> <span className="text-xs font-semibold text-zinc-700">Replace document</span>
               </label>
             </div>
-          ) : (item as BulkItemBase).postType === "trial_reel" ? (
+          ) : isVerticalPhoneView ? (
             <div className="space-y-2">
-              <div className="relative rounded-xl overflow-hidden bg-zinc-900 aspect-[9/16] max-h-64 border border-zinc-200">
-                <video src={previewSrc} className="w-full h-full object-contain" controls />
-                {item.uploadStatus === "uploading" && (
-                  <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/70 to-transparent">
-                    <div className="h-1 bg-white/30 rounded-full overflow-hidden"><div className="h-full bg-white w-full animate-pulse" /></div>
+              {/* Unified Realistic Vertical Phone Frame for Shorts, Reels, Stories & Trial Reels */}
+              <div className="relative rounded-xl overflow-hidden bg-zinc-900 aspect-[9/16] max-h-64 w-full border border-zinc-200 shadow-xs">
+                {item.kind === "video" ? (
+                  <video src={previewSrc} className="w-full h-full object-contain" controls />
+                ) : item.kind === "image" ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={previewSrc} alt={item.name} className="w-full h-full object-contain" />
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-zinc-900 to-zinc-950 text-zinc-400">
+                    <MessageSquare className="size-8" />
+                    <span className="text-[11px] font-bold">Text Post</span>
                   </div>
                 )}
-                <span className="absolute top-2 left-2 text-[10px] bg-amber-500 text-white px-2 py-0.5 rounded-full font-bold flex items-center gap-1"><Zap className="size-3" /> Trial Reel</span>
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-zinc-700">Trial Reel mode (Instagram)</label>
-                <select
-                  value={(item as BulkItemBase).trialMode ?? "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED"}
-                  onChange={(e) => onTrialModeChange(e.target.value as TrialReelMode)}
-                  className="mt-1 h-8 w-full rounded-lg border border-zinc-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
-                >
-                  <option value="TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED">Auto-share if engagement high (recommended)</option>
-                  <option value="TRIAL_REELS_ALWAYS_SHARE_TO_FOLLOWERS">Always share to followers</option>
-                  <option value="TRIAL_REELS_DO_NOT_SHARE_TO_FOLLOWERS">Non-followers only (isolated trial)</option>
-                </select>
-              </div>
-              <label className="flex items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-zinc-300 hover:border-zinc-400 hover:bg-zinc-50 p-2.5 cursor-pointer">
-                <input type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onReplaceTrialVideo(f); e.target.value = ""; }} />
-                <Upload className="size-3.5 text-zinc-500" /> <span className="text-xs font-semibold text-zinc-700">Replace video</span>
-              </label>
 
-              {/* Trial Reel Format Mismatch Quick-Fix */}
-              {item.mediaMetadata && (item.mediaMetadata.aspectRatio === "16:9" || item.mediaMetadata.orientation === "horizontal") && (
-                <div className="rounded-xl border border-red-200 bg-red-50/80 p-2.5 space-y-2 text-left animate-in fade-in duration-150">
-                  <div className="flex items-start gap-1.5 text-red-800">
-                    <AlertCircle className="size-3.5 mt-0.5 shrink-0 text-red-600" />
-                    <div className="text-[11px] leading-tight">
-                      <span className="font-bold">Format Mismatch:</span>{" "}
-                      16:9 (horizontal) video uploaded for Trial Reel (needs 9:16 vertical).
-                    </div>
+                {/* Uploading Spinner Overlay */}
+                {item.source === "upload" && item.uploadStatus === "uploading" && (
+                  <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-1">
+                    <span className="size-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    <span className="text-[10px] text-white font-medium">Uploading…</span>
                   </div>
+                )}
 
-                  <div className="flex flex-col gap-1">
-                    <button
-                      type="button"
-                      onClick={onOpenCrop}
-                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
-                    >
-                      <Crop className="size-3" /> Launch Cropper (9:16)
-                    </button>
+                {/* Top Badge */}
+                {effectiveContentType === "trial_reel" ? (
+                  <span className="absolute top-2 left-2 text-[10px] bg-amber-500 text-white px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-sm">
+                    <Zap className="size-3" /> Trial Reel
+                  </span>
+                ) : effectiveContentType === "story" ? (
+                  <span className="absolute top-2 left-2 text-[10px] bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-sm">
+                    <Sparkles className="size-3" /> Story (24h)
+                  </span>
+                ) : (
+                  <span className="absolute top-2 left-2 text-[10px] bg-gradient-to-r from-pink-500 to-rose-600 text-white px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-sm">
+                    <Video className="size-3" /> Reel / Short
+                  </span>
+                )}
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (onSwitchContentType) {
-                          onSwitchContentType("long_video");
-                        } else {
-                          const compatible = platformsForBulkContent("long_video", "images");
-                          const nextAccounts = item.accountIds.filter((id) => compatible.includes(id));
-                          onUpdate({
-                            contentType: "long_video",
-                            postType: "standard",
-                            accountIds: nextAccounts.length > 0 ? nextAccounts : compatible,
-                          } as Partial<BulkItem>);
-                        }
-                        toast({ title: "Switched to Long-Form Video", description: "Post type and platform requirements adjusted for 16:9.", tone: "success" });
-                      }}
-                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-white border border-red-200 hover:bg-red-100/50 text-red-900 px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
-                    >
-                      <RefreshCw className="size-3" /> Switch to Long Video
-                    </button>
+                {/* Bottom Metadata Pill */}
+                {item.kind === "video" && item.mediaMetadata ? (
+                  <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-xs text-white text-[10px] font-mono font-bold flex items-center gap-1.5 shadow-sm">
+                    <Video className="size-3 text-zinc-300" />
+                    <span className={cn(
+                      item.mediaMetadata.aspectRatio === "9:16" ? "text-emerald-400" : item.mediaMetadata.aspectRatio === "16:9" ? "text-sky-300" : "text-zinc-200"
+                    )}>
+                      {item.mediaMetadata.aspectRatio}
+                    </span>
+                    <span className="text-zinc-500">•</span>
+                    <span>{item.mediaMetadata.formattedDuration}</span>
                   </div>
-                </div>
+                ) : null}
+              </div>
+
+              {/* Trial Reel specific dropdown & replace */}
+              {effectiveContentType === "trial_reel" && (
+                <>
+                  <div>
+                    <label className="text-[10px] font-bold text-zinc-700">Trial Reel mode (Instagram)</label>
+                    <select
+                      value={(item as BulkItemBase).trialMode ?? "TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED"}
+                      onChange={(e) => onTrialModeChange(e.target.value as TrialReelMode)}
+                      className="mt-1 h-8 w-full rounded-lg border border-zinc-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                    >
+                      <option value="TRIAL_REELS_SHARE_TO_FOLLOWERS_IF_LIKED">Auto-share if engagement high (recommended)</option>
+                      <option value="TRIAL_REELS_ALWAYS_SHARE_TO_FOLLOWERS">Always share to followers</option>
+                      <option value="TRIAL_REELS_DO_NOT_SHARE_TO_FOLLOWERS">Non-followers only (isolated trial)</option>
+                    </select>
+                  </div>
+                  <label className="flex items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-zinc-300 hover:border-zinc-400 hover:bg-zinc-50 p-2.5 cursor-pointer">
+                    <input type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onReplaceTrialVideo(f); e.target.value = ""; }} />
+                    <Upload className="size-3.5 text-zinc-500" /> <span className="text-xs font-semibold text-zinc-700">Replace video</span>
+                  </label>
+                </>
               )}
-            </div>
-          ) : (
-            <>
-              {/* Standard single preview with dynamic aspect ratio */}
-              {(() => {
-                const isVerticalShortForm =
-                  (item as BulkItemBase).contentType === "short_video" ||
-                  (item as BulkItemBase).contentType === "story" ||
-                  (item as BulkItemBase).contentType === "trial_reel" ||
-                  (item as BulkItemBase).postType === "trial_reel" ||
-                  item.mediaMetadata?.aspectRatio === "9:16" ||
-                  item.mediaMetadata?.orientation === "vertical";
-                const isSquareMedia = item.mediaMetadata?.aspectRatio === "1:1";
 
-                return (
-                  <div
-                    className={cn(
-                      "relative rounded-xl overflow-hidden border border-zinc-200 shadow-xs transition-all",
-                      isVerticalShortForm
-                        ? "aspect-[9/16] max-h-72 w-full max-w-[180px] mx-auto bg-zinc-950 ring-1 ring-zinc-900/10"
-                        : isSquareMedia
-                          ? "aspect-square max-h-64 w-full max-w-[220px] mx-auto bg-zinc-100"
-                          : "aspect-video w-full bg-zinc-100"
-                    )}
-                  >
-                    {item.kind === "image" ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={previewSrc} alt={item.name} className="w-full h-full object-cover" />
-                    ) : item.kind === "video" ? (
-                      <video src={previewSrc} className={cn("w-full h-full", isVerticalShortForm ? "object-cover" : "object-cover")} controls />
-                    ) : (
-                      <div className="flex h-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-zinc-50 to-zinc-100 text-zinc-500">
-                        <MessageSquare className="size-8" />
-                        <span className="text-[11px] font-bold">{item.contentType === "community" ? "X Community post" : "Text post"}</span>
-                      </div>
-                    )}
-                    {item.source === "upload" && item.uploadStatus === "uploading" ? (
-                      <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-1">
-                        <span className="size-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                        <span className="text-[10px] text-white font-medium">Uploading…</span>
-                      </div>
-                    ) : null}
-                    {item.kind === "video" && item.mediaMetadata ? (
-                      <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-xs text-white text-[10px] font-mono font-bold flex items-center gap-1.5 shadow-sm">
-                        <Video className="size-3 text-zinc-300" />
-                        <span className={cn(
-                          item.mediaMetadata.aspectRatio === "9:16" ? "text-emerald-400" : item.mediaMetadata.aspectRatio === "16:9" ? "text-sky-300" : "text-zinc-200"
-                        )}>
-                          {item.mediaMetadata.aspectRatio}
-                        </span>
-                        <span className="text-zinc-500">•</span>
-                        <span>{item.mediaMetadata.formattedDuration}</span>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })()}
-
-              {/* Quick-Fix Toolkit for all presets and platforms */}
+              {/* Quick-Fix Toolkit for vertical phone modes */}
               {item.kind === "video" && item.mediaMetadata ? (
                 (() => {
                   const meta = item.mediaMetadata;
-                  const isVerticalPreset =
-                    item.contentType === "short_video" ||
-                    item.contentType === "story" ||
-                    item.contentType === "trial_reel" ||
-                    (item as BulkItemBase).postType === "trial_reel";
-                  const isShortsMode = item.contentType === "short_video";
-                  const isLongVideoMode = item.contentType === "long_video";
                   const isHorizontal = meta.aspectRatio === "16:9" || meta.orientation === "horizontal";
-                  const isVerticalOrSquare = meta.aspectRatio === "9:16" || meta.orientation === "vertical" || meta.aspectRatio === "1:1";
-                  const isYTShortsOver = hasYouTube && isShortsMode && meta.durationSec > 180;
-                  const isFBReelsOver = item.accountIds.includes("facebook") && isShortsMode && meta.durationSec > 90;
+                  const isYTShortsOver = hasYouTube && effectiveContentType === "short_video" && meta.durationSec > 180;
+                  const isFBReelsOver = item.accountIds.includes("facebook") && effectiveContentType === "short_video" && meta.durationSec > 90;
                   const isLinkedInRatioInvalid = item.accountIds.includes("linkedin") && (meta.isLinkedInRatioValid === false || meta.isExtremeVertical);
-                  const isLongVideoShortNotice = isLongVideoMode && isVerticalOrSquare && meta.durationSec <= 180;
 
-                  // 1. Shorts / Reels / Stories Format Mismatch (16:9 uploaded for vertical formats)
-                  if ((isVerticalPreset && isHorizontal) || isYTShortsOver) {
+                  // 1. Format Mismatch (16:9 uploaded for vertical formats)
+                  if (isHorizontal || isYTShortsOver) {
                     const presetName =
-                      item.contentType === "story"
+                      effectiveContentType === "story"
                         ? "Stories"
-                        : item.contentType === "trial_reel" || (item as BulkItemBase).postType === "trial_reel"
+                        : effectiveContentType === "trial_reel"
                           ? "Trial Reel"
                           : "Shorts/Reels";
                     return (
@@ -5275,7 +5173,7 @@ function PostRow({
                           <AlertCircle className="size-3.5 mt-0.5 shrink-0 text-red-600" />
                           <div className="text-[11px] leading-tight">
                             <span className="font-bold">Format Mismatch:</span>{" "}
-                            {isHorizontal && isVerticalPreset
+                            {isHorizontal
                               ? `16:9 (horizontal) video uploaded for ${presetName} (needs 9:16 vertical).`
                               : `Duration (${meta.formattedDuration}) exceeds YouTube Shorts limit (3m).`}
                           </div>
@@ -5315,47 +5213,7 @@ function PostRow({
                     );
                   }
 
-                  // 2. Long Video Preset + Vertical/Square clip (<= 3 min) Notice
-                  if (isLongVideoShortNotice) {
-                    return (
-                      <div className="rounded-xl border border-sky-200 bg-sky-50/85 p-2.5 space-y-2 text-left animate-in fade-in duration-150">
-                        <div className="flex items-start gap-1.5 text-sky-900">
-                          <Info className="size-3.5 mt-0.5 shrink-0 text-sky-600" />
-                          <div className="text-[11px] leading-tight">
-                            <span className="font-bold">Vertical Video in Long Video:</span>{" "}
-                            {hasYouTube
-                              ? "YouTube will auto-classify this as a Short (custom thumbnails ignored). Facebook will be set to Page Video."
-                              : "This vertical video will publish as standard Page Video on selected platforms."}
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (onSwitchContentType) {
-                                onSwitchContentType("short_video");
-                              } else {
-                                const compatible = platformsForBulkContent("short_video", "images");
-                                const nextAccounts = item.accountIds.filter((id) => compatible.includes(id));
-                                onUpdate({
-                                  contentType: "short_video",
-                                  postType: "standard",
-                                  accountIds: nextAccounts.length > 0 ? nextAccounts : compatible,
-                                } as Partial<BulkItem>);
-                              }
-                              toast({ title: "Switched to Shorts & Reels", description: "Configured for vertical short-form placements.", tone: "success" });
-                            }}
-                            className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
-                          >
-                            <RefreshCw className="size-3" /> Switch to Shorts & Reels
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  // 3. Facebook Reels Over 90s Warning & 1-Click Deselection
+                  // 2. Facebook Reels Over 90s Warning & 1-Click Deselection
                   if (isFBReelsOver) {
                     return (
                       <div className="rounded-xl border border-amber-200 bg-amber-50/85 p-2.5 space-y-2 text-left animate-in fade-in duration-150">
@@ -5384,7 +5242,7 @@ function PostRow({
                     );
                   }
 
-                  // 4. LinkedIn Unsupported Aspect Ratio
+                  // 3. LinkedIn Unsupported Aspect Ratio
                   if (isLinkedInRatioInvalid) {
                     return (
                       <div className="rounded-xl border border-amber-200 bg-amber-50/85 p-2.5 space-y-2 text-left animate-in fade-in duration-150">
@@ -5417,54 +5275,188 @@ function PostRow({
                 })()
               ) : null}
 
+              {(item.frameCoverUrl || item.customCoverUrl) && (
+                <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-zinc-200 text-[10px] font-medium text-emerald-700">
+                  <CheckCircle2 className="size-3 shrink-0 text-emerald-600" />
+                  <span className="truncate">{item.customCoverUrl ? "Custom cover set" : "Frame cover set"}</span>
+                </div>
+              )}
+
               {/* Media actions */}
-              {item.kind !== "text" ? <div className="space-y-1.5">
-                {item.kind === "image" ? (
+              {item.kind === "video" ? (
+                <div className="grid grid-cols-2 gap-1 pt-1">
                   <button
                     type="button"
-                    onClick={onOpenCrop}
-                    className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm cursor-pointer"
+                    onClick={onOpenCover}
+                    className="inline-flex items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-1.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm cursor-pointer"
                   >
-                    <Crop className="size-3 text-zinc-500" /> Crop image
+                    <RefreshCw className="size-3 text-zinc-500" /> Frame
                   </button>
-                ) : (
-                  <div className="grid grid-cols-2 gap-1">
-                    <button
-                      type="button"
-                      onClick={onOpenCover}
-                      className="inline-flex items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-1.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm cursor-pointer"
-                    >
-                      <RefreshCw className="size-3 text-zinc-500" /> Frame
-                    </button>
-                    <button
-                      type="button"
-                      onClick={onPickCustomCover}
-                      className="inline-flex items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-1.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm cursor-pointer"
-                    >
-                      <Upload className="size-3 text-zinc-500" /> Cover
-                    </button>
-                  </div>
-                )}
-
-                {(item.frameCoverUrl || item.customCoverUrl) && (
-                  <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-zinc-200 text-[10px] font-medium text-emerald-700">
-                    <CheckCircle2 className="size-3 shrink-0 text-emerald-600" />
-                    <span className="truncate">{item.customCoverUrl ? "Custom cover set" : "Frame cover set"}</span>
-                  </div>
-                )}
-
-                {hasInstagram && (
+                  <button
+                    type="button"
+                    onClick={onPickCustomCover}
+                    className="inline-flex items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-1.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm cursor-pointer"
+                  >
+                    <Upload className="size-3 text-zinc-500" /> Cover
+                  </button>
                   <button
                     type="button"
                     onClick={onOpenCollaborators}
-                    className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm cursor-pointer"
+                    className="col-span-2 inline-flex items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm cursor-pointer"
                   >
-                    <Users className="size-3 text-zinc-500" />
-                    Collaborators {item.collaborators?.length ? `(${item.collaborators.length})` : ""}
+                    <Users className="size-3 text-zinc-500" /> Collaborators {item.collaborators?.length ? `(${item.collaborators.length})` : ""}
                   </button>
+                </div>
+              ) : item.kind === "image" ? (
+                <button
+                  type="button"
+                  onClick={onOpenCrop}
+                  className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm cursor-pointer"
+                >
+                  <Crop className="size-3 text-zinc-500" /> Crop image
+                </button>
+              ) : null}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {/* Standard Landscape / Image / Text Preview */}
+              <div
+                className={cn(
+                  "relative rounded-xl overflow-hidden border border-zinc-200 shadow-xs transition-all",
+                  effectiveContentType === "image" || (item.kind === "image" && item.mediaMetadata?.aspectRatio === "1:1")
+                    ? "aspect-square max-h-64 w-full bg-zinc-100"
+                    : "aspect-video w-full bg-zinc-900"
                 )}
-              </div> : null}
-            </>
+              >
+                {item.kind === "image" ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={previewSrc} alt={item.name} className="w-full h-full object-cover" />
+                ) : item.kind === "video" ? (
+                  <video src={previewSrc} className="w-full h-full object-contain" controls />
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-zinc-50 to-zinc-100 text-zinc-500">
+                    <MessageSquare className="size-8" />
+                    <span className="text-[11px] font-bold">{effectiveContentType === "community" ? "X Community post" : "Text post"}</span>
+                  </div>
+                )}
+
+                {item.source === "upload" && item.uploadStatus === "uploading" && (
+                  <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-1">
+                    <span className="size-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    <span className="text-[10px] text-white font-medium">Uploading…</span>
+                  </div>
+                )}
+
+                {effectiveContentType === "long_video" && (
+                  <span className="absolute top-2 left-2 text-[10px] bg-zinc-900/90 text-white px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-sm">
+                    <Video className="size-3" /> Long Video
+                  </span>
+                )}
+
+                {effectiveContentType === "image" && (
+                  <span className="absolute top-2 left-2 text-[10px] bg-zinc-900/80 text-white px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-sm">
+                    <ImageIcon className="size-3" /> Image Post
+                  </span>
+                )}
+
+                {item.kind === "video" && item.mediaMetadata ? (
+                  <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-xs text-white text-[10px] font-mono font-bold flex items-center gap-1.5 shadow-sm">
+                    <Video className="size-3 text-zinc-300" />
+                    <span className={cn(
+                      item.mediaMetadata.aspectRatio === "9:16" ? "text-emerald-400" : item.mediaMetadata.aspectRatio === "16:9" ? "text-sky-300" : "text-zinc-200"
+                    )}>
+                      {item.mediaMetadata.aspectRatio}
+                    </span>
+                    <span className="text-zinc-500">•</span>
+                    <span>{item.mediaMetadata.formattedDuration}</span>
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Long Video Notice if vertical <= 3 min */}
+              {effectiveContentType === "long_video" && item.kind === "video" && item.mediaMetadata && (item.mediaMetadata.aspectRatio === "9:16" || item.mediaMetadata.orientation === "vertical" || item.mediaMetadata.aspectRatio === "1:1") && item.mediaMetadata.durationSec <= 180 && (
+                <div className="rounded-xl border border-sky-200 bg-sky-50/85 p-2.5 space-y-2 text-left animate-in fade-in duration-150">
+                  <div className="flex items-start gap-1.5 text-sky-900">
+                    <Info className="size-3.5 mt-0.5 shrink-0 text-sky-600" />
+                    <div className="text-[11px] leading-tight">
+                      <span className="font-bold">Vertical Video in Long Video:</span>{" "}
+                      {hasYouTube
+                        ? "YouTube will auto-classify this as a Short (custom thumbnails ignored). Facebook will be set to Page Video."
+                        : "This vertical video will publish as standard Page Video on selected platforms."}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onSwitchContentType) {
+                          onSwitchContentType("short_video");
+                        } else {
+                          const compatible = platformsForBulkContent("short_video", "images");
+                          const nextAccounts = item.accountIds.filter((id) => compatible.includes(id));
+                          onUpdate({
+                            contentType: "short_video",
+                            postType: "standard",
+                            accountIds: nextAccounts.length > 0 ? nextAccounts : compatible,
+                          } as Partial<BulkItem>);
+                        }
+                        toast({ title: "Switched to Shorts & Reels", description: "Configured for vertical short-form placements.", tone: "success" });
+                      }}
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
+                    >
+                      <RefreshCw className="size-3" /> Switch to Shorts & Reels
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {(item.frameCoverUrl || item.customCoverUrl) && (
+                <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-zinc-200 text-[10px] font-medium text-emerald-700">
+                  <CheckCircle2 className="size-3 shrink-0 text-emerald-600" />
+                  <span className="truncate">{item.customCoverUrl ? "Custom cover set" : "Frame cover set"}</span>
+                </div>
+              )}
+
+              {/* Media actions */}
+              {item.kind !== "text" ? (
+                <div className="space-y-1.5 pt-1">
+                  {item.kind === "image" ? (
+                    <button
+                      type="button"
+                      onClick={onOpenCrop}
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm cursor-pointer"
+                    >
+                      <Crop className="size-3 text-zinc-500" /> Crop image
+                    </button>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-1">
+                      <button
+                        type="button"
+                        onClick={onOpenCover}
+                        className="inline-flex items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-1.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm cursor-pointer"
+                      >
+                        <RefreshCw className="size-3 text-zinc-500" /> Frame
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onPickCustomCover}
+                        className="inline-flex items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-1.5 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm cursor-pointer"
+                      >
+                        <Upload className="size-3 text-zinc-500" /> Cover
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onOpenCollaborators}
+                        className="col-span-2 inline-flex items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[10px] font-semibold text-zinc-700 hover:bg-zinc-50 shadow-sm cursor-pointer"
+                      >
+                        <Users className="size-3 text-zinc-500" /> Collaborators {item.collaborators?.length ? `(${item.collaborators.length})` : ""}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
           )}
 
           <div className="space-y-2 pt-2 border-t border-zinc-200">

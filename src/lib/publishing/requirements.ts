@@ -73,7 +73,7 @@ export interface MediaMeta {
 export interface RequirementsInput {
   captionByPlatform: Partial<Record<PlatformId, string>>;
   media: MediaMeta[];
-  postType?: ComposerMode;
+  postType?: string;
   contentType?: string;
   /** Per-platform advanced options (Feature 1). */
   advancedByPlatform?: Partial<Record<PlatformId, PlatformAdvancedOptions>>;
