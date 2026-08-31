@@ -73,6 +73,8 @@ export interface MediaMeta {
 export interface RequirementsInput {
   captionByPlatform: Partial<Record<PlatformId, string>>;
   media: MediaMeta[];
+  postType?: ComposerMode;
+  contentType?: string;
   /** Per-platform advanced options (Feature 1). */
   advancedByPlatform?: Partial<Record<PlatformId, PlatformAdvancedOptions>>;
   /** Pre-computed media kind for the post (mixed → prefer video). */
@@ -88,7 +90,8 @@ const charCount = (s: string) => Array.from(s).length;
 function checkMediaForPlatform(
   platform: PlatformId,
   media: MediaMeta[],
-  options?: PlatformAdvancedOptions
+  options?: PlatformAdvancedOptions,
+  input?: RequirementsInput
 ): ReadinessIssue[] {
   const issues: ReadinessIssue[] = [];
   const cap = getCapability(platform);
@@ -182,8 +185,15 @@ function checkMediaForPlatform(
           }
         }
 
-        // YouTube auto-Short notice for vertical/square <= 180s
-        if (platform === "youtube" && m.durationSec != null && m.durationSec <= 180) {
+        // YouTube auto-Short notice for vertical/square <= 180s (only when in long video or standard preset)
+        if (
+          platform === "youtube" &&
+          m.durationSec != null &&
+          m.durationSec <= 180 &&
+          input?.contentType !== "short_video" &&
+          input?.postType !== "story" &&
+          input?.postType !== "trial_reel"
+        ) {
           if (m.orientation === "vertical" || m.aspectRatio === "9:16" || m.aspectRatio === "1:1") {
             issues.push({
               code: "youtube_auto_short_notice",
@@ -405,7 +415,7 @@ export function checkRequirements(
     const caption = input.captionByPlatform[platform] ?? "";
     const options = input.advancedByPlatform?.[platform];
 
-    issues.push(...checkMediaForPlatform(platform, input.media, options));
+    issues.push(...checkMediaForPlatform(platform, input.media, options, input));
     issues.push(...checkCaption(platform, caption));
     issues.push(...checkRequiredTargets(platform, options));
     issues.push(...checkHardCap(platform, input.recent24hCounts?.[platform]));

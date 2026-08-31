@@ -469,6 +469,8 @@ function buildReadinessForItem(item: BulkItem) {
     media,
     advancedByPlatform: item.advancedByPlatform ?? {},
     composerMediaKind: mediaKind,
+    postType: (item as BulkItemBase).postType,
+    contentType: (item as BulkItemBase).contentType,
   });
 }
 
@@ -5013,6 +5015,64 @@ function PostRow({
                       ? "⚠️ Carousel needs at least 2 slides"
                       : `${slides.length}/10 slides • ${(item as BulkItemBase).carouselMediaMode ?? "images"}`}
                   </p>
+
+                  {/* Carousel Quick-Fix Toolkit when < 2 slides */}
+                  {slides.length < 2 && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50/85 p-2.5 space-y-2 text-left animate-in fade-in duration-150">
+                      <div className="flex items-start gap-1.5 text-amber-900">
+                        <AlertCircle className="size-3.5 mt-0.5 shrink-0 text-amber-600" />
+                        <div className="text-[11px] leading-tight">
+                          <span className="font-bold">Carousel Needs 2+ Slides:</span>{" "}
+                          Carousels require at least 2 slides (currently has {slides.length}).
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        <label className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer">
+                          <input
+                            type="file"
+                            accept={bulkAcceptForContentType("carousel", (item as BulkItemBase).carouselMediaMode ?? "images")}
+                            multiple
+                            className="hidden"
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files ?? []);
+                              if (files.length) onAddCarouselSlides(files);
+                              e.target.value = "";
+                            }}
+                          />
+                          <Plus className="size-3" /> Add Another Slide
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const firstKind = slides[0]?.kind ?? item.kind;
+                            const targetType: BulkContentType = firstKind === "video" ? "long_video" : "image";
+                            if (onSwitchContentType) {
+                              onSwitchContentType(targetType);
+                            } else {
+                              const compatible = platformsForBulkContent(targetType, "images");
+                              onUpdate({
+                                contentType: targetType,
+                                postType: "standard",
+                                kind: firstKind === "video" ? "video" : "image",
+                                accountIds: item.accountIds.filter((id) => compatible.includes(id)),
+                              } as Partial<BulkItem>);
+                            }
+                            toast({
+                              title: `Switched to Single ${firstKind === "video" ? "Video" : "Image"} Post`,
+                              description: "Converted carousel to single-post format.",
+                              tone: "success",
+                            });
+                          }}
+                          className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-white border border-amber-300 hover:bg-amber-100/60 text-amber-950 px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
+                        >
+                          <RefreshCw className="size-3" /> Switch to Single {slides[0]?.kind === "video" ? "Video" : "Image"} Post
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {(item.frameCoverUrl || item.customCoverUrl) && (
                     <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-white border border-zinc-200 text-[10px] font-medium text-emerald-700">
                       <CheckCircle2 className="size-3 shrink-0 text-emerald-600" />
@@ -5081,47 +5141,118 @@ function PostRow({
                 <input type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onReplaceTrialVideo(f); e.target.value = ""; }} />
                 <Upload className="size-3.5 text-zinc-500" /> <span className="text-xs font-semibold text-zinc-700">Replace video</span>
               </label>
+
+              {/* Trial Reel Format Mismatch Quick-Fix */}
+              {item.mediaMetadata && (item.mediaMetadata.aspectRatio === "16:9" || item.mediaMetadata.orientation === "horizontal") && (
+                <div className="rounded-xl border border-red-200 bg-red-50/80 p-2.5 space-y-2 text-left animate-in fade-in duration-150">
+                  <div className="flex items-start gap-1.5 text-red-800">
+                    <AlertCircle className="size-3.5 mt-0.5 shrink-0 text-red-600" />
+                    <div className="text-[11px] leading-tight">
+                      <span className="font-bold">Format Mismatch:</span>{" "}
+                      16:9 (horizontal) video uploaded for Trial Reel (needs 9:16 vertical).
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <button
+                      type="button"
+                      onClick={onOpenCrop}
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
+                    >
+                      <Crop className="size-3" /> Launch Cropper (9:16)
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onSwitchContentType) {
+                          onSwitchContentType("long_video");
+                        } else {
+                          const compatible = platformsForBulkContent("long_video", "images");
+                          const nextAccounts = item.accountIds.filter((id) => compatible.includes(id));
+                          onUpdate({
+                            contentType: "long_video",
+                            postType: "standard",
+                            accountIds: nextAccounts.length > 0 ? nextAccounts : compatible,
+                          } as Partial<BulkItem>);
+                        }
+                        toast({ title: "Switched to Long-Form Video", description: "Post type and platform requirements adjusted for 16:9.", tone: "success" });
+                      }}
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-white border border-red-200 hover:bg-red-100/50 text-red-900 px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
+                    >
+                      <RefreshCw className="size-3" /> Switch to Long Video
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <>
-              {/* Standard single preview */}
-              <div className="relative rounded-xl overflow-hidden bg-zinc-100 aspect-video border border-zinc-200">
-                {item.kind === "image" ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={previewSrc} alt={item.name} className="w-full h-full object-cover" />
-                ) : item.kind === "video" ? (
-                  <video src={previewSrc} className="w-full h-full object-cover" controls />
-                ) : (
-                  <div className="flex h-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-zinc-50 to-zinc-100 text-zinc-500">
-                    <MessageSquare className="size-8" />
-                    <span className="text-[11px] font-bold">{item.contentType === "community" ? "X Community post" : "Text post"}</span>
+              {/* Standard single preview with dynamic aspect ratio */}
+              {(() => {
+                const isVerticalShortForm =
+                  (item as BulkItemBase).contentType === "short_video" ||
+                  (item as BulkItemBase).contentType === "story" ||
+                  (item as BulkItemBase).contentType === "trial_reel" ||
+                  (item as BulkItemBase).postType === "trial_reel" ||
+                  item.mediaMetadata?.aspectRatio === "9:16" ||
+                  item.mediaMetadata?.orientation === "vertical";
+                const isSquareMedia = item.mediaMetadata?.aspectRatio === "1:1";
+
+                return (
+                  <div
+                    className={cn(
+                      "relative rounded-xl overflow-hidden border border-zinc-200 shadow-xs transition-all",
+                      isVerticalShortForm
+                        ? "aspect-[9/16] max-h-72 w-full max-w-[180px] mx-auto bg-zinc-950 ring-1 ring-zinc-900/10"
+                        : isSquareMedia
+                          ? "aspect-square max-h-64 w-full max-w-[220px] mx-auto bg-zinc-100"
+                          : "aspect-video w-full bg-zinc-100"
+                    )}
+                  >
+                    {item.kind === "image" ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={previewSrc} alt={item.name} className="w-full h-full object-cover" />
+                    ) : item.kind === "video" ? (
+                      <video src={previewSrc} className={cn("w-full h-full", isVerticalShortForm ? "object-cover" : "object-cover")} controls />
+                    ) : (
+                      <div className="flex h-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-zinc-50 to-zinc-100 text-zinc-500">
+                        <MessageSquare className="size-8" />
+                        <span className="text-[11px] font-bold">{item.contentType === "community" ? "X Community post" : "Text post"}</span>
+                      </div>
+                    )}
+                    {item.source === "upload" && item.uploadStatus === "uploading" ? (
+                      <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-1">
+                        <span className="size-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                        <span className="text-[10px] text-white font-medium">Uploading…</span>
+                      </div>
+                    ) : null}
+                    {item.kind === "video" && item.mediaMetadata ? (
+                      <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-xs text-white text-[10px] font-mono font-bold flex items-center gap-1.5 shadow-sm">
+                        <Video className="size-3 text-zinc-300" />
+                        <span className={cn(
+                          item.mediaMetadata.aspectRatio === "9:16" ? "text-emerald-400" : item.mediaMetadata.aspectRatio === "16:9" ? "text-sky-300" : "text-zinc-200"
+                        )}>
+                          {item.mediaMetadata.aspectRatio}
+                        </span>
+                        <span className="text-zinc-500">•</span>
+                        <span>{item.mediaMetadata.formattedDuration}</span>
+                      </div>
+                    ) : null}
                   </div>
-                )}
-                {item.source === "upload" && item.uploadStatus === "uploading" ? (
-                  <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-1">
-                    <span className="size-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                    <span className="text-[10px] text-white font-medium">Uploading…</span>
-                  </div>
-                ) : null}
-                {item.kind === "video" && item.mediaMetadata ? (
-                  <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-xs text-white text-[10px] font-mono font-bold flex items-center gap-1.5 shadow-sm">
-                    <Video className="size-3 text-zinc-300" />
-                    <span className={cn(
-                      item.mediaMetadata.aspectRatio === "9:16" ? "text-emerald-400" : item.mediaMetadata.aspectRatio === "16:9" ? "text-sky-300" : "text-zinc-200"
-                    )}>
-                      {item.mediaMetadata.aspectRatio}
-                    </span>
-                    <span className="text-zinc-500">•</span>
-                    <span>{item.mediaMetadata.formattedDuration}</span>
-                  </div>
-                ) : null}
-              </div>
+                );
+              })()}
 
               {/* Quick-Fix Toolkit for all presets and platforms */}
               {item.kind === "video" && item.mediaMetadata ? (
                 (() => {
                   const meta = item.mediaMetadata;
-                  const isShortsMode = item.contentType === "short_video" || item.contentType === "trial_reel";
+                  const isVerticalPreset =
+                    item.contentType === "short_video" ||
+                    item.contentType === "story" ||
+                    item.contentType === "trial_reel" ||
+                    (item as BulkItemBase).postType === "trial_reel";
+                  const isShortsMode = item.contentType === "short_video";
                   const isLongVideoMode = item.contentType === "long_video";
                   const isHorizontal = meta.aspectRatio === "16:9" || meta.orientation === "horizontal";
                   const isVerticalOrSquare = meta.aspectRatio === "9:16" || meta.orientation === "vertical" || meta.aspectRatio === "1:1";
@@ -5130,16 +5261,22 @@ function PostRow({
                   const isLinkedInRatioInvalid = item.accountIds.includes("linkedin") && (meta.isLinkedInRatioValid === false || meta.isExtremeVertical);
                   const isLongVideoShortNotice = isLongVideoMode && isVerticalOrSquare && meta.durationSec <= 180;
 
-                  // 1. Shorts / Reels Format Mismatch (16:9 uploaded for Shorts)
-                  if ((isShortsMode && isHorizontal) || isYTShortsOver) {
+                  // 1. Shorts / Reels / Stories Format Mismatch (16:9 uploaded for vertical formats)
+                  if ((isVerticalPreset && isHorizontal) || isYTShortsOver) {
+                    const presetName =
+                      item.contentType === "story"
+                        ? "Stories"
+                        : item.contentType === "trial_reel" || (item as BulkItemBase).postType === "trial_reel"
+                          ? "Trial Reel"
+                          : "Shorts/Reels";
                     return (
                       <div className="rounded-xl border border-red-200 bg-red-50/80 p-2.5 space-y-2 text-left animate-in fade-in duration-150">
                         <div className="flex items-start gap-1.5 text-red-800">
                           <AlertCircle className="size-3.5 mt-0.5 shrink-0 text-red-600" />
                           <div className="text-[11px] leading-tight">
                             <span className="font-bold">Format Mismatch:</span>{" "}
-                            {isHorizontal && isShortsMode
-                              ? "16:9 (horizontal) video uploaded for Shorts/Reels (needs 9:16 vertical)."
+                            {isHorizontal && isVerticalPreset
+                              ? `16:9 (horizontal) video uploaded for ${presetName} (needs 9:16 vertical).`
                               : `Duration (${meta.formattedDuration}) exceeds YouTube Shorts limit (3m).`}
                           </div>
                         </div>
