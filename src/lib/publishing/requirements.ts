@@ -281,7 +281,7 @@ function checkMediaForPlatform(
         code: `${kind}_bad_duration`,
         severity: "blocked",
         message: `${cap.displayName} requires video duration of ${durText}.`,
-        actionLabel: platform === "facebook" && (fbType === "REELS" || fbType === "STORIES") ? "Deselect Facebook" : "Re-edit video",
+        actionLabel: `Deselect ${cap.displayName}`,
       });
     }
     // Handle video metadata states: loading / error / unknown

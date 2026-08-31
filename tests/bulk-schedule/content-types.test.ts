@@ -8,8 +8,31 @@ describe("bulk content platform auto-selection", () => {
     ]);
   });
 
-  it("targets the four short-form video destinations", () => {
-    expect(platformsForBulkContent("short_video")).toEqual(["instagram", "facebook", "tiktok", "youtube"]);
+  it("targets all video-capable destinations for short_video and long_video", () => {
+    const shorts = platformsForBulkContent("short_video");
+    expect(shorts).toContain("youtube");
+    expect(shorts).toContain("instagram");
+    expect(shorts).toContain("facebook");
+    expect(shorts).toContain("tiktok");
+    expect(shorts).toContain("twitter");
+    expect(shorts).toContain("threads");
+    expect(shorts).toContain("pinterest");
+    expect(shorts).toContain("linkedin");
+    expect(shorts).toContain("bluesky");
+    expect(shorts).toContain("reddit");
+    expect(shorts).toContain("telegram");
+    expect(shorts).toContain("discord");
+    expect(shorts).toContain("google_business");
+
+    const longs = platformsForBulkContent("long_video");
+    expect(longs).toContain("youtube");
+    expect(longs).toContain("instagram");
+    expect(longs).toContain("facebook");
+    expect(longs).toContain("tiktok");
+    expect(longs).toContain("twitter");
+    expect(longs).toContain("threads");
+    expect(longs).toContain("pinterest");
+    expect(longs).toContain("linkedin");
   });
 
   it("limits stories and X community posts to documented destinations", () => {

@@ -40,18 +40,38 @@ const IMAGE_PLATFORMS: PlatformId[] = [
   "google_business",
 ];
 
-const LONG_VIDEO_PLATFORMS: PlatformId[] = [
+const ALL_VIDEO_PLATFORMS: PlatformId[] = [
   "youtube",
-  "tiktok",
   "facebook",
-  "linkedin",
+  "instagram",
+  "tiktok",
   "twitter",
+  "linkedin",
+  "threads",
+  "pinterest",
   "reddit",
-  "discord",
+  "bluesky",
   "telegram",
+  "discord",
+  "google_business",
 ];
 
-const SHORT_VIDEO_PLATFORMS: PlatformId[] = ["instagram", "facebook", "tiktok", "youtube"];
+const LONG_VIDEO_PLATFORMS: PlatformId[] = [
+  "youtube",
+  "facebook",
+  "instagram",
+  "tiktok",
+  "twitter",
+  "linkedin",
+  "threads",
+  "pinterest",
+  "reddit",
+  "bluesky",
+  "telegram",
+  "discord",
+];
+
+const SHORT_VIDEO_PLATFORMS: PlatformId[] = ALL_VIDEO_PLATFORMS;
 const STORY_PLATFORMS: PlatformId[] = ["instagram", "facebook"];
 
 const IMAGE_CAROUSEL_PLATFORMS: PlatformId[] = [
