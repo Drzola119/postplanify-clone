@@ -58,7 +58,10 @@ export interface MediaMeta {
   width?: number;
   height?: number;
   aspectRatio?: ClassifiedAspectRatio;
+  aspectRatioValue?: number;
   orientation?: VideoOrientation;
+  isLinkedInRatioValid?: boolean;
+  isExtremeVertical?: boolean;
   /** False while browser metadata probe is still running; undefined = probe not started / not applicable. */
   metadataLoaded?: boolean;
   /** Error string when metadata probe failed. */

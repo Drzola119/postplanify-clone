@@ -37,6 +37,7 @@ import {
   Crop,
   RefreshCw,
   Link2,
+  Info,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -433,7 +434,10 @@ function buildReadinessForItem(item: BulkItem) {
       width: base.mediaMetadata?.width,
       height: base.mediaMetadata?.height,
       aspectRatio: base.mediaMetadata?.aspectRatio,
+      aspectRatioValue: base.mediaMetadata?.aspectRatioValue,
       orientation: base.mediaMetadata?.orientation,
+      isLinkedInRatioValid: base.mediaMetadata?.isLinkedInRatioValid,
+      isExtremeVertical: base.mediaMetadata?.isExtremeVertical,
       metadataLoaded: base.mediaMetadata != null,
     }];
   } else if (item.kind === "text") {
@@ -448,7 +452,10 @@ function buildReadinessForItem(item: BulkItem) {
       width: base.mediaMetadata?.width,
       height: base.mediaMetadata?.height,
       aspectRatio: base.mediaMetadata?.aspectRatio,
+      aspectRatioValue: base.mediaMetadata?.aspectRatioValue,
       orientation: base.mediaMetadata?.orientation,
+      isLinkedInRatioValid: base.mediaMetadata?.isLinkedInRatioValid,
+      isExtremeVertical: base.mediaMetadata?.isExtremeVertical,
       metadataLoaded: base.mediaMetadata != null,
     }];
   }
@@ -5168,7 +5175,7 @@ function PostRow({
                             onClick={() => {
                               const nextAccounts = item.accountIds.filter((id) => id !== "facebook");
                               onUpdate({ accountIds: nextAccounts } as Partial<BulkItem>);
-                              toast({ title: "Deselected Facebook", description: "Post remains active for other ready platforms.", tone: "neutral" });
+                              toast({ title: "Deselected Facebook", description: "Post remains active for other ready platforms.", tone: "info" });
                             }}
                             className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
                           >
@@ -5197,7 +5204,7 @@ function PostRow({
                             onClick={() => {
                               const nextAccounts = item.accountIds.filter((id) => id !== "linkedin");
                               onUpdate({ accountIds: nextAccounts } as Partial<BulkItem>);
-                              toast({ title: "Deselected LinkedIn", description: "Post remains active for other ready platforms.", tone: "neutral" });
+                              toast({ title: "Deselected LinkedIn", description: "Post remains active for other ready platforms.", tone: "info" });
                             }}
                             className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
                           >
