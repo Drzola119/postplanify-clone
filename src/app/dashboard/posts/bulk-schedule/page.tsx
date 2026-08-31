@@ -1011,9 +1011,8 @@ export default function BulkSchedulePage() {
 
   const selectCompatibleAccounts = useCallback((nextType: BulkContentType, nextCarouselMode: CarouselMediaMode) => {
     const compatible = platformsForBulkContent(nextType, nextCarouselMode);
-    const connected = compatible.filter((id) => connectedPlatforms.has(id));
-    setAccounts(new Set(connectedPlatforms.size > 0 ? connected : compatible));
-  }, [connectedPlatforms]);
+    setAccounts(new Set(compatible));
+  }, []);
 
   const handleContentTypeChange = useCallback((next: BulkContentType, updateAllPosts = true) => {
     setContentType(next);
@@ -1026,11 +1025,10 @@ export default function BulkSchedulePage() {
         prev.map((it) => {
           const base = it as BulkItemBase;
           const compatible = platformsForBulkContent(next, carouselMediaMode);
-          const connectedCompatible = compatible.filter((id) => connectedPlatforms.has(id));
           const filteredAccounts = it.accountIds.filter((id) => compatible.includes(id));
           const finalAccounts = filteredAccounts.length > 0
             ? filteredAccounts
-            : (connectedCompatible.length > 0 ? connectedCompatible : compatible);
+            : compatible;
 
           let advanced = { ...(base.advancedByPlatform ?? {}) } as Record<string, Record<string, unknown>>;
           if (next === "short_video") {
@@ -1084,8 +1082,7 @@ export default function BulkSchedulePage() {
         const base = it as BulkItemBase;
         const nextPostType = composerModeForContentType(contentType);
         const compatible = platformsForBulkContent(contentType, carouselMediaMode);
-        const connectedCompatible = compatible.filter((id) => connectedPlatforms.has(id));
-        const filteredAccounts = connectedPlatforms.size > 0 ? connectedCompatible : compatible;
+        const filteredAccounts = compatible;
         let advanced = { ...(base.advancedByPlatform ?? {}) } as Record<string, Record<string, unknown>>;
         if (contentType === "short_video") {
           advanced.instagram = { ...(advanced.instagram ?? {}), instagram_media_type: "REELS" };
@@ -1927,7 +1924,7 @@ export default function BulkSchedulePage() {
       } else if (contentType === "carousel") {
         const fileKind = isVideo ? "video" : isImage ? "image" : null;
         if (!fileKind || !acceptsMediaKind(contentType, fileKind, carouselMediaMode)) {
-          skipped.push(`${file.name} (${carouselMediaMode === "images" ? "Images-only" : carouselMediaMode === "videos" ? "Videos-only" : "Mixed"} carousel does not accept ${file.type || ext})`);
+          skipped.push(`${file.name} (${carouselMediaMode === "images" ? "Images-only" : "Mixed"} carousel does not accept ${file.type || ext})`);
           continue;
         }
       } else if (contentType === "image" && !isImage) {
@@ -3239,8 +3236,7 @@ export default function BulkSchedulePage() {
                 type="button"
                 onClick={() => {
                   const compatible = platformsForBulkContent(contentType, carouselMediaMode);
-                  const connected = compatible.filter((id) => connectedPlatforms.has(id));
-                  setAccounts(new Set(connectedPlatforms.size > 0 ? connected : compatible));
+                  setAccounts(new Set(compatible));
                 }}
                 className="text-zinc-600 hover:text-zinc-900 underline-offset-2 hover:underline cursor-pointer"
               >

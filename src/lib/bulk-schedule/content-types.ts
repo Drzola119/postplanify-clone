@@ -11,7 +11,7 @@ export type BulkContentType =
   | "document"
   | "community";
 
-export type CarouselMediaMode = "images" | "videos" | "mixed";
+export type CarouselMediaMode = "images" | "mixed";
 
 const TEXT_PLATFORMS: PlatformId[] = [
   "linkedin",
@@ -88,8 +88,8 @@ const IMAGE_CAROUSEL_PLATFORMS: PlatformId[] = [
   "google_business",
 ];
 
-// Upload-Post currently accepts video files inside the photo/carousel endpoint
-// only for Instagram and Threads. That covers both video-only and mixed sets.
+// Upload-Post accepts video files inside the photo/carousel endpoint
+// only for Instagram and Threads when mixed with images or media.
 const VIDEO_CAROUSEL_PLATFORMS: PlatformId[] = ["instagram", "threads"];
 
 export const BULK_CONTENT_PLATFORM_MAP: Record<Exclude<BulkContentType, "carousel">, PlatformId[]> = {
@@ -123,7 +123,6 @@ export function acceptsMediaKind(
   if (contentType === "story") return kind === "image" || kind === "video";
   if (contentType === "document") return kind === "document";
   if (carouselMode === "images") return kind === "image";
-  if (carouselMode === "videos") return kind === "video";
   return kind === "image" || kind === "video";
 }
 

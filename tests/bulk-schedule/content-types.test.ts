@@ -42,7 +42,6 @@ describe("bulk content platform auto-selection", () => {
 
   it("changes carousel destinations by media composition", () => {
     expect(platformsForBulkContent("carousel", "images")).toContain("facebook");
-    expect(platformsForBulkContent("carousel", "videos")).toEqual(["instagram", "threads"]);
     expect(platformsForBulkContent("carousel", "mixed")).toEqual(["instagram", "threads"]);
   });
 

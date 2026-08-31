@@ -35,8 +35,7 @@ const CONTENT_TYPES: Array<{
 
 const CAROUSEL_MODES: Array<{ id: CarouselMediaMode; label: string; icon: React.ReactNode }> = [
   { id: "images", label: "Images only", icon: <Images className="size-3.5" /> },
-  { id: "videos", label: "Videos only", icon: <Video className="size-3.5" /> },
-  { id: "mixed", label: "Images + videos", icon: <Layers3 className="size-3.5" /> },
+  { id: "mixed", label: "Images + videos (Mixed)", icon: <Layers3 className="size-3.5" /> },
 ];
 
 interface BulkContentTypeSelectorProps {
