@@ -48,6 +48,7 @@ import { ProStatIcon } from "@/components/dashboard/pro-stat-icon";
 import { PageHelp } from "@/components/dashboard/help/page-help";
 import { getHelpConfig } from "@/lib/help/content";
 import { useToast } from "@/components/ui/toast";
+import { CaptionStatusBadge } from "@/components/dashboard/caption-status-badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
 import {
@@ -159,6 +160,10 @@ type BulkItemBase = {
   // per-item media kind override for advanced panel
   mediaKind?: MediaKind;
   mediaMetadata?: VideoMetadata;
+  // Caption queue metadata
+  captionGenerationMode?: "automatic" | "manual";
+  captionJobId?: string;
+  captionJobStatus?: string;
 };
 
 type UploadedBulkItem = BulkItemBase & {
@@ -5106,6 +5111,11 @@ function PostRow({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <CaptionStatusBadge
+            status={item.captionJobStatus || (item.captionGenerationMode === "automatic" ? "pending" : undefined)}
+            jobId={item.captionJobId}
+          />
+
           <ReadinessBadgePopover
             readiness={readiness}
             item={item}

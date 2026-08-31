@@ -4,8 +4,10 @@ export async function register() {
     const { startQueueWorker } = await import("./lib/queue/worker");
     const { startAutomationWorker } = await import("./lib/queue/automation-worker");
     const { startVideoRenderWorker } = await import("./lib/queue/video-render-worker");
+    const { startCaptionWorker } = await import("./lib/queue/caption-worker");
     startQueueWorker();
     startAutomationWorker();
     startVideoRenderWorker();
+    startCaptionWorker();
   }
 }

@@ -1,8 +1,7 @@
 import "server-only";
 import { adminDb, FieldValue } from "@/lib/db";
-import { toIso } from "@/lib/db/date-utils";
 import { CAPTION_CONFIG } from "@/lib/config/caption-config";
-import { calculateCaptionDeadlines, calculatePriorityScore } from "@/lib/ai/fair-scheduler";
+import { calculateCaptionDeadlines, calculatePriorityScore, estimateQueuePressure, getPressureLeadMs } from "@/lib/ai/fair-scheduler";
 import { calculateCaptionFingerprint } from "@/lib/ai/fingerprint";
 import type { CaptionJobDoc, CaptionJobInputSnapshot, CaptionJobUsage, PostDoc } from "@/lib/db/schema";
 
@@ -152,7 +151,6 @@ export async function listEligibleCaptionJobs(limitCount = 50): Promise<CaptionJ
   if (!adminDb) return [];
   const coll = collection();
   const now = new Date();
-  const nowIso = now.toISOString();
 
   // Query pending / retrying / ready_to_run jobs
   const snap = await coll
@@ -161,6 +159,8 @@ export async function listEligibleCaptionJobs(limitCount = 50): Promise<CaptionJ
     .get();
 
   const candidates: CaptionJobDoc[] = [];
+  const pressure = estimateQueuePressure(snap.size);
+  const pressureLeadMs = getPressureLeadMs(pressure);
 
   for (const d of snap.docs) {
     const data = d.data() as CaptionJobDoc;
@@ -171,9 +171,12 @@ export async function listEligibleCaptionJobs(limitCount = 50): Promise<CaptionJ
       if (nextMs > now.getTime()) continue;
     }
 
-    // Check if generation start window has arrived (or emergency)
+    // Check if generation start window has arrived (adapts dynamically to queue pressure)
     const recMs = new Date(data.generationRecommendedAt || data.scheduledAt).getTime();
-    if (recMs <= now.getTime() || snap.size >= 50) {
+    const deadlineMs = new Date(data.generationDeadline || data.scheduledAt).getTime();
+    const effectiveEarliestMs = Math.min(recMs, deadlineMs - pressureLeadMs);
+
+    if (effectiveEarliestMs <= now.getTime() || snap.size >= 50) {
       candidates.push({ id: d.id, ...data });
     }
   }

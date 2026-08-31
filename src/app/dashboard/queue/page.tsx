@@ -39,6 +39,7 @@ import { ProPlatformIcon, ProOverflowBadge } from "@/components/dashboard/pro-pl
 import { ProStatIcon } from "@/components/dashboard/pro-stat-icon";
 import { cn } from "@/lib/utils";
 import { fmtScheduled, bucketLabel, type ScheduleBucket } from "@/lib/queue/buckets";
+import { CaptionStatusBadge } from "@/components/dashboard/caption-status-badge";
 
 interface QueueRow {
   id: string;
@@ -53,6 +54,9 @@ interface QueueRow {
   firstComment?: string;
   createdAt?: string;
   updatedAt?: string;
+  captionJobStatus?: string;
+  captionJobId?: string;
+  captionGenerationMode?: string;
 }
 
 interface QueueResponse {
@@ -1018,6 +1022,11 @@ function QueueRowView({
             </div>
 
             <StatusPill tone={tone} label={row.status} />
+
+            <CaptionStatusBadge
+              status={row.captionJobStatus}
+              jobId={row.captionJobId}
+            />
 
             {isPast && (
               <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold bg-red-50 text-red-700 border border-red-200">

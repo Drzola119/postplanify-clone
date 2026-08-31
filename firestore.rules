@@ -227,5 +227,9 @@ service cloud.firestore {
     match /apiLogs/{docId} {
       allow read, write: if false; // admin SDK only
     }
+    match /captionJobs/{jobId} {
+      allow read: if isSignedIn() && isMember(resource.data.workspaceId);
+      allow write: if false; // server-only via adminDb
+    }
   }
 }

@@ -1,6 +1,8 @@
 import "server-only";
 import { CAPTION_CONFIG } from "@/lib/config/caption-config";
 import { globalGrokRateLimiter } from "@/lib/ai/rate-limiter";
+import { tryAcquireDistributedLease } from "@/lib/ai/rate-limiter-distributed";
+import { createLogger } from "@/lib/log";
 import { buildCaptionPrompt } from "@/lib/ai/caption-templates";
 import { fitCaptionForPlatform } from "@/lib/ai/caption-fit";
 import type { PlatformId } from "@/lib/db/schema";
@@ -118,6 +120,8 @@ function classifyError(status: number, message: string): GrokGatewayError {
   return { code: "UNKNOWN", message: message || `Unexpected error (${status})`, statusCode: status, retryable: true };
 }
 
+const log = createLogger("caption");
+
 /**
  * Authoritative Grok Gateway for all caption generation requests.
  * Enforces rate limits, token estimation, timeout handling, error classification, and provider fallback.
@@ -126,9 +130,18 @@ export async function generateCaptionViaGateway(opts: GenerateCaptionOptions): P
   const startTime = Date.now();
   const headers = opts.headers ?? new Headers();
 
-  // 1. Acquire global rate limit lease
-  const lease = await globalGrokRateLimiter.waitForLease(opts.userId, CAPTION_CONFIG.ESTIMATED_TOKENS_PER_REQUEST, 15_000);
+  // 1. Acquire rate limit lease (distributed Firestore lease if enabled, else local bucket)
+  const isDistributed = process.env.ENABLE_DISTRIBUTED_LIMITER === "true";
+  const lease = isDistributed
+    ? await tryAcquireDistributedLease(opts.userId, CAPTION_CONFIG.ESTIMATED_TOKENS_PER_REQUEST)
+    : await globalGrokRateLimiter.waitForLease(opts.userId, CAPTION_CONFIG.ESTIMATED_TOKENS_PER_REQUEST, 15_000);
+
   if (!lease.acquired) {
+    log.warn("Caption generation rate limited", {
+      userId: opts.userId,
+      reason: lease.reason,
+      retryAfterMs: lease.retryAfterMs,
+    });
     return {
       ok: false,
       provider: "xai",

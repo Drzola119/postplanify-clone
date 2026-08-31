@@ -9,13 +9,40 @@ export interface DeadlineCalculationResult {
   emergencyDeadline: Date;
 }
 
+export type QueuePressure = "low" | "medium" | "high";
+
+/**
+ * Estimates queue pressure level based on depth and throughput expectations.
+ */
+export function estimateQueuePressure(pendingCount: number): QueuePressure {
+  if (pendingCount > 100) return "high";
+  if (pendingCount > 30) return "medium";
+  return "low";
+}
+
+/**
+ * Returns the recommended lookahead lead in milliseconds before the deadline for a given pressure level.
+ */
+export function getPressureLeadMs(queuePressure: QueuePressure): number {
+  if (queuePressure === "high") {
+    // High pressure -> start up to 4 hours before deadline
+    return 4 * 60 * 60_000;
+  }
+  if (queuePressure === "medium") {
+    // Medium pressure -> start up to 90 minutes before deadline
+    return 90 * 60_000;
+  }
+  // Low pressure -> start 30 minutes before deadline (60 min before publish)
+  return 30 * 60_000;
+}
+
 /**
  * Deterministically computes the caption generation deadlines and recommended start window.
  * All operations use canonical UTC dates.
  */
 export function calculateCaptionDeadlines(
   scheduledAtInput: Date | string | number,
-  queuePressure: "low" | "medium" | "high" = "low"
+  queuePressure: QueuePressure = "low"
 ): DeadlineCalculationResult {
   const scheduledAt = new Date(scheduledAtInput);
   const scheduledMs = scheduledAt.getTime();
@@ -29,18 +56,7 @@ export function calculateCaptionDeadlines(
   const emergencyDeadline = new Date(scheduledMs - emergencyBufferMs);
 
   // Recommended start time adapts to queue pressure
-  let recommendedLeadMs: number;
-  if (queuePressure === "high") {
-    // High pressure -> start up to 4 hours before deadline
-    recommendedLeadMs = 4 * 60 * 60_000;
-  } else if (queuePressure === "medium") {
-    // Medium pressure -> start up to 90 minutes before deadline
-    recommendedLeadMs = 90 * 60_000;
-  } else {
-    // Low pressure -> start 30 minutes before deadline (60 min before publish)
-    recommendedLeadMs = 30 * 60_000;
-  }
-
+  const recommendedLeadMs = getPressureLeadMs(queuePressure);
   const recommendedMs = generationDeadline.getTime() - recommendedLeadMs;
   const generationRecommendedAt = new Date(recommendedMs);
 

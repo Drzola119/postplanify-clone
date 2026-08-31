@@ -12,6 +12,7 @@ import {
   listEligibleCaptionJobs,
   resetStuckCaptionJobClaims,
 } from "@/lib/db/caption-jobs";
+import { reconcileMissingCaptionJobs } from "@/lib/queue/caption-reconcile";
 import type { CaptionJobDoc, PostDoc } from "@/lib/db/schema";
 
 const log = createLogger("caption-worker");
@@ -58,7 +59,14 @@ export async function runCaptionWorkerTick(): Promise<CaptionTickResult> {
     log.error(err, { step: "reap-caption-jobs" });
   }
 
-  // 2. Fetch candidate eligible jobs
+  // 2. Reconcile orphan posts missing caption jobs
+  try {
+    await reconcileMissingCaptionJobs(50);
+  } catch (err) {
+    log.error(err, { step: "reconcile-missing-caption-jobs" });
+  }
+
+  // 3. Fetch candidate eligible jobs
   let eligibleJobs: CaptionJobDoc[] = [];
   try {
     eligibleJobs = await listEligibleCaptionJobs(50);

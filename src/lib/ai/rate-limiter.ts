@@ -9,6 +9,7 @@ export interface RateLimiterStatus {
   isThrottled: boolean;
   throttleCooldownRemainingMs: number;
   activeUsersCount: number;
+  isDistributed: boolean;
 }
 
 export interface RateLimitLease {
@@ -212,6 +213,7 @@ class GlobalGrokRateLimiter {
       isThrottled: now < this.throttleUntil,
       throttleCooldownRemainingMs: Math.max(0, this.throttleUntil - now),
       activeUsersCount: this.activeUsers.size,
+      isDistributed: process.env.ENABLE_DISTRIBUTED_LIMITER === "true",
     };
   }
 

@@ -1,6 +1,7 @@
 import "server-only";
 import { toIso } from "@/lib/db/date-utils";
 import { adminDb, FieldValue } from "@/lib/db";
+import { calculateCaptionDeadlines, calculatePriorityScore } from "@/lib/ai/fair-scheduler";
 import type { PostDoc, PostStatus, PlatformId } from "@/lib/db/schema";
 
 const SERVER_TIMESTAMP = FieldValue.serverTimestamp();
@@ -205,6 +206,44 @@ export async function updatePost(workspaceId: string, postId: string, patch: Par
   const ref = collection(workspaceId).doc(postId);
   const cleaned = stripUndefined(patch as Record<string, unknown>);
   await ref.update({ ...cleaned, updatedAt: SERVER_TIMESTAMP });
+
+  // GAP-7: If scheduledAt changed, propagate recomputed deadlines to active captionJobs
+  if (patch.scheduledAt && adminDb) {
+    try {
+      const jobsSnap = await adminDb
+        .collection("captionJobs")
+        .where("postId", "==", postId)
+        .where("status", "in", ["pending", "ready_to_run", "retrying"])
+        .get();
+
+      if (!jobsSnap.empty) {
+        const batch = adminDb.batch();
+        const deadlines = calculateCaptionDeadlines(patch.scheduledAt);
+
+        for (const doc of jobsSnap.docs) {
+          const docData = doc.data();
+          const priorityScore = calculatePriorityScore(
+            patch.scheduledAt,
+            docData.createdAt ? toIso(docData.createdAt) : new Date().toISOString(),
+            docData.attempts || 0
+          );
+
+          batch.update(doc.ref, {
+            scheduledAt: deadlines.scheduledAt.toISOString(),
+            generationRecommendedAt: deadlines.generationRecommendedAt.toISOString(),
+            generationDeadline: deadlines.generationDeadline.toISOString(),
+            emergencyDeadline: deadlines.emergencyDeadline.toISOString(),
+            priorityScore,
+            updatedAt: SERVER_TIMESTAMP,
+          });
+        }
+
+        await batch.commit();
+      }
+    } catch (err) {
+      console.warn("[updatePost captionJob deadline propagation error]", err);
+    }
+  }
 }
 
 export async function softDeletePost(workspaceId: string, postId: string): Promise<void> {
