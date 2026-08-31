@@ -137,7 +137,7 @@ describe("Issue 2/3/5: video metadata state handling", () => {
   it("too-long carousel duration is blocked", () => {
     const r = checkRequirements(["instagram"], {
       captionByPlatform: { instagram: "hi" },
-      media: [instagramVideo({ durationSec: 200, metadataLoaded: true })],
+      media: [instagramVideo({ durationSec: 1000, metadataLoaded: true })],
     });
     const ig = r.perPlatform.find((p) => p.platform === "instagram")!;
     expect(ig.issues.find((i) => i.code === "video_bad_duration")).toBeDefined();

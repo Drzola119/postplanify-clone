@@ -87,6 +87,7 @@ import {
   type BulkContentType,
   type CarouselMediaMode,
 } from "@/lib/bulk-schedule/content-types";
+import { probeVideoMetadataClient, type VideoMetadata } from "@/lib/media/video-metadata";
 
 type BulkItemSource = "upload" | "csv";
 
@@ -148,6 +149,7 @@ type BulkItemBase = {
   advancedByPlatform?: Partial<Record<PlatformId, PlatformAdvancedOptions>>;
   // per-item media kind override for advanced panel
   mediaKind?: MediaKind;
+  mediaMetadata?: VideoMetadata;
 };
 
 type UploadedBulkItem = BulkItemBase & {
@@ -423,12 +425,32 @@ function buildReadinessForItem(item: BulkItem) {
     }
   } else if (postType === "trial_reel") {
     const fakeMime = "video/mp4";
-    media = [{ kind: "video" as MediaKind, mimeType: fakeMime, sizeBytes: item.size || 1024 * 500 }];
+    media = [{
+      kind: "video" as MediaKind,
+      mimeType: fakeMime,
+      sizeBytes: item.size || 1024 * 500,
+      durationSec: base.mediaMetadata?.durationSec,
+      width: base.mediaMetadata?.width,
+      height: base.mediaMetadata?.height,
+      aspectRatio: base.mediaMetadata?.aspectRatio,
+      orientation: base.mediaMetadata?.orientation,
+      metadataLoaded: base.mediaMetadata != null,
+    }];
   } else if (item.kind === "text") {
     media = [];
   } else {
     const fakeMime = item.kind === "video" ? "video/mp4" : "image/jpeg";
-    media = [{ kind: mediaKind, mimeType: fakeMime, sizeBytes: item.size || 1024 * 500 }];
+    media = [{
+      kind: mediaKind,
+      mimeType: fakeMime,
+      sizeBytes: item.size || 1024 * 500,
+      durationSec: base.mediaMetadata?.durationSec,
+      width: base.mediaMetadata?.width,
+      height: base.mediaMetadata?.height,
+      aspectRatio: base.mediaMetadata?.aspectRatio,
+      orientation: base.mediaMetadata?.orientation,
+      metadataLoaded: base.mediaMetadata != null,
+    }];
   }
 
   const captionByPlatform: Partial<Record<PlatformId, string>> = {};
@@ -517,6 +539,21 @@ function validateItems(items: BulkItem[]): ValidationIssue[] {
     }
     if ((content === "long_video" || content === "short_video" || content === "trial_reel") && it.kind !== "video") {
       issues.push({ itemId: it.id, message: `${content === "trial_reel" ? "Trial Reel" : content === "short_video" ? "Shorts & Reels" : "Long video"} requires a video` });
+    }
+
+    // ── Video Metadata & Aspect Ratio Validations ──
+    const meta = (it as BulkItemBase).mediaMetadata;
+    if (meta && it.kind === "video") {
+      if (content === "short_video" || content === "trial_reel" || pt === "trial_reel") {
+        if (meta.orientation === "horizontal" || meta.aspectRatio === "16:9") {
+          issues.push({ itemId: it.id, message: "Shorts & Reels require a 9:16 vertical video (detected 16:9 horizontal)" });
+        }
+      }
+      if (it.accountIds.includes("youtube" as PlatformId) && content === "short_video") {
+        if (meta.durationSec > 180) {
+          issues.push({ itemId: it.id, message: `YouTube Shorts cannot exceed 3 minutes (detected ${meta.formattedDuration})` });
+        }
+      }
     }
     if (pt === "carousel") {
       const slides = (it as BulkItemBase).carouselSlides ?? [];
@@ -1940,6 +1977,40 @@ export default function BulkSchedulePage() {
     }
     if (newItems.length === 0) return;
     setItems((prev) => [...prev, ...newItems]);
+
+    // Probe video metadata client-side immediately
+    for (const item of newItems) {
+      if (item.kind === "video" && item.file) {
+        probeVideoMetadataClient(item.file)
+          .then((meta) => {
+            setItems((prev) =>
+              prev.map((it) => {
+                if (it.id !== item.id) return it;
+                const autoAdv = { ...((it as BulkItemBase).advancedByPlatform ?? {}) } as Record<string, Record<string, unknown>>;
+                if (meta.aspectRatio === "9:16" || meta.orientation === "vertical") {
+                  if (it.accountIds.includes("instagram")) {
+                    autoAdv.instagram = { ...(autoAdv.instagram ?? {}), instagram_media_type: "REELS" };
+                  }
+                  if (it.accountIds.includes("facebook")) {
+                    autoAdv.facebook = { ...(autoAdv.facebook ?? {}), facebook_media_type: "REELS" };
+                  }
+                } else if (meta.orientation === "horizontal" || meta.aspectRatio === "16:9") {
+                  if (it.accountIds.includes("facebook")) {
+                    autoAdv.facebook = { ...(autoAdv.facebook ?? {}), facebook_media_type: "VIDEO" };
+                  }
+                }
+                return {
+                  ...it,
+                  mediaMetadata: meta,
+                  advancedByPlatform: autoAdv,
+                } as BulkItem;
+              })
+            );
+          })
+          .catch(() => {});
+      }
+    }
+
     const CONCURRENCY = 3;
     let cursor = 0;
     async function worker() {
@@ -4928,14 +4999,74 @@ function PostRow({
                     <span className="text-[10px] text-white font-medium">Uploading…</span>
                   </div>
                 ) : null}
-                {item.source === "upload" && item.uploadStatus === "error" ? (
-                  <div className="absolute inset-0 bg-red-500/80 flex flex-col items-center justify-center gap-1 p-2 text-center text-white">
-                    <X className="size-5" />
-                    <span className="text-[10px] font-bold">Upload Failed</span>
-                    <span className="text-[9px] opacity-90 truncate max-w-full">{item.uploadError ?? "Retry required"}</span>
+                {item.kind === "video" && item.mediaMetadata ? (
+                  <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-xs text-white text-[10px] font-mono font-bold flex items-center gap-1.5 shadow-sm">
+                    <Video className="size-3 text-zinc-300" />
+                    <span className={cn(
+                      item.mediaMetadata.aspectRatio === "9:16" ? "text-emerald-400" : item.mediaMetadata.aspectRatio === "16:9" ? "text-sky-300" : "text-zinc-200"
+                    )}>
+                      {item.mediaMetadata.aspectRatio}
+                    </span>
+                    <span className="text-zinc-500">•</span>
+                    <span>{item.mediaMetadata.formattedDuration}</span>
                   </div>
                 ) : null}
               </div>
+
+              {/* Quick-Fix Toolkit when aspect ratio or duration mismatch occurs */}
+              {item.kind === "video" && item.mediaMetadata ? (
+                (() => {
+                  const isShortsMode = item.contentType === "short_video" || item.contentType === "trial_reel";
+                  const isHorizontal = item.mediaMetadata.aspectRatio === "16:9" || item.mediaMetadata.orientation === "horizontal";
+                  const isYTShortsOver = hasYouTube && isShortsMode && item.mediaMetadata.durationSec > 180;
+                  const hasMismatch = (isShortsMode && isHorizontal) || isYTShortsOver;
+
+                  if (!hasMismatch) return null;
+
+                  return (
+                    <div className="rounded-xl border border-red-200 bg-red-50/80 p-2.5 space-y-2 text-left animate-in fade-in duration-150">
+                      <div className="flex items-start gap-1.5 text-red-800">
+                        <AlertCircle className="size-3.5 mt-0.5 shrink-0 text-red-600" />
+                        <div className="text-[11px] leading-tight">
+                          <span className="font-bold">Format Mismatch:</span>{" "}
+                          {isHorizontal && isShortsMode
+                            ? "16:9 (horizontal) video uploaded for Shorts/Reels (needs 9:16 vertical)."
+                            : isYTShortsOver
+                              ? `Duration (${item.mediaMetadata.formattedDuration}) exceeds YouTube Shorts limit (3m).`
+                              : "Video specifications do not match format."}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        <button
+                          type="button"
+                          onClick={onOpenCrop}
+                          className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
+                        >
+                          <Crop className="size-3" /> Launch Cropper (9:16)
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const compatible = platformsForBulkContent("long_video", "images");
+                            const nextAccounts = item.accountIds.filter((id) => compatible.includes(id));
+                            onUpdate({
+                              contentType: "long_video",
+                              postType: "standard",
+                              accountIds: nextAccounts.length > 0 ? nextAccounts : compatible,
+                            } as Partial<BulkItem>);
+                            toast({ title: "Switched to Long-Form Video", description: "Post type and platform requirements adjusted for 16:9.", tone: "success" });
+                          }}
+                          className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-white border border-red-200 hover:bg-red-100/50 text-red-900 px-2 py-1 text-[10px] font-bold shadow-xs cursor-pointer"
+                        >
+                          <RefreshCw className="size-3" /> Switch to Long Video
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()
+              ) : null}
 
               {/* Media actions */}
               {item.kind !== "text" ? <div className="space-y-1.5">

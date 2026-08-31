@@ -46,6 +46,8 @@ export interface ReadinessReport {
   readyCount: number;
 }
 
+import type { ClassifiedAspectRatio, VideoOrientation } from "@/lib/media/video-metadata";
+
 export type VideoMetadataStatus = "loading" | "ready" | "error" | "unknown";
 
 export interface MediaMeta {
@@ -53,6 +55,10 @@ export interface MediaMeta {
   mimeType: string;
   sizeBytes: number;
   durationSec?: number;
+  width?: number;
+  height?: number;
+  aspectRatio?: ClassifiedAspectRatio;
+  orientation?: VideoOrientation;
   /** False while browser metadata probe is still running; undefined = probe not started / not applicable. */
   metadataLoaded?: boolean;
   /** Error string when metadata probe failed. */
@@ -78,7 +84,8 @@ const charCount = (s: string) => Array.from(s).length;
 
 function checkMediaForPlatform(
   platform: PlatformId,
-  media: MediaMeta[]
+  media: MediaMeta[],
+  options?: PlatformAdvancedOptions
 ): ReadinessIssue[] {
   const issues: ReadinessIssue[] = [];
   const cap = getCapability(platform);
@@ -131,6 +138,8 @@ function checkMediaForPlatform(
     let badMime = 0;
     let badDuration = 0;
     const hasDurationRequirement = req.minDurationSec != null || (req.maxDurationSec != null && req.maxDurationSec > 0 && Number.isFinite(req.maxDurationSec));
+    let badAspect = 0;
+    let badAspectMsg = "";
     for (const m of media) {
       if (m.kind !== kind) continue;
       if (m.sizeBytes > req.maxBytes) badBytes++;
@@ -141,10 +150,35 @@ function checkMediaForPlatform(
         if (status === "error" || status === "unknown") continue;
         // status === "ready": validate normally. If metadataStatus is undefined but duration present, treat as ready.
         // Guard: if duration is still undefined after ready, treat as unknown (handled separately)
-        if (m.durationSec == null) continue;
-        if (req.minDurationSec != null && m.durationSec < req.minDurationSec) badDuration++;
-        if (req.maxDurationSec != null && m.durationSec > req.maxDurationSec) badDuration++;
+        if (m.durationSec != null) {
+          if (req.minDurationSec != null && m.durationSec < req.minDurationSec) badDuration++;
+          if (req.maxDurationSec != null && m.durationSec > req.maxDurationSec) badDuration++;
+        }
+        // Aspect ratio checks
+        if (m.aspectRatio && m.orientation) {
+          const isHorizontal = m.orientation === "horizontal" || m.aspectRatio === "16:9";
+          const igType = options?.instagram_media_type;
+          const fbType = options?.facebook_media_type;
+          if (platform === "instagram" && (igType === "REELS" || igType === "STORIES") && isHorizontal) {
+            badAspect++;
+            badAspectMsg = `Instagram Reels & Stories require a 9:16 vertical video (got ${m.aspectRatio}).`;
+          } else if (platform === "facebook" && (fbType === "REELS" || fbType === "STORIES") && isHorizontal) {
+            badAspect++;
+            badAspectMsg = `Facebook Reels & Stories require a 9:16 vertical video (got ${m.aspectRatio}).`;
+          } else if (platform === "tiktok" && isHorizontal) {
+            badAspect++;
+            badAspectMsg = `TikTok feed requires a 9:16 vertical video (got ${m.aspectRatio}).`;
+          }
+        }
       }
+    }
+    if (badAspect > 0) {
+      issues.push({
+        code: "aspect_ratio_mismatch",
+        severity: "blocked",
+        message: badAspectMsg || `${badAspect} video file(s) have an invalid aspect ratio for ${cap.displayName}.`,
+        actionLabel: "Crop to 9:16",
+      });
     }
     if (badBytes > 0) {
       issues.push({
@@ -326,7 +360,7 @@ export function checkRequirements(
     const caption = input.captionByPlatform[platform] ?? "";
     const options = input.advancedByPlatform?.[platform];
 
-    issues.push(...checkMediaForPlatform(platform, input.media));
+    issues.push(...checkMediaForPlatform(platform, input.media, options));
     issues.push(...checkCaption(platform, caption));
     issues.push(...checkRequiredTargets(platform, options));
     issues.push(...checkHardCap(platform, input.recent24hCounts?.[platform]));

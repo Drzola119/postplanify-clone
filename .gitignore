@@ -48,6 +48,8 @@ coverage/
 test-output/
 
 # Misc
+.turbo
+graphify-out/
 *.bak
 *.tmp
 *.old
