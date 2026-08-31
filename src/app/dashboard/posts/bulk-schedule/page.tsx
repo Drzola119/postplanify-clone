@@ -89,6 +89,14 @@ import {
   type CarouselMediaMode,
 } from "@/lib/bulk-schedule/content-types";
 import { probeVideoMetadataClient, type VideoMetadata } from "@/lib/media/video-metadata";
+import { CountrySelector } from "@/components/dashboard/bulk-schedule/country-selector";
+import { BestTimesControl } from "@/components/dashboard/bulk-schedule/best-times-control";
+import { ALGERIA_CONFIG, type CountryConfig } from "@/data/scheduling/countries";
+import {
+  generateSmartSchedule,
+  type SmartStrategy,
+  type ScheduledItemSlot,
+} from "@/services/scheduling/generate-smart-schedule";
 
 type BulkItemSource = "upload" | "csv";
 
@@ -744,7 +752,12 @@ export default function BulkSchedulePage() {
   const [startTime, setStartTime] = useState<string>(defaultTime());
   const [postsPerDay, setPostsPerDay] = useState<number>(1);
   const [interval, setInterval] = useState<string>("1d");
-  const [timezone, setTimezone] = useState<string>("Africa/Lagos");
+  const [selectedCountry, setSelectedCountry] = useState<CountryConfig>(ALGERIA_CONFIG);
+  const [schedulingMode, setSchedulingMode] = useState<"smart" | "manual">("smart");
+  const [smartStrategy, setSmartStrategy] = useState<SmartStrategy>("per_platform");
+  const [timezone, setTimezone] = useState<string>(ALGERIA_CONFIG.timezone);
+  const [timezoneSource, setTimezoneSource] = useState<"auto" | "manual">("auto");
+  const [timezoneOverride, setTimezoneOverride] = useState<boolean>(false);
   const [tzOpen, setTzOpen] = useState(false);
   const [accounts, setAccounts] = useState<Set<PlatformId>>(new Set());
   const [connectedPlatforms, setConnectedPlatforms] = useState<Set<PlatformId>>(new Set());
@@ -793,50 +806,74 @@ export default function BulkSchedulePage() {
   const tzRef = useRef<HTMLDivElement>(null);
   const hydratedRef = useRef(false);
 
-  function scheduledSlot(index: number): { scheduledAt: string; date: string; time: string } | null {
-    const [year, month, day] = startDate.split("-").map(Number);
-    const [startHour, startMinute] = startTime.split(":").map(Number);
-    if ([year, month, day, startHour, startMinute].some((value) => !Number.isInteger(value))) return null;
-    const perDay = Math.max(1, postsPerDay);
-    const intervalDays = parseInt(interval, 10) || 1;
-    const dayOffset = Math.floor(index / perDay) * intervalDays;
-    const slotOffsetMinutes = (index % perDay) * 30;
-    const wall = new Date(Date.UTC(year, month - 1, day + dayOffset, startHour, startMinute + slotOffsetMinutes));
-    const localYear = wall.getUTCFullYear();
-    const localMonth = wall.getUTCMonth() + 1;
-    const localDay = wall.getUTCDate();
-    const localHour = wall.getUTCHours();
-    const localMinute = wall.getUTCMinutes();
-    const instant = zonedDateTimeToDate(
-      {
-        year: localYear,
-        month: localMonth,
-        day: localDay,
-        hour: localHour,
-        minute: localMinute,
-      },
-      timezone
-    );
-    if (!instant) return null;
-    return {
-      scheduledAt: instant.toISOString(),
-      date: `${localYear}-${String(localMonth).padStart(2, "0")}-${String(localDay).padStart(2, "0")}`,
-      time: `${String(localHour).padStart(2, "0")}:${String(localMinute).padStart(2, "0")}`,
-    };
+  function handleCountryChange(newCountry: CountryConfig) {
+    setSelectedCountry(newCountry);
+    if (!timezoneOverride) {
+      setTimezone(newCountry.timezone);
+      setTimezoneSource("auto");
+    }
   }
 
-  // Auto-detect timezone on first mount and ensure it appears in the dropdown.
-  useEffect(() => {
-    try {
-      const guess = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (guess) {
-        setTimezone(guess);
-        // Ensure the guessed zone is selectable even if not in the hard-coded list (rendered dynamically below).
-      }
-    } catch {
-      setTimezone("Africa/Lagos");
+  function handleTimezoneChange(newTimezone: string) {
+    setTimezone(newTimezone);
+    setTimezoneSource("manual");
+    setTimezoneOverride(true);
+    setTzOpen(false);
+  }
+
+  function scheduledSlot(
+    index: number,
+    itemTargetPlatforms?: PlatformId[]
+  ): { scheduledAt: string; date: string; time: string } | null {
+    const intervalDays = parseInt(interval, 10) || 1;
+    const perDay = Math.max(1, postsPerDay);
+    const targetPlatforms =
+      itemTargetPlatforms && itemTargetPlatforms.length > 0
+        ? itemTargetPlatforms
+        : Array.from(accounts).length > 0
+        ? Array.from(accounts)
+        : ["instagram" as PlatformId];
+
+    const totalDays = Math.max(1, Math.ceil((index + 1) / perDay));
+    const effectiveCountry: CountryConfig = {
+      ...selectedCountry,
+      timezone,
+    };
+
+    const res = generateSmartSchedule({
+      startDate,
+      days: totalDays,
+      postsPerDay: perDay,
+      intervalDays,
+      platforms: targetPlatforms,
+      country: effectiveCountry,
+      strategy: smartStrategy,
+      schedulingMode,
+      manualTime: startTime,
+    });
+
+    if (res.items.length === 0) return null;
+
+    let assigned: ScheduledItemSlot | undefined;
+    if (smartStrategy === "per_platform" && targetPlatforms.length > 0) {
+      const platformSlots = res.items.filter((s) => targetPlatforms.includes(s.platform));
+      assigned = platformSlots[index] ?? res.items[index];
+    } else {
+      assigned = res.items[index];
     }
-  }, []);
+
+    if (!assigned) {
+      assigned = res.items[res.items.length - 1];
+    }
+
+    return assigned
+      ? {
+          scheduledAt: assigned.isoTimestamp,
+          date: assigned.date,
+          time: assigned.time,
+        }
+      : null;
+  }
 
   // Fetch connected platforms + destinations for advanced options (Pinterest boards, FB pages)
   useEffect(() => {
@@ -3123,14 +3160,30 @@ export default function BulkSchedulePage() {
                 className="h-9 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
               />
             </SchedulerField>
-            <SchedulerField label={t("posts.bulkSchedule.time")}>
-              <input
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                className="h-9 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+
+            <SchedulerField label="Country">
+              <CountrySelector
+                selectedCountry={selectedCountry}
+                onSelectCountry={handleCountryChange}
               />
             </SchedulerField>
+
+            <SchedulerField label="Best Times">
+              <BestTimesControl
+                mode={schedulingMode}
+                onModeChange={setSchedulingMode}
+                manualTime={startTime}
+                onManualTimeChange={setStartTime}
+                country={selectedCountry}
+                startDate={startDate}
+                platforms={Array.from(accounts)}
+                postsPerDay={postsPerDay}
+                strategy={smartStrategy}
+                onStrategyChange={setSmartStrategy}
+                onApplySmartSchedule={applySchedule}
+              />
+            </SchedulerField>
+
             <SchedulerField label={t("posts.bulkSchedule.posts_per_day")}>
               <select
                 value={postsPerDay}
@@ -3144,6 +3197,7 @@ export default function BulkSchedulePage() {
                 ))}
               </select>
             </SchedulerField>
+
             <SchedulerField label={t("posts.bulkSchedule.interval")}>
               <select
                 value={interval}
@@ -3157,6 +3211,7 @@ export default function BulkSchedulePage() {
                 ))}
               </select>
             </SchedulerField>
+
             <SchedulerField label={t("posts.bulkSchedule.timezone")}>
               <div className="relative" ref={tzRef}>
                 <button
@@ -3164,40 +3219,62 @@ export default function BulkSchedulePage() {
                   onClick={() => setTzOpen((v) => !v)}
                   aria-haspopup="listbox"
                   aria-expanded={tzOpen}
-                  className="inline-flex items-center gap-1.5 h-9 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium hover:bg-zinc-50"
+                  className="inline-flex items-center gap-1.5 h-9 rounded-xl border border-zinc-200 bg-white px-2.5 text-xs font-medium hover:bg-zinc-50 transition-colors cursor-pointer"
                 >
                   <Timer className="size-3.5 text-zinc-500" />
-                  <span>{timezone}</span>
-                  <ChevronDown className="size-3.5 text-zinc-500" />
+                  <span className="max-w-[110px] truncate">{timezone}</span>
+                  <span
+                    className={cn(
+                      "text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider",
+                      timezoneSource === "auto" && !timezoneOverride
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : "bg-zinc-100 text-zinc-600 border border-zinc-200"
+                    )}
+                  >
+                    {timezoneSource === "auto" && !timezoneOverride ? "Auto" : "Custom"}
+                  </span>
+                  <ChevronDown className="size-3 text-zinc-400" />
                 </button>
                 {tzOpen ? (
-                  <ul role="listbox" className="absolute right-0 top-full mt-2 z-30 w-[220px] max-h-[260px] overflow-y-auto rounded-xl border border-zinc-200 bg-white shadow-lg p-1">
+                  <ul
+                    role="listbox"
+                    className="absolute right-0 top-full mt-2 z-40 w-[240px] max-h-[260px] overflow-y-auto rounded-xl border border-zinc-200 bg-white shadow-xl p-1 animate-in fade-in zoom-in-95 duration-150"
+                  >
+                    <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                      Select Timezone
+                    </div>
                     {(() => {
-                      const list = TIMEZONES.some((tz) => tz.id === timezone) ? TIMEZONES : [{ id: timezone, label: timezone }, ...TIMEZONES];
+                      const list = TIMEZONES.some((tz) => tz.id === timezone)
+                        ? TIMEZONES
+                        : [{ id: timezone, label: timezone }, ...TIMEZONES];
                       return list.map((tz) => (
-                      <li key={tz.id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTimezone(tz.id);
-                            setTzOpen(false);
-                          }}
-                          className={cn("w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-zinc-100 font-medium", tz.id === timezone && "bg-zinc-900 text-white hover:bg-zinc-900")}
-                        >
-                          {tz.label}
-                        </button>
-                      </li>
-                    ));
+                        <li key={tz.id}>
+                          <button
+                            type="button"
+                            onClick={() => handleTimezoneChange(tz.id)}
+                            className={cn(
+                              "w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-zinc-100 font-medium flex items-center justify-between transition-colors cursor-pointer",
+                              tz.id === timezone && "bg-zinc-900 text-white hover:bg-zinc-900"
+                            )}
+                          >
+                            <span>{tz.label}</span>
+                            {tz.id === selectedCountry.timezone && (
+                              <span className="text-[10px] opacity-70">Default</span>
+                            )}
+                          </button>
+                        </li>
+                      ));
                     })()}
                   </ul>
                 ) : null}
               </div>
             </SchedulerField>
+
             <button
               type="button"
               onClick={applySchedule}
               disabled={items.length === 0}
-              className="ml-auto sm:ml-0 inline-flex items-center gap-1.5 rounded-xl bg-zinc-900 hover:bg-black text-white px-4 h-9 text-xs font-bold disabled:opacity-50 shadow-sm"
+              className="ml-auto sm:ml-0 inline-flex items-center gap-1.5 rounded-xl bg-zinc-900 hover:bg-black text-white px-4 h-9 text-xs font-bold disabled:opacity-50 shadow-sm cursor-pointer"
             >
               <Clock className="size-3.5" />
               {t("posts.bulkSchedule.apply")}
@@ -3213,7 +3290,16 @@ export default function BulkSchedulePage() {
               </span>
             )}
           </div>
-          <p className="text-[11px] text-zinc-500 mt-2 hidden sm:block">Start date sets slot 1. We auto-space posts in your timezone ({timezone}), 30 min apart per day. <Link href="/dashboard/calendar" className="underline decoration-dotted hover:text-zinc-700">View in Calendar</Link> after scheduling.</p>
+          <p className="text-[11px] text-zinc-500 mt-2 hidden sm:block">
+            Start date sets slot 1.{" "}
+            {schedulingMode === "smart"
+              ? `We optimize publish times for your platforms in ${selectedCountry.name} (${timezone}).`
+              : `We auto-space posts in your timezone (${timezone}), 30 min apart per day.`}{" "}
+            <Link href="/dashboard/calendar" className="underline decoration-dotted hover:text-zinc-700">
+              View in Calendar
+            </Link>{" "}
+            after scheduling.
+          </p>
         </div>
 
         {/* ── Global Platform Selector Bar (Parity with Create Post) ── */}
