@@ -26,6 +26,7 @@ import {
   FileText,
   AtSign,
   Users,
+  Clock,
 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
@@ -47,6 +48,82 @@ import {
 import { type MediaKind } from "@/lib/publishing/capability-matrix";
 import { checkRequirements } from "@/lib/publishing/requirements";
 import { RequirementsPanel } from "@/components/dashboard/requirements-panel";
+import { probeVideoMetadataClient, classifyAspectRatio, formatVideoDuration, type VideoMetadata } from "@/lib/media/video-metadata";
+
+// ── Helper: bulk-grade video validation extracted to avoid inline type-complexity hang ──
+function applyExtraVideoChecks(
+  report: ReturnType<typeof checkRequirements>,
+  ctx: {
+    composerMode: string;
+    feedType: string;
+    mediaItems: Array<{ kind: string; size: number; width: number; height: number; videoMeta?: VideoMetadata; durationSec?: number }>;
+    carouselItems: Array<{ kind: string; file: { size: number }; durationSec?: number }>;
+    trialReelFile: { file: { size: number }; durationSec?: number } | null;
+  }
+) {
+  const videoMetas: Array<{ meta?: VideoMetadata; durationSec?: number; sizeBytes?: number }> = [];
+  if (ctx.composerMode === "carousel") {
+    for (const c of ctx.carouselItems) if (c.kind === "video") videoMetas.push({ durationSec: c.durationSec, sizeBytes: c.file.size });
+  } else if (ctx.composerMode === "trial_reel" && ctx.trialReelFile) {
+    videoMetas.push({ durationSec: ctx.trialReelFile.durationSec, sizeBytes: ctx.trialReelFile.file.size });
+  } else {
+    for (const m of ctx.mediaItems) if (m.kind === "video") videoMetas.push({ meta: m.videoMeta, durationSec: m.durationSec ?? m.videoMeta?.durationSec, sizeBytes: m.size });
+  }
+  const primaryMeta = videoMetas[0];
+  const primaryDuration = primaryMeta?.durationSec;
+  const primarySize = primaryMeta?.sizeBytes;
+  const primaryMetaObj = primaryMeta?.meta;
+  for (const per of report.perPlatform) {
+    const pid = per.platform;
+    const extra: Array<{ code: string; severity: "blocked"; message: string; actionLabel?: string }> = [];
+    if (ctx.composerMode === "trial_reel" && primaryMetaObj) {
+      if (primaryMetaObj.orientation === "horizontal" || primaryMetaObj.aspectRatio === "16:9") {
+        extra.push({ code: "trial_reel_aspect", severity: "blocked", message: "Trial Reel requires a 9:16 vertical video (detected 16:9 horizontal)", actionLabel: "Use vertical video" });
+      }
+    }
+    if (ctx.feedType === "story" && primaryMetaObj && primaryMeta) {
+      if (primaryMetaObj.orientation === "horizontal" || primaryMetaObj.aspectRatio === "16:9") {
+        extra.push({ code: "story_aspect", severity: "blocked", message: "Stories require a 9:16 vertical video (detected 16:9 horizontal)", actionLabel: "Use vertical video" });
+      }
+    }
+    if (pid === "linkedin" && primaryMetaObj) {
+      if (primaryMetaObj.isLinkedInRatioValid === false || primaryMetaObj.isExtremeVertical) {
+        extra.push({ code: "linkedin_ratio", severity: "blocked", message: `LinkedIn does not support extreme aspect ratios outside 1:2.4–2.4:1 (got ${primaryMetaObj.aspectRatio})`, actionLabel: "Crop video" });
+      }
+    }
+    if (pid === "linkedin" && primaryDuration != null && primaryDuration > 600) {
+      extra.push({ code: "linkedin_duration", severity: "blocked", message: `LinkedIn video cannot exceed 10 minutes (detected ${formatVideoDuration(primaryDuration)})`, actionLabel: "Trim video" });
+    }
+    if (pid === "instagram") {
+      if (primarySize && primarySize > 300 * 1024 * 1024) extra.push({ code: "instagram_size", severity: "blocked", message: `Instagram video exceeds 300 MB limit (${Math.round(primarySize / (1024 * 1024))} MB)`, actionLabel: "Compress video" });
+      if (primaryDuration != null && primaryDuration > 900) extra.push({ code: "instagram_duration", severity: "blocked", message: `Instagram video cannot exceed 15 minutes (detected ${formatVideoDuration(primaryDuration)})`, actionLabel: "Trim video" });
+    }
+    if (pid === "bluesky") {
+      if (primarySize && primarySize > 100 * 1024 * 1024) extra.push({ code: "bluesky_size", severity: "blocked", message: `Bluesky video exceeds 100 MB limit (${Math.round(primarySize / (1024 * 1024))} MB)`, actionLabel: "Compress video" });
+      if (primaryDuration != null && primaryDuration > 180) extra.push({ code: "bluesky_duration", severity: "blocked", message: `Bluesky video cannot exceed 180 seconds (detected ${formatVideoDuration(primaryDuration)})`, actionLabel: "Trim video" });
+    }
+    if (pid === "google_business" && primaryDuration != null && primaryDuration > 30) {
+      extra.push({ code: "gmb_duration", severity: "blocked", message: `Google Business video cannot exceed 30 seconds (detected ${formatVideoDuration(primaryDuration)})`, actionLabel: "Trim video" });
+    }
+    if (pid === "tiktok" && primaryDuration != null && primaryDuration > 600) {
+      extra.push({ code: "tiktok_duration", severity: "blocked", message: `TikTok video cannot exceed 10 minutes (detected ${formatVideoDuration(primaryDuration)})`, actionLabel: "Trim video" });
+    }
+    if (extra.length > 0) {
+      const existingCodes = new Set(per.issues.map((i: { code: string }) => i.code));
+      for (const e of extra) if (!existingCodes.has(e.code)) (per.issues as unknown[]).push(e as unknown);
+      const hasBlock = per.issues.some((i: { severity: string }) => i.severity === "blocked");
+      const hasWarn = per.issues.some((i: { severity: string }) => i.severity === "warning");
+      per.severity = hasBlock ? "blocked" : hasWarn ? "warning" : "ready";
+      const firstBlocked = per.issues.find((i: { severity: string }) => i.severity === "blocked") as { message?: string } | undefined;
+      const firstWarn = per.issues.find((i: { severity: string }) => i.severity === "warning") as { message?: string } | undefined;
+      per.summary = hasBlock ? (firstBlocked?.message ?? per.summary) : hasWarn ? (firstWarn?.message ?? per.summary) : per.summary;
+    }
+  }
+  report.blockedCount = report.perPlatform.filter((p) => p.severity === "blocked").length;
+  report.warningCount = report.perPlatform.filter((p) => p.severity === "warning").length;
+  report.readyCount = report.perPlatform.filter((p) => p.severity === "ready").length;
+  report.overall = report.blockedCount > 0 ? "blocked" : report.warningCount > 0 ? "warning" : "ready";
+}
 import { StepCircle } from "@/components/dashboard/step-circle";
 import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
 import { BrandIcons } from "@/components/dashboard/brand-icons";
@@ -65,6 +142,13 @@ import { PlatformTileBar } from "@/components/dashboard/platform-tile-bar";
 import { CropModal } from "@/components/dashboard/crop-modal";
 import { AltTextModal } from "@/components/dashboard/alt-text-modal";
 import { ComposerModeSelector, type ComposerMode } from "@/components/dashboard/composer-mode-selector";
+import { BulkContentTypeSelector } from "@/components/dashboard/bulk-content-type-selector";
+import { platformsForBulkContent, type BulkContentType, type CarouselMediaMode } from "@/lib/bulk-schedule/content-types";
+import { PlatformFeatureMatrixModal } from "@/components/dashboard/platform-feature-matrix-modal";
+import { CountrySelector } from "@/components/dashboard/bulk-schedule/country-selector";
+import { BestTimesControl } from "@/components/dashboard/bulk-schedule/best-times-control";
+import { ALGERIA_CONFIG, type CountryConfig } from "@/data/scheduling/countries";
+import { generateSmartSchedule, type SmartStrategy } from "@/services/scheduling/generate-smart-schedule";
 import { CarouselMediaCard, type CarouselItem } from "@/components/dashboard/carousel-media-card";
 import { TrialReelCard, type TrialReelMode, type TrialReelFile } from "@/components/dashboard/trial-reel-card";
 import { DocumentUploadCard, type DocumentFile } from "@/components/dashboard/document-upload-card";
@@ -92,6 +176,8 @@ type MediaItem = {
   metadataLoaded?: boolean;
   /** Error string when metadata probe fails. */
   metadataError?: string;
+  /** Rich video metadata (aspect, orientation, etc.) — populated by probeVideoMetadataClient */
+  videoMeta?: VideoMetadata;
   /** Per-file upload status (so the UI can show pending / failed without breaking preview). */
   uploadStatus: "uploading" | "ready" | "error";
   uploadError?: string;
@@ -275,12 +361,18 @@ export default function CreatePostPage() {
       if (restoredMedia.length > 0) {
         setMediaItems(restoredMedia);
         setActiveMedia(Math.min(record.activeMedia ?? 0, restoredMedia.length - 1));
-        // Re-probe remote videos whose metadata is still unknown/loading
+        // Re-probe remote videos whose metadata is still unknown/loading (rich probe)
         for (const m of restoredMedia) {
           if (m.kind === "video" && m.metadataLoaded === false && m.url) {
-            probeVideoDuration(m.url, (dur, err) => {
-              setMediaItems((prev) => prev.map((it) => it.id === m.id ? { ...it, durationSec: dur, metadataLoaded: true, metadataError: err } : it));
-            });
+            probeVideoMetadataClient(m.url)
+              .then((meta) => {
+                setMediaItems((prev) => prev.map((it) => it.id === m.id ? { ...it, durationSec: meta.durationSec, width: meta.width || it.width, height: meta.height || it.height, metadataLoaded: true, metadataError: undefined, videoMeta: meta } : it));
+              })
+              .catch(() => {
+                probeVideoDuration(m.url, (dur, err) => {
+                  setMediaItems((prev) => prev.map((it) => it.id === m.id ? { ...it, durationSec: dur, metadataLoaded: true, metadataError: err } : it));
+                });
+              });
           }
         }
       }
@@ -312,9 +404,15 @@ export default function CreatePostPage() {
         setCarouselItems(restoredCarousel);
         for (const c of restoredCarousel) {
           if (c.kind === "video" && c.metadataLoaded === false && c.previewUrl) {
-            probeVideoDuration(c.previewUrl, (dur, err) => {
-              setCarouselItems((prev) => prev.map((it) => it.id === c.id ? { ...it, durationSec: dur, metadataLoaded: true, metadataError: err } : it));
-            });
+            probeVideoMetadataClient(c.previewUrl)
+              .then((meta) => {
+                setCarouselItems((prev) => prev.map((it) => it.id === c.id ? { ...it, durationSec: meta.durationSec, metadataLoaded: true, metadataError: undefined } : it));
+              })
+              .catch(() => {
+                probeVideoDuration(c.previewUrl, (dur, err) => {
+                  setCarouselItems((prev) => prev.map((it) => it.id === c.id ? { ...it, durationSec: dur, metadataLoaded: true, metadataError: err } : it));
+                });
+              });
           }
         }
       }
@@ -339,9 +437,15 @@ export default function CreatePostPage() {
         };
         setTrialReelFile(restoredTrial);
         if (restoredTrial.metadataLoaded === false && restoredTrial.previewUrl) {
-          probeVideoDuration(restoredTrial.previewUrl, (dur, err) => {
-            setTrialReelFile((prev) => prev ? { ...prev, durationSec: dur, metadataLoaded: true, metadataError: err } : prev);
-          });
+          probeVideoMetadataClient(restoredTrial.previewUrl)
+            .then((meta) => {
+              setTrialReelFile((prev) => prev ? { ...prev, durationSec: meta.durationSec, metadataLoaded: true, metadataError: undefined } : prev);
+            })
+            .catch(() => {
+              probeVideoDuration(restoredTrial.previewUrl, (dur, err) => {
+                setTrialReelFile((prev) => prev ? { ...prev, durationSec: dur, metadataLoaded: true, metadataError: err } : prev);
+              });
+            });
         }
       }
       if (record.documentFile?.cdnUrl) {
@@ -540,6 +644,7 @@ export default function CreatePostPage() {
   const [customCoverUrl, setCustomCoverUrl] = useState<string | null>(null);
   const [frameCoverUrl, setFrameCoverUrl] = useState<string | null>(null);
   const customCoverInputRef = useRef<HTMLInputElement>(null);
+  const [matrixModalOpen, setMatrixModalOpen] = useState(false);
 
   // Collaborators (Instagram only)
   const [collaborators, setCollaborators] = useState<string[]>([]);
@@ -551,8 +656,12 @@ export default function CreatePostPage() {
   const [zoom, setZoom] = useState(300);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Composer mode (Standard / Carousel / Trial Reel / Document)
+  // Composer mode (Standard / Carousel / Trial Reel / Document) — now driven by BulkContentType for richer single-post parity
   const [composerMode, setComposerMode] = useState<ComposerMode>("standard");
+  const [contentType, setContentType] = useState<BulkContentType>("image");
+  const [carouselMediaMode, setCarouselMediaMode] = useState<CarouselMediaMode>("images");
+  const [xCommunityId, setXCommunityId] = useState("");
+  const [shareCommunityWithFollowers, setShareCommunityWithFollowers] = useState(false);
 
   // Carousel state
   const [carouselItems, setCarouselItems] = useState<CarouselItem[]>([]);
@@ -564,6 +673,97 @@ export default function CreatePostPage() {
   // Document state
   const [documentFile, setDocumentFile] = useState<DocumentFile | null>(null);
   const [documentTitle, setDocumentTitle] = useState("");
+
+  // ── Bulk-grade content-type helpers ──
+  const composerModeForContentType = useCallback((type: BulkContentType): ComposerMode => {
+    if (type === "carousel") return "carousel";
+    if (type === "document") return "document";
+    if (type === "trial_reel") return "trial_reel";
+    return "standard";
+  }, []);
+
+  const handleContentTypeChange = useCallback((next: BulkContentType) => {
+    setContentType(next);
+    const nextMode = composerModeForContentType(next);
+    setComposerMode(nextMode);
+    // Smart platform selection: select every compatible connected platform
+    const compatible = platformsForBulkContent(next, carouselMediaMode);
+    setSelected((prev) => {
+      // For community/text etc, fully switch; for others intersect with connected if possible
+      if (next === "community" || next === "text" || next === "document" || next === "trial_reel" || next === "story") {
+        const pool = connectedPlatforms.size > 0 ? compatible.filter((id) => connectedPlatforms.has(id)) : compatible;
+        return new Set(pool.length > 0 ? pool : compatible);
+      }
+      // image/video: keep previous compatible or fallback to compatible
+      const filtered = [...prev].filter((id) => compatible.includes(id as never));
+      if (filtered.length > 0) return new Set(filtered);
+      const pool = connectedPlatforms.size > 0 ? compatible.filter((id) => connectedPlatforms.has(id)) : compatible;
+      return new Set(pool.length > 0 ? pool : compatible);
+    });
+    // Handle special community advanced options
+    if (next === "community") {
+      setAdvancedByPlatform((prev) => ({
+        ...prev,
+        twitter: { ...getDefaultOptions("twitter"), ...(prev.twitter ?? {}), twitter_community: xCommunityId, twitter_share_with_followers: shareCommunityWithFollowers } as unknown as PlatformAdvancedOptions,
+      }));
+    }
+    if ((next as string) === "story") setFeedType("story");
+    else if (nextMode === "standard" && (next as string) !== "story") setFeedType("feed");
+  }, [carouselMediaMode, connectedPlatforms, xCommunityId, shareCommunityWithFollowers, composerModeForContentType]);
+
+  // ── Smart scheduling state (bulk parity) ──
+  const [smartCountry, setSmartCountry] = useState<CountryConfig>(ALGERIA_CONFIG);
+  const [smartMode, setSmartMode] = useState<"smart" | "manual">("smart");
+  const [smartStrategy, setSmartStrategy] = useState<SmartStrategy>("per_platform");
+  const [smartManualTime, setSmartManualTime] = useState("09:00");
+  const [suggestedSmartDate, setSuggestedSmartDate] = useState<Date | null>(null);
+
+  const handleApplySmartSchedule = useCallback(() => {
+    const platforms = Array.from(selected);
+    if (platforms.length === 0) {
+      toast({ title: "Pick at least one platform", description: "Smart schedule needs a platform to optimize for.", tone: "warning" });
+      return;
+    }
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, "0");
+    const d = String(today.getDate()).padStart(2, "0");
+    const startDate = `${y}-${m}-${d}`;
+    const res = generateSmartSchedule({
+      startDate,
+      days: 7,
+      postsPerDay: 1,
+      intervalDays: 1,
+      platforms: platforms as never,
+      country: smartCountry,
+      displayTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Africa/Algiers",
+      strategy: smartStrategy,
+      schedulingMode: smartMode,
+      manualTime: smartManualTime,
+      items: [{ id: "single", targetPlatforms: platforms as never }],
+    });
+    const slot = res.items[0];
+    if (!slot?.isoTimestamp) {
+      toast({ title: "Could not generate smart time", tone: "error" });
+      return;
+    }
+    const dt = new Date(slot.isoTimestamp);
+    setSuggestedSmartDate(dt);
+    toast({ title: `Suggested: ${slot.date} ${slot.time} (${slot.dayOfWeek})`, description: `Optimized for ${platforms.join(", ")} in ${smartCountry.name} — ${slot.sourceSlot ? `best ${slot.sourceSlot.time}` : "fallback"}. Click Schedule to use it.`, tone: "success" });
+  }, [selected, smartCountry, smartMode, smartManualTime, smartStrategy, toast]);
+
+  // ── Smart Link + Auto-Fit state (handlers defined after captionFor to avoid TDZ) ──
+  const [smartLinkUrl, setSmartLinkUrl] = useState("");
+  const [smartLinkCta, setSmartLinkCta] = useState("Check the link 👆");
+
+  const handleCarouselMediaModeChange = useCallback((next: CarouselMediaMode) => {
+    setCarouselMediaMode(next);
+    setComposerMode("carousel");
+    setContentType("carousel");
+    const compatible = platformsForBulkContent("carousel", next);
+    const pool = connectedPlatforms.size > 0 ? compatible.filter((id) => connectedPlatforms.has(id)) : compatible;
+    setSelected(new Set(pool.length > 0 ? pool : compatible));
+  }, [connectedPlatforms]);
 
   // Metadata rules (Campaign Rules panel)
   const [metadataRules, setMetadataRules] = useState<MetadataRules>({
@@ -784,10 +984,12 @@ export default function CreatePostPage() {
         report.overall = report.blockedCount > 0 ? "blocked" : report.warningCount > 0 ? "warning" : "ready";
       }
 
+      applyExtraVideoChecks(report, { composerMode, feedType, mediaItems, carouselItems, trialReelFile });
+
       return report;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [captions, sameForAll, mediaItems, carouselItems, trialReelFile, documentFile, documentTitle, advancedByPlatform, selected, composerMediaKind, composerMode]
+    [captions, sameForAll, mediaItems, carouselItems, trialReelFile, documentFile, documentTitle, advancedByPlatform, selected, composerMediaKind, composerMode, feedType]
   );
 
   function toggleAccount(id: PlatformId) {
@@ -1109,41 +1311,43 @@ export default function CreatePostPage() {
       }
 
       // ── Standard single-shot publish (video / carousel / single-ratio) ─
-      // Translate feedType into per-platform advanced options so IG/FB
-      // pick up STORIES vs FEED; leave it implicit for other platforms.
+      // Translate feedType + BulkContentType into per-platform advanced options so IG/FB
+      // pick up STORIES vs REELS vs FEED; community needs twitter_community, etc.
+      const applyContentTypeOptions = (opts: PlatformAdvancedOptions, p: PlatformId) => {
+        if (composerMode === "document" && p === "linkedin") (opts as Record<string, unknown>).linkedin_document_title = documentTitle;
+        if (composerMode === "trial_reel" && p === "instagram") {
+          (opts as Record<string, unknown>).instagram_media_type = "REELS";
+          (opts as Record<string, unknown>).instagram_share_mode = trialMode;
+        }
+        if (feedType === "story" || contentType === "story") {
+          if (p === "instagram") (opts as Record<string, unknown>).instagram_media_type = "STORIES";
+          if (p === "facebook") (opts as Record<string, unknown>).facebook_media_type = "STORIES";
+        }
+        if (contentType === "short_video") {
+          if (p === "instagram") (opts as Record<string, unknown>).instagram_media_type = "REELS";
+          if (p === "facebook") (opts as Record<string, unknown>).facebook_media_type = "REELS";
+        } else if (contentType === "long_video") {
+          if (p === "facebook") (opts as Record<string, unknown>).facebook_media_type = "VIDEO";
+        } else if (contentType === "community" && p === "twitter") {
+          (opts as Record<string, unknown>).twitter_community = xCommunityId;
+          (opts as Record<string, unknown>).twitter_share_with_followers = shareCommunityWithFollowers;
+        }
+        if (contentType === "carousel" && carouselMediaMode === "mixed") {
+          // mixed carousel already handled via media kind; no extra opts needed
+        }
+        return opts;
+      };
       const platformOptions = sameForAll
         ? Object.fromEntries(
             platforms.map((p) => {
               const opts = { ...getAdvancedOptions(platforms[0]) };
-              if (composerMode === "document" && p === "linkedin") {
-                opts.linkedin_document_title = documentTitle;
-              }
-              if (composerMode === "trial_reel" && p === "instagram") {
-                opts.instagram_media_type = "REELS";
-                opts.instagram_share_mode = trialMode;
-              }
-              if (feedType === "story") {
-                if (p === "instagram") opts.instagram_media_type = "STORIES";
-                if (p === "facebook") opts.facebook_media_type = "STORIES";
-              }
-              return [p, opts];
+              return [p, applyContentTypeOptions(opts, p)];
             })
           )
         : Object.fromEntries(
             platforms.map((p) => {
               const opts = { ...getAdvancedOptions(p) };
-              if (composerMode === "document" && p === "linkedin") {
-                opts.linkedin_document_title = documentTitle;
-              }
-              if (composerMode === "trial_reel" && p === "instagram") {
-                opts.instagram_media_type = "REELS";
-                opts.instagram_share_mode = trialMode;
-              }
-              if (feedType === "story") {
-                if (p === "instagram") opts.instagram_media_type = "STORIES";
-                if (p === "facebook") opts.facebook_media_type = "STORIES";
-              }
-              return [p, opts];
+              return [p, applyContentTypeOptions(opts, p)];
             })
           );
 
@@ -1770,8 +1974,23 @@ export default function CreatePostPage() {
   async function handleFiles(files: File[]) {
     const remaining = Math.max(0, MAX_FILES - mediaItems.length);
     const accepted = files.slice(0, remaining);
+    // Content-type gating (bulk parity): filter out incompatible mimetypes early
+    const filteredByType: File[] = [];
+    let skippedWrongType = 0;
+    for (const f of accepted) {
+      const k: "image" | "video" = f.type.startsWith("video/") ? "video" : "image";
+      if (contentType === "image" && k !== "image") skippedWrongType++;
+      else if ((contentType === "long_video" || contentType === "short_video" || contentType === "trial_reel") && k !== "video") skippedWrongType++;
+      else if (contentType === "document") skippedWrongType++; // document uses separate card
+      else if (contentType === "text" || contentType === "community") skippedWrongType++; // text/community no media
+      else filteredByType.push(f);
+    }
+    if (skippedWrongType > 0) {
+      toast({ title: `${skippedWrongType} file(s) skipped — wrong type for ${contentType.replaceAll("_", " ")}`, description: contentType === "image" ? "Image post needs images" : contentType === "short_video" || contentType === "long_video" ? "Video post needs video" : "Switch content type to upload this kind", tone: "warning" });
+    }
+    const toProcess = filteredByType;
     const built: { item: MediaItem; file: File }[] = [];
-    for (const file of accepted) {
+    for (const file of toProcess) {
       const localUrl = URL.createObjectURL(file);
       const kind: "image" | "video" = file.type.startsWith("video/") ? "video" : "image";
       const mimeType = file.type || (kind === "video" ? "video/mp4" : "image/jpeg");
@@ -1812,18 +2031,32 @@ export default function CreatePostPage() {
       tone: "info",
     });
 
-    // Probe video durations in parallel with uploads using HTMLVideoElement
-    for (const { item } of built) {
+    // Probe rich video metadata in parallel with uploads (duration + aspect + orientation + LinkedIn ratio)
+    for (const { item, file } of built) {
       if (item.kind === "video") {
-        probeVideoDuration(item.url, (dur, err) => {
-          setMediaItems((prev) =>
-            prev.map((m) =>
-              m.id === item.id
-                ? { ...m, durationSec: dur, metadataLoaded: true, metadataError: err }
-                : m
-            )
-          );
-        });
+        probeVideoMetadataClient(file)
+          .then((meta) => {
+            setMediaItems((prev) =>
+              prev.map((m) =>
+                m.id === item.id
+                  ? { ...m, durationSec: meta.durationSec, width: meta.width || m.width, height: meta.height || m.height, metadataLoaded: true, metadataError: undefined, videoMeta: meta }
+                  : m
+              )
+            );
+          })
+          .catch((err) => {
+            const msg = err instanceof Error ? err.message : "metadata_failed";
+            // Fallback to legacy duration probe so at least duration is tried
+            probeVideoDuration(item.url, (dur, durErr) => {
+              setMediaItems((prev) =>
+                prev.map((m) =>
+                  m.id === item.id
+                    ? { ...m, durationSec: dur, metadataLoaded: true, metadataError: durErr ?? msg }
+                    : m
+                )
+              );
+            });
+          });
         extractVideoThumbnail(item.url).then((thumb) => {
           if (thumb) {
             setFrameCoverUrl((prev) => prev || thumb);
@@ -1949,14 +2182,22 @@ export default function CreatePostPage() {
       tone: "info",
     });
 
-    // Probe video durations concurrently without state collisions
+    // Probe rich video metadata concurrently without state collisions
     for (const item of built) {
       if (item.kind === "video") {
-        probeVideoDuration(item.previewUrl, (dur, err) => {
-          setCarouselItems((prev) =>
-            prev.map((c) => (c.id === item.id ? { ...c, durationSec: dur, metadataLoaded: true, metadataError: err } : c))
-          );
-        });
+        probeVideoMetadataClient(item.file)
+          .then((meta) => {
+            setCarouselItems((prev) =>
+              prev.map((c) => (c.id === item.id ? { ...c, durationSec: meta.durationSec, metadataLoaded: true, metadataError: undefined } : c))
+            );
+          })
+          .catch((err) => {
+            probeVideoDuration(item.previewUrl, (dur, durErr) => {
+              setCarouselItems((prev) =>
+                prev.map((c) => (c.id === item.id ? { ...c, durationSec: dur, metadataLoaded: true, metadataError: durErr ?? (err instanceof Error ? err.message : undefined) } : c))
+              );
+            });
+          });
       }
     }
 
@@ -2024,10 +2265,16 @@ export default function CreatePostPage() {
     };
     setTrialReelFile(item);
 
-    // Probe duration with HTMLVideoElement
-    probeVideoDuration(previewUrl, (dur, err) => {
-      setTrialReelFile((prev) => (prev ? { ...prev, durationSec: dur, metadataLoaded: true, metadataError: err } : null));
-    });
+    // Probe rich metadata with orientation/aspect + duration
+    probeVideoMetadataClient(file)
+      .then((meta) => {
+        setTrialReelFile((prev) => (prev ? { ...prev, durationSec: meta.durationSec, metadataLoaded: true, metadataError: undefined } : null));
+      })
+      .catch(() => {
+        probeVideoDuration(previewUrl, (dur, err) => {
+          setTrialReelFile((prev) => (prev ? { ...prev, durationSec: dur, metadataLoaded: true, metadataError: err } : null));
+        });
+      });
     extractVideoThumbnail(previewUrl).then((thumb) => {
       if (thumb) {
         setFrameCoverUrl((prev) => prev || thumb);
@@ -2304,6 +2551,59 @@ export default function CreatePostPage() {
     setFirstComments((prev) => ({ ...prev, [sameForAll ? "__all" : id]: v }));
   }
 
+  // ── Smart Link + Auto-Fit handlers (defined after captionFor to avoid TDZ) ──
+  const handleApplySmartLink = useCallback(() => {
+    const url = smartLinkUrl.trim();
+    if (!url || !/^https?:\/\//i.test(url)) {
+      toast({ title: "Enter a valid https:// URL", tone: "warning" });
+      return;
+    }
+    const platforms = Array.from(selected);
+    if (platforms.length === 0) {
+      toast({ title: "Pick at least one platform", tone: "warning" });
+      return;
+    }
+    if (platforms.includes("instagram" as PlatformId)) {
+      const igComment = `🔗 Link: ${url}${smartLinkCta ? `\n${smartLinkCta}` : ""}`;
+      setFirstComments((prev) => ({ ...prev, instagram: igComment }));
+    }
+    if (platforms.includes("pinterest" as PlatformId)) {
+      setAdvancedByPlatform((prev) => ({
+        ...prev,
+        pinterest: { ...(prev.pinterest ?? getDefaultOptions("pinterest")), pinterest_link: url } as unknown as PlatformAdvancedOptions,
+      }));
+    }
+    const otherPlatforms = platforms.filter((p) => p !== "instagram" && p !== "pinterest");
+    for (const p of otherPlatforms) {
+      const current = captionFor(p as PlatformId);
+      if (!current.includes(url)) {
+        const next = current ? `${current}\n\n${url}` : url;
+        setCaptionFor(p as PlatformId, next);
+      }
+    }
+    if (sameForAll && !captions.__all?.includes(url)) {
+      const curAll = captions.__all ?? "";
+      const nextAll = curAll ? `${curAll}\n\n${url}` : url;
+      setCaptions((prev) => ({ ...prev, __all: nextAll }));
+    }
+    toast({ title: "Smart link applied", description: `Instagram → first comment, Pinterest → board link, others → caption.`, tone: "success" });
+  }, [smartLinkUrl, smartLinkCta, selected, captions, sameForAll, toast]);
+
+  const handleAutoFit = useCallback(() => {
+    const platforms = Array.from(selected);
+    let fittedCount = 0;
+    for (const p of platforms) {
+      const cap = captionFor(p as PlatformId);
+      const fitted = fitCaptionForPlatform(cap, p as never);
+      if (fitted !== cap) {
+        setCaptionFor(p as PlatformId, fitted);
+        fittedCount++;
+      }
+    }
+    if (fittedCount === 0) toast({ title: "All captions already within limits", tone: "info" });
+    else toast({ title: `Auto-fitted ${fittedCount} caption(s)`, tone: "success" });
+  }, [selected, toast]);
+
   function handleSameForAllChange(next: boolean) {
     setCaptions((prev) => {
       if (next) {
@@ -2390,32 +2690,63 @@ export default function CreatePostPage() {
         {/* Left column: Mode selector + Media + Accounts + CoverSections */}
         <div className="space-y-4">
 
-          {/* ── Content Mode Selector ── */}
-          <ComposerModeSelector
-            mode={composerMode}
-            onChange={(m) => {
-              setComposerMode(m);
-              // Auto-lock platform selection based on mode
-              if (m === "trial_reel") {
-                setSelected(new Set(["instagram"]));
-              } else if (m === "document") {
-                setSelected(new Set(["linkedin"]));
-              } else if (m === "carousel") {
-                // keep current selection but remove incompatible ones
-                setSelected((prev) => {
-                  const compatible = new Set(["instagram", "facebook", "threads"]);
-                  return new Set([...prev].filter((id) => compatible.has(id)));
-                });
-              } else {
-                // standard — restore platforms the workspace actually has connected
-                // (fall back to all when accounts haven't loaded yet so we don't lock out
-                // the user on a slow /api/social-accounts/list response).
-                const fallback = new Set(PLATFORMS.map((p) => p.id));
-                const restored = connectedPlatforms.size > 0 ? connectedPlatforms : fallback;
-                setSelected(new Set(restored));
-              }
-            }}
+          {/* ── Content Type Selector (bulk-grade 9-type parity) ── */}
+          <BulkContentTypeSelector
+            value={contentType}
+            carouselMode={carouselMediaMode}
+            onChange={handleContentTypeChange}
+            onCarouselModeChange={handleCarouselMediaModeChange}
           />
+          {/* Keep ComposerModeSelector hidden for legacy drafts — sync is handled via handleContentTypeChange */}
+          <div className="hidden">
+            <ComposerModeSelector
+              mode={composerMode}
+              onChange={(m) => {
+                setComposerMode(m);
+                const mapped: Record<ComposerMode, BulkContentType> = { standard: "image", carousel: "carousel", trial_reel: "trial_reel", document: "document" };
+                setContentType(mapped[m] ?? "image");
+                if (m === "trial_reel") setSelected(new Set(["instagram"]));
+                else if (m === "document") setSelected(new Set(["linkedin"]));
+                else if (m === "carousel") {
+                  setSelected((prev) => {
+                    const compatible = new Set(["instagram", "facebook", "threads"]);
+                    return new Set([...prev].filter((id) => compatible.has(id)));
+                  });
+                } else {
+                  const fallback = new Set(PLATFORMS.map((p) => p.id));
+                  const restored = connectedPlatforms.size > 0 ? connectedPlatforms : fallback;
+                  setSelected(new Set(restored));
+                }
+              }}
+            />
+          </div>
+          {/* X Community extra fields */}
+          {contentType === "community" && (
+            <div className="rounded-xl border border-zinc-200 bg-white p-4 space-y-3">
+              <p className="text-xs font-semibold text-zinc-900">X Community post</p>
+              <input
+                type="text"
+                value={xCommunityId}
+                onChange={(e) => setXCommunityId(e.target.value)}
+                placeholder="Community ID (e.g. 1756465366817817658)"
+                className="w-full rounded-md border border-zinc-200 px-3 h-9 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+              />
+              <label className="flex items-center gap-2 text-xs">
+                <input type="checkbox" checked={shareCommunityWithFollowers} onChange={(e) => setShareCommunityWithFollowers(e.target.checked)} />
+                Share with followers as well
+              </label>
+              <p className="text-[11px] text-zinc-500">Required for X Community — will be sent as twitter_community advanced option.</p>
+            </div>
+          )}
+          {/* Story hint */}
+          {contentType === "story" && (
+            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
+              Stories publish as <span className="font-semibold">Instagram/Facebook Stories</span> (9:16 vertical). We automatically set media type to STORIES.
+            </div>
+          )}
+          <button type="button" onClick={() => setMatrixModalOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50">
+            <Info className="size-3.5" /> Platform Feature Matrix
+          </button>
 
           {/* ── Media Card (switches by mode) ── */}
           {composerMode === "standard" ? (
@@ -2526,6 +2857,37 @@ export default function CreatePostPage() {
         </div>
 
         {/* Right column: Captions + Metadata Rules */}
+        {/* ── Smart Link + Auto-Fit Toolbar (bulk parity) ── */}
+        <div className="rounded-xl border border-zinc-200 bg-white p-3 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-bold text-zinc-900">Quick tools</p>
+            <button type="button" onClick={handleAutoFit} className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50">
+              ⚡ Auto-Fit captions
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                type="url"
+                value={smartLinkUrl}
+                onChange={(e) => setSmartLinkUrl(e.target.value)}
+                placeholder="https://your-link.com"
+                className="w-full rounded-lg border border-zinc-200 bg-white pl-3 pr-3 h-9 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+              />
+            </div>
+            <input
+              type="text"
+              value={smartLinkCta}
+              onChange={(e) => setSmartLinkCta(e.target.value)}
+              placeholder="CTA (IG)"
+              className="w-32 rounded-lg border border-zinc-200 bg-white px-2 h-9 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+            />
+            <button type="button" onClick={handleApplySmartLink} className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 text-white px-3 h-9 text-xs font-semibold hover:bg-zinc-800 whitespace-nowrap">
+              <span>🔗</span> Apply Link
+            </button>
+          </div>
+          <p className="text-[11px] text-zinc-500">Smart link: Instagram → first comment, Pinterest → link field, others → caption. Auto-Fit trims over-limit captions (bulk parity).</p>
+        </div>
         <CaptionsCard
           platforms={selectedPlatforms}
           sameForAll={sameForAll}
@@ -2623,6 +2985,46 @@ export default function CreatePostPage() {
               {submissionMode === "publishing" ? t("publishing") : t("publishNow")}
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* ── Smart Scheduling (bulk parity) ── */}
+      <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <p className="text-xs font-bold text-zinc-900 flex items-center gap-1.5"><span className="text-amber-600">✨</span> Smart Scheduling</p>
+            <p className="text-[11px] text-zinc-600">Country-aware best times (same engine as Bulk Schedule) — pick audience geography and get a one-click optimal slot.</p>
+          </div>
+          <CountrySelector selectedCountry={smartCountry} onSelectCountry={setSmartCountry} />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <BestTimesControl
+            mode={smartMode}
+            onModeChange={setSmartMode}
+            manualTime={smartManualTime}
+            onManualTimeChange={setSmartManualTime}
+            country={smartCountry}
+            startDate={new Date().toISOString().slice(0,10)}
+            platforms={Array.from(selected) as never}
+            postsPerDay={1}
+            strategy={smartStrategy}
+            onStrategyChange={setSmartStrategy}
+            onApplySmartSchedule={handleApplySmartSchedule}
+            summaryText="Best times for single post"
+          />
+          <button type="button" onClick={handleApplySmartSchedule} className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-900 text-white px-3 h-9 text-xs font-semibold hover:bg-zinc-800">
+            <Clock className="size-3.5" /> Suggest Best Time
+          </button>
+          {suggestedSmartDate && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="rounded-full bg-white border border-zinc-200 px-2.5 py-1 font-medium text-zinc-700">
+                Suggested: {suggestedSmartDate.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+              </span>
+              <button type="button" onClick={() => { void publishPost(suggestedSmartDate); }} className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 text-white px-3 h-8 text-xs font-semibold hover:bg-emerald-700">
+                <Send className="size-3.5" /> Schedule at this time
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -2738,6 +3140,7 @@ export default function CreatePostPage() {
           void publishPost(d);
         }}
       />
+      <PlatformFeatureMatrixModal open={matrixModalOpen} onClose={() => setMatrixModalOpen(false)} />
 
       {/* Hidden custom cover file input */}
       <input
