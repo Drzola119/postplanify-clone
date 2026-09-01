@@ -12,7 +12,7 @@ import {
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
-import { toInternalPlatform } from "@/lib/platforms";
+import { toInternalPlatform, type PlatformId } from "@/lib/platforms";
 
 // ============================================================
 // Types
@@ -21,7 +21,8 @@ type Period = "7d" | "14d" | "30d" | "90d" | "custom";
 
 type Platform =
   | "youtube" | "instagram" | "twitter" | "tiktok"
-  | "facebook" | "threads" | "linkedin" | "pinterest" | "bluesky";
+  | "facebook" | "threads" | "linkedin" | "pinterest" | "bluesky"
+  | "reddit" | "discord" | "telegram" | "google_business" | "unknown";
 
 
 
@@ -59,7 +60,10 @@ interface AccountSummary {
 function toPlatform(key: string): Platform {
   const p = toInternalPlatform(key);
   if (p in PLATFORM_ACCENT) return p as Platform;
-  return "bluesky";
+  // Unknown keys must NOT be silently relabeled as an existing platform
+  // (previously everything fell back to "bluesky"). Fall back to the neutral
+  // "unknown" identity so the UI renders it honestly (gray, "unsupported").
+  return "unknown";
 }
 
 // Convert upload-post.com ConnectedAccountDTO → AccountSummary
@@ -100,6 +104,11 @@ const PLATFORM_ACCENT: Record<Platform, { color: string; leftClass: string }> = 
   linkedin:   { color: "#0A66C2", leftClass: "border-l-blue-700" },
   pinterest:  { color: "#E60023", leftClass: "border-l-red-600" },
   bluesky:    { color: "#1185FE", leftClass: "border-l-sky-500" },
+  reddit:     { color: "#FF4500", leftClass: "border-l-orange-500" },
+  discord:    { color: "#5865F2", leftClass: "border-l-indigo-500" },
+  telegram:   { color: "#229ED9", leftClass: "border-l-sky-500" },
+  google_business: { color: "#4285F4", leftClass: "border-l-blue-400" },
+  unknown:    { color: "#71717A", leftClass: "border-l-zinc-400" },
 };
 
 // ============================================================
@@ -108,7 +117,9 @@ const PLATFORM_ACCENT: Record<Platform, { color: string; leftClass: string }> = 
 function PlatformIcon({ platform, className = "" }: { platform: Platform; className?: string }) {  return (
     <span className={`inline-flex items-center justify-center shrink-0 ${className}`}>
       <PlatformAvatar
-        platform={{ id: platform, name: platform.charAt(0).toUpperCase() + platform.slice(1), handle: "", avatar: null, charLimit: 0, borderClass: "", textClass: "", icon: "" }}
+        // "unknown" is the only value in Platform not in the 13-key PlatformId
+        // catalog; PlatformAvatar renders missing ids neutrally (gray + initials).
+        platform={{ id: platform as PlatformId, name: platform.charAt(0).toUpperCase() + platform.slice(1), handle: "", avatar: null, charLimit: 0, borderClass: "", textClass: "", icon: "" }}
         size={16}
         rounded="sm"
       />
@@ -372,7 +383,8 @@ function AccountAvatar({ account, size = 32 }: { account: AccountSummary; size?:
       </div>
       <span className="absolute -bottom-0.5 -right-0.5">
         <PlatformAvatar
-          platform={{ id: account.platform, name: account.platform.charAt(0).toUpperCase() + account.platform.slice(1), handle: "", avatar: null, charLimit: 0, borderClass: "", textClass: "", icon: "" }}
+          // account.platform may be "unknown" (neutral) — see toPlatform.
+          platform={{ id: account.platform as PlatformId, name: account.platform.charAt(0).toUpperCase() + account.platform.slice(1), handle: "", avatar: null, charLimit: 0, borderClass: "", textClass: "", icon: "" }}
           size={size * 0.45 >= 16 ? Math.round(size * 0.45) : 16}
           rounded="full"
         />
