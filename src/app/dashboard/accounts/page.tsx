@@ -99,6 +99,12 @@ function hintForStatus(status: number, msg: string): string {
     return "Upstream service (upload-post.com) is unreachable. Try Refresh in a minute.";
   }
   if (status === 503) {
+    if (/Quota exceeded|quota|RESOURCE_EXHAUSTED/i.test(msg)) {
+      return "Firestore quota exceeded — Firebase project hit its daily Firestore limit. Enable Blaze billing in Firebase Console → Firestore → Usage, or wait until quota resets at midnight Pacific.";
+    }
+    if (/QUOTA_EXCEEDED/i.test(msg)) {
+      return "Firestore quota exceeded — enable Blaze billing or wait for daily reset (midnight PT).";
+    }
     return "Server-side auth is not configured. The operator needs to paste a real Firebase Admin SDK private key into the host environment (see docs/hpanel-env-paste.md).";
   }
   return msg;

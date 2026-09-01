@@ -141,3 +141,28 @@ export async function getCurrentUser(): Promise<{ uid: string; email: string | n
  * problem as 401.
  */
 export const isAuthConfigured = (): boolean => adminAuth !== null;
+
+/**
+ * Detect whether an error thrown by the Firestore Admin SDK signals
+ * RESOURCE_EXHAUSTED (quota exceeded / daily limit hit).
+ * The shape varies: sometimes `code === 8`, sometimes the message
+ * contains `RESOURCE_EXHAUSTED` or `Quota exceeded`.
+ */
+export function isQuotaExceededError(err: unknown): boolean {
+  if (!err) return false;
+  const anyErr = err as { code?: unknown; message?: unknown; details?: unknown; toString?: () => string };
+  if (anyErr.code === 8) return true;
+  const msg = String(anyErr.message ?? anyErr.details ?? anyErr.toString?.() ?? err);
+  return /RESOURCE_EXHAUSTED|Quota exceeded|quota exceeded/i.test(msg);
+}
+
+/**
+ * Narrow an error into a user-facing category for 503 responses.
+ */
+export function classifyFirestoreError(err: unknown): "quota" | "permission" | "unavailable" | "unknown" {
+  if (isQuotaExceededError(err)) return "quota";
+  const msg = String((err as { message?: unknown })?.message ?? err);
+  if (/PERMISSION_DENIED|permission/i.test(msg)) return "permission";
+  if (/UNAVAILABLE|Deadline|internal/i.test(msg)) return "unavailable";
+  return "unknown";
+}

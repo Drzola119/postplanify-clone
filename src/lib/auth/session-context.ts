@@ -1,6 +1,6 @@
 import "server-only";
 import { cookies } from "next/headers";
-import { getCurrentUser, SESSION_COOKIE, adminAuth } from "@/lib/firebase/admin";
+import { getCurrentUser, SESSION_COOKIE, adminAuth, isQuotaExceededError } from "@/lib/firebase/admin";
 import { ensureDefaultWorkspace } from "@/lib/db/workspaces";
 import { createLogger } from "@/lib/log";
 
@@ -18,10 +18,27 @@ export interface SessionContext {
  * closed with 503 so the caller can surface a retry, rather than leaking data.
  */
 export class WorkspaceUnavailableError extends Error {
-  constructor(message = "Workspace unavailable — Firestore quota or configuration error") {
+  public readonly causeType: "quota" | "config" | "unknown";
+  constructor(
+    message = "Workspace unavailable — Firestore quota or configuration error",
+    causeType: "quota" | "config" | "unknown" = "unknown"
+  ) {
     super(message);
     this.name = "WorkspaceUnavailableError";
+    this.causeType = causeType;
   }
+}
+
+function quotaMessage(): string {
+  return "Firestore quota exceeded — the database has hit its daily read/write limit. Check Firebase Console → Firestore → Usage, enable billing (Blaze plan), or wait until the quota resets at midnight Pacific.";
+}
+
+function classifyWorkspaceError(err: unknown): "quota" | "config" | "unknown" {
+  if (isQuotaExceededError(err)) return "quota";
+  const msg = String((err as { message?: unknown })?.message ?? err);
+  if (/adminDb not configured|FIREBASE|Auth\/DB not configured|not configured/i.test(msg)) return "config";
+  if (/PERMISSION_DENIED|permission/i.test(msg)) return "config";
+  return "unknown";
 }
 
 async function readWorkspaceClaim(uid: string): Promise<string | null> {
@@ -54,10 +71,17 @@ export async function getSessionContext(): Promise<SessionContext | null> {
     }
 
     // 3. Fall back to the user's primary workspace (auto-created if missing).
+    let workspaceResolveError: unknown = null;
     if (!workspaceId) {
       try {
         workspaceId = await ensureDefaultWorkspace(user.uid, user.email);
       } catch (err) {
+        workspaceResolveError = err;
+        const cat = classifyWorkspaceError(err);
+        if (cat === "quota") {
+          log.error("ensureDefaultWorkspace failed: Firestore quota exceeded", { err, uid: user.uid });
+          throw new WorkspaceUnavailableError(quotaMessage(), "quota");
+        }
         log.warn("ensureDefaultWorkspace failed (e.g. quota exceeded)", { err });
       }
     }
@@ -66,15 +90,28 @@ export async function getSessionContext(): Promise<SessionContext | null> {
     if (!workspaceId) {
       log.error("Workspace resolution failed — no workspaceId after all strategies", {
         uid: user.uid,
+        workspaceResolveError: String(workspaceResolveError ?? "unknown"),
       });
+      // If the underlying error was quota, preserve that detail so the API can return a clear action.
+      if (workspaceResolveError && classifyWorkspaceError(workspaceResolveError) === "quota") {
+        throw new WorkspaceUnavailableError(quotaMessage(), "quota");
+      }
       throw new WorkspaceUnavailableError();
     }
 
     return { uid: user.uid, email: user.email, workspaceId };
   } catch (err) {
     if (err instanceof WorkspaceUnavailableError) throw err;
+    const cat = classifyWorkspaceError(err);
+    if (cat === "quota") {
+      log.error(err, { step: "resolveWorkspace/quota" });
+      throw new WorkspaceUnavailableError(quotaMessage(), "quota");
+    }
     log.error(err, { step: "resolveWorkspace" });
-    throw new WorkspaceUnavailableError();
+    throw new WorkspaceUnavailableError(
+      cat === "config" ? "Workspace unavailable — server configuration error" : undefined,
+      cat
+    );
   }
 }
 
@@ -87,8 +124,36 @@ export async function requireSession(): Promise<SessionContext | Response> {
     return ctx;
   } catch (err) {
     if (err instanceof WorkspaceUnavailableError) {
+      const cause = (err as WorkspaceUnavailableError).causeType;
       return Response.json(
-        { ok: false, error: { status: 503, message: (err as Error).message } },
+        {
+          ok: false,
+          error: {
+            status: 503,
+            code: cause === "quota" ? "QUOTA_EXCEEDED" : cause === "config" ? "CONFIG_ERROR" : "WORKSPACE_UNAVAILABLE",
+            message: (err as Error).message,
+            hint:
+              cause === "quota"
+                ? "Firebase Console → Project Settings → Usage and billing → Firestore. Enable Blaze (pay-as-you-go) or wait until daily quota resets (midnight PT)."
+                : undefined,
+          },
+        },
+        { status: 503 }
+      );
+    }
+    // Distinguish quota from generic errors even when WorkspaceUnavailableError wasn't used directly
+    if (isQuotaExceededError(err)) {
+      log.error(err, { step: "requireSession/quota" });
+      return Response.json(
+        {
+          ok: false,
+          error: {
+            status: 503,
+            code: "QUOTA_EXCEEDED",
+            message: quotaMessage(),
+            hint: "Enable billing in Firebase Console or wait for quota reset.",
+          },
+        },
         { status: 503 }
       );
     }

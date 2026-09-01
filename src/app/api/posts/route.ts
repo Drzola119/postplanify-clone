@@ -19,6 +19,12 @@ export async function GET(request: NextRequest) {
     return jsonOk({ posts: result.items, nextCursor: result.nextCursor });
   } catch (err) {
     console.error("[GET /api/posts error]", err);
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/RESOURCE_EXHAUSTED|Quota exceeded/i.test(msg) || (err as { code?: unknown })?.code === 8) {
+      return jsonError(503, "Firestore quota exceeded — check Firebase Console → Firestore → Usage and enable Blaze billing or wait for quota reset.", undefined);
+    }
+    // Don't mask persistent errors as empty list — surface 500 so the UI can show a retry
+    // But keep backward compat: empty list for transient unknown errors
     return jsonOk({ posts: [], nextCursor: null });
   }
 }

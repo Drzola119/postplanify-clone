@@ -65,8 +65,9 @@ export async function GET(request: Request) {
   let authTestError: string | null = null;
   let firestoreTestOk = false;
   let firestoreTestError: string | null = null;
+  let firestoreQuotaExceeded = false;
   try {
-    const { adminAuth, adminDb } = await import("@/lib/firebase/admin");
+    const { adminAuth, adminDb, isQuotaExceededError } = await import("@/lib/firebase/admin");
     if (adminAuth) {
       const token = await adminAuth.createCustomToken("diagnostic-test-uid");
       authTestOk = !!token;
@@ -82,14 +83,51 @@ export async function GET(request: Request) {
       firestoreTestError = "adminDb is null (SDK not initialized)";
     }
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Quota errors are infra, not env-config — surface separately so the UI doesn't tell operators to re-paste envs
+    const isQuota = /RESOURCE_EXHAUSTED|Quota exceeded/i.test(msg) || msg.includes("quota exceeded");
     if (!authTestOk) {
-      authTestError = err instanceof Error ? err.message : String(err);
+      // If auth succeeded but Firestore failed with quota, the catch belongs to Firestore, not auth
+      // Check by seeing if the error looks like a Firestore quota string and auth was already ok
+      if (isQuota && authTestOk) {
+        firestoreTestError = msg;
+        firestoreQuotaExceeded = true;
+      } else {
+        authTestError = msg;
+        // Common case: Firestore quota throws after auth already succeeded — move it to the right bucket
+        if (isQuota) {
+          firestoreTestError = msg;
+          firestoreQuotaExceeded = true;
+          // If auth token was created successfully before the Firestore call, it should be considered ok
+          // The admin SDK lazy-import may have created token before failing on Firestore get()
+          // So re-evaluate: if we got past createCustomToken, mark authTestOk
+          try {
+            const { adminAuth: reAuth } = await import("@/lib/firebase/admin");
+            if (reAuth) {
+              const t = await reAuth.createCustomToken("diagnostic-test-uid");
+              if (t) { authTestOk = true; authTestError = null; }
+            }
+          } catch {}
+        }
+      }
     } else {
-      firestoreTestError = err instanceof Error ? err.message : String(err);
+      firestoreTestError = msg;
+      if (isQuota) firestoreQuotaExceeded = true;
     }
+    // Second-pass precise check via helper if available
+    try {
+      const { isQuotaExceededError: checkQuota } = await import("@/lib/firebase/admin");
+      if (checkQuota(err)) firestoreQuotaExceeded = true;
+    } catch {}
   }
 
-  const ok = missing.length === 0 && keyLooksValid && authTestOk && firestoreTestOk;
+  const envsOk = missing.length === 0 && keyLooksValid && authTestOk;
+  const firestoreOk = firestoreTestOk && !firestoreQuotaExceeded;
+  const ok = envsOk && authTestOk && firestoreOk;
+
+  // If Firestore quota is hit, envs are actually correct — don't tell the operator to re-paste secrets
+  const needsEnvPaste = missing.length > 0 || !keyLooksValid || !authTestOk;
+  const needsBillingUpgrade = firestoreQuotaExceeded;
 
   return NextResponse.json(
     {
@@ -107,10 +145,19 @@ export async function GET(request: Request) {
       authTestError,
       firestoreTestOk,
       firestoreTestError,
+      firestoreQuotaExceeded,
+      firestoreOk,
+      envsOk,
       nodeEnv: process.env.NODE_ENV,
-      // Helper boolean the front-end can use to render a "fix your envs" message.
-      needsHostingerEnvPaste: missing.length > 0 || !keyLooksValid || !authTestOk || !firestoreTestOk,
-      docsHint: "docs/hpanel-env-paste.md",
+      // Helper booleans the front-end can use to render actionable fix messages.
+      needsHostingerEnvPaste: needsEnvPaste,
+      needsBillingUpgrade,
+      hint: needsBillingUpgrade
+        ? "Firestore quota exceeded: Firebase Console → Firestore → Usage → Enable Blaze (pay-as-you-go) or wait until daily quota resets (midnight PT, ~08:00 UTC)."
+        : needsEnvPaste
+          ? "Missing or invalid Firebase env vars — see docs/hpanel-env-paste.md"
+          : undefined,
+      docsHint: needsBillingUpgrade ? "https://console.firebase.google.com/project/_/firestore/usage" : "docs/hpanel-env-paste.md",
     },
     {
       status: ok ? 200 : 503,

@@ -29,6 +29,9 @@ import {
   Loader2,
   Search,
   X as XIcon,
+  AlertTriangle,
+  Database,
+  ExternalLink,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
@@ -183,7 +186,7 @@ export default function PostsCalendarPage() {
   const [posts, setPosts] = useState<CalendarPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<{ raw: string; status?: number; code?: string; message?: string; hint?: string } | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -260,7 +263,21 @@ export default function PostsCalendarPage() {
           });
           if (!res.ok) {
             const text = await res.text().catch(() => "");
-            setLoadError(`Failed to load posts (${res.status}${text ? `: ${text}` : ""})`);
+            let parsed: { error?: { status?: number; code?: string; message?: string; hint?: string } } | null = null;
+            try { parsed = text ? JSON.parse(text) : null; } catch {}
+            const code = parsed?.error?.code;
+            const message = parsed?.error?.message;
+            const hint = parsed?.error?.hint;
+            const isQuota = code === "QUOTA_EXCEEDED" || /Quota exceeded|quota|RESOURCE_EXHAUSTED/i.test(message ?? text ?? "");
+            setLoadError({
+              raw: `Failed to load posts (${res.status}${text ? `: ${text}` : ""})`,
+              status: res.status,
+              code: isQuota ? "QUOTA_EXCEEDED" : code,
+              message: isQuota
+                ? "Firestore quota exceeded — the database hit its daily limit."
+                : message ?? (text || `HTTP ${res.status}`),
+              hint,
+            });
             if (!opts.append) setPosts([]);
             return;
           }
@@ -283,7 +300,13 @@ export default function PostsCalendarPage() {
         setNextCursor(nextPageCursor);
         setHasMore(Boolean(nextPageCursor));
       } catch (err) {
-        setLoadError(err instanceof Error ? err.message : "Network error");
+        const msg = err instanceof Error ? err.message : "Network error";
+        const isQuota = /Quota exceeded|RESOURCE_EXHAUSTED/i.test(msg);
+        setLoadError({
+          raw: msg,
+          code: isQuota ? "QUOTA_EXCEEDED" : undefined,
+          message: isQuota ? "Firestore quota exceeded — the database hit its daily limit." : msg,
+        });
       } finally {
         loadingRef.current = false;
         setLoading(false);
@@ -716,17 +739,77 @@ export default function PostsCalendarPage() {
             Loading posts…
           </div>
         ) : loadError ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-12 gap-3 text-sm">
-            <p className="text-red-600">{loadError}</p>
-            <button
-              type="button"
-              onClick={() => setReloadKey((k) => k + 1)}
-              className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50"
-            >
-              <RefreshCw className="size-3.5" />
-              Retry
-            </button>
-          </div>
+          loadError.code === "QUOTA_EXCEEDED" ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 gap-4 max-w-2xl mx-auto text-center">
+              <div className="size-12 rounded-full bg-amber-100 flex items-center justify-center">
+                <Database className="size-6 text-amber-600" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-zinc-900 flex items-center justify-center gap-2">
+                  <AlertTriangle className="size-4 text-amber-500" />
+                  Database quota exceeded
+                </h3>
+                <p className="text-sm text-zinc-600 leading-relaxed">
+                  Firestore hit its daily read/write limit for project <span className="font-mono font-medium">postplanify-best</span>. Calendar and connections can’t load until quota resets.
+                </p>
+                <p className="text-xs text-zinc-500 leading-relaxed">
+                  {loadError.hint ?? "Firestore quota exceeded — check Firebase Console → Firestore → Usage."}
+                </p>
+              </div>
+              <div className="rounded-lg bg-zinc-50 border border-zinc-200 p-4 text-left w-full space-y-2">
+                <p className="text-xs font-semibold text-zinc-700">How to fix:</p>
+                <ol className="text-xs text-zinc-600 space-y-1 list-decimal list-inside">
+                  <li>Open <span className="font-medium">Firebase Console → Firestore → Usage</span> for <span className="font-mono">postplanify-best</span></li>
+                  <li>Enable <span className="font-medium">Blaze (pay-as-you-go)</span> billing — free quota then resets; billing prevents hard 429/503.</li>
+                  <li>Or wait until quota resets at <span className="font-medium">midnight Pacific (08:00 UTC)</span>.</li>
+                  <li>Reduce heavy readers: avoid polling /api/diagnostics every second; cache posts client-side.</li>
+                </ol>
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <a
+                    href="https://console.firebase.google.com/project/postplanify-best/firestore/usage"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 text-white px-3 h-8 text-xs font-medium hover:bg-zinc-800"
+                  >
+                    Open Firestore Usage
+                    <ExternalLink className="size-3.5" />
+                  </a>
+                  <a
+                    href="/api/diagnostics/firebase-envs"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50"
+                  >
+                    Check diagnostics JSON
+                  </a>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setReloadKey((k) => k + 1)}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50"
+                >
+                  <RefreshCw className="size-3.5" />
+                  Retry
+                </button>
+                <span className="text-[11px] text-zinc-400">Error: {loadError.raw.slice(0, 120)}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center p-12 gap-3 text-sm">
+              <p className="text-red-600 break-all max-w-xl text-center">{loadError.message ?? loadError.raw}</p>
+              {loadError.hint && <p className="text-xs text-zinc-500 max-w-xl text-center">{loadError.hint}</p>}
+              <button
+                type="button"
+                onClick={() => setReloadKey((k) => k + 1)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50"
+              >
+                <RefreshCw className="size-3.5" />
+                Retry
+              </button>
+            </div>
+          )
         ) : view === "monthly" ? (
           <MonthView currentDate={currentDate} today={today} postsByDay={postsByDay} onPostClick={setSelectedPost} onCreate={handleCreateForDate} timeZone={timeZone} />
         ) : view === "weekly" ? (

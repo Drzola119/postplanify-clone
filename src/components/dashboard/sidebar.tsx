@@ -136,7 +136,7 @@ export function DashboardSidebar() {
   const [workspaceState, setWorkspaceState] = useState<WorkspaceLoadState>("loading");
   const [activeWorkspace, setActiveWorkspace] = useState<string>("");
   const [health, setHealth] = useState<AccountHealthSummary | null>(null);
-  const [healthError, setHealthError] = useState<"unauthorized" | "other" | null>(null);
+  const [healthError, setHealthError] = useState<"unauthorized" | "quota" | "other" | null>(null);
   const { openDrawer } = useDrawer();
   const t = useTranslations("shell");
 
@@ -229,7 +229,7 @@ export function DashboardSidebar() {
 
   // Hydrate connections health from /api/accounts/health. Track 401
   // separately so the widget can show an actionable hint instead of a
-  // permanent "Loading…".
+  // permanent "Loading…". Also surface quota (503 QUOTA_EXCEEDED) explicitly.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -244,7 +244,13 @@ export function DashboardSidebar() {
           return;
         }
         if (!res.ok) {
-          setHealthError("other");
+          // Try to detect quota error from body
+          let isQuota = res.status === 503;
+          try {
+            const j = (await res.clone().json()) as { error?: { code?: string; message?: string } };
+            if (j?.error?.code === "QUOTA_EXCEEDED" || /Quota exceeded/i.test(j?.error?.message ?? "")) isQuota = true;
+          } catch {}
+          setHealthError(isQuota ? "quota" : "other");
           return;
         }
         const data = (await res.json()) as { health?: AccountHealthSummary };
@@ -452,9 +458,11 @@ export function DashboardSidebar() {
                   : t("connections.all_healthy", { total: health.total })
                 : healthError === "unauthorized"
                   ? t("connections.relogin_hint")
-                  : healthError === "other"
-                    ? t("connections.load_error")
-                    : t("connections.loading")}
+                  : healthError === "quota"
+                    ? "Quota exceeded — DB paused (see calendar)"
+                    : healthError === "other"
+                      ? t("connections.load_error")
+                      : t("connections.loading")}
             </p>
           </Link>
         </div>

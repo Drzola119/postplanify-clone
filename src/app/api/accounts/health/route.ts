@@ -121,6 +121,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ health });
   } catch (err) {
     console.error("[GET /api/accounts/health error]", err);
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/RESOURCE_EXHAUSTED|Quota exceeded/i.test(msg) || (err as { code?: unknown })?.code === 8) {
+      return NextResponse.json(
+        { health: [], error: { status: 503, code: "QUOTA_EXCEEDED", message: "Firestore quota exceeded", hint: "Enable Blaze billing or wait for reset" } },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ health: [] });
   }
 }

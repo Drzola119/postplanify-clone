@@ -19,14 +19,23 @@ export async function GET() {
     try {
       await ensureDefaultWorkspace(user.uid, user.email);
       items = await listWorkspacesForUser(user.uid);
-    } catch {
-      // Gracefully handle Firestore quota/network issues
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isQuota = /RESOURCE_EXHAUSTED|Quota exceeded/i.test(msg) || (err as { code?: unknown })?.code === 8;
+      if (isQuota) {
+        return jsonError(503, "Firestore quota exceeded — enable Blaze billing or wait for daily reset", undefined);
+      }
+      // Gracefully handle Firestore quota/network issues (non-quota)
     }
     if (items.length === 0) {
       items = [{ ...FALLBACK_WORKSPACE, ownerUid: user.uid }];
     }
     return jsonOk({ workspaces: items });
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/RESOURCE_EXHAUSTED|Quota exceeded/i.test(msg)) {
+      return jsonError(503, "Firestore quota exceeded", undefined);
+    }
     return jsonOk({ workspaces: [{ ...FALLBACK_WORKSPACE, ownerUid: user.uid }] });
   }
 }
