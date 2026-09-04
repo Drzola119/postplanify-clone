@@ -27,7 +27,16 @@ import {
   AtSign,
   Users,
   Clock,
+  Calendar,
+  ListChecks,
+  AlertCircle,
+  CheckCircle2,
+  Timer,
+  ChevronDown,
 } from "lucide-react";
+import Link from "next/link";
+import { PageHelp } from "@/components/dashboard/help/page-help";
+import { getHelpConfig } from "@/lib/help/content";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -189,11 +198,47 @@ function uploadedMediaUrl(item: Pick<MediaItem, "url" | "cdnUrl">): string | nul
   return /^https?:\/\//i.test(item.url) ? item.url : null;
 }
 
-const MAX_FILES = 10;
+const TIMEZONES: Array<{ id: string; label: string }> = [
+  { id: "Africa/Lagos", label: "Africa/Lagos" },
+  { id: "Africa/Algiers", label: "Africa/Algiers" },
+  { id: "Africa/Cairo", label: "Africa/Cairo" },
+  { id: "Africa/Johannesburg", label: "Africa/Johannesburg" },
+  { id: "America/New_York", label: "America/New_York" },
+  { id: "America/Los_Angeles", label: "America/Los_Angeles" },
+  { id: "America/Chicago", label: "America/Chicago" },
+  { id: "America/Sao_Paulo", label: "America/Sao_Paulo" },
+  { id: "Europe/London", label: "Europe/London" },
+  { id: "Europe/Paris", label: "Europe/Paris" },
+  { id: "Europe/Berlin", label: "Europe/Berlin" },
+  { id: "Europe/Madrid", label: "Europe/Madrid" },
+  { id: "Europe/Rome", label: "Europe/Rome" },
+  { id: "Asia/Dubai", label: "Asia/Dubai" },
+  { id: "Asia/Kolkata", label: "Asia/Kolkata" },
+  { id: "Asia/Singapore", label: "Asia/Singapore" },
+  { id: "Asia/Tokyo", label: "Asia/Tokyo" },
+  { id: "Asia/Shanghai", label: "Asia/Shanghai" },
+  { id: "Australia/Sydney", label: "Australia/Sydney" },
+  { id: "UTC", label: "UTC" },
+];
 
-// Headers are sourced from the centralized client-overrides helper. In
-// production they resolve to {} so dev-only secrets never leave the server
-// env (see src/lib/security/server-config.ts).
+function todayISO(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = (d.getMonth() + 1).toString().padStart(2, "0");
+  const day = d.getDate().toString().padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function SchedulerField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[10px] font-semibold tracking-widest uppercase text-zinc-500">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+const MAX_FILES = 10;
 
 export default function CreatePostPage() {
   const t = useTranslations("createPost");
@@ -712,11 +757,43 @@ export default function CreatePostPage() {
   }, [carouselMediaMode, connectedPlatforms, xCommunityId, shareCommunityWithFollowers, composerModeForContentType]);
 
   // ── Smart scheduling state (bulk parity) ──
+  const [startDate, setStartDate] = useState(todayISO());
   const [smartCountry, setSmartCountry] = useState<CountryConfig>(ALGERIA_CONFIG);
   const [smartMode, setSmartMode] = useState<"smart" | "manual">("smart");
   const [smartStrategy, setSmartStrategy] = useState<SmartStrategy>("per_platform");
   const [smartManualTime, setSmartManualTime] = useState("09:00");
   const [suggestedSmartDate, setSuggestedSmartDate] = useState<Date | null>(null);
+
+  // Timezone selector state matching Bulk Schedule
+  const [timezone, setTimezone] = useState<string>("Africa/Lagos");
+  const [timezoneSource, setTimezoneSource] = useState<"auto" | "manual">("auto");
+  const [timezoneOverride, setTimezoneOverride] = useState(false);
+  const [tzOpen, setTzOpen] = useState(false);
+  const tzRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (tzRef.current && !tzRef.current.contains(e.target as Node)) {
+        setTzOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function handleCountryChange(country: CountryConfig) {
+    setSmartCountry(country);
+    if (timezoneSource === "auto" && !timezoneOverride) {
+      setTimezone(country.timezone);
+    }
+  }
+
+  function handleTimezoneChange(tz: string) {
+    setTimezone(tz);
+    setTimezoneOverride(true);
+    setTimezoneSource("manual");
+    setTzOpen(false);
+  }
 
   const handleApplySmartSchedule = useCallback(() => {
     const platforms = Array.from(selected);
@@ -724,19 +801,14 @@ export default function CreatePostPage() {
       toast({ title: "Pick at least one platform", description: "Smart schedule needs a platform to optimize for.", tone: "warning" });
       return;
     }
-    const today = new Date();
-    const y = today.getFullYear();
-    const m = String(today.getMonth() + 1).padStart(2, "0");
-    const d = String(today.getDate()).padStart(2, "0");
-    const startDate = `${y}-${m}-${d}`;
     const res = generateSmartSchedule({
-      startDate,
+      startDate: startDate || todayISO(),
       days: 7,
       postsPerDay: 1,
       intervalDays: 1,
       platforms: platforms as never,
       country: smartCountry,
-      displayTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Africa/Algiers",
+      displayTimezone: timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "Africa/Lagos",
       strategy: smartStrategy,
       schedulingMode: smartMode,
       manualTime: smartManualTime,
@@ -749,8 +821,8 @@ export default function CreatePostPage() {
     }
     const dt = new Date(slot.isoTimestamp);
     setSuggestedSmartDate(dt);
-    toast({ title: `Suggested: ${slot.date} ${slot.time} (${slot.dayOfWeek})`, description: `Optimized for ${platforms.join(", ")} in ${smartCountry.name} — ${slot.sourceSlot ? `best ${slot.sourceSlot.time}` : "fallback"}. Click Schedule to use it.`, tone: "success" });
-  }, [selected, smartCountry, smartMode, smartManualTime, smartStrategy, toast]);
+    toast({ title: `Suggested: ${slot.date} ${slot.time} (${slot.dayOfWeek})`, description: `Optimized for ${platforms.join(", ")} in ${smartCountry.name} — ${slot.sourceSlot ? `best ${slot.sourceSlot.time}` : "fallback"}.`, tone: "success" });
+  }, [selected, startDate, smartCountry, timezone, smartStrategy, smartMode, smartManualTime, toast]);
 
   // ── Smart Link + Auto-Fit state (handlers defined after captionFor to avoid TDZ) ──
   const [smartLinkUrl, setSmartLinkUrl] = useState("");
@@ -2645,18 +2717,289 @@ export default function CreatePostPage() {
   const canSaveDraft = hasAnyContent || !!draftId;
 
   return (
-    <div className="p-6 max-w-[1400px] mx-auto">
-      {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-3 pb-6">
-        <div className="flex items-center gap-3">
-          <h1 className="text-[30px] font-bold leading-[36px] tracking-tight">{t("pageTitle")}</h1>
+    <div className="p-4 sm:p-6 max-w-[1400px] mx-auto space-y-4 sm:space-y-5">
+      {/* ── Page Header + Top Nav Bar ── */}
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-[22px] sm:text-[26px] font-bold tracking-tight text-zinc-900 leading-none">
+                  {t("pageTitle")}
+                </h1>
+                <span className="inline-flex items-center gap-1 rounded-full bg-zinc-900 text-white text-[10px] font-bold tracking-widest px-2 py-0.5 uppercase">
+                  <Sparkles className="size-3" /> Single
+                </span>
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold border",
+                    readinessReport.overall === "blocked"
+                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                      : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  )}
+                >
+                  <ListChecks className="size-3.5" />
+                  {readinessReport.overall === "blocked"
+                    ? `${readinessReport.blockedCount} blocked • ${readinessReport.readyCount} ready`
+                    : "Ready to publish"}
+                </span>
+              </div>
+              <p className="text-[13px] sm:text-sm text-zinc-500 mt-1 max-w-[720px] leading-relaxed">
+                Craft, customize, and publish your content across all connected social channels.{" "}
+                <span className="hidden sm:inline">
+                  • Linked to{" "}
+                  <Link href="/dashboard/posts/bulk-schedule" className="underline decoration-dotted hover:text-zinc-700">
+                    Bulk Schedule
+                  </Link>{" "}
+                  •{" "}
+                  <Link href="/dashboard/queue" className="underline decoration-dotted hover:text-zinc-700">
+                    Queue
+                  </Link>{" "}
+                  •{" "}
+                  <Link href="/dashboard/calendar" className="underline decoration-dotted hover:text-zinc-700">
+                    Calendar
+                  </Link>{" "}
+                  •{" "}
+                  <Link href="/dashboard/posts/history" className="underline decoration-dotted hover:text-zinc-700">
+                    History
+                  </Link>
+                </span>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setMatrixModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 h-9 text-xs font-semibold text-zinc-800 hover:bg-zinc-50 shadow-xs cursor-pointer"
+            >
+              <Sparkles className="size-3.5 text-zinc-900" /> Platform Feature Matrix
+            </button>
+            <Link
+              href="/dashboard/calendar"
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 h-9 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 shadow-xs"
+            >
+              <Calendar className="size-3.5" /> Calendar
+            </Link>
+            <Link
+              href="/dashboard/queue"
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 h-9 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 shadow-xs"
+            >
+              <ListChecks className="size-3.5" /> Queue
+            </Link>
+            <button
+              type="button"
+              onClick={startOver}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-white px-3 h-9 text-xs font-semibold text-red-600 hover:bg-red-50 shadow-xs cursor-pointer"
+            >
+              <RotateCcw className="size-3.5" />
+              {t("startOver")}
+            </button>
+          </div>
         </div>
 
+        {/* Top Navigation Pill Bar */}
+        <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+          <span className="inline-flex items-center gap-1 rounded-full bg-zinc-900 text-white px-2.5 py-1 font-bold">
+            Create Post
+          </span>
+          <Link
+            href="/dashboard/posts/bulk-schedule"
+            className="hidden sm:inline-flex items-center gap-1 rounded-full bg-zinc-100 hover:bg-white border border-transparent hover:border-zinc-200 px-2.5 py-1 font-medium text-zinc-600"
+          >
+            Bulk Schedule
+          </Link>
+          <Link
+            href="/dashboard/assets"
+            className="hidden sm:inline-flex items-center gap-1 rounded-full bg-zinc-100 hover:bg-white border border-transparent hover:border-zinc-200 px-2.5 py-1 font-medium text-zinc-600"
+          >
+            Media Library
+          </Link>
+          <Link
+            href="/dashboard/hashtags"
+            className="hidden sm:inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2.5 py-1 font-medium text-zinc-600"
+          >
+            Hashtags
+          </Link>
+          <span className="text-zinc-400 hidden sm:inline">• Auto-scheduler + per-post advanced controls</span>
+          {(() => {
+            const cfg = getHelpConfig("posts/create");
+            if (!cfg) return null;
+            return <PageHelp config={cfg} align="left" buttonClassName="rounded-full" />;
+          })()}
+        </div>
+      </div>
+
+      {/* ── Pro Scheduler Bar — double-bezel soft ── */}
+      <div className="rounded-[16px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.04)] p-2 sm:p-3">
+        <div className="flex flex-wrap items-end gap-2">
+          <SchedulerField label="START DATE">
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              min={todayISO()}
+              max="2030-12-31"
+              className="h-9 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+            />
+          </SchedulerField>
+
+          <SchedulerField label="COUNTRY">
+            <CountrySelector
+              selectedCountry={smartCountry}
+              onSelectCountry={handleCountryChange}
+            />
+          </SchedulerField>
+
+          <SchedulerField label="BEST TIMES">
+            <BestTimesControl
+              mode={smartMode}
+              onModeChange={setSmartMode}
+              manualTime={smartManualTime}
+              onManualTimeChange={setSmartManualTime}
+              country={smartCountry}
+              startDate={startDate}
+              platforms={Array.from(selected) as never}
+              postsPerDay={1}
+              strategy={smartStrategy}
+              onStrategyChange={setSmartStrategy}
+              onApplySmartSchedule={handleApplySmartSchedule}
+              summaryText="Best times for single post"
+            />
+          </SchedulerField>
+
+          <SchedulerField label="TIMEZONE">
+            <div className="relative" ref={tzRef}>
+              <button
+                type="button"
+                onClick={() => setTzOpen((v) => !v)}
+                aria-haspopup="listbox"
+                aria-expanded={tzOpen}
+                className="inline-flex items-center gap-1.5 h-9 rounded-xl border border-zinc-200 bg-white px-2.5 text-xs font-medium hover:bg-zinc-50 transition-colors cursor-pointer"
+              >
+                <Timer className="size-3.5 text-zinc-500" />
+                <span className="max-w-[110px] truncate">{timezone}</span>
+                <span
+                  className={cn(
+                    "text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider",
+                    timezoneSource === "auto" && !timezoneOverride
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                      : "bg-zinc-100 text-zinc-600 border border-zinc-200"
+                  )}
+                >
+                  {timezoneSource === "auto" && !timezoneOverride ? "Auto" : "Custom"}
+                </span>
+                <ChevronDown className="size-3 text-zinc-400" />
+              </button>
+              {tzOpen ? (
+                <ul
+                  role="listbox"
+                  className="absolute right-0 top-full mt-2 z-40 w-[240px] max-h-[260px] overflow-y-auto rounded-xl border border-zinc-200 bg-white shadow-xl p-1 animate-in fade-in zoom-in-95 duration-150"
+                >
+                  <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                    Select Timezone
+                  </div>
+                  {(() => {
+                    const list = TIMEZONES.some((tz) => tz.id === timezone)
+                      ? TIMEZONES
+                      : [{ id: timezone, label: timezone }, ...TIMEZONES];
+                    return list.map((tz) => (
+                      <li key={tz.id}>
+                        <button
+                          type="button"
+                          onClick={() => handleTimezoneChange(tz.id)}
+                          className={cn(
+                            "w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-zinc-100 font-medium flex items-center justify-between transition-colors cursor-pointer",
+                            tz.id === timezone && "bg-zinc-900 text-white hover:bg-zinc-900"
+                          )}
+                        >
+                          <span>{tz.label}</span>
+                          {tz.id === smartCountry.timezone && (
+                            <span className="text-[10px] opacity-70">Default</span>
+                          )}
+                        </button>
+                      </li>
+                    ));
+                  })()}
+                </ul>
+              ) : null}
+            </div>
+          </SchedulerField>
+
+          <SchedulerField label="CAPTION MODE">
+            <button
+              type="button"
+              onClick={() => setAiDialogOpen(true)}
+              className="inline-flex items-center gap-1.5 h-9 rounded-xl border border-purple-200 bg-purple-50/70 text-purple-900 hover:bg-purple-100/70 px-2.5 text-xs font-semibold transition-colors cursor-pointer"
+              title="Generate AI captions based on your media"
+            >
+              <Sparkles className="size-3.5 text-purple-600 animate-pulse" />
+              <span>✨ Auto-generate</span>
+            </button>
+          </SchedulerField>
+
+          <button
+            type="button"
+            onClick={handleApplySmartSchedule}
+            className="ml-auto sm:ml-0 inline-flex items-center gap-1.5 rounded-xl bg-zinc-900 hover:bg-black text-white px-4 h-9 text-xs font-bold shadow-sm cursor-pointer"
+          >
+            <Clock className="size-3.5" />
+            Suggest Best Time
+          </button>
+
+          {suggestedSmartDate && (
+            <button
+              type="button"
+              onClick={() => { void publishPost(suggestedSmartDate); }}
+              disabled={!hasAnyContent || submitting || readinessReport.overall === "blocked"}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 h-9 text-xs font-bold shadow-sm disabled:opacity-50 cursor-pointer"
+            >
+              <Send className="size-3.5" />
+              Schedule for {suggestedSmartDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </button>
+          )}
+
+          {readinessReport.blockedCount > 0 ? (
+            <button
+              type="button"
+              onClick={() => setRequirementsOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-full bg-red-50 border border-red-200 text-red-700 px-3 py-1.5 text-xs font-bold hover:bg-red-100 transition-colors cursor-pointer"
+            >
+              <AlertCircle className="size-3.5" /> {readinessReport.blockedCount} blocked • {readinessReport.readyCount} ready
+            </button>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1.5 text-xs font-bold">
+              <CheckCircle2 className="size-3.5" /> All ready
+            </span>
+          )}
+        </div>
+
+        <p className="text-[11px] text-zinc-500 mt-2 hidden sm:block">
+          Start date sets slot 1.{" "}
+          {smartMode === "smart"
+            ? `We optimize publish times for your platforms in ${smartCountry.name} (${timezone}).`
+            : `We use your selected manual time (${smartManualTime}) in ${timezone}.`}{" "}
+          <Link href="/dashboard/calendar" className="underline decoration-dotted hover:text-zinc-700">
+            View in Calendar
+          </Link>{" "}
+          after scheduling.
+        </p>
+      </div>
+
+      {/* ── Global Platform Selector Bar (Bulk Schedule Parity) ── */}
+      <div className="rounded-[16px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.04)] p-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3 flex-wrap">
           <PlatformTileBar
             selected={selected}
             onToggle={toggleAccount}
-            lockedPlatforms={composerMode === "trial_reel" ? new Set<PlatformId>(["instagram"]) : composerMode === "document" ? new Set<PlatformId>(["linkedin"]) : undefined}
+            lockedPlatforms={
+              composerMode === "trial_reel"
+                ? new Set<PlatformId>(["instagram"])
+                : composerMode === "document"
+                ? new Set<PlatformId>(["linkedin"])
+                : undefined
+            }
             getPreviewProps={(id) => {
               const active = mediaItems[activeMedia];
               const mediaUrl = active ? active.cdnUrl ?? active.url : null;
@@ -2667,21 +3010,39 @@ export default function CreatePostPage() {
               };
             }}
           />
-          <button
-            type="button"
-            onClick={deselectAll}
-            className="text-xs text-zinc-500 underline-offset-2 hover:underline"
-          >
-            Deselect All
-          </button>
-          <button
-            type="button"
-            onClick={startOver}
-            className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-white px-3 h-9 text-sm font-medium text-red-600 hover:bg-red-50"
-          >
-            <RotateCcw className="size-3.5" />
-            {t("startOver")}
-          </button>
+          <div className="flex items-center gap-2 text-xs font-semibold pl-2 border-l border-zinc-200">
+            <button
+              type="button"
+              onClick={() => {
+                const compatible = platformsForBulkContent(contentType, carouselMediaMode);
+                const pool = connectedPlatforms.size > 0 ? compatible.filter((id) => connectedPlatforms.has(id)) : compatible;
+                setSelected(new Set(pool.length > 0 ? pool : compatible));
+              }}
+              className="text-zinc-600 hover:text-zinc-900 underline-offset-2 hover:underline cursor-pointer"
+            >
+              Select All
+            </button>
+            <span className="text-zinc-300">•</span>
+            <button
+              type="button"
+              onClick={deselectAll}
+              className="text-zinc-600 hover:text-zinc-900 underline-offset-2 hover:underline cursor-pointer"
+            >
+              Deselect All
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label className="inline-flex items-center gap-2 text-xs font-medium text-zinc-700 cursor-pointer select-none bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-1.5 hover:bg-zinc-100 transition-colors">
+            <input
+              type="checkbox"
+              checked={sameForAll}
+              onChange={(e) => handleSameForAllChange(e.target.checked)}
+              className="rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900 size-3.5"
+            />
+            <span>Same caption for all</span>
+          </label>
         </div>
       </div>
 
@@ -2985,46 +3346,6 @@ export default function CreatePostPage() {
               {submissionMode === "publishing" ? t("publishing") : t("publishNow")}
             </button>
           </div>
-        </div>
-      </div>
-
-      {/* ── Smart Scheduling (bulk parity) ── */}
-      <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <p className="text-xs font-bold text-zinc-900 flex items-center gap-1.5"><span className="text-amber-600">✨</span> Smart Scheduling</p>
-            <p className="text-[11px] text-zinc-600">Country-aware best times (same engine as Bulk Schedule) — pick audience geography and get a one-click optimal slot.</p>
-          </div>
-          <CountrySelector selectedCountry={smartCountry} onSelectCountry={setSmartCountry} />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <BestTimesControl
-            mode={smartMode}
-            onModeChange={setSmartMode}
-            manualTime={smartManualTime}
-            onManualTimeChange={setSmartManualTime}
-            country={smartCountry}
-            startDate={new Date().toISOString().slice(0,10)}
-            platforms={Array.from(selected) as never}
-            postsPerDay={1}
-            strategy={smartStrategy}
-            onStrategyChange={setSmartStrategy}
-            onApplySmartSchedule={handleApplySmartSchedule}
-            summaryText="Best times for single post"
-          />
-          <button type="button" onClick={handleApplySmartSchedule} className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-900 text-white px-3 h-9 text-xs font-semibold hover:bg-zinc-800">
-            <Clock className="size-3.5" /> Suggest Best Time
-          </button>
-          {suggestedSmartDate && (
-            <div className="flex items-center gap-2 text-xs">
-              <span className="rounded-full bg-white border border-zinc-200 px-2.5 py-1 font-medium text-zinc-700">
-                Suggested: {suggestedSmartDate.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-              </span>
-              <button type="button" onClick={() => { void publishPost(suggestedSmartDate); }} className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 text-white px-3 h-8 text-xs font-semibold hover:bg-emerald-700">
-                <Send className="size-3.5" /> Schedule at this time
-              </button>
-            </div>
-          )}
         </div>
       </div>
 
