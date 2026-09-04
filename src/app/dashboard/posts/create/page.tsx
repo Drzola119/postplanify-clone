@@ -3218,69 +3218,82 @@ export default function CreatePostPage() {
         </div>
 
         {/* Right column: Captions + Metadata Rules */}
-        {/* ── Smart Link + Auto-Fit Toolbar (bulk parity) ── */}
-        <div className="rounded-xl border border-zinc-200 bg-white p-3 space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-bold text-zinc-900">Quick tools</p>
-            <button type="button" onClick={handleAutoFit} className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50">
-              ⚡ Auto-Fit captions
-            </button>
-          </div>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <input
-                type="url"
-                value={smartLinkUrl}
-                onChange={(e) => setSmartLinkUrl(e.target.value)}
-                placeholder="https://your-link.com"
-                className="w-full rounded-lg border border-zinc-200 bg-white pl-3 pr-3 h-9 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
-              />
+        <div className="space-y-4">
+          <CaptionsCard
+            platforms={selectedPlatforms}
+            sameForAll={sameForAll}
+            onSameForAllChange={handleSameForAllChange}
+            getCaption={captionFor}
+            setCaption={setCaptionFor}
+            getFirstComment={firstCommentFor}
+            setFirstComment={setFirstCommentFor}
+            onGenerate={() => setAiDialogOpen(true)}
+            community={community}
+            onCommunityChange={setCommunity}
+            quoteTweet={quoteTweet}
+            onQuoteTweetChange={setQuoteTweet}
+            tagUsers={tagUsers}
+            onTagUsersChange={setTagUsers}
+            showTagUsers={mediaItems.length > 0 || composerMode !== "standard"}
+            hasVideo={hasVideo}
+            toast={toast}
+            getAdvancedOptions={getAdvancedOptions}
+            setAdvancedOptions={setAdvancedOptions}
+            mediaKind={composerMediaKind}
+            metadataRules={metadataRules}
+            onMetadataRulesChange={setMetadataRules}
+            rulesOpen={rulesOpen}
+            onRulesOpenChange={setRulesOpen}
+            sampleCaption={captionForCurrent()}
+            tagUsersRef={tagUsersRef}
+            selectOptions={{
+              pinterest_board_id: destinationOptions.boards,
+              facebook_page_id: destinationOptions.pages,
+            }}
+          />
+
+          {/* ── Smart Link + Auto-Fit Toolbar (bulk parity) ── */}
+          <div className="rounded-xl border border-zinc-200 bg-white p-3 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-bold text-zinc-900">Quick tools</p>
+              <button
+                type="button"
+                onClick={handleAutoFit}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 h-8 text-xs font-medium hover:bg-zinc-50"
+              >
+                ⚡ Auto-Fit captions
+              </button>
             </div>
-            <input
-              type="text"
-              value={smartLinkCta}
-              onChange={(e) => setSmartLinkCta(e.target.value)}
-              placeholder="CTA (IG)"
-              className="w-32 rounded-lg border border-zinc-200 bg-white px-2 h-9 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
-            />
-            <button type="button" onClick={handleApplySmartLink} className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 text-white px-3 h-9 text-xs font-semibold hover:bg-zinc-800 whitespace-nowrap">
-              <span>🔗</span> Apply Link
-            </button>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type="url"
+                  value={smartLinkUrl}
+                  onChange={(e) => setSmartLinkUrl(e.target.value)}
+                  placeholder="https://your-link.com"
+                  className="w-full rounded-lg border border-zinc-200 bg-white pl-3 pr-3 h-9 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                />
+              </div>
+              <input
+                type="text"
+                value={smartLinkCta}
+                onChange={(e) => setSmartLinkCta(e.target.value)}
+                placeholder="CTA (IG)"
+                className="w-32 rounded-lg border border-zinc-200 bg-white px-2 h-9 text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+              />
+              <button
+                type="button"
+                onClick={handleApplySmartLink}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 text-white px-3 h-9 text-xs font-semibold hover:bg-zinc-800 whitespace-nowrap"
+              >
+                <span>🔗</span> Apply Link
+              </button>
+            </div>
+            <p className="text-[11px] text-zinc-500">
+              Smart link: Instagram → first comment, Pinterest → link field, others → caption. Auto-Fit trims over-limit captions (bulk parity).
+            </p>
           </div>
-          <p className="text-[11px] text-zinc-500">Smart link: Instagram → first comment, Pinterest → link field, others → caption. Auto-Fit trims over-limit captions (bulk parity).</p>
         </div>
-        <CaptionsCard
-          platforms={selectedPlatforms}
-          sameForAll={sameForAll}
-          onSameForAllChange={handleSameForAllChange}
-          getCaption={captionFor}
-          setCaption={setCaptionFor}
-          getFirstComment={firstCommentFor}
-          setFirstComment={setFirstCommentFor}
-          onGenerate={() => setAiDialogOpen(true)}
-          community={community}
-          onCommunityChange={setCommunity}
-          quoteTweet={quoteTweet}
-          onQuoteTweetChange={setQuoteTweet}
-          tagUsers={tagUsers}
-          onTagUsersChange={setTagUsers}
-          showTagUsers={mediaItems.length > 0 || composerMode !== "standard"}
-          hasVideo={hasVideo}
-          toast={toast}
-          getAdvancedOptions={getAdvancedOptions}
-          setAdvancedOptions={setAdvancedOptions}
-          mediaKind={composerMediaKind}
-          metadataRules={metadataRules}
-          onMetadataRulesChange={setMetadataRules}
-          rulesOpen={rulesOpen}
-          onRulesOpenChange={setRulesOpen}
-          sampleCaption={captionForCurrent()}
-          tagUsersRef={tagUsersRef}
-          selectOptions={{
-            pinterest_board_id: destinationOptions.boards,
-            facebook_page_id: destinationOptions.pages,
-          }}
-        />
       </div>
 
       {/* Publish readiness panel — full view (Feature 2) */}
