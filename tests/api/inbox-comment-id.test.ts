@@ -17,6 +17,12 @@ vi.mock("@/lib/db", () => ({
     doc: () => ({ update: (...args: unknown[]) => mockAdminDbUpdate(...args) }),
   },
 }));
+vi.mock("@/lib/auth/workspace-role", () => ({
+  getWorkspaceRole: vi.fn(async () => "editor"),
+  canRead: () => true,
+  canWrite: () => true,
+  canManage: () => true,
+}));
 
 const { PATCH, DELETE } = await import("@/app/api/inbox/comments/[id]/route");
 

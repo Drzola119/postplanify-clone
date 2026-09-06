@@ -2,7 +2,12 @@ export type CsvCell = string | number | boolean | null | undefined;
 
 function escapeCell(value: CsvCell): string {
   if (value === null || value === undefined) return "";
-  const str = String(value);
+  let str = String(value);
+  // Spreadsheet formula-injection protection (spec §10): prefix risky leading
+  // characters so exported comment/DM text can't execute as formulas.
+  if (/^[=+\-@\t\r\u0000-\u0020]*[=+\-@]/.test(str)) {
+    str = `'${str}`;
+  }
   if (/[",\n\r]/.test(str)) {
     return `"${str.replace(/"/g, '""')}"`;
   }

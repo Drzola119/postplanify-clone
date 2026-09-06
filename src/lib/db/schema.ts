@@ -330,18 +330,37 @@ export interface ImageGenLogDoc {
 }
 
 export interface CommentDoc {
-  /** Platform-side id (e.g. Twitter comment id). Used for dedup on event ingestion. */
+  /** Platform-side id (e.g. Instagram comment id). Used for dedup on ingestion. */
   externalId?: string;
+  /** Workspace-scoped stable identity: `${accountKey}:${platform}:${externalId}`. */
+  identityKey?: string;
   platform: PlatformId;
+  /** Local published-post id (PostDoc) when linked via stable platform post id. */
   postId?: string;
+  /** Provider media/post id + permalink for "view original" links. */
+  externalPostId?: string;
+  postPermalink?: string;
+  accountKey?: string;
   authorHandle: string;
   authorName?: string;
+  /** Scoped provider author id (recipient for follow-up DMs). */
+  authorExternalId?: string;
   body: string;
   sentAt: Date;
+  observedAt?: Date;
   direction?: "in" | "out";
   inReplyToId?: string;
   metadata?: Record<string, unknown>;
   sentiment?: "positive" | "neutral" | "negative";
+  /** Persisted sentiment provenance: manual edit vs AI classification. */
+  sentimentSource?: "manual" | "ai" | "unset";
+  labels?: string[];
+  /** Shared read state (grill decision: shared, not personal). */
+  read?: boolean;
+  /** Resolution is separate from delivery (grill decision). */
+  resolved?: boolean;
+  resolvedAt?: Date;
+  resolvedBy?: string;
   intent?: "support" | "sales" | "feedback" | "spam" | "other";
   topics?: string[];
   replied?: boolean;
@@ -349,15 +368,27 @@ export interface CommentDoc {
   /** Set when the auto-responder sends the reply, so the UI can badge it. */
   autoRepliedByCampaignId?: string;
   analyzed?: boolean;
+  /** Origin of the record: manual UI, provider automation, internal automation. */
+  origin?: "manual" | "provider-automation" | "internal-automation";
 }
 
 export interface ConversationDoc {
   /** Platform-side conversation id (DM thread). Used for dedup. */
   externalId?: string;
+  /** Workspace-scoped stable identity: `${accountKey}:${platform}:${externalId}`. */
+  identityKey?: string;
   platform: PlatformId;
+  accountKey?: string;
   participants: string[];
+  /** Scoped provider participant ids (valid DM recipients). */
+  participantExternalIds?: string[];
   lastMessageAt: Date;
+  /** Last inbound (direction === "in") provider timestamp — DM-window source. */
+  lastInboundAt?: Date;
   unreadCount: number;
+  /** Shared read state (grill decision). */
+  read?: boolean;
+  resolved?: boolean;
   createdAt?: Date;
 }
 
@@ -367,12 +398,99 @@ export interface MessageDoc {
   authorName?: string;
   body: string;
   sentAt: Date;
+  observedAt?: Date;
   direction: "in" | "out";
   inReplyToId?: string;
   metadata?: Record<string, unknown>;
   /** Set when the auto-responder sends the reply. */
   autoRepliedByCampaignId?: string;
   analyzed?: boolean;
+  /** Durable delivery state for outbound messages. */
+  deliveryStatus?: "pending" | "processing" | "sent" | "failed" | "delivery-unknown";
+  /** Stable application idempotency key for the outbound operation. */
+  idempotencyKey?: string;
+  origin?: "manual" | "provider-automation" | "internal-automation";
+  error?: { code: string; message: string };
+}
+
+/**
+ * Durable outbound operation (spec §7).
+ * Lifecycle: pending → processing → sent, plus failed / cancelled /
+ * delivery-unknown (provider may have accepted but confirmation was lost).
+ * A local Firestore write is NOT evidence of delivery — only a provider
+ * confirmation moves an op to `sent`.
+ */
+export type OutboundOpKind = "public-reply" | "private-reply" | "dm-send" | "comment-delete";
+export type OutboundOpStatus =
+  | "pending"
+  | "processing"
+  | "sent"
+  | "failed"
+  | "cancelled"
+  | "delivery-unknown";
+
+export interface OutboundOpDoc {
+  /** Stable app idempotency key: `${kind}:${accountKey}:${platform}:${targetId}:${bodyHash}`. */
+  idempotencyKey: string;
+  kind: OutboundOpKind;
+  platform: PlatformId;
+  accountKey: string;
+  /** Local comment/conversation id the op acts on. */
+  targetId: string;
+  /** Provider comment_id / recipient_id used upstream. */
+  providerTargetId?: string;
+  body?: string;
+  status: OutboundOpStatus;
+  /** Provider confirmation (message/comment id). */
+  providerMessageId?: string;
+  providerRecipientId?: string;
+  error?: { code: string; message: string; retryable: boolean };
+  origin: "manual" | "provider-automation" | "internal-automation";
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Per-account / per-resource sync state (spec §8).
+ * Scope id examples: `account:<accountKey>` or `post:<accountKey>:<externalPostId>`.
+ */
+export interface InboxSyncDoc {
+  scope: string;
+  accountKey: string;
+  platform: PlatformId;
+  externalPostId?: string;
+  /** Freshness tier driving the adaptive interval. */
+  tier?: "hot" | "warm" | "cold";
+  lastSuccessAt?: Date;
+  lastAttemptAt?: Date;
+  nextRunAt?: Date;
+  cursor?: string | null;
+  lastError?: { code: string; message: string };
+  consecutiveFailures?: number;
+  updatedAt: Date;
+}
+
+/**
+ * Provider-managed AutoDM monitor mirror (spec §12, prepared — grill decision).
+ * The provider is the source of truth; this doc caches status/logs so the UI
+ * can render without hammering the provider, and prevents a second local/n8n
+ * comment-to-DM process for posts with an active monitor.
+ */
+export interface InboxAutodmDoc {
+  monitorId: string;
+  postUrl: string;
+  externalPostId?: string;
+  profileUsername: string;
+  accountKey?: string;
+  status: "running" | "paused" | "resuming" | "stopped" | "expired";
+  replyMessagePreview?: string;
+  triggerKeywords?: string[];
+  stats?: { totalComments: number; newComments: number; successfulReplies: number; failedReplies: number };
+  enabledBy?: string;
+  lastCheckedAt?: Date;
+  expiresAt?: Date;
+  updatedAt: Date;
 }
 
 export interface DestinationDoc {

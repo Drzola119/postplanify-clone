@@ -143,6 +143,26 @@ service cloud.firestore {
         }
       }
 
+      match /outboundOps/{opId} {
+        allow read: if isMember(workspaceId);
+        allow write: if false; // server-only via adminDb (durable delivery lifecycle)
+      }
+
+      match /inboxSync/{scopeId} {
+        allow read: if isMember(workspaceId);
+        allow write: if false; // server-only via adminDb
+      }
+
+      match /inboxAutodm/{monitorId} {
+        allow read: if isMember(workspaceId);
+        allow write: if false; // server-only via adminDb (provider is source of truth)
+      }
+
+      match /aiUsage/{month} {
+        allow read: if isOwnerOrAdmin(workspaceId);
+        allow write: if false; // server-only via adminDb
+      }
+
       match /destinations/{destinationId} {
         allow read: if isMember(workspaceId);
         allow write: if isOwnerOrAdmin(workspaceId);

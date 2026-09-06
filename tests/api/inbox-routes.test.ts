@@ -22,9 +22,11 @@ vi.mock("@/lib/auth/session-context", () => ({
   requireSession: vi.fn(async () => SESSION),
 }));
 
-beforeEach(() => {
+beforeEach(async () => {
   mockFs.reset();
   vi.clearAllMocks();
+  // Role gates (spec §14): member with editor role for read/write routes.
+  await mockFs.doc("workspaces/ws1/members/u1").set({ role: "editor", joinedAt: new Date() });
 });
 
 function makeRequest(url: string, body?: unknown, method = "GET"): Request {
@@ -94,37 +96,45 @@ describe("api/inbox/comments - POST", () => {
   });
 });
 
-describe("api/inbox/reply - POST", () => {
-  it("creates reply and fires webhook event", async () => {
-    const deliverSpy = vi.fn(async () => []);
-    vi.doMock("@/lib/webhooks/delivery", () => ({
-      deliverWebhook: deliverSpy,
-      signPayload: vi.fn(),
-    }));
-
-    const { createComment } = await import("@/lib/db/inbox");
-    const commentId = await createComment("ws1", {
-      platform: "twitter",
-      authorHandle: "alice",
-      body: "first!",
-    });
-
-    vi.resetModules();
-    const { POST } = await import("@/app/api/inbox/reply/route");
-    const res = await POST(
-      makeRequest(
-        "https://x.test/api/inbox/reply",
-        { platform: "twitter", commentId, body: "thanks!" },
-        "POST"
-      ) as never
+describe("api/inbox/reply - POST (durable provider delivery)", () => {
+  it("sends a provider-confirmed reply and returns the op", async () => {
+    process.env.UPLOAD_POST_API_KEY = "test-key";
+    const fetchMock = vi.fn(async () =>
+      ({ ok: true, status: 200, json: async () => ({ success: true, id: "pr-1" }) }) as unknown as Response
     );
-    expect(res.status).toBe(201);
-    const body = await res.json();
-    expect(body.replyId).toBeTruthy();
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const { createComment } = await import("@/lib/db/inbox");
+      const { upsertCommentFromEvent } = await import("@/lib/db/inbox");
+      const { comment } = await upsertCommentFromEvent("ws1", {
+        workspaceId: "ws1",
+        platform: "instagram",
+        type: "comment",
+        externalId: "ig-99",
+        authorHandle: "alice",
+        body: "first!",
+        sentAt: new Date().toISOString(),
+        accountKey: "ws1",
+      });
+      void createComment;
 
-    // Wait for fire-and-forget to flush.
-    await new Promise((r) => setTimeout(r, 10));
-    expect(deliverSpy).toHaveBeenCalled();
+      const { POST } = await import("@/app/api/inbox/reply/route");
+      const res = await POST(
+        makeRequest(
+          "https://x.test/api/inbox/reply",
+          { platform: "instagram", commentId: comment.id, body: "thanks!" },
+          "POST"
+        ) as never
+      );
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.status).toBe("sent");
+      expect(body.providerMessageId).toBe("pr-1");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+      delete process.env.UPLOAD_POST_API_KEY;
+    }
   });
 
   it("rejects empty body", async () => {
@@ -132,7 +142,7 @@ describe("api/inbox/reply - POST", () => {
     const res = await POST(
       makeRequest(
         "https://x.test/api/inbox/reply",
-        { platform: "twitter", commentId: "c1", body: "" },
+        { platform: "instagram", commentId: "c1", body: "" },
         "POST"
       ) as never
     );

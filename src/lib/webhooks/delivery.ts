@@ -162,6 +162,9 @@ export async function deliverInboxReply(
   reply: OutboundReplyPayload,
   options: DeliverOptions = {},
 ): Promise<DeliveryResult[]> {
-  const event = reply.type === "comment-reply" ? "inbox.reply" : "inbox.dm-reply";
+  // Canonical v1 event names (see docs/inbox/events-v1.md). The legacy
+  // "inbox.reply" / "inbox.dm-reply" names never matched the destinations
+  // enum filter, so those notifications were silently dropped.
+  const event = reply.type === "comment-reply" ? "inbox.comment" : "inbox.message";
   return deliverWebhook(workspaceId, { event, workspaceId, data: reply as unknown as Record<string, unknown> }, options);
 }

@@ -17,7 +17,9 @@ import { parseValue, jsonError, jsonOk } from "@/lib/validation/helpers";
  *   X-Workspace-Webhook-Key: <secret>
  * and we look up the workspace's webhook secret by trying each active
  * webhook in `workspaces/{ws}/webhooks` whose events contain
- * "inbox.event". The first matching secret wins.
+ * "inbox.comment" or "inbox.message" (canonical v1 names —
+ * see docs/inbox/events-v1.md). The legacy "inbox.event" subscription
+ * is still honoured for existing webhooks. The first matching secret wins.
  *
  * For now we accept a single shared workspace secret kept on the
  * workspace document (`webhookSecret`) as a fallback for self-hosted
@@ -111,7 +113,9 @@ async function verifyWorkspaceSecret(
   const snap = await coll.where("active", "==", true).get();
   for (const d of snap.docs) {
     const data = d.data() as { events?: string[]; secret?: string };
-    if (!data?.events?.includes("inbox.event")) continue;
+    const events = data?.events ?? [];
+    // Canonical v1 names, plus the legacy name for existing webhooks.
+    if (!events.includes("inbox.comment") && !events.includes("inbox.message") && !events.includes("inbox.event")) continue;
     const secret = data?.secret ?? "";
     if (secret && constantTimeEq(secret, supplied)) return true;
   }
