@@ -301,8 +301,8 @@ export default function PostingQueuePage() {
   const [cancelTarget, setCancelTarget] = useState<QueueRow | null>(null);
   const [pendingAction, setPendingAction] = useState<null | "pause" | "resume">(null);
 
-  async function reload() {
-    setLoading(true);
+  async function reload(options: { silent?: boolean } = {}) {
+    if (!options.silent) setLoading(true);
     try {
       const [schedRes, healthRes] = await Promise.all([
         fetch("/api/posts/scheduled", { credentials: "include" }),
@@ -341,6 +341,8 @@ export default function PostingQueuePage() {
 
   useEffect(() => {
     void reload();
+    const id = setInterval(() => void reload({ silent: true }), 5_000);
+    return () => clearInterval(id);
   }, []);
 
   const filteredRows = useMemo(() => {

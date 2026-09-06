@@ -320,6 +320,16 @@ export default function PostsCalendarPage() {
     void loadPosts({ append: false, reason: "initial" });
   }, [loadPosts, reloadKey]);
 
+  // Calendar and the all-posts view share this data source with Queue and
+  // Command Center. Refresh the first page so publishing/scheduling changes
+  // made elsewhere become visible without navigating away.
+  useEffect(() => {
+    const id = setInterval(() => {
+      void loadPosts({ append: false, reason: "refresh" });
+    }, 5_000);
+    return () => clearInterval(id);
+  }, [loadPosts]);
+
   // ── Filters: derived visible posts ──────────────────────────────────
   const appliedFilters: PostFilters = useMemo(
     () => ({

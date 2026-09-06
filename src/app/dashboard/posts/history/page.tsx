@@ -393,6 +393,13 @@ export default function PublishHistoryPage() {
     };
   }, [rangePreset, statusFilter, platformFilter, reloadKey, t]);
 
+  // Keep publish history aligned with the queue worker and Command Center.
+  // Publishing can finish in another tab or on the server between visits.
+  useEffect(() => {
+    const id = setInterval(() => setReloadKey((k) => k + 1), 5_000);
+    return () => clearInterval(id);
+  }, []);
+
   const filteredPosts = useMemo(() => {
     let list = posts;
     if (search.trim()) {
