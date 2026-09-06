@@ -35,6 +35,21 @@ function safeFilename(name: string): string {
     .slice(0, 80) || "report";
 }
 
+function comparisonRange(from: Date, to: Date, mode: NonNullable<import("@/lib/db/schema").ReportDoc["comparison"]>): { from: Date; to: Date; label: string } | null {
+  if (mode === "none" || mode === "custom_range") return null;
+  if (mode === "previous_year") {
+    const previousFrom = new Date(from);
+    const previousTo = new Date(to);
+    previousFrom.setUTCFullYear(previousFrom.getUTCFullYear() - 1);
+    previousTo.setUTCFullYear(previousTo.getUTCFullYear() - 1);
+    return { from: previousFrom, to: previousTo, label: "Previous year" };
+  }
+  const days = mode === "week_over_week" ? 7 : Math.max(1, Math.ceil((to.getTime() - from.getTime() + 1) / 86_400_000));
+  const previousTo = new Date(from.getTime() - 1);
+  const previousFrom = new Date(previousTo.getTime() - days * 86_400_000 + 1);
+  return { from: previousFrom, to: previousTo, label: mode === "week_over_week" ? "Previous week" : "Previous period" };
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -57,6 +72,10 @@ export async function GET(
   try {
     const platforms = report.platforms?.length ? report.platforms : ALL_PLATFORMS;
     const overview = await getOverview(session.workspaceId, fromDate, toDate, platforms);
+    const comparison = report.comparison ? comparisonRange(fromDate, toDate, report.comparison) : null;
+    const comparisonOverview = comparison
+      ? await getOverview(session.workspaceId, comparison.from, comparison.to, platforms)
+      : null;
     const platformSeries: Record<PlatformId, PlatformSeriesPoint[]> = {} as Record<
       PlatformId,
       PlatformSeriesPoint[]
@@ -73,6 +92,7 @@ export async function GET(
       dateRange: report.dateRange,
       generatedAt: report.generatedAt ?? new Date().toISOString(),
       overview,
+      comparison: comparison && comparisonOverview ? { label: comparison.label, overview: comparisonOverview } : undefined,
       platformSeries,
       branding: report.branding,
     });

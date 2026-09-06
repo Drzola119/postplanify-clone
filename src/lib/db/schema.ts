@@ -263,6 +263,7 @@ export interface ReportDoc {
   template: string;
   dateRange: { from: Date; to: Date };
   accountCount?: number;
+  comparison?: "none" | "previous_period" | "previous_year" | "week_over_week" | "custom_range";
   platforms?: PlatformId[];
   branding?: { accentColor?: string; footerText?: string };
   status: "pending" | "ready" | "failed";

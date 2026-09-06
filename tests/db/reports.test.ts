@@ -55,12 +55,14 @@ describe("db/reports - reports CRUD", () => {
       template: "performance",
       dateRange: { from: "2026-04-01", to: "2026-06-30" },
       accountCount: 3,
+      comparison: "previous_period",
       platforms: ["discord", "telegram", "instagram"],
       branding: { accentColor: "#10b981", footerText: "Acme" },
     });
     const item = await getReport("ws1", id);
     expect(item?.platforms).toEqual(["discord", "telegram", "instagram"]);
     expect(item?.accountCount).toBe(3);
+    expect(item?.comparison).toBe("previous_period");
     expect(item?.branding).toEqual({ accentColor: "#10b981", footerText: "Acme" });
   });
 

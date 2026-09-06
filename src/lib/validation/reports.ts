@@ -15,6 +15,7 @@ export const reportTemplateSchema = z.enum([
 ]);
 
 export const reportFormatSchema = z.enum(["csv", "json", "pdf"]).default("csv");
+export const reportComparisonSchema = z.enum(["none", "previous_period", "previous_year", "week_over_week", "custom_range"]);
 
 export const dateRangeSchema = z
   .object({
@@ -36,6 +37,7 @@ export const createReportSchema = z.object({
   dateRange: dateRangeSchema,
   format: reportFormatSchema.optional(),
   accountCount: z.number().int().min(0).max(100).optional(),
+  comparison: reportComparisonSchema.optional(),
   platforms: z.array(platformIdSchema).max(13).optional(),
   branding: z.object({
     accentColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),

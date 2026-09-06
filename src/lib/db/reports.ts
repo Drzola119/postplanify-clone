@@ -21,6 +21,7 @@ export interface ReportItem {
   template: string;
   dateRange: { from: string; to: string };
   accountCount: number;
+  comparison: ReportDoc["comparison"];
   platforms: ReportDoc["platforms"];
   branding: ReportDoc["branding"];
   status: "pending" | "ready" | "failed";
@@ -52,7 +53,7 @@ export async function getReport(workspaceId: string, id: string): Promise<Report
 
 export async function createReport(
   workspaceId: string,
-  input: { name: string; template: string; dateRange: { from: Date | string; to: Date | string }; accountCount?: number; platforms?: ReportDoc["platforms"]; branding?: ReportDoc["branding"] }
+  input: { name: string; template: string; dateRange: { from: Date | string; to: Date | string }; accountCount?: number; comparison?: ReportDoc["comparison"]; platforms?: ReportDoc["platforms"]; branding?: ReportDoc["branding"] }
 ): Promise<string> {
   const ref = reportsCollection(workspaceId).doc();
   await ref.set({
@@ -63,6 +64,7 @@ export async function createReport(
       to: toDate(input.dateRange.to),
     },
     ...(input.accountCount !== undefined ? { accountCount: input.accountCount } : {}),
+    ...(input.comparison ? { comparison: input.comparison } : {}),
     ...(input.platforms ? { platforms: input.platforms } : {}),
     ...(input.branding ? { branding: input.branding } : {}),
     status: "pending",
@@ -143,6 +145,7 @@ function serializeReport(id: string, data: ReportDoc): ReportItem {
       to: toIso(data.dateRange?.to),
     },
     accountCount: data.accountCount ?? 0,
+    comparison: data.comparison,
     platforms: data.platforms,
     branding: data.branding,
     status: data.status ?? "pending",

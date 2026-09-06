@@ -25,6 +25,7 @@ export interface RenderReportPdfInput {
   dateRange: { from: string; to: string };
   generatedAt: string;
   overview: AnalyticsOverview;
+  comparison?: { label: string; overview: AnalyticsOverview };
   platformSeries: Record<PlatformId, PlatformSeriesPoint[]>;
   branding?: { accentColor?: string; footerText?: string };
 }
@@ -155,6 +156,25 @@ export async function renderReportPdf(input: RenderReportPdfInput): Promise<Buff
         .text(value, x + 10, y + 24, { width: cellW - 20 });
     });
     doc.y = kpiStartY + Math.ceil(kpis.length / cols) * (cellH + 8);
+
+    if (input.comparison) {
+      doc.moveDown(1);
+      doc.font("Helvetica-Bold").fontSize(12).fillColor("#0f172a").text(`Comparison: ${input.comparison.label}`);
+      const current = input.overview.totals;
+      const previous = input.comparison.overview.totals;
+      const comparisonRows = [
+        ["Impressions", current.impressions, previous.impressions],
+        ["Likes", current.likes, previous.likes],
+        ["Comments", current.comments, previous.comments],
+        ["Posts Published", current.postsPublished, previous.postsPublished],
+      ];
+      doc.moveDown(0.3).font("Helvetica").fontSize(9).fillColor("#475569");
+      for (const [label, now, before] of comparisonRows) {
+        const delta = Number(now) - Number(before);
+        const sign = delta > 0 ? "+" : "";
+        doc.text(`${label}: ${fmtNum(Number(now))} vs ${fmtNum(Number(before))} (${sign}${fmtNum(delta)})`);
+      }
+    }
 
     // ---- By Platform table ----
     doc.moveDown(1.2);

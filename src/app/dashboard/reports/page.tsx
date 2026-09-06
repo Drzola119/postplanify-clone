@@ -344,6 +344,7 @@ export default function ReportsPage() {
           platforms: [...new Set(accounts.filter((a) => selectedAccounts.has(a.id)).map((a) => a.platform))],
           branding: { accentColor, footerText },
           accountCount: selectedAccounts.size,
+          comparison: compare,
           format: "pdf",
         }),
       });
