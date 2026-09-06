@@ -9,7 +9,6 @@ import {
   getUnifiedAnalytics,
   isAnalyticsSupported,
   resolveFacebookPageId,
-  UNSUPPORTED_ANALYTICS_PLATFORMS,
   type PlatformExtraParams,
 } from "@/lib/uploadpost/analytics";
 import {
@@ -72,11 +71,6 @@ export async function POST(request: NextRequest) {
   }
 
   const force = new URL(request.url).searchParams.get("force") === "1";
-  const range: DateRange = {
-    from: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
-    to: new Date(),
-  };
-
   try {
     // Fetch accounts snapshot for the cache + platform list.
     // Use readProfile as a hint for the username to call Upload-Post with,
@@ -161,15 +155,19 @@ export async function POST(request: NextRequest) {
     });
 
     // Pull live analytics from Upload-Post.
-    const connectedPlatforms = accounts
-      .map((a) => toInternalPlatform(a.platform))
-      .filter((p) => isAnalyticsSupported(p)) as PlatformId[];
+    const connectedPlatforms = [...new Set(
+      accounts
+        .map((a) => toInternalPlatform(a.platform))
+        .filter((p) => isAnalyticsSupported(p)),
+    )] as PlatformId[];
 
     // Per-platform extra params (Facebook page_id) so the profile analytics call
     // returns real Facebook data instead of a "page_id required" error.
-    const analyticsPlatforms = accounts
-      .filter((a) => isAnalyticsSupported(toInternalPlatform(a.platform)))
-      .map((a) => toInternalPlatform(a.platform) as PlatformKey);
+    const analyticsPlatforms = [...new Set(
+      accounts
+        .filter((a) => isAnalyticsSupported(toInternalPlatform(a.platform)))
+        .map((a) => toInternalPlatform(a.platform) as PlatformKey),
+    )];
     const analyticsExtraParams: Record<string, PlatformExtraParams> = {};
     const facebookAccount = accounts.find(
       (a) => toInternalPlatform(a.platform) === "facebook",
@@ -226,20 +224,17 @@ export async function POST(request: NextRequest) {
       log.warn("profile analytics fetch failed in sync", { reason: String(profileSettled.reason) });
     }
 
-    const results = accounts.map((a) => ({
-      platform: a.platform,
-      handle: a.handle,
-      supported: isAnalyticsSupported(toInternalPlatform(a.platform)),
-      status:
-        profileData?.find((p) => p.platform === toInternalPlatform(a.platform))?.status ?? "unknown",
-    }));
-
-    // Mark unsupported platforms explicitly so the UI can show "analytics unsupported".
-    for (const p of UNSUPPORTED_ANALYTICS_PLATFORMS) {
-      if (accounts.some((a) => toInternalPlatform(a.platform) === p)) {
-        results.push({ platform: p, handle: "", supported: false, status: "unsupported" });
-      }
-    }
+    const results = accounts.map((a) => {
+      const platform = toInternalPlatform(a.platform);
+      return {
+        platform: a.platform,
+        handle: a.handle,
+        supported: isAnalyticsSupported(platform),
+        status: isAnalyticsSupported(platform)
+          ? profileData?.find((p) => toInternalPlatform(p.platform) === platform)?.status ?? "unknown"
+          : "unsupported",
+      };
+    });
 
     return jsonOk({
       synced: true,

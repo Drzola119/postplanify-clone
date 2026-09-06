@@ -48,7 +48,7 @@ export async function GET(
   const platform = acct.platform;
 
   if (!isAnalyticsSupported(platform)) {
-    // Discord / Telegram / Google Business — analytics not offered by Upload-Post.
+    // Some publishing destinations do not expose analytics through Upload-Post.
     return jsonOk({
       analytics: {
         accountId: id,
@@ -99,7 +99,7 @@ export async function GET(
   log.info("account analytics fetch", { accountId: id, platform, profileUsername });
 
   // Pass ?fresh=1 to bypass the cache — used by the page's live-poll loop so
-  // the user actually sees fresh numbers every 30s.
+  // the user actually sees fresh numbers every 60s.
   const wantsFresh = new URL(request.url).searchParams.get("fresh") === "1";
 
   let normalized: NormalizedPlatformAnalytics | null = null;

@@ -6,6 +6,7 @@ import { readCache } from "@/lib/db/account-health";
 import {
   getProfileAnalytics,
   isAnalyticsSupported,
+  normalizePlatformAnalytics,
   resolveFacebookPageId,
   type PlatformExtraParams,
 } from "@/lib/uploadpost/analytics";
@@ -18,6 +19,7 @@ import { analyticsOverviewQuerySchema } from "@/lib/validation/analytics";
 import { parseSearchParams, jsonError, jsonOk } from "@/lib/validation/helpers";
 import { createLogger } from "@/lib/log";
 import type { PlatformId } from "@/lib/db/schema";
+import { toInternalPlatform } from "@/lib/platforms";
 import type {
   NormalizedPlatformAnalytics,
   PlatformKey,
@@ -68,28 +70,33 @@ export async function GET(request: NextRequest) {
     session.workspaceId;
   log.info("overview analytics fetch", { profileUsername, workspaceId: session.workspaceId });
 
+  // Keep every connected platform visible. A platform without upstream
+  // analytics should be shown as unsupported rather than disappearing.
+  const connected = (accountCache?.accounts ?? []).filter((a) => a.handle);
+  const connectedPlatforms = [...new Set(
+    connected.map((a) => toInternalPlatform(a.platform)),
+  )] as PlatformKey[];
+
   // Serve cached payload when fresh (avoids hammering Upload-Post per load).
   // Pass ?fresh=1 to bypass the cache — used by the page's live-poll loop so
-  // the user actually sees fresh numbers every 30s.
+  // the user actually sees fresh numbers every 60s.
   const wantsFresh = new URL(request.url).searchParams.get("fresh") === "1";
   if (!wantsFresh) {
     const cached = await getCachedUnified(session.workspaceId, profileUsername, from, to).catch(
       () => null,
     );
-    if (cached) {
+    const cachedPlatforms = new Set((cached?.byPlatform ?? []).map((p) => toInternalPlatform(p.platform)));
+    if (cached && connectedPlatforms.every((p) => cachedPlatforms.has(p))) {
       return jsonOk({ overview: toOverviewShape(cached, session.workspaceId, from, to) });
     }
   }
 
-  // Only the connected + analytics-supported accounts. We aggregate the SAME
-  // per-platform data the account cards use so overview totals equal the sum of
-  // the per-account numbers — no divergent second data source.
-  const connected = (accountCache?.accounts ?? []).filter(
-    (a) => a.handle && isAnalyticsSupported(a.platform),
-  );
-  const platforms = connected.map((a) => a.platform as PlatformKey);
+  // Fetch upstream metrics only for supported platforms, then merge the
+  // unsupported connected platforms back into the response with an honest
+  // status so the overview remains complete.
+  const platforms = connectedPlatforms.filter((p) => isAnalyticsSupported(p));
   const extraParams: Record<string, PlatformExtraParams> = {};
-  const facebookAccount = connected.find((a) => a.platform === "facebook");
+  const facebookAccount = connected.find((a) => toInternalPlatform(a.platform) === "facebook");
   if (facebookAccount) {
     // Resolve the real Facebook Page id (the stored value is the FB user id).
     const pageId = await resolveFacebookPageId(
@@ -100,7 +107,7 @@ export async function GET(request: NextRequest) {
     if (pageId) extraParams.facebook = { page_id: pageId };
   }
   const reauthByPlatform = new Map<string, boolean>(
-    connected.map((a) => [a.platform, a.reauthRequired]),
+    connected.map((a) => [toInternalPlatform(a.platform), a.reauthRequired]),
   );
 
   const [perPlatformSettled, postsCountSettled] = await Promise.allSettled([
@@ -116,10 +123,18 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const perPlatform = perPlatformSettled.value.map((p) => {
+  const fetchedByPlatform = new Map(perPlatformSettled.value.map((p) => [toInternalPlatform(p.platform), p]));
+  const perPlatform = connectedPlatforms.map((platform) => {
+    const p = fetchedByPlatform.get(platform) ?? normalizePlatformAnalytics(
+      platform,
+      null,
+      null,
+      "unsupported",
+      "Analytics are not available for this platform through Upload-Post.",
+    );
     // A connected account flagged for reauth always surfaces as token_expired,
     // even if the API happened to return stale numbers.
-    if (reauthByPlatform.get(p.platform)) {
+    if (reauthByPlatform.get(platform)) {
       return {
         ...p,
         status: "token_expired" as const,

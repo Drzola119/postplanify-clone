@@ -5,14 +5,14 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
-  Users, Eye, BarChart3, ChevronDown, ChevronRight, Calendar, RefreshCw,
+  Users, Eye, BarChart3, ChevronDown, Calendar, RefreshCw,
   Heart, MessageCircle, Repeat2, Bookmark, Share2, MousePointerClick, MessageSquare, Play,
-  TrendingUp, Globe, MoreHorizontal, CheckCircle2, Download,
+  TrendingUp, Globe, CheckCircle2, Download,
 } from "lucide-react";
 import { getOverrideHeaders } from "@/lib/security/client-overrides";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { PlatformAvatar } from "@/components/dashboard/platform-avatar";
-import { toInternalPlatform, type PlatformId } from "@/lib/platforms";
+import { getPlatform, toInternalPlatform, type PlatformId } from "@/lib/platforms";
 
 // ============================================================
 // Types
@@ -228,8 +228,8 @@ function ContentTypesDonut({ data }: { data: { images: number; videos: number; t
 // ============================================================
 // Trend mini chart with "Collecting data..." placeholder
 // ============================================================
-function MiniTrend({ data, color, yMax, change, collecting }: {
-  data: number[]; color: string; yMax?: number; change?: string; collecting?: boolean;
+function MiniTrend({ data, color, yMax, collecting }: {
+  data: number[]; color: string; yMax?: number; collecting?: boolean;
 }) {
   const t = useTranslations("dashboard");
   if (collecting || !data || data.length === 0 || data.every(v => v === 0)) {
@@ -451,12 +451,14 @@ function OverviewDropdown({ currentId, accounts }: { currentId?: string; account
 
 function TimezoneDropdown() {
   const [open, setOpen] = useState(false);
-  const [tz, setTz] = useState("UTC");
+  const [tz, setTz] = useState(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    } catch {
+      return "UTC";
+    }
+  });
   const options = ["UTC", "Africa/Lagos", "Africa/Cairo", "Europe/Paris", "America/New_York", "America/Los_Angeles"];
-
-  useEffect(() => {
-    setTz(Intl.DateTimeFormat().resolvedOptions().timeZone);
-  }, []);
   return (
     <div className="relative">
       <button
@@ -530,12 +532,12 @@ function AnalyticsErrorState({ message }: { message: string }) {
       </div>
       <h2 className="text-xl font-bold text-rose-700 mb-2">{t("analytics.unable_load")}</h2>
       <p className="text-[13px] text-rose-700/80 max-w-md mb-6">{message}</p>
-      <a
+      <Link
         href="/dashboard/accounts"
         className="inline-flex items-center justify-center rounded-md bg-zinc-900 px-5 h-10 text-[13px] font-medium text-white hover:bg-zinc-800"
       >
         {t("analytics.go_accounts")}
-      </a>
+      </Link>
     </div>
   );
 }
@@ -606,7 +608,7 @@ function timeAgo(iso: string | null | undefined): string {
 
 // "Live · refreshing in Ns" badge. Counts down to the next auto-poll.
 // Hides when `lastFetchedAt` is null (before the first load completes).
-const LIVE_POLL_INTERVAL_MS = 30_000;
+const LIVE_POLL_INTERVAL_MS = 60_000;
 function LivePill({ lastFetchedAt }: { lastFetchedAt: number | null }) {
   const [now, setNow] = useState<number>(() => Date.now());
   useEffect(() => {
@@ -623,7 +625,7 @@ function LivePill({ lastFetchedAt }: { lastFetchedAt: number | null }) {
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700"
-      title="Live · auto-refreshes every 30s from upload-post.com"
+      title="Live · auto-refreshes every 60s from upload-post.com"
     >
       <span className="relative inline-flex size-2">
         <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" />
@@ -677,7 +679,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
     fetchAnalytics();
   }, [fetchAnalytics, fetchNonce]);
 
-  // Live polling: refresh every 30s with ?fresh=1 so the server bypasses its
+  // Live polling: refresh every 60s with ?fresh=1 so the server bypasses its
   // 1-min cache and we always pull the latest from upload-post.com.
   // Pauses when the tab is hidden to avoid silent request spam.
   useEffect(() => {
@@ -694,7 +696,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
 
     const start = () => {
       if (timer) return;
-      timer = setInterval(tick, 30_000);
+      timer = setInterval(tick, LIVE_POLL_INTERVAL_MS);
     };
     const stop = () => {
       if (timer) { clearInterval(timer); timer = null; }
@@ -758,7 +760,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
       }
     })();
     return () => { cancelled = true; };
-  }, [period, accountId, accounts, fetchNonce]);
+  }, [period, accountId, accounts, fetchNonce, lastFetchedAt]);
 
   const handleAnalyticsExport = async () => {
     setExporting(true);
@@ -1254,7 +1256,7 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
     fetchOverview();
   }, [fetchOverview, fetchNonce]);
 
-  // Live polling: refresh every 30s with ?fresh=1 so the server bypasses its
+  // Live polling: refresh every 60s with ?fresh=1 so the server bypasses its
   // 1-min cache and we always pull the latest from upload-post.com.
   // Pauses when the tab is hidden to avoid silent request spam.
   useEffect(() => {
@@ -1271,7 +1273,7 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
 
     const start = () => {
       if (timer) return;
-      timer = setInterval(tick, 30_000);
+      timer = setInterval(tick, LIVE_POLL_INTERVAL_MS);
     };
     const stop = () => {
       if (timer) { clearInterval(timer); timer = null; }
@@ -1322,7 +1324,7 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
 
   const platformOptions = byPlatform.map((p) => ({
     platform: p.platform,
-    label: p.platform.charAt(0).toUpperCase() + p.platform.slice(1),
+    label: getPlatform(p.platform)?.name ?? p.platform.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
   }));
   const PillRow = (
     <div className="flex flex-wrap items-center gap-1">
@@ -1444,7 +1446,7 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
                         <td className="px-3 py-2.5">
                           <div className="flex items-center gap-2">
                             <PlatformIcon platform={p.platform as Platform} />
-                            <span className="capitalize text-zinc-900 text-[13px]">{p.platform}</span>
+                            <span className="text-zinc-900 text-[13px]">{getPlatform(p.platform)?.name ?? p.platform.replace(/_/g, " ")}</span>
                           </div>
                         </td>
                         <td className="px-3 py-2.5 text-right tabular-nums">{fmtOpt(p.followers)}</td>
