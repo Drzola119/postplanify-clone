@@ -7,6 +7,7 @@ import { autodmStart, autodmStatus, UploadPostInboxError } from "@/lib/uploadpos
 import { inboxAutodmSchema } from "@/lib/validation/inbox";
 import { parseBody, jsonError, jsonOk } from "@/lib/validation/helpers";
 import type { InboxAutodmDoc } from "@/lib/db/schema";
+import { InboxAccountError, requireInboxOperation, resolveCanonicalInboxAccount } from "@/lib/inbox/account";
 
 /**
  * Provider-managed AutoDM monitors (spec §12, prepared).
@@ -38,7 +39,9 @@ export async function GET(request: NextRequest) {
   }
   const includeInactive = new URL(request.url).searchParams.get("include_inactive") === "true";
   try {
-    const monitors = await autodmStatus(apiKey, includeInactive);
+    const accountKey = await resolveCanonicalInboxAccount(session.workspaceId);
+    const allMonitors = await autodmStatus(apiKey, includeInactive);
+    const monitors = allMonitors.filter((monitor) => monitor.profileUsername === accountKey);
     // Mirror (provider is source of truth; local docs only render + guard).
     if (adminDb) {
       const batch = adminDb.batch();
@@ -90,11 +93,19 @@ export async function POST(request: NextRequest) {
     if (err instanceof MissingServerSecretError) return jsonError(503, "Social provider not configured");
     throw err;
   }
+  let accountKey: string;
+  try {
+    accountKey = await resolveCanonicalInboxAccount(session.workspaceId, parsed.data.profileUsername);
+    await requireInboxOperation(session.workspaceId, "manage-autodm");
+  } catch (err) {
+    if (err instanceof InboxAccountError) return jsonError(err.status, err.message, { code: err.code });
+    throw err;
+  }
   try {
     const { monitorId } = await autodmStart(apiKey, {
       postUrl: parsed.data.postUrl,
       replyMessage: parsed.data.replyMessage,
-      profileUsername: parsed.data.profileUsername,
+      profileUsername: accountKey,
       buttons: parsed.data.buttons,
       monitoringInterval: parsed.data.monitoringInterval,
       triggerKeywords: parsed.data.triggerKeywords,
@@ -106,7 +117,7 @@ export async function POST(request: NextRequest) {
           {
             monitorId,
             postUrl: parsed.data.postUrl,
-            profileUsername: parsed.data.profileUsername,
+            profileUsername: accountKey,
             status: "running",
             triggerKeywords: parsed.data.triggerKeywords ?? [],
             enabledBy: session.uid,

@@ -126,6 +126,17 @@ export function effectiveSupport(
       reason: "Instagram token expired — reconnect the account.",
     };
   }
+  if (account.capabilities) {
+    const messaging = op === "reply-private" || op === "send-dm" || op === "manage-autodm" || op === "read-conversations";
+    const required = messaging ? ["messages", "messaging", "dms"] : ["comments"];
+    if (!account.capabilities.some((capability) => required.includes(capability.toLowerCase()))) {
+      return {
+        operation: op,
+        status: "permission-required",
+        reason: `The connected Instagram account has not granted the ${messaging ? "messaging" : "comments"} capability.`,
+      };
+    }
+  }
   if (
     (op === "reply-private" || op === "send-dm" || op === "manage-autodm" || op === "read-conversations") &&
     account.hasFacebookPage === false

@@ -17,6 +17,18 @@ export const SYNC_INTERVALS_MS = {
 
 export const MANUAL_REFRESH_MIN_MS = 60 * 1000;
 
+function timestampMs(value: unknown): number {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "string") return Date.parse(value);
+  if (value && typeof value === "object") {
+    const candidate = value as { toDate?: () => Date; seconds?: number; _seconds?: number };
+    if (typeof candidate.toDate === "function") return candidate.toDate().getTime();
+    if (typeof candidate.seconds === "number") return candidate.seconds * 1000;
+    if (typeof candidate._seconds === "number") return candidate._seconds * 1000;
+  }
+  return 0;
+}
+
 function coll(workspaceId: string) {
   if (!adminDb) throw new Error("adminDb not configured");
   return adminDb.collection(`workspaces/${workspaceId}/inboxSync`);
@@ -61,28 +73,31 @@ export async function claimDue(
 ): Promise<boolean> {
   const now = opts.now ?? new Date();
   const ref = coll(workspaceId).doc(scope);
-  const snap = await ref.get().catch(() => null);
-  const data = snap?.exists ? (snap.data() as InboxSyncDoc) : null;
-  const nextRun = data?.nextRunAt instanceof Date ? data.nextRunAt.getTime() : 0;
-  if (!opts.force && nextRun > now.getTime()) return false;
-  // Manual refresh throttle: at most one manual claim per minute per scope.
-  const lastAttempt = data?.lastAttemptAt instanceof Date ? data.lastAttemptAt.getTime() : 0;
-  if (opts.force && now.getTime() - lastAttempt < MANUAL_REFRESH_MIN_MS) return false;
-  const tier = data?.tier ?? "warm";
-  const interval = SYNC_INTERVALS_MS[tier];
-  await ref.set(
-    {
-      scope,
-      accountKey: opts.accountKey,
-      platform: opts.platform,
-      tier,
-      lastAttemptAt: now,
-      nextRunAt: new Date(now.getTime() + interval),
-      updatedAt: now,
-    },
-    { merge: true }
-  );
-  return true;
+  return adminDb!.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.exists ? (snap.data() as InboxSyncDoc) : null;
+    const nextRun = timestampMs(data?.nextRunAt);
+    if (!opts.force && nextRun > now.getTime()) return false;
+    // Manual refresh throttle: at most one manual claim per minute per scope.
+    const lastAttempt = timestampMs(data?.lastAttemptAt);
+    if (opts.force && now.getTime() - lastAttempt < MANUAL_REFRESH_MIN_MS) return false;
+    const tier = data?.tier ?? "warm";
+    const interval = SYNC_INTERVALS_MS[tier];
+    tx.set(
+      ref,
+      {
+        scope,
+        accountKey: opts.accountKey,
+        platform: opts.platform,
+        tier,
+        lastAttemptAt: now,
+        nextRunAt: new Date(now.getTime() + interval),
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+    return true;
+  });
 }
 
 export async function recordSyncSuccess(

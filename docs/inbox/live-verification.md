@@ -12,11 +12,12 @@ read directly from official Upload-Post docs).
   scoped recipients, role gates, AutoDM validation floors, CSV injection guard.
 - `npx eslint` on touched paths — 0 errors.
 
-## Live verification (done)
+## Live verification (pending)
 
-- None against the provider. No credentials or test recipients were provided,
-  so **zero live calls were made** (no reads, no writes). This is deliberate:
-  the spec forbids touching real customers as a smoke test.
+- None against the provider. No designated test account or test recipient is
+  connected in the current workspace, so **zero live calls were made** (no
+  reads, no writes). This is deliberate: the implementation must never touch
+  real customers as a smoke test.
 
 ## Unavailable verification (explicit)
 

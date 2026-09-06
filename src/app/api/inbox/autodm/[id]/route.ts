@@ -7,6 +7,7 @@ import { autodmPause, autodmResume, autodmStop, autodmDelete, autodmLogs, Upload
 import { jsonError, jsonOk } from "@/lib/validation/helpers";
 import { z } from "zod";
 import { parseBody } from "@/lib/validation/helpers";
+import { InboxAccountError, requireInboxOperation } from "@/lib/inbox/account";
 
 const actionSchema = z.object({ action: z.enum(["pause", "resume", "stop", "delete"]) });
 
@@ -17,6 +18,16 @@ export async function GET(request: NextRequest, ctx: { params: Promise<{ id: str
   const role = await getWorkspaceRole(session.workspaceId, session.uid);
   if (!canManage(role)) return jsonError(403, "Requires an admin role");
   const { id } = await ctx.params;
+  try {
+    await requireInboxOperation(session.workspaceId, "manage-autodm");
+    if (adminDb) {
+      const local = await adminDb.doc(`workspaces/${session.workspaceId}/inboxAutodm/${encodeURIComponent(id)}`).get();
+      if (!local.exists) return jsonError(404, "AutoDM monitor not found in this workspace");
+    }
+  } catch (err) {
+    if (err instanceof InboxAccountError) return jsonError(err.status, err.message, { code: err.code });
+    throw err;
+  }
 
   let apiKey: string;
   try {
@@ -42,6 +53,17 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
   if (!canManage(role)) return jsonError(403, "Requires an admin role");
   const { id } = await ctx.params;
   const monitorId = decodeURIComponent(id);
+
+  try {
+    await requireInboxOperation(session.workspaceId, "manage-autodm");
+    if (adminDb) {
+      const local = await adminDb.doc(`workspaces/${session.workspaceId}/inboxAutodm/${encodeURIComponent(monitorId)}`).get();
+      if (!local.exists) return jsonError(404, "AutoDM monitor not found in this workspace");
+    }
+  } catch (err) {
+    if (err instanceof InboxAccountError) return jsonError(err.status, err.message, { code: err.code });
+    throw err;
+  }
 
   const parsed = await parseBody(request, actionSchema);
   if (!parsed.ok) return jsonError(400, "Invalid action", parsed.error.issues);

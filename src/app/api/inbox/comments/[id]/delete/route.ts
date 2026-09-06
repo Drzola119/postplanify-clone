@@ -4,7 +4,7 @@ import { getWorkspaceRole, canWrite } from "@/lib/auth/workspace-role";
 import { adminDb } from "@/lib/db";
 import { getOrCreateOp, claimOp, finalizeOp } from "@/lib/db/inbox-ops";
 import { resolvers, MissingServerSecretError } from "@/lib/security/server-config";
-import { readProfile } from "@/lib/db/upload-post-profiles";
+import { InboxAccountError, requireInboxOperation, resolveCanonicalInboxAccount } from "@/lib/inbox/account";
 import { deleteInstagramComment, UploadPostInboxError } from "@/lib/uploadpost/inbox";
 import type { CommentDoc } from "@/lib/db/schema";
 import { jsonError, jsonOk } from "@/lib/validation/helpers";
@@ -40,8 +40,14 @@ export async function POST(_request: NextRequest, ctx: { params: Promise<{ id: s
     if (err instanceof MissingServerSecretError) return jsonError(503, "Social provider not configured");
     throw err;
   }
-  const profile = await readProfile(session.workspaceId).catch(() => null);
-  const accountKey = comment.accountKey ?? profile?.username ?? session.workspaceId;
+  let accountKey: string;
+  try {
+    accountKey = await resolveCanonicalInboxAccount(session.workspaceId, comment.accountKey);
+    await requireInboxOperation(session.workspaceId, "delete-own-comment");
+  } catch (err) {
+    if (err instanceof InboxAccountError) return jsonError(err.status, err.message, { code: err.code });
+    throw err;
+  }
 
   const { id: opId, op, created } = await getOrCreateOp(session.workspaceId, {
     kind: "comment-delete",

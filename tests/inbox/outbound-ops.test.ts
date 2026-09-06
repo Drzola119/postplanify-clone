@@ -48,6 +48,22 @@ describe("inbox-ops idempotency", () => {
     expect(second.op.status).toBe("pending");
   });
 
+  it("uses one deterministic operation when submissions race", async () => {
+    const { getOrCreateOp } = await import("@/lib/db/inbox-ops");
+    const input = {
+      kind: "public-reply" as const,
+      platform: "instagram" as const,
+      accountKey: "prof",
+      targetId: "race",
+      body: "same",
+      origin: "manual" as const,
+      createdBy: "u1",
+    };
+    const [a, b] = await Promise.all([getOrCreateOp("ws1", input), getOrCreateOp("ws1", input)]);
+    expect(a.id).toBe(b.id);
+    expect(mockFs.dump().filter((item) => item.path.includes("outboundOps/")).length).toBe(1);
+  });
+
   it("claimOp lets exactly one worker through; finalize moves to sent", async () => {
     const { getOrCreateOp, claimOp, finalizeOp, getOp } = await import("@/lib/db/inbox-ops");
     const { id } = await getOrCreateOp("ws1", {

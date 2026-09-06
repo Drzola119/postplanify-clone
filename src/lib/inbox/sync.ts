@@ -15,6 +15,8 @@ import {
   listInstagramConversations,
   UploadPostInboxError,
 } from "@/lib/uploadpost/inbox";
+import { readCachedInboxAccount } from "@/lib/inbox/account";
+import { readProfile } from "@/lib/db/upload-post-profiles";
 
 const log = createLogger("inbox-sync");
 
@@ -37,6 +39,14 @@ export interface SyncRunResult {
   providerCalls: number;
   skipped?: string;
   error?: string;
+}
+
+export interface InboxSyncTickResult {
+  workspaces: number;
+  attempted: number;
+  succeeded: number;
+  skipped: number;
+  providerCalls: number;
 }
 
 function jitter(ms: number): number {
@@ -153,6 +163,32 @@ export async function syncInstagramAccount(input: {
     await recordSyncFailure(workspaceId, scope, { code: "internal", message: String(err) });
     throw err;
   }
+}
+
+/** Run due Instagram syncs for connected workspaces without touching provider
+ * accounts that are disconnected or require reauthorization. */
+export async function runInboxSyncTick(apiKey: string, maxWorkspaces = 50): Promise<InboxSyncTickResult> {
+  const result: InboxSyncTickResult = { workspaces: 0, attempted: 0, succeeded: 0, skipped: 0, providerCalls: 0 };
+  if (!adminDb) return result;
+  const workspaces = await adminDb.collection("workspaces").limit(maxWorkspaces).get();
+  result.workspaces = workspaces.docs.length;
+  for (const workspace of workspaces.docs) {
+    const account = await readCachedInboxAccount(workspace.id);
+    const profile = await readProfile(workspace.id).catch(() => null);
+    if (!account || account.reauthRequired || !profile?.username) {
+      result.skipped += 1;
+      continue;
+    }
+    result.attempted += 1;
+    try {
+      const sync = await syncInstagramAccount({ workspaceId: workspace.id, accountKey: profile.username, apiKey });
+      result.providerCalls += sync.providerCalls;
+      if (sync.ok) result.succeeded += 1;
+    } catch (err) {
+      log.warn("workspace inbox sync failed; continuing worker tick", { workspaceId: workspace.id, err: String(err) });
+    }
+  }
+  return result;
 }
 
 /** Last successful sync time for the UI header (null = never). */

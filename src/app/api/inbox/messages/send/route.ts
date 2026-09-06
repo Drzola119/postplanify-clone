@@ -4,8 +4,8 @@ import { getWorkspaceRole, canWrite } from "@/lib/auth/workspace-role";
 import { adminDb } from "@/lib/db";
 import { getOrCreateOp, claimOp, finalizeOp } from "@/lib/db/inbox-ops";
 import { dmWindowEligibility } from "@/lib/inbox/capabilities";
+import { InboxAccountError, requireInboxOperation, resolveCanonicalInboxAccount } from "@/lib/inbox/account";
 import { resolvers, MissingServerSecretError } from "@/lib/security/server-config";
-import { readProfile } from "@/lib/db/upload-post-profiles";
 import { sendInstagramDm, UploadPostInboxError } from "@/lib/uploadpost/inbox";
 import type { ConversationDoc } from "@/lib/db/schema";
 import { conversationMessageSchema } from "@/lib/validation/inbox";
@@ -73,8 +73,14 @@ export async function POST(request: NextRequest) {
     if (err instanceof MissingServerSecretError) return jsonError(503, "Social provider not configured");
     throw err;
   }
-  const profile = await readProfile(session.workspaceId).catch(() => null);
-  const accountKey = parsed.data.accountKey ?? conv.accountKey ?? profile?.username ?? session.workspaceId;
+  let accountKey: string;
+  try {
+    accountKey = await resolveCanonicalInboxAccount(session.workspaceId, parsed.data.accountKey ?? conv.accountKey);
+    await requireInboxOperation(session.workspaceId, "send-dm");
+  } catch (err) {
+    if (err instanceof InboxAccountError) return jsonError(err.status, err.message, { code: err.code });
+    throw err;
+  }
 
   const { id: opId, op, created } = await getOrCreateOp(session.workspaceId, {
     kind: "dm-send",

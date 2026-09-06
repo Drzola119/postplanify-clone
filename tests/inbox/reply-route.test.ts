@@ -34,10 +34,11 @@ function providerOk(body: unknown) {
   return { ok: true, status: 200, json: async () => body } as unknown as Response;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   mockFs.reset();
   vi.clearAllMocks();
   process.env.UPLOAD_POST_API_KEY = "test-key";
+  await mockFs.doc("workspaces/ws1").set({ settings: { uploadPostProfile: { username: "ws1" }, uploadPostCache: { accounts: [{ platform: "instagram", reauthRequired: false, hasFacebookPage: true }] } } });
 });
 
 afterEach(() => {
@@ -91,6 +92,15 @@ describe("POST /api/inbox/reply — durable delivery", () => {
     expect(res.status).toBe(403);
   });
 
+  it("rejects a client-selected account that is not canonical for the workspace", async () => {
+    await seedEditor();
+    await seedComment(new Date());
+    const { POST } = await import("@/app/api/inbox/reply/route");
+    const res = await POST(post("https://x.test/api/inbox/reply", { platform: "instagram", commentId: "c1", body: "hi", accountKey: "other-profile" }) as never);
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.issues.code).toBe("ACCOUNT_MISMATCH");
+  });
+
   it("refuses private replies on comments older than 7 days", async () => {
     await seedEditor();
     await seedComment(new Date(Date.now() - 10 * 24 * 3600 * 1000));
@@ -128,7 +138,7 @@ describe("POST /api/inbox/messages/send — scoped DMs", () => {
   async function seedConvo(lastInboundAt: Date | null) {
     await mockFs.doc("workspaces/ws1/conversations/k1").set({
       platform: "instagram",
-      accountKey: "prof",
+      accountKey: "ws1",
       participants: ["bob"],
       participantExternalIds: ["ig-u-9"],
       lastMessageAt: new Date(),

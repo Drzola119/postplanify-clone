@@ -2,7 +2,7 @@
 
 **Scope (grilled + locked):** Instagram-only · full durable outbound lifecycle ·
 conservative adaptive sync · AutoDM deferred-prepared · AI drafts-only ·
-Insights removed · mocked verification (live writes unverified).
+Insights removed · live provider verification still pending.
 
 ## Architecture
 
@@ -49,8 +49,9 @@ verification log `live-verification.md`.
 3. Existing `comments`/`conversations` docs are adopted lazily: identityKey/accountKey
    backfilled on next ingest/sync; no deletion, no downtime.
 4. AutoDM stays disabled until an admin sets `workspaces/{ws}.settings.inboxAutodmEnabled=true`.
-5. No cron/vendor additions. The sync worker runs in-process; call
-   `syncInstagramAccount()` from the existing queue tick or `POST /api/inbox/sync`.
+5. No cron/vendor additions. The existing queue worker now runs a capped,
+   error-isolated `runInboxSyncTick()`; manual `POST /api/inbox/sync` coalesces
+   against the same durable `inboxSync` claim.
 
 ## Ecosystem links (spec §14)
 
@@ -67,8 +68,9 @@ Command Center: sync failures surface via `inboxSync.lastError`; delivery failur
 
 `tests/inbox/{capabilities,outbound-ops,sync-state,adapter,roles-and-validation,reply-route}.test.ts`,
 updated `tests/api/inbox-{routes,messages-send,comment-id}.test.ts`.
-Full suite: **91 files / 769 tests pass** · `tsc --noEmit` clean · eslint 0 errors
-(1 pre-existing warning in `inbox/events/route.ts` left untouched).
+Full suite: **91 files / 772 tests pass** · `tsc --noEmit` clean · Inbox-touched
+paths lint clean. Repository-wide lint still contains pre-existing errors outside
+Inbox and is not a valid release gate until separately remediated.
 
 ## Remaining provider limitations (honest)
 

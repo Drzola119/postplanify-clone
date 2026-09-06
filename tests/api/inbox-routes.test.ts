@@ -27,6 +27,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   // Role gates (spec §14): member with editor role for read/write routes.
   await mockFs.doc("workspaces/ws1/members/u1").set({ role: "editor", joinedAt: new Date() });
+  await mockFs.doc("workspaces/ws1").set({ settings: { uploadPostProfile: { username: "ws1" }, uploadPostCache: { accounts: [{ platform: "instagram", reauthRequired: false, hasFacebookPage: true }] } } });
 });
 
 function makeRequest(url: string, body?: unknown, method = "GET"): Request {

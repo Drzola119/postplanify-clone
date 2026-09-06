@@ -48,6 +48,18 @@ describe("db/inbox - listComments + createComment", () => {
     expect(r.items.length).toBe(1);
     expect(r.items[0].platform).toBe("instagram");
   });
+
+  it("advances an opaque cursor without repeating the first page", async () => {
+    const { createComment, listComments } = await import("@/lib/db/inbox");
+    for (const [authorHandle, sentAt] of [["old", "2026-09-01T00:00:00.000Z"], ["mid", "2026-09-02T00:00:00.000Z"], ["new", "2026-09-03T00:00:00.000Z"]] as const) {
+      await createComment("ws1", { platform: "instagram", authorHandle, body: authorHandle, sentAt: new Date(sentAt) });
+    }
+    const first = await listComments("ws1", { pageSize: 2 });
+    const second = await listComments("ws1", { pageSize: 2, cursor: first.nextCursor ?? undefined });
+    expect(first.items.map((item) => item.authorHandle)).toEqual(["new", "mid"]);
+    expect(second.items.map((item) => item.authorHandle)).toEqual(["old"]);
+    expect(new Set(second.items.map((item) => item.id)).size).toBe(second.items.length);
+  });
 });
 
 describe("db/inbox - replyToComment", () => {

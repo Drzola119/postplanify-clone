@@ -2,11 +2,11 @@ import { NextRequest } from "next/server";
 import { requireSession } from "@/lib/auth/session-context";
 import { getWorkspaceRole, canWrite } from "@/lib/auth/workspace-role";
 import { resolvers, MissingServerSecretError } from "@/lib/security/server-config";
-import { readProfile } from "@/lib/db/upload-post-profiles";
 import { syncInstagramAccount } from "@/lib/inbox/sync";
 import { inboxSyncSchema } from "@/lib/validation/inbox";
 import { parseBody, jsonError, jsonOk } from "@/lib/validation/helpers";
 import { readSyncState, accountScope } from "@/lib/db/inbox-sync";
+import { InboxAccountError, requireInboxOperation, resolveCanonicalInboxAccount } from "@/lib/inbox/account";
 
 /**
  * Manual provider sync (spec §8). Throttled (≥60s per scope) and coalesced
@@ -20,8 +20,11 @@ export async function POST(request: NextRequest) {
   const role = await getWorkspaceRole(session.workspaceId, session.uid);
   if (!canWrite(role)) return jsonError(403, "Requires an editor role or higher");
 
-  const parsed = await parseBody(request, inboxSyncSchema).catch(() => ({ ok: true as const, data: {} }));
-  const body = (parsed as { data?: { accountKey?: string; force?: boolean } }).data ?? {};
+  const parsed = await parseBody(request, inboxSyncSchema);
+  if (!parsed.ok || !parsed.data) {
+    return jsonError(parsed.error?.status ?? 400, parsed.error?.message ?? "Invalid sync request", parsed.error?.issues);
+  }
+  const body = parsed.data;
 
   let apiKey: string;
   try {
@@ -30,8 +33,14 @@ export async function POST(request: NextRequest) {
     if (err instanceof MissingServerSecretError) return jsonError(503, "Social provider not configured");
     throw err;
   }
-  const profile = await readProfile(session.workspaceId).catch(() => null);
-  const accountKey = body.accountKey ?? profile?.username ?? session.workspaceId;
+  let accountKey: string;
+  try {
+    accountKey = await resolveCanonicalInboxAccount(session.workspaceId, body.accountKey);
+    await requireInboxOperation(session.workspaceId, "read-comments");
+  } catch (err) {
+    if (err instanceof InboxAccountError) return jsonError(err.status, err.message, { code: err.code });
+    throw err;
+  }
 
   const result = await syncInstagramAccount({
     workspaceId: session.workspaceId,
@@ -54,9 +63,14 @@ export async function GET(request: NextRequest) {
   const session = await requireSession();
   if (session instanceof Response) return session;
   const url = new URL(request.url);
-  const requested = url.searchParams.get("accountKey");
-  const profile = await readProfile(session.workspaceId).catch(() => null);
-  const accountKey = requested ?? profile?.username ?? session.workspaceId;
+  const requested = url.searchParams.get("accountKey") ?? undefined;
+  let accountKey: string;
+  try {
+    accountKey = await resolveCanonicalInboxAccount(session.workspaceId, requested);
+  } catch (err) {
+    if (err instanceof InboxAccountError) return jsonError(err.status, err.message, { code: err.code });
+    throw err;
+  }
   const state = await readSyncState(session.workspaceId, accountScope(accountKey, "instagram")).catch(() => null);
   return jsonOk({
     accountKey,

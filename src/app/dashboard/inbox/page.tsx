@@ -137,6 +137,9 @@ export default function InboxPage() {
   const [stale, setStale] = useState(false);
   const [comments, setComments] = useState<Comment[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [commentsCursor, setCommentsCursor] = useState<string | null>(null);
+  const [conversationsCursor, setConversationsCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [capabilities, setCapabilities] = useState<CapabilityPlatform[]>([]);
   const [role, setRole] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
@@ -192,15 +195,17 @@ export default function InboxPage() {
   }, [comments, conversations, capabilities]);
 
   const load = useCallback(
-    async (silent = false) => {
+    async (silent = false, append = false) => {
       if (!silent) setState({ kind: "loading" });
       try {
         // Bounded snapshot (single orderBy query — no composite indexes needed).
         // All filters below apply client-side over these loaded results and
         // the UI labels the search scope honestly (spec §10).
+        const commentUrl = append && commentsCursor ? `/api/inbox/comments?pageSize=50&cursor=${encodeURIComponent(commentsCursor)}` : "/api/inbox/comments?pageSize=50";
+        const messageUrl = append && conversationsCursor ? `/api/inbox/messages?pageSize=50&cursor=${encodeURIComponent(conversationsCursor)}` : "/api/inbox/messages?pageSize=50";
         const [cRes, mRes, capRes, syncRes] = await Promise.all([
-          fetch("/api/inbox/comments?pageSize=50", { credentials: "include" }),
-          fetch("/api/inbox/messages", { credentials: "include" }),
+          fetch(commentUrl, { credentials: "include" }),
+          fetch(messageUrl, { credentials: "include" }),
           fetch("/api/inbox/capabilities", { credentials: "include" }),
           fetch("/api/inbox/sync", { credentials: "include" }),
         ]);
@@ -222,8 +227,10 @@ export default function InboxPage() {
         if (!cRes.ok || !mRes.ok) throw new Error("load failed");
         const cData = (await cRes.json()) as { comments?: Comment[] };
         const mData = (await mRes.json()) as { conversations?: Conversation[] };
-        setComments(Array.isArray(cData.comments) ? cData.comments : []);
-        setConversations(Array.isArray(mData.conversations) ? mData.conversations : []);
+        setComments((prev) => append ? [...prev, ...(Array.isArray(cData.comments) ? cData.comments : [])] : (Array.isArray(cData.comments) ? cData.comments : []));
+        setConversations((prev) => append ? [...prev, ...(Array.isArray(mData.conversations) ? mData.conversations : [])] : (Array.isArray(mData.conversations) ? mData.conversations : []));
+        setCommentsCursor(typeof (cData as { nextCursor?: unknown }).nextCursor === "string" ? (cData as { nextCursor: string }).nextCursor : null);
+        setConversationsCursor(typeof (mData as { nextCursor?: unknown }).nextCursor === "string" ? (mData as { nextCursor: string }).nextCursor : null);
         if (capRes.ok) {
           const cap = (await capRes.json()) as { role?: string; platforms?: CapabilityPlatform[] };
           setRole(cap.role ?? null);
@@ -247,8 +254,29 @@ export default function InboxPage() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t]
+    [t, commentsCursor, conversationsCursor]
   );
+
+  const loadMore = async (target: "comments" | "messages") => {
+    const cursor = target === "comments" ? commentsCursor : conversationsCursor;
+    if (loadingMore || !cursor) return;
+    setLoadingMore(true);
+    try {
+      const endpoint = target === "comments" ? "/api/inbox/comments" : "/api/inbox/messages";
+      const res = await fetch(`${endpoint}?pageSize=50&cursor=${encodeURIComponent(cursor)}`, { credentials: "include" });
+      if (!res.ok) return;
+      const data = (await res.json()) as { comments?: Comment[]; conversations?: Conversation[]; nextCursor?: string | null };
+      if (target === "comments") {
+        setComments((prev) => [...prev, ...(data.comments ?? [])]);
+        setCommentsCursor(data.nextCursor ?? null);
+      } else {
+        setConversations((prev) => [...prev, ...(data.conversations ?? [])]);
+        setConversationsCursor(data.nextCursor ?? null);
+      }
+    } finally {
+      if (mounted.current) setLoadingMore(false);
+    }
+  };
 
   // Initial load.
   useEffect(() => {
@@ -686,6 +714,7 @@ export default function InboxPage() {
               <p className="text-xs text-zinc-500">{t("inbox.comments_empty_sub")}</p>
             </div>
           ) : (
+            <>
             <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
               {filtered.map((c) => {
                 const eligible = isPrivateReplyEligible(c.sentAt);
@@ -808,6 +837,12 @@ export default function InboxPage() {
                 );
               })}
             </ul>
+            {commentsCursor ? (
+              <button type="button" onClick={() => void loadMore("comments")} disabled={loadingMore} className="self-center rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium disabled:opacity-50">
+                {loadingMore ? t("inbox.loading") : "Load more comments"}
+              </button>
+            ) : null}
+            </>
           )}
         </div>
       ) : (
@@ -848,6 +883,11 @@ export default function InboxPage() {
                 </button>
               ))
             )}
+            {conversationsCursor ? (
+              <button type="button" onClick={() => void loadMore("messages")} disabled={loadingMore} className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium disabled:opacity-50">
+                {loadingMore ? t("inbox.loading") : "Load more conversations"}
+              </button>
+            ) : null}
           </div>
           <div className="flex min-h-0 flex-col rounded-lg border border-zinc-200 bg-white">
             {!activeConvo ? (

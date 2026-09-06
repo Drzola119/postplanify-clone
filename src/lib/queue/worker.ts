@@ -10,6 +10,7 @@ import { buildPublishPayload, resolveCaptionsForPayload } from "@/lib/publishing
 import { getUploadPostStatus, publishToUploadPost } from "@/lib/uploadpost/publisher";
 import { runCaptionWorkerTick } from "@/lib/queue/caption-worker";
 import { generateCaptionViaGateway } from "@/lib/ai/grok-gateway";
+import { runInboxSyncTick } from "@/lib/inbox/sync";
 
 const log = createLogger("queue-worker");
 
@@ -22,6 +23,7 @@ interface TickResult {
   failed: number;
   reaped: number;
   error?: string;
+  inbox?: { workspaces: number; attempted: number; succeeded: number; skipped: number; providerCalls: number };
 }
 
 let interval: NodeJS.Timeout | null = null;
@@ -107,6 +109,11 @@ async function tickOnce(): Promise<TickResult> {
   });
   result.published += reconciled.published;
   result.failed += reconciled.failed;
+  try {
+    result.inbox = await runInboxSyncTick(apiKey);
+  } catch (err) {
+    log.error(err, { step: "inbox-sync-tick" });
+  }
   if (due.length === 0) return result;
 
   for (const { workspaceId, postId } of due) {

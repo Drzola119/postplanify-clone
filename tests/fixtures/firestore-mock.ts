@@ -49,7 +49,8 @@ class FakeQuery {
     public readonly collectionPath: string,
     private filters: Array<(d: DocData) => boolean> = [],
     private orders: Array<{ field: string; dir: "asc" | "desc" }> = [],
-    private lim: number | null = null
+    private lim: number | null = null,
+    private afterValues: unknown[] | null = null
   ) {}
 
   where(field: string, op: string, value: unknown): FakeQuery {
@@ -57,16 +58,26 @@ class FakeQuery {
       this.collectionPath,
       [...this.filters, (d) => applyOp(d[field], op, value)],
       this.orders,
-      this.lim
+      this.lim,
+      this.afterValues
     );
   }
 
   orderBy(field: string, dir: "asc" | "desc" = "asc"): FakeQuery {
-    return new FakeQuery(this.collectionPath, this.filters, [...this.orders, { field, dir }], this.lim);
+    return new FakeQuery(this.collectionPath, this.filters, [...this.orders, { field, dir }], this.lim, this.afterValues);
   }
 
   limit(n: number): FakeQuery {
-    return new FakeQuery(this.collectionPath, this.filters, this.orders, n);
+    return new FakeQuery(this.collectionPath, this.filters, this.orders, n, this.afterValues);
+  }
+
+  startAfter(...values: unknown[]): FakeQuery {
+    if (values.length === 1 && values[0] && typeof values[0] === "object" && "id" in values[0] && "data" in values[0]) {
+      const snapshot = values[0] as FakeSnapshot;
+      values = this.orders.map((order) => order.field === "__name__" ? snapshot.id : snapshot.data()?.[order.field]);
+      if (this.orders.some((order) => order.field === "__name__")) values.push(snapshot.id);
+    }
+    return new FakeQuery(this.collectionPath, this.filters, this.orders, this.lim, values);
   }
 
   async get(): Promise<FakeQuerySnapshot> {
@@ -83,16 +94,29 @@ class FakeQuery {
     if (this.orders.length) {
       docs.sort((a, b) => {
         for (const { field, dir } of this.orders) {
-          const av = a.data()?.[field];
-          const bv = b.data()?.[field];
+          const av = field === "__name__" ? a.id : a.data()?.[field];
+          const bv = field === "__name__" ? b.id : b.data()?.[field];
           if (av === bv) continue;
-          const cmp = (av as number | string) > (bv as number | string) ? 1 : -1;
+          const cmp = compareValues(av, bv);
           return dir === "asc" ? cmp : -cmp;
         }
         return 0;
       });
     }
-    const limited = this.lim !== null ? docs.slice(0, this.lim) : docs;
+    const afterFiltered = this.afterValues
+      ? docs.filter((doc) => {
+          for (let i = 0; i < this.orders.length; i += 1) {
+            const order = this.orders[i];
+            const actual = order.field === "__name__" ? doc.id : doc.data()?.[order.field];
+            const cursor = this.afterValues?.[i];
+            const cmp = compareValues(actual, cursor);
+            if (cmp === 0) continue;
+            return order.dir === "asc" ? cmp > 0 : cmp < 0;
+          }
+          return false;
+        })
+      : docs;
+    const limited = this.lim !== null ? afterFiltered.slice(0, this.lim) : afterFiltered;
     return new FakeQuerySnapshot(limited);
   }
 }
@@ -167,8 +191,8 @@ class FakeTransaction {
   async get(ref: FakeDocumentRef): Promise<FakeSnapshot> {
     return ref.get();
   }
-  set(ref: FakeDocumentRef, data: DocData): this {
-    ref.set(data);
+  set(ref: FakeDocumentRef, data: DocData, options?: { merge?: boolean }): this {
+    void ref.set(data, options);
     return this;
   }
   update(ref: FakeDocumentRef, data: DocData): this {
@@ -179,6 +203,13 @@ class FakeTransaction {
     ref.delete();
     return this;
   }
+}
+
+function compareValues(a: unknown, b: unknown): number {
+  const av = a instanceof Date ? a.getTime() : typeof a === "object" && a !== null && "seconds" in a ? Number((a as { seconds: number }).seconds) * 1000 : a;
+  const bv = b instanceof Date ? b.getTime() : typeof b === "object" && b !== null && "seconds" in b ? Number((b as { seconds: number }).seconds) * 1000 : b;
+  if (av === bv) return 0;
+  return (av as number | string) > (bv as number | string) ? 1 : -1;
 }
 
 const store = new Map<string, DocData>();

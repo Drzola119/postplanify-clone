@@ -36,9 +36,10 @@ beforeEach(async () => {
   process.env.UPLOAD_POST_API_KEY = "test-key";
   mockRequireSession.mockResolvedValue({ uid: mockUid, workspaceId: mockWorkspaceId });
   await mockFs.doc(`workspaces/${mockWorkspaceId}/members/${mockUid}`).set({ role: "editor", joinedAt: new Date() });
+  await mockFs.doc(`workspaces/${mockWorkspaceId}`).set({ settings: { uploadPostProfile: { username: mockWorkspaceId }, uploadPostCache: { accounts: [{ platform: "instagram", reauthRequired: false, hasFacebookPage: true }] } } });
   await mockFs.doc(`workspaces/${mockWorkspaceId}/conversations/c1`).set({
     platform: "instagram",
-    accountKey: "prof",
+    accountKey: mockWorkspaceId,
     participants: ["bob"],
     participantExternalIds: ["ig-u-9"],
     lastMessageAt: new Date(),

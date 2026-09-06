@@ -73,7 +73,7 @@ export const inboxDraftSchema = z.object({
 export const inboxAutodmSchema = z.object({
   postUrl: url,
   replyMessage: z.string().min(1).max(1000),
-  profileUsername: z.string().min(1).max(128),
+  profileUsername: z.string().min(1).max(128).optional(),
   buttons: z
     .array(z.object({ title: z.string().min(1).max(20), url: url }))
     .max(3)

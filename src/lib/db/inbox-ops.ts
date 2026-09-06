@@ -49,6 +49,9 @@ export async function getOrCreateOp(
     targetId: input.targetId,
     body: input.body,
   });
+  // Keep compatibility with operations written before deterministic IDs were
+  // introduced, but use a stable document id for all new operations. This
+  // removes the read-then-create race between two concurrent submissions.
   const existing = await coll.where("idempotencyKey", "==", idempotencyKey).limit(1).get();
   if (existing.docs.length > 0) {
     const d = existing.docs[0];
@@ -69,9 +72,17 @@ export async function getOrCreateOp(
     createdAt: now,
     updatedAt: now,
   };
-  const ref = coll.doc();
-  await ref.set(doc);
-  return { id: ref.id, op: doc, created: true };
+  const deterministicId = `op-${createHash("sha256").update(idempotencyKey).digest("hex")}`;
+  const ref = coll.doc(deterministicId);
+  const result = await adminDb!.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (snap.exists) {
+      return { op: snap.data() as OutboundOpDoc, created: false };
+    }
+    tx.set(ref, doc);
+    return { op: doc, created: true };
+  });
+  return { id: ref.id, op: result.op, created: result.created };
 }
 
 /**
@@ -85,15 +96,17 @@ export async function claimOp(
   staleAfterMs = 5 * 60 * 1000
 ): Promise<boolean> {
   const ref = opsCollection(workspaceId).doc(opId);
-  const snap = await ref.get();
-  if (!snap.exists) return false;
-  const op = snap.data() as OutboundOpDoc;
-  const updatedAt = op.updatedAt instanceof Date ? op.updatedAt.getTime() : Date.now();
-  if (op.status === "pending" || (op.status === "processing" && Date.now() - updatedAt > staleAfterMs)) {
-    await ref.update({ status: "processing", updatedAt: new Date() });
+  return adminDb!.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return false;
+    const op = snap.data() as OutboundOpDoc;
+    const updatedAt = op.updatedAt instanceof Date ? op.updatedAt.getTime() : Date.now();
+    if (op.status !== "pending" && !(op.status === "processing" && Date.now() - updatedAt > staleAfterMs)) {
+      return false;
+    }
+    tx.update(ref, { status: "processing", updatedAt: new Date() });
     return true;
-  }
-  return false;
+  });
 }
 
 export async function finalizeOp(

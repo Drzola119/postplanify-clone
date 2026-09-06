@@ -68,6 +68,27 @@ export interface ListCommentsFilters {
   cursor?: string;
 }
 
+interface InboxCursor {
+  sentAt: string;
+  id: string;
+}
+
+function encodeCursor(cursor: InboxCursor): string {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+function decodeCursor(value: string | undefined): InboxCursor | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Partial<InboxCursor>;
+    if (typeof parsed.sentAt !== "string" || typeof parsed.id !== "string") return null;
+    const date = new Date(parsed.sentAt);
+    return Number.isNaN(date.getTime()) ? null : { sentAt: date.toISOString(), id: parsed.id };
+  } catch {
+    return null;
+  }
+}
+
 export interface CommentItem {
   id: string;
   workspaceId: string;
@@ -101,19 +122,30 @@ export async function listComments(
   const coll = commentsCollection(workspaceId);
   const pageSize = Math.min(Math.max(filters.pageSize ?? 25, 1), 100);
 
-  let q: { where: (f: string, op: string, v: unknown) => typeof q; orderBy: (f: string, d?: string) => typeof q; limit: (n: number) => { get: () => Promise<{ docs: Array<{ id: string; data: () => unknown }> }> }; get: () => Promise<{ docs: Array<{ id: string; data: () => unknown }> }> } = coll
-    .orderBy("sentAt", "desc")
-    .limit(pageSize) as unknown as typeof q;
+  let q: {
+    where: (f: string, op: string, v: unknown) => typeof q;
+    orderBy: (f: string, d?: string) => typeof q;
+    startAfter: (...values: unknown[]) => typeof q;
+    limit: (n: number) => typeof q;
+    get: () => Promise<{ docs: Array<{ id: string; data: () => unknown }> }>;
+  } = coll.orderBy("sentAt", "desc") as unknown as typeof q;
   if (filters.platform) q = q.where("platform", "==", filters.platform);
   if (filters.sentiment) q = q.where("sentiment", "==", filters.sentiment);
   if (typeof filters.replied === "boolean") q = q.where("replied", "==", filters.replied);
   if (typeof filters.resolved === "boolean") q = q.where("resolved", "==", filters.resolved);
   if (filters.unreadOnly) q = q.where("read", "==", false);
   if (filters.accountKey) q = q.where("accountKey", "==", filters.accountKey);
+  const cursor = decodeCursor(filters.cursor);
+  if (cursor) {
+    const cursorSnap = await coll.doc(cursor.id).get();
+    if (cursorSnap.exists) q = q.startAfter(cursorSnap);
+  }
+  q = q.limit(pageSize);
 
   const snap = await q.get();
   const items = snap.docs.map((d) => serializeComment(workspaceId, d.id, d.data() as CommentDoc));
-  const nextCursor = items.length === pageSize ? items[items.length - 1].id : null;
+  const last = items[items.length - 1];
+  const nextCursor = items.length === pageSize && last ? encodeCursor({ sentAt: last.sentAt, id: last.id }) : null;
   return { items, nextCursor };
 }
 
@@ -199,14 +231,25 @@ export async function listConversations(
   const coll = conversationsCollection(workspaceId);
   const pageSize = Math.min(Math.max(filters.pageSize ?? 25, 1), 100);
 
-  let q: { where: (f: string, op: string, v: unknown) => typeof q; orderBy: (f: string, d?: string) => typeof q; limit: (n: number) => { get: () => Promise<{ docs: Array<{ id: string; data: () => unknown }> }> }; get: () => Promise<{ docs: Array<{ id: string; data: () => unknown }> }> } = coll
-    .orderBy("lastMessageAt", "desc")
-    .limit(pageSize) as unknown as typeof q;
+  let q: {
+    where: (f: string, op: string, v: unknown) => typeof q;
+    orderBy: (f: string, d?: string) => typeof q;
+    startAfter: (...values: unknown[]) => typeof q;
+    limit: (n: number) => typeof q;
+    get: () => Promise<{ docs: Array<{ id: string; data: () => unknown }> }>;
+  } = coll.orderBy("lastMessageAt", "desc") as unknown as typeof q;
   if (filters.unreadOnly) q = q.where("unreadCount", ">", 0);
+  const cursor = decodeCursor(filters.cursor);
+  if (cursor) {
+    const cursorSnap = await coll.doc(cursor.id).get();
+    if (cursorSnap.exists) q = q.startAfter(cursorSnap);
+  }
+  q = q.limit(pageSize);
 
   const snap = await q.get();
   const items = snap.docs.map((d) => serializeConversation(d.id, d.data() as ConversationDoc));
-  const nextCursor = items.length === pageSize ? items[items.length - 1].id : null;
+  const last = items[items.length - 1];
+  const nextCursor = items.length === pageSize && last ? encodeCursor({ sentAt: last.lastMessageAt, id: last.id }) : null;
   return { items, nextCursor };
 }
 
@@ -522,5 +565,3 @@ function serializeConversation(id: string, data: ConversationDoc): ConversationI
     resolved: data.resolved,
   };
 }
-
-

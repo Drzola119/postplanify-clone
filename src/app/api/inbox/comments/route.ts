@@ -4,6 +4,7 @@ import { getWorkspaceRole, canRead, canWrite } from "@/lib/auth/workspace-role";
 import { listComments, createComment } from "@/lib/db/inbox";
 import { inboxCommentFilterSchema, inboxInboundSchema } from "@/lib/validation/inbox";
 import { parseBody, parseSearchParams, jsonError, jsonOk } from "@/lib/validation/helpers";
+import { InboxAccountError, resolveCanonicalInboxAccount } from "@/lib/inbox/account";
 
 export async function GET(request: NextRequest) {
   const session = await requireSession();
@@ -15,6 +16,12 @@ export async function GET(request: NextRequest) {
   const parsed = parseSearchParams(url.searchParams, inboxCommentFilterSchema);
   if (!parsed.ok || !parsed.data) {
     return jsonError(parsed.error?.status ?? 400, parsed.error?.message ?? "Invalid filters");
+  }
+  try {
+    await resolveCanonicalInboxAccount(session.workspaceId, parsed.data.accountKey);
+  } catch (err) {
+    if (err instanceof InboxAccountError) return jsonError(err.status, err.message, { code: err.code });
+    throw err;
   }
 
   try {

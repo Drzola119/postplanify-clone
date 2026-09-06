@@ -3,9 +3,9 @@ import { requireSession } from "@/lib/auth/session-context";
 import { getWorkspaceRole, canWrite } from "@/lib/auth/workspace-role";
 import { adminDb } from "@/lib/db";
 import { getOrCreateOp, claimOp, finalizeOp } from "@/lib/db/inbox-ops";
-import { effectiveSupport, privateReplyEligibility } from "@/lib/inbox/capabilities";
+import { privateReplyEligibility } from "@/lib/inbox/capabilities";
+import { InboxAccountError, requireInboxOperation, resolveCanonicalInboxAccount } from "@/lib/inbox/account";
 import { resolvers, MissingServerSecretError } from "@/lib/security/server-config";
-import { readProfile } from "@/lib/db/upload-post-profiles";
 import {
   postInstagramPublicReply,
   postInstagramPrivateReply,
@@ -41,15 +41,18 @@ export async function POST(request: NextRequest) {
   if (platform !== "instagram") {
     return jsonError(400, "Replies are supported for Instagram in V1", { code: "UNSUPPORTED_OPERATION" });
   }
-  const support = effectiveSupport("instagram", { platform, reauthRequired: false }, kind === "private-reply" ? "reply-private" : "reply-public");
-  if (support.status !== "supported") {
-    return jsonError(400, support.reason, { code: "UNSUPPORTED_OPERATION" });
-  }
-
   if (!adminDb) return jsonError(503, "Database not configured");
   const commentSnap = await adminDb.doc(`workspaces/${session.workspaceId}/comments/${commentId}`).get();
   if (!commentSnap.exists) return jsonError(404, "Comment not found");
   const comment = commentSnap.data() as CommentDoc;
+  let accountKey: string;
+  try {
+    accountKey = await resolveCanonicalInboxAccount(session.workspaceId, parsed.data.accountKey ?? comment.accountKey);
+    await requireInboxOperation(session.workspaceId, kind === "private-reply" ? "reply-private" : "reply-public");
+  } catch (err) {
+    if (err instanceof InboxAccountError) return jsonError(err.status, err.message, { code: err.code });
+    throw err;
+  }
   const providerCommentId = comment.externalId;
   if (!providerCommentId) {
     return jsonError(
@@ -72,9 +75,6 @@ export async function POST(request: NextRequest) {
     if (err instanceof MissingServerSecretError) return jsonError(503, "Social provider not configured");
     throw err;
   }
-  const profile = await readProfile(session.workspaceId).catch(() => null);
-  const accountKey = parsed.data.accountKey ?? profile?.username ?? session.workspaceId;
-
   const { id: opId, op, created } = await getOrCreateOp(session.workspaceId, {
     kind: kind === "private-reply" ? "private-reply" : "public-reply",
     platform: "instagram",
