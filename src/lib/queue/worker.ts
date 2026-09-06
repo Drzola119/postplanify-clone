@@ -330,15 +330,11 @@ export function startQueueWorker(intervalMs = DEFAULT_INTERVAL_MS): void {
   if (interval) return;
   const run = async () => {
     if (running) return;
-    running = true;
     try {
-      lastTickAt = new Date();
-      lastResult = await tickOnce();
+      await runQueueTick();
     } catch (err) {
       log.error(err, { step: "tick" });
       lastResult = { scanned: 0, published: 0, failed: 0, reaped: 0, error: err instanceof Error ? err.message : "unknown" };
-    } finally {
-      running = false;
     }
   };
   // Reconcile accepted UploadPost jobs as soon as the server boots. Waiting
@@ -368,4 +364,55 @@ export function getWorkerStatus(): {
   };
 }
 
-export { tickOnce as runQueueTick };
+/**
+ * Dashboard health may be served by a different Node instance than the one
+ * running the interval worker. Use the persisted heartbeat when available so
+ * a cold start does not incorrectly look like a worker that has never ticked.
+ */
+export async function getWorkerStatusForDashboard(): Promise<ReturnType<typeof getWorkerStatus>> {
+  const memory = getWorkerStatus();
+  if (!adminDb) return memory;
+  try {
+    const snap = await adminDb.collection("adminStats").doc("worker").get();
+    const data = snap.data() as { lastTickAt?: string; lastCronRun?: string; lastResult?: TickResult } | undefined;
+    const persistedTick = data?.lastTickAt ?? data?.lastCronRun ?? null;
+    const memoryMs = memory.lastTickAt ? Date.parse(memory.lastTickAt) : 0;
+    const persistedMs = persistedTick ? Date.parse(persistedTick) : 0;
+    return {
+      ...memory,
+      lastTickAt: persistedMs > memoryMs ? persistedTick : memory.lastTickAt,
+      lastResult: memory.lastResult ?? data?.lastResult ?? null,
+    };
+  } catch (err) {
+    log.warn("dashboard worker health read failed", { err: String(err) });
+    return memory;
+  }
+}
+
+export async function runQueueTick(): Promise<TickResult> {
+  if (running) {
+    return lastResult ?? { scanned: 0, published: 0, failed: 0, reaped: 0 };
+  }
+
+  running = true;
+  // Manual ticks must update the same health timestamp as scheduled ticks.
+  // Previously only the interval callback updated lastTickAt, so a successful
+  // "Run tick now" could still leave the dashboard showing "never ticked".
+  lastTickAt = new Date();
+  try {
+    lastResult = await tickOnce();
+    if (adminDb) {
+      await adminDb.collection("adminStats").doc("worker").set(
+        { lastTickAt: lastTickAt?.toISOString() ?? new Date().toISOString(), lastResult },
+        { merge: true }
+      ).catch((err) => {
+        // Health persistence must never turn a successful publishing tick
+        // into a failed API response.
+        log.warn("worker health persistence failed", { err: String(err) });
+      });
+    }
+    return lastResult;
+  } finally {
+    running = false;
+  }
+}

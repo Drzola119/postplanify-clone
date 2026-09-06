@@ -10,6 +10,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   ChevronLeft,
   ChevronRight,
@@ -326,7 +327,7 @@ export default function PostsCalendarPage() {
   useEffect(() => {
     const id = setInterval(() => {
       void loadPosts({ append: false, reason: "refresh" });
-    }, 5_000);
+    }, 60_000);
     return () => clearInterval(id);
   }, [loadPosts]);
 
@@ -1984,12 +1985,12 @@ function PostDetailsModal({
               </div>
               <p className="text-sm font-semibold">{t("posts.calendar.premium_feature")}</p>
               <p className="text-xs text-muted-foreground mt-1">{t("posts.calendar.discussion_desc")}</p>
-              <a
+              <Link
                 href="/dashboard/settings"
                 className="mt-3 inline-flex items-center rounded-md bg-zinc-900 text-white px-3 h-8 text-xs font-medium hover:bg-zinc-800"
               >
                 {t("posts.calendar.upgrade_premium")}
-              </a>
+              </Link>
               <p className="text-[11px] text-muted-foreground mt-3 flex items-center justify-center gap-1">
                 <RedirectIcon /> Upgrade in settings
               </p>

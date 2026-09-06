@@ -341,7 +341,7 @@ export default function PostingQueuePage() {
 
   useEffect(() => {
     void reload();
-    const id = setInterval(() => void reload({ silent: true }), 5_000);
+    const id = setInterval(() => void reload({ silent: true }), 60_000);
     return () => clearInterval(id);
   }, []);
 

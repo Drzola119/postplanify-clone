@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireSession } from "@/lib/auth/session-context";
 import { listPosts } from "@/lib/db/posts";
-import { getWorkerStatus } from "@/lib/queue/worker";
+import { getWorkerStatusForDashboard } from "@/lib/queue/worker";
 import { jsonOk } from "@/lib/validation/helpers";
 import { resolvers, MissingServerSecretError } from "@/lib/security/server-config";
 
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     listPosts(session.workspaceId, { status: "failed", pageSize: 20 }),
   ]);
 
-  const health = getWorkerStatus();
+  const health = await getWorkerStatusForDashboard();
   let uploadPostConfigured = false;
   try {
     resolvers.uploadPostApiKey(new Headers());

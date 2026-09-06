@@ -566,7 +566,7 @@
       "last_tick": "Dernier tick :",
       "never": "jamais",
       "interval": "(toutes les {n}s)",
-      "auto_refresh": "Actualisation auto toutes les 5s",
+      "auto_refresh": "Actualisation auto toutes les 60s",
       "refresh": "Actualiser",
       "running": "En cours…",
       "run_tick": "Déclencher le tick",

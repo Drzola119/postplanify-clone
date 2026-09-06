@@ -31,6 +31,7 @@ vi.mock("@/lib/db/posts", () => ({
 }));
 vi.mock("@/lib/queue/worker", () => ({
   getWorkerStatus: () => mockGetWorkerStatus(),
+  getWorkerStatusForDashboard: async () => mockGetWorkerStatus(),
 }));
 vi.mock("@/lib/security/server-config", () => ({
   resolvers: {

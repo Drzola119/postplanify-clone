@@ -396,7 +396,7 @@ export default function PublishHistoryPage() {
   // Keep publish history aligned with the queue worker and Command Center.
   // Publishing can finish in another tab or on the server between visits.
   useEffect(() => {
-    const id = setInterval(() => setReloadKey((k) => k + 1), 5_000);
+    const id = setInterval(() => setReloadKey((k) => k + 1), 60_000);
     return () => clearInterval(id);
   }, []);
 

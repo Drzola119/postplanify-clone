@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/session-context";
-import { getWorkerStatus } from "@/lib/queue/worker";
+import { getWorkerStatusForDashboard } from "@/lib/queue/worker";
 import { resolvers } from "@/lib/security/server-config";
 import { MissingServerSecretError } from "@/lib/security/server-config";
 
@@ -22,7 +22,7 @@ export async function GET() {
     }
   }
 
-  const status = getWorkerStatus();
+  const status = await getWorkerStatusForDashboard();
   return NextResponse.json({
     ...status,
     uploadPostConfigured,

@@ -67,6 +67,8 @@ interface JobsResponse {
   health: WorkerHealth;
 }
 
+const REFRESH_INTERVAL_MS = 60_000;
+
 function platformEmoji(platform: string): string {
   const map: Record<string, string> = {
     instagram: "📷",
@@ -105,6 +107,7 @@ export default function CommandCenterPage() {
   const [runningTick, setRunningTick] = useState(false);
   const [lastForcedTick, setLastForcedTick] = useState<TickResult | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -112,11 +115,17 @@ export default function CommandCenterPage() {
         credentials: "include",
         headers: getOverrideHeaders(),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        setErrorMsg(`Unable to load worker status (HTTP ${res.status}).`);
+        return;
+      }
       const data = (await res.json()) as JobsResponse;
       setInflight(data.inflight ?? []);
       setFailed(data.failed ?? []);
       setHealth(data.health);
+      setErrorMsg(null);
+    } catch {
+      setErrorMsg("Unable to connect to the publishing worker.");
     } finally {
       setLoading(false);
     }
@@ -126,10 +135,11 @@ export default function CommandCenterPage() {
     void load();
   }, []);
 
-  // Polling for live updates. 5s cadence is light on Firestore reads.
+  // Polling for live updates. Keep this deliberately conservative because the
+  // endpoint reads the publishing and failed-post result sets.
   useEffect(() => {
     if (!autoTick) return;
-    const id = setInterval(() => void load(), 5_000);
+    const id = setInterval(() => void load(), REFRESH_INTERVAL_MS);
     return () => clearInterval(id);
   }, [autoTick]);
 
@@ -149,6 +159,8 @@ export default function CommandCenterPage() {
         setLastForcedTick({ scanned: 0, published: 0, failed: 0, reaped: 0, error: body.error });
       }
       await load();
+    } catch {
+      setLastForcedTick({ scanned: 0, published: 0, failed: 0, reaped: 0, error: "Unable to run worker tick" });
     } finally {
       setRunningTick(false);
     }
@@ -191,6 +203,12 @@ export default function CommandCenterPage() {
         title={t("commandCenter.page_title")}
         subtitle={t("commandCenter.page_subtitle")}
       />
+
+      {errorMsg ? (
+        <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+          {errorMsg} Use Refresh to try again.
+        </div>
+      ) : null}
 
       {/* Top status strip */}
       <div className="rounded-xl border border-zinc-200 bg-white p-4 mb-5">
