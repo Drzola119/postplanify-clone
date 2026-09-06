@@ -89,7 +89,6 @@ const COMPARE_OPTIONS: { id: CompareMode; labelKey: string }[] = [
   { id: "previous_period", labelKey: "compare_previous" },
   { id: "previous_year", labelKey: "compare_same_last_year" },
   { id: "week_over_week", labelKey: "compare_wow" },
-  { id: "custom_range", labelKey: "compare_custom" },
 ];
 
 function fmtDate(d: Date): string {
