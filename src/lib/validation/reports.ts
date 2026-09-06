@@ -1,6 +1,11 @@
 import "server-only";
 import { z } from "zod";
 
+const platformIdSchema = z.enum([
+  "bluesky", "instagram", "tiktok", "youtube", "pinterest", "twitter", "linkedin",
+  "threads", "facebook", "discord", "telegram", "google_business", "reddit",
+]);
+
 export const reportTemplateSchema = z.enum([
   "performance",
   "engagement",
@@ -30,6 +35,12 @@ export const createReportSchema = z.object({
   template: reportTemplateSchema,
   dateRange: dateRangeSchema,
   format: reportFormatSchema.optional(),
+  accountCount: z.number().int().min(0).max(100).optional(),
+  platforms: z.array(platformIdSchema).max(13).optional(),
+  branding: z.object({
+    accentColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+    footerText: z.string().max(200).optional(),
+  }).optional(),
 });
 
 export const reportScheduleSchema = z.object({

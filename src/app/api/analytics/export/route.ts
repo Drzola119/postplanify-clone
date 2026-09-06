@@ -19,6 +19,10 @@ const ALL_PLATFORMS: PlatformId[] = [
   "linkedin",
   "threads",
   "facebook",
+  "discord",
+  "telegram",
+  "google_business",
+  "reddit",
 ];
 
 function csvEscape(v: unknown): string {

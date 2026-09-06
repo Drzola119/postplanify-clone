@@ -22,6 +22,10 @@ const ALL_PLATFORMS: PlatformId[] = [
   "linkedin",
   "threads",
   "facebook",
+  "discord",
+  "telegram",
+  "google_business",
+  "reddit",
 ];
 
 function safeFilename(name: string): string {
@@ -51,13 +55,14 @@ export async function GET(
   }
 
   try {
-    const overview = await getOverview(session.workspaceId, fromDate, toDate);
+    const platforms = report.platforms?.length ? report.platforms : ALL_PLATFORMS;
+    const overview = await getOverview(session.workspaceId, fromDate, toDate, platforms);
     const platformSeries: Record<PlatformId, PlatformSeriesPoint[]> = {} as Record<
       PlatformId,
       PlatformSeriesPoint[]
     >;
     await Promise.all(
-      ALL_PLATFORMS.map(async (p) => {
+      platforms.map(async (p) => {
         platformSeries[p] = await getPlatformSeries(session.workspaceId, p, fromDate, toDate);
       })
     );
@@ -69,6 +74,7 @@ export async function GET(
       generatedAt: report.generatedAt ?? new Date().toISOString(),
       overview,
       platformSeries,
+      branding: report.branding,
     });
 
     const filename = `${safeFilename(report.name)}.pdf`;
@@ -82,7 +88,7 @@ export async function GET(
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Disposition": `${new URL(request.url).searchParams.get("download") === "1" ? "attachment" : "inline"}; filename="${filename}"`,
         "Content-Length": String(buf.length),
         "Cache-Control": "no-store",
       },

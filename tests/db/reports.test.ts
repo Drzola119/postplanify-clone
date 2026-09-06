@@ -48,6 +48,22 @@ describe("db/reports - reports CRUD", () => {
     expect(items[0].generatedAt).toBeTruthy();
   });
 
+  it("persists selected platforms and branding for report generation", async () => {
+    const { createReport, getReport } = await import("@/lib/db/reports");
+    const id = await createReport("ws1", {
+      name: "Selected platforms",
+      template: "performance",
+      dateRange: { from: "2026-04-01", to: "2026-06-30" },
+      accountCount: 3,
+      platforms: ["discord", "telegram", "instagram"],
+      branding: { accentColor: "#10b981", footerText: "Acme" },
+    });
+    const item = await getReport("ws1", id);
+    expect(item?.platforms).toEqual(["discord", "telegram", "instagram"]);
+    expect(item?.accountCount).toBe(3);
+    expect(item?.branding).toEqual({ accentColor: "#10b981", footerText: "Acme" });
+  });
+
   it("delete removes the report", async () => {
     const { createReport, deleteReport, listReports } = await import("@/lib/db/reports");
     const id = await createReport("ws1", {

@@ -262,6 +262,9 @@ export interface ReportDoc {
   name: string;
   template: string;
   dateRange: { from: Date; to: Date };
+  accountCount?: number;
+  platforms?: PlatformId[];
+  branding?: { accentColor?: string; footerText?: string };
   status: "pending" | "ready" | "failed";
   downloadUrl?: string;
   generatedAt?: Date;

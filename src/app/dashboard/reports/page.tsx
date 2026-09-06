@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import {
   Clock,
@@ -68,18 +68,6 @@ interface Schedule {
   active: boolean;
 }
 
-const SAMPLE_ACCOUNTS: Account[] = [
-  { id: "a1", name: "Zakaria 11", platform: "youtube", color: "#FF0000" },
-  { id: "a2", name: "nicklorance.bsky.social", platform: "bluesky", color: "#1185FE" },
-  { id: "a3", name: "nicklorance7", platform: "threads", color: "#000000" },
-  { id: "a4", name: "nicklorance7", platform: "instagram", color: "#E1306C" },
-  { id: "a5", name: "nick_lorance", platform: "tiktok", color: "#000000" },
-  { id: "a6", name: "nicklorance7", platform: "pinterest", color: "#E60023" },
-  { id: "a7", name: "nick lorance life", platform: "facebook", color: "#1877F2" },
-  { id: "a8", name: "Nick Lorance", platform: "linkedin", color: "#0A66C2" },
-  { id: "a9", name: "LoranceNic36048", platform: "twitter", color: "#000000" },
-];
-
 const PLATFORM_ICONS: Record<string, ReactNode> = {
   youtube: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("youtube")!} />,
   bluesky: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("bluesky")!} />,
@@ -90,6 +78,10 @@ const PLATFORM_ICONS: Record<string, ReactNode> = {
   facebook: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("facebook")!} />,
   linkedin: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("linkedin")!} />,
   twitter: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("twitter")!} />,
+  reddit: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("reddit")!} />,
+  discord: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("discord")!} />,
+  telegram: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("telegram")!} />,
+  google_business: <PlatformAvatar size={14} rounded="sm" platform={getPlatform("google_business")!} />,
 };
 
 const COMPARE_OPTIONS: { id: CompareMode; labelKey: string }[] = [
@@ -99,21 +91,6 @@ const COMPARE_OPTIONS: { id: CompareMode; labelKey: string }[] = [
   { id: "week_over_week", labelKey: "compare_wow" },
   { id: "custom_range", labelKey: "compare_custom" },
 ];
-
-const SAMPLE_REPORTS: Report[] = [
-  {
-    id: "r1",
-    title: "Performance Report",
-    template: "performance",
-    from: "May 24, 2026",
-    to: "Jun 23, 2026",
-    createdAt: "Jun 23, 2026",
-    accounts: 9,
-    status: "ready",
-  },
-];
-
-const SAMPLE_SCHEDULES: Schedule[] = [];
 
 function fmtDate(d: Date): string {
   const day = String(d.getDate()).padStart(2, "0");
@@ -139,6 +116,21 @@ function defaultFrom(): string {
 
 function defaultTo(): string {
   return fmtDate(new Date());
+}
+
+function dateInputIso(value: string, endOfDay = false): string {
+  const [day, month, year] = value.split("/").map(Number);
+  return new Date(Date.UTC(year, month - 1, day, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0)).toISOString();
+}
+
+function parseScheduleCron(cron: string): Pick<Schedule, "frequency" | "time"> {
+  const [minute, hour, dayOfMonth, , dayOfWeek] = cron.trim().split(/\s+/);
+  const frequency = dayOfMonth === "1" && dayOfWeek === "*"
+    ? "monthly"
+    : dayOfWeek !== "*"
+      ? "weekly"
+      : "daily";
+  return { frequency, time: `${String(Number(hour) || 0).padStart(2, "0")}:${String(Number(minute) || 0).padStart(2, "0")}` };
 }
 
 type RangePreset = "7d" | "30d" | "90d" | "this_month" | "last_month";
@@ -177,7 +169,8 @@ export default function ReportsPage() {
   const [to, setTo] = useState(defaultTo());
   const [activePreset, setActivePreset] = useState<RangePreset | null>(null);
   const [compare, setCompare] = useState<CompareMode>("previous_period");
-  const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set(SAMPLE_ACCOUNTS.map((a) => a.id)));
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
 
   const [compareOpen, setCompareOpen] = useState(false);
   const [accountsOpen, setAccountsOpen] = useState(false);
@@ -189,16 +182,17 @@ export default function ReportsPage() {
   const [generating, setGenerating] = useState(false);
   const [scheduledOpen, setScheduledOpen] = useState(false);
   const [newScheduleOpen, setNewScheduleOpen] = useState(false);
-  const [schedules, setSchedules] = useState<Schedule[]>(SAMPLE_SCHEDULES);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
 
   // New Schedule form state
   const [scheduleName, setScheduleName] = useState("");
   const [scheduleFreq, setScheduleFreq] = useState<"daily" | "weekly" | "monthly">("weekly");
   const [scheduleRecipients, setScheduleRecipients] = useState("");
   const [scheduleTime, setScheduleTime] = useState("09:00");
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
-  const [reports, setReports] = useState<Report[]>(SAMPLE_REPORTS);
+  const [reports, setReports] = useState<Report[]>([]);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
   const fromInputRef = useRef<HTMLInputElement>(null);
@@ -209,26 +203,27 @@ export default function ReportsPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [reportsRes, schedulesRes] = await Promise.all([
+        const [reportsRes, schedulesRes, accountsRes] = await Promise.all([
           fetch("/api/reports", { credentials: "include" }),
           fetch("/api/reports/schedules", { credentials: "include" }),
+          fetch("/api/social-accounts/list", { credentials: "include" }),
         ]);
         if (cancelled) return;
         if (reportsRes.ok) {
           const data = await reportsRes.json();
           const items: Report[] = (data.reports ?? []).map(
-            (r: { id: string; name: string; template: string; dateRange: { from: string; to: string }; createdAt: string; status: "pending" | "ready" | "failed" }) => ({
+            (r: { id: string; name: string; template: string; dateRange: { from: string; to: string }; createdAt: string; accountCount?: number; status: "pending" | "ready" | "failed" }) => ({
               id: r.id,
               title: r.name,
               template: r.template,
               from: r.dateRange.from.slice(0, 10),
               to: r.dateRange.to.slice(0, 10),
               createdAt: r.createdAt.slice(0, 10),
-              accounts: 0,
+              accounts: r.accountCount ?? 0,
               status: r.status,
             })
           );
-          if (items.length) setReports(items);
+          setReports(items);
         }
         if (schedulesRes.ok) {
           const data = await schedulesRes.json();
@@ -236,16 +231,25 @@ export default function ReportsPage() {
             (s: { id: string; name: string; cron: string; recipients: string[]; paused: boolean }) => ({
               id: s.id,
               name: s.name,
-              frequency: "weekly",
-              time: "00:00",
+              ...parseScheduleCron(s.cron),
               recipients: s.recipients,
               active: !s.paused,
             })
           );
           setSchedules(items);
         }
+        if (accountsRes.ok) {
+          const data = await accountsRes.json();
+          const items: Account[] = (data.accounts ?? []).map((a: { id: string; handle: string; displayName?: string | null; platform: string }) => ({
+            id: a.id,
+            name: a.displayName || a.handle,
+            platform: a.platform,
+          }));
+          setAccounts(items);
+          setSelectedAccounts(new Set(items.map((a) => a.id)));
+        }
       } catch {
-        /* keep SAMPLE_* as offline fallback */
+        // Keep the empty state honest when live workspace data is unavailable.
       }
     })();
     return () => {
@@ -283,8 +287,8 @@ export default function ReportsPage() {
   };
 
   const toggleAllAccounts = () => {
-    if (selectedAccounts.size === SAMPLE_ACCOUNTS.length) setSelectedAccounts(new Set());
-    else setSelectedAccounts(new Set(SAMPLE_ACCOUNTS.map((a) => a.id)));
+    if (selectedAccounts.size === accounts.length) setSelectedAccounts(new Set());
+    else setSelectedAccounts(new Set(accounts.map((a) => a.id)));
   };
 
   const handleExportReports = () => {
@@ -326,8 +330,6 @@ export default function ReportsPage() {
     const reportTitle = title.trim() || "Performance Report";
     try {
       // Convert dd/mm/yyyy → yyyy-mm-dd for the API.
-      const [fd, fm, fy] = from.split("/").map(Number);
-      const [td, tm, ty] = to.split("/").map(Number);
       const res = await fetch("/api/reports", {
         method: "POST",
         credentials: "include",
@@ -336,9 +338,12 @@ export default function ReportsPage() {
           name: reportTitle,
           template,
           dateRange: {
-            from: new Date(fy, fm - 1, fd).toISOString(),
-            to: new Date(ty, tm - 1, td).toISOString(),
+            from: dateInputIso(from),
+            to: dateInputIso(to, true),
           },
+          platforms: [...new Set(accounts.filter((a) => selectedAccounts.has(a.id)).map((a) => a.platform))],
+          branding: { accentColor, footerText },
+          accountCount: selectedAccounts.size,
           format: "pdf",
         }),
       });
@@ -388,20 +393,36 @@ export default function ReportsPage() {
 
   const handleDownloadPdf = (id: string) => {
     if (typeof window !== "undefined") {
-      window.open(`/api/reports/${id}/download`, "_blank", "noopener,noreferrer");
+      window.open(`/api/reports/${id}/download?download=1`, "_blank", "noopener,noreferrer");
     }
   };
 
-  const deleteReport = (id: string) => {
-    setReports((prev) => prev.filter((r) => r.id !== id));
-    showToast(t("reports.toast_deleted"));
+  const deleteReport = async (id: string) => {
+    try {
+      const res = await fetch(`/api/reports/${id}`, { method: "DELETE", credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setReports((prev) => prev.filter((r) => r.id !== id));
+      showToast(t("reports.toast_deleted"));
+    } catch (err) {
+      showToast(`Unable to delete report: ${err instanceof Error ? err.message : "unknown"}`, "error");
+    }
   };
 
-  const copyLink = (id: string) => {
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(`https://postplanify.com/reports/${id}`);
+  const copyLink = async (id: string) => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      showToast("Clipboard is unavailable", "error");
+      return;
     }
-    showToast(t("reports.toast_link_copied"));
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/api/reports/${id}/download`);
+      showToast(t("reports.toast_link_copied"));
+    } catch {
+      showToast("Unable to copy report link", "error");
+    }
+  };
+
+  const viewReport = (id: string) => {
+    if (typeof window !== "undefined") window.open(`/api/reports/${id}/download`, "_blank", "noopener,noreferrer");
   };
 
   const handleCreateSchedule = async () => {
@@ -419,8 +440,8 @@ export default function ReportsPage() {
       } else {
         cron = `${scheduleTime.split(":")[1]} ${scheduleTime.split(":")[0]} 1 * *`;
       }
-      const res = await fetch("/api/reports/schedules", {
-        method: "POST",
+      const res = await fetch(editingScheduleId ? `/api/reports/schedules/${editingScheduleId}` : "/api/reports/schedules", {
+        method: editingScheduleId ? "PATCH" : "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, cron, recipients }),
@@ -430,19 +451,22 @@ export default function ReportsPage() {
         showToast(t("reports.toast_schedule_error", { status: res.status, text: errBody }), "error");
         return;
       }
-      const { id } = (await res.json()) as { id: string };
+      const { id } = (await res.json()) as { id?: string };
       const newItem: Schedule = {
-        id,
+        id: editingScheduleId ?? id ?? "",
         name,
         frequency: scheduleFreq,
         time: scheduleTime,
         recipients,
         active: true,
       };
-      setSchedules((prev) => [...prev, newItem]);
+      setSchedules((prev) => editingScheduleId
+        ? prev.map((item) => item.id === editingScheduleId ? newItem : item)
+        : [...prev, newItem]);
       setScheduleName("");
       setScheduleRecipients("");
       setScheduleTime("09:00");
+      setEditingScheduleId(null);
       setNewScheduleOpen(false);
       showToast(t("reports.toast_schedule_created"));
     } catch (err) {
@@ -453,6 +477,40 @@ export default function ReportsPage() {
     } finally {
       setCreating(false);
     }
+  };
+
+  const handleToggleSchedule = async (schedule: Schedule) => {
+    try {
+      const res = await fetch(`/api/reports/schedules/${schedule.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paused: schedule.active }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setSchedules((prev) => prev.map((item) => item.id === schedule.id ? { ...item, active: !item.active } : item));
+    } catch (err) {
+      showToast(`Unable to update schedule: ${err instanceof Error ? err.message : "unknown"}`, "error");
+    }
+  };
+
+  const handleDeleteSchedule = async (id: string) => {
+    try {
+      const res = await fetch(`/api/reports/schedules/${id}`, { method: "DELETE", credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setSchedules((prev) => prev.filter((item) => item.id !== id));
+    } catch (err) {
+      showToast(`Unable to delete schedule: ${err instanceof Error ? err.message : "unknown"}`, "error");
+    }
+  };
+
+  const handleEditSchedule = (schedule: Schedule) => {
+    setEditingScheduleId(schedule.id);
+    setScheduleName(schedule.name);
+    setScheduleFreq(schedule.frequency);
+    setScheduleRecipients(schedule.recipients.join(", "));
+    setScheduleTime(schedule.time);
+    setNewScheduleOpen(true);
   };
 
   return (
@@ -621,7 +679,7 @@ export default function ReportsPage() {
                   className="w-full inline-flex items-center justify-between gap-1.5 rounded-md border border-zinc-200 bg-white h-9 px-3 text-sm font-medium hover:bg-zinc-50 whitespace-nowrap"
                 >
                   <span>
-                    {selectedAccounts.size === SAMPLE_ACCOUNTS.length
+                    {accounts.length > 0 && selectedAccounts.size === accounts.length
                       ? t("reports.all_accounts")
                       : selectedAccounts.size === 0
                         ? t("reports.accounts")
@@ -639,13 +697,13 @@ export default function ReportsPage() {
                         className="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-50 flex items-center gap-2 font-medium"
                       >
                         <span className="size-4 inline-flex items-center justify-center">
-                          {selectedAccounts.size === SAMPLE_ACCOUNTS.length && <Check className="size-3.5" />}
+                          {accounts.length > 0 && selectedAccounts.size === accounts.length && <Check className="size-3.5" />}
                         </span>
                         {t("reports.all_accounts")}
                       </button>
                       <div className="my-1 border-t border-zinc-100" />
                       <div className="max-h-64 overflow-y-auto">
-                        {SAMPLE_ACCOUNTS.map((a) => (
+                        {accounts.map((a) => (
                           <button
                             key={a.id}
                             type="button"
@@ -789,7 +847,7 @@ export default function ReportsPage() {
           ) : (
             <div className="space-y-3">
               {reports.map((r) => (
-                <ReportRow key={r.id} report={r} onCopyLink={() => copyLink(r.id)} onDelete={() => deleteReport(r.id)} onDownloadPdf={() => handleDownloadPdf(r.id)} />
+                <ReportRow key={r.id} report={r} onView={() => viewReport(r.id)} onCopyLink={() => copyLink(r.id)} onDelete={() => deleteReport(r.id)} onDownloadPdf={() => handleDownloadPdf(r.id)} />
               ))}
             </div>
           )}
@@ -829,7 +887,7 @@ export default function ReportsPage() {
               ) : null}
               <button
                 type="button"
-                onClick={() => setNewScheduleOpen(true)}
+                onClick={() => { setEditingScheduleId(null); setScheduleName(""); setScheduleRecipients(""); setNewScheduleOpen(true); }}
                 className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 text-white h-9 px-3 text-sm font-medium hover:bg-zinc-800"
               >
                 <Plus className="size-4" />
@@ -842,7 +900,7 @@ export default function ReportsPage() {
               ) : (
                 <div className="p-4 space-y-3">
                   {schedules.map((s) => (
-                    <ScheduleRow key={s.id} schedule={s} />
+                    <ScheduleRow key={s.id} schedule={s} onEdit={() => handleEditSchedule(s)} onToggle={() => handleToggleSchedule(s)} onDelete={() => handleDeleteSchedule(s.id)} />
                   ))}
                 </div>
               )}
@@ -856,7 +914,7 @@ export default function ReportsPage() {
         <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4 animate-in fade-in-0" onClick={() => setNewScheduleOpen(false)}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-lg animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between p-5 pb-3">
-              <h2 className="text-lg font-semibold">{t("reports.new_schedule_title")}</h2>
+              <h2 className="text-lg font-semibold">{editingScheduleId ? t("reports.schedule_edit") : t("reports.new_schedule_title")}</h2>
               <button type="button" onClick={() => setNewScheduleOpen(false)} className="text-zinc-400 hover:text-zinc-700" aria-label={t("reports.close")}>
                  <X className="size-5" />
               </button>
@@ -945,7 +1003,7 @@ export default function ReportsPage() {
   );
 }
 
-function ReportRow({ report, onCopyLink, onDelete, onDownloadPdf }: { report: Report; onCopyLink: () => void; onDelete: () => void; onDownloadPdf: () => void }) {
+function ReportRow({ report, onView, onCopyLink, onDelete, onDownloadPdf }: { report: Report; onView: () => void; onCopyLink: () => void; onDelete: () => void; onDownloadPdf: () => void }) {
   const t = useTranslations("dashboard");
   const statusBadge = report.status === "pending"
     ? <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-700 px-2 py-0.5 text-[10px] font-medium border border-amber-200"><Loader2 className="size-2.5 animate-spin" />{t("reports.status_generating")}</span>
@@ -974,7 +1032,7 @@ function ReportRow({ report, onCopyLink, onDelete, onDownloadPdf }: { report: Re
         </div>
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
-        <button type="button" className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-zinc-200 bg-white text-xs font-medium hover:bg-zinc-50">
+        <button type="button" onClick={onView} disabled={report.status === "pending"} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-zinc-200 bg-white text-xs font-medium hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed">
           <Eye className="size-3.5" />
           {t("reports.view")}
         </button>
@@ -1018,7 +1076,7 @@ function EmptySchedules() {
   );
 }
 
-function ScheduleRow({ schedule }: { schedule: Schedule }) {
+function ScheduleRow({ schedule, onEdit, onToggle, onDelete }: { schedule: Schedule; onEdit: () => void; onToggle: () => void; onDelete: () => void }) {
   const t = useTranslations("dashboard");
   const freqLabel = schedule.frequency === "daily" ? t("reports.freq_daily") : schedule.frequency === "weekly" ? t("reports.freq_weekly") : t("reports.freq_monthly");
   return (
@@ -1026,13 +1084,13 @@ function ScheduleRow({ schedule }: { schedule: Schedule }) {
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold">{schedule.name}</p>
         <div className="flex items-center gap-1">
-          <button type="button" className="size-7 inline-flex items-center justify-center rounded-md hover:bg-zinc-100" aria-label={t("reports.schedule_edit")}>
+          <button type="button" onClick={onEdit} className="size-7 inline-flex items-center justify-center rounded-md hover:bg-zinc-100" aria-label={t("reports.schedule_edit")}>
             <Pencil className="size-3.5 text-zinc-600" />
           </button>
-          <button type="button" className="size-7 inline-flex items-center justify-center rounded-md hover:bg-zinc-100" aria-label={t("reports.schedule_toggle")}>
+          <button type="button" onClick={onToggle} className="size-7 inline-flex items-center justify-center rounded-md hover:bg-zinc-100" aria-label={t("reports.schedule_toggle")}>
             {schedule.active ? <Pause className="size-3.5 text-zinc-600" /> : <Play className="size-3.5 text-zinc-600" />}
           </button>
-          <button type="button" className="size-7 inline-flex items-center justify-center rounded-md hover:bg-zinc-100 text-rose-600" aria-label={t("reports.schedule_delete")}>
+          <button type="button" onClick={onDelete} className="size-7 inline-flex items-center justify-center rounded-md hover:bg-zinc-100 text-rose-600" aria-label={t("reports.schedule_delete")}>
             <Trash2 className="size-3.5" />
           </button>
         </div>

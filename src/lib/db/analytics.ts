@@ -29,7 +29,8 @@ export interface AnalyticsOverview {
 export async function getOverview(
   workspaceId: string,
   from: Date,
-  to: Date
+  to: Date,
+  requestedPlatforms?: PlatformId[],
 ): Promise<AnalyticsOverview> {
   const days = enumerateDays(from, to);
   const platforms: PlatformId[] = [
@@ -48,8 +49,9 @@ export async function getOverview(
     "reddit",
   ];
 
+  const selected = requestedPlatforms?.length ? platforms.filter((p) => requestedPlatforms.includes(p)) : platforms;
   const byPlatform = await Promise.all(
-    platforms.map(async (p) => {
+    selected.map(async (p) => {
       const series = await getPlatformSeries(workspaceId, p, from, to);
       const followersLatest = series.length > 0 ? series[series.length - 1].followers : 0;
       const impressions = series.reduce((acc, x) => acc + x.impressions, 0);
@@ -113,7 +115,15 @@ export async function getOverview(
       .where("publishedAt", ">=", from)
       .where("publishedAt", "<=", to)
       .get();
-    totals.postsPublished = posts.size;
+    if (!requestedPlatforms?.length) {
+      totals.postsPublished = posts.size;
+    } else {
+      const selectedSet = new Set(requestedPlatforms);
+      totals.postsPublished = posts.docs.filter((doc) => {
+        const platforms = (doc.data() as { platforms?: unknown }).platforms;
+        return Array.isArray(platforms) && platforms.some((p) => selectedSet.has(String(p) as PlatformId));
+      }).length;
+    }
   }
 
   void days;

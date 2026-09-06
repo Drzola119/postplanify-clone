@@ -20,6 +20,9 @@ export interface ReportItem {
   name: string;
   template: string;
   dateRange: { from: string; to: string };
+  accountCount: number;
+  platforms: ReportDoc["platforms"];
+  branding: ReportDoc["branding"];
   status: "pending" | "ready" | "failed";
   downloadUrl?: string;
   generatedAt?: string;
@@ -49,7 +52,7 @@ export async function getReport(workspaceId: string, id: string): Promise<Report
 
 export async function createReport(
   workspaceId: string,
-  input: { name: string; template: string; dateRange: { from: Date | string; to: Date | string } }
+  input: { name: string; template: string; dateRange: { from: Date | string; to: Date | string }; accountCount?: number; platforms?: ReportDoc["platforms"]; branding?: ReportDoc["branding"] }
 ): Promise<string> {
   const ref = reportsCollection(workspaceId).doc();
   await ref.set({
@@ -59,6 +62,9 @@ export async function createReport(
       from: toDate(input.dateRange.from),
       to: toDate(input.dateRange.to),
     },
+    ...(input.accountCount !== undefined ? { accountCount: input.accountCount } : {}),
+    ...(input.platforms ? { platforms: input.platforms } : {}),
+    ...(input.branding ? { branding: input.branding } : {}),
     status: "pending",
     createdAt: SERVER_TIMESTAMP,
   });
@@ -136,6 +142,9 @@ function serializeReport(id: string, data: ReportDoc): ReportItem {
       from: toIso(data.dateRange?.from),
       to: toIso(data.dateRange?.to),
     },
+    accountCount: data.accountCount ?? 0,
+    platforms: data.platforms,
+    branding: data.branding,
     status: data.status ?? "pending",
     downloadUrl: data.downloadUrl,
     generatedAt: data.generatedAt ? toIso(data.generatedAt) : undefined,
