@@ -8,6 +8,7 @@ import {
   type CachedAccount,
 } from "@/lib/db/account-health";
 import { toInternalPlatform } from "@/lib/platforms";
+import { createNotification } from "@/lib/notifications";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -94,9 +95,11 @@ async function fetchLiveAccounts(workspaceId: string, apiKey: string): Promise<C
 }
 
 export async function GET(request: Request) {
+  let notificationSession: { uid: string; workspaceId: string } | null = null;
   try {
     const session = await requireSession();
     if (session instanceof Response) return session;
+    notificationSession = session;
     if (!adminDb) {
       return NextResponse.json({ health: [] });
     }
@@ -113,16 +116,52 @@ export async function GET(request: Request) {
           plan: cached?.plan ?? null,
           limit: cached?.limit ?? null,
         });
+        for (const account of live) {
+          if (!account.reauthRequired) continue;
+          await createNotification(session.uid, {
+            type: "token_expired",
+            category: "accounts",
+            title: "Reconnect your social account",
+            message: `${account.displayName || account.handle} needs to be reconnected before it can publish.`,
+            actionUrl: "/dashboard/accounts",
+            actionLabel: "Reconnect account",
+            dedupeKey: `account:${session.workspaceId}:${account.id}:reauth-required`,
+            metadata: { workspaceId: session.workspaceId, accountId: account.id, platform: account.platform },
+          });
+        }
       }
     }
 
     const snapshot = await readCache(session.workspaceId);
+    for (const account of snapshot?.accounts ?? []) {
+      if (!account.reauthRequired) continue;
+      await createNotification(session.uid, {
+        type: "token_expired",
+        category: "accounts",
+        title: "Reconnect your social account",
+        message: `${account.displayName || account.handle} needs to be reconnected before it can publish.`,
+        actionUrl: "/dashboard/accounts",
+        actionLabel: "Reconnect account",
+        dedupeKey: `account:${session.workspaceId}:${account.id}:reauth-required`,
+        metadata: { workspaceId: session.workspaceId, accountId: account.id, platform: account.platform },
+      });
+    }
     const health = deriveHealth(snapshot);
     return NextResponse.json({ health });
   } catch (err) {
     console.error("[GET /api/accounts/health error]", err);
     const msg = err instanceof Error ? err.message : String(err);
     if (/RESOURCE_EXHAUSTED|Quota exceeded/i.test(msg) || (err as { code?: unknown })?.code === 8) {
+      if (notificationSession) await createNotification(notificationSession.uid, {
+        type: "quota_exceeded",
+        category: "system",
+        title: "Firestore quota exceeded",
+        message: "The database quota is exhausted. Enable Firebase Blaze billing or wait for the daily quota reset.",
+        actionUrl: "/dashboard/accounts",
+        actionLabel: "View account health",
+        dedupeKey: "system:firestore-quota:active",
+        metadata: { workspaceId: notificationSession.workspaceId, code: "QUOTA_EXCEEDED" },
+      });
       return NextResponse.json(
         { health: [], error: { status: 503, code: "QUOTA_EXCEEDED", message: "Firestore quota exceeded", hint: "Enable Blaze billing or wait for reset" } },
         { status: 503 }

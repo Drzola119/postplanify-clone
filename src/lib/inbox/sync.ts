@@ -17,6 +17,7 @@ import {
 } from "@/lib/uploadpost/inbox";
 import { readCachedInboxAccount } from "@/lib/inbox/account";
 import { readProfile } from "@/lib/db/upload-post-profiles";
+import { createNotification, getWorkspaceOwnerUid } from "@/lib/notifications";
 
 const log = createLogger("inbox-sync");
 
@@ -74,6 +75,7 @@ export async function syncInstagramAccount(input: {
   let providerCalls = 0;
   let commentsUpserted = 0;
   let conversationsUpserted = 0;
+  const notificationUid = await getWorkspaceOwnerUid(workspaceId);
   try {
     // 1. Bounded media discovery — recent posts only, single page.
     const mediaPage = await listInstagramMedia(apiKey, accountKey, { limit: MAX_POSTS_PER_RUN });
@@ -87,7 +89,7 @@ export async function syncInstagramAccount(input: {
         const comments = await listInstagramComments(apiKey, accountKey, { postId: post.id }, { limit: COMMENT_PAGE_SIZE, after });
         providerCalls += 1;
         for (const c of comments.comments) {
-          await upsertCommentFromEvent(workspaceId, {
+          const { comment, created } = await upsertCommentFromEvent(workspaceId, {
             workspaceId,
             platform: "instagram",
             type: "comment",
@@ -101,6 +103,18 @@ export async function syncInstagramAccount(input: {
             postPermalink: post.permalink,
             origin: "internal-automation",
           });
+          if (created && notificationUid) {
+            await createNotification(notificationUid, {
+              type: "inbox_comment",
+              category: "inbox",
+              title: "New inbox comment",
+              message: `${comment.authorHandle} commented: ${comment.body.slice(0, 120)}`,
+              actionUrl: "/dashboard/inbox",
+              actionLabel: "Open inbox",
+              dedupeKey: `inbox:comment:${workspaceId}:${accountKey}:instagram:${c.id}`,
+              metadata: { workspaceId, accountKey, platform: "instagram", externalId: c.id },
+            });
+          }
           commentsUpserted += 1;
           const ts = new Date(c.timestamp);
           if (!Number.isNaN(ts.getTime()) && (!newestActivity || ts > newestActivity)) newestActivity = ts;
@@ -125,7 +139,7 @@ export async function syncInstagramAccount(input: {
           participantExternalIds: convo.participants.map((p) => p.id),
         });
         for (const m of convo.messages.slice(-10)) {
-          await appendMessageFromEvent(workspaceId, {
+          const { created } = await appendMessageFromEvent(workspaceId, {
             workspaceId,
             platform: "instagram",
             type: "message",
@@ -139,6 +153,18 @@ export async function syncInstagramAccount(input: {
             accountKey,
             origin: "internal-automation",
           });
+          if (created && notificationUid) {
+            await createNotification(notificationUid, {
+              type: "inbox_message",
+              category: "inbox",
+              title: "New inbox message",
+              message: `${m.fromUsername ?? "New contact"}: ${m.body.slice(0, 120)}`,
+              actionUrl: "/dashboard/inbox",
+              actionLabel: "Open inbox",
+              dedupeKey: `inbox:message:${workspaceId}:${accountKey}:instagram:${m.id}`,
+              metadata: { workspaceId, accountKey, platform: "instagram", externalId: m.id, conversationId },
+            });
+          }
           conversationsUpserted += 1;
         }
       }

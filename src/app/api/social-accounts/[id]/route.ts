@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { requireSession } from "@/lib/auth/session-context";
 import { readCache, writeCache } from "@/lib/db/account-health";
 import { jsonError, jsonOk } from "@/lib/validation/helpers";
+import { createNotification } from "@/lib/notifications";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,8 +29,8 @@ export async function DELETE(
   if (!cache) {
     return jsonError(404, "No cached accounts snapshot for this workspace");
   }
-  const exists = cache.accounts.some((a) => a.id === id);
-  if (!exists) {
+  const account = cache.accounts.find((a) => a.id === id);
+  if (!account) {
     return jsonError(404, "Account not found in workspace snapshot");
   }
 
@@ -39,6 +40,17 @@ export async function DELETE(
     profiles: cache.profiles,
     plan: cache.plan,
     limit: cache.limit,
+  });
+
+  await createNotification(session.uid, {
+    type: "account_disconnected",
+    category: "accounts",
+    title: "Social account disconnected",
+    message: `${account.displayName || account.handle} is no longer available for publishing.`,
+    actionUrl: "/dashboard/accounts",
+    actionLabel: "Review accounts",
+    dedupeKey: `account:${session.workspaceId}:${id}:disconnected`,
+    metadata: { workspaceId: session.workspaceId, accountId: id, platform: account.platform },
   });
 
   return jsonOk({ removed: id, remaining: next.length });

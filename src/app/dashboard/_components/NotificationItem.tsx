@@ -12,13 +12,17 @@ import {
   Link2,
   Unlink2,
   X,
+  Check,
+  MessageCircle,
+  ShieldAlert,
 } from "lucide-react";
 import type { Notification, NotificationType } from "@/lib/notifications";
-import { deleteNotificationAction } from "@/app/dashboard/notifications/actions";
+import { deleteNotificationAction, markReadAction } from "@/app/dashboard/notifications/actions";
 
 interface NotificationItemProps {
   notification: Notification;
   onDelete: (id: string) => void;
+  onMarkRead?: (id: string) => void;
 }
 
 function formatRelativeTime(createdAt: string): string {
@@ -84,6 +88,18 @@ function getIconAndStyle(type: NotificationType) {
         Icon: Unlink2,
         className: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400",
       };
+    case "inbox_comment":
+    case "inbox_message":
+      return {
+        Icon: MessageCircle,
+        className: "bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400",
+      };
+    case "quota_exceeded":
+    case "system_warning":
+      return {
+        Icon: ShieldAlert,
+        className: "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400",
+      };
     default:
       return {
         Icon: CheckCircle2,
@@ -92,7 +108,7 @@ function getIconAndStyle(type: NotificationType) {
   }
 }
 
-export function NotificationItem({ notification, onDelete }: NotificationItemProps) {
+export function NotificationItem({ notification, onDelete, onMarkRead }: NotificationItemProps) {
   const { Icon, className: iconClassName } = getIconAndStyle(notification.type);
 
   const handleDelete = (e: React.MouseEvent) => {
@@ -102,6 +118,18 @@ export function NotificationItem({ notification, onDelete }: NotificationItemPro
     deleteNotificationAction(notification.id).catch((err) => {
       console.error("Failed to delete notification on server:", err);
     });
+  };
+
+  const handleMarkRead = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (notification.read) return;
+    onMarkRead?.(notification.id);
+    if (!onMarkRead) {
+      markReadAction(notification.id).catch((err) => {
+        console.error("Failed to mark notification read on server:", err);
+      });
+    }
   };
 
   return (
@@ -152,6 +180,17 @@ export function NotificationItem({ notification, onDelete }: NotificationItemPro
       >
         <X className="w-3.5 h-3.5" />
       </button>
+      {!notification.read && (
+        <button
+          type="button"
+          onClick={handleMarkRead}
+          className="absolute top-2 right-8 p-1 text-[var(--color-text-faint)] hover:text-[var(--color-primary)] rounded transition-colors"
+          aria-label="Mark notification as read"
+          title="Mark as read"
+        >
+          <Check className="w-3.5 h-3.5" />
+        </button>
+      )}
     </div>
   );
 }

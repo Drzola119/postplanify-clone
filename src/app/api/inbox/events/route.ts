@@ -8,6 +8,7 @@ import {
 } from "@/lib/db/inbox";
 import { inboxEventSchema } from "@/lib/validation/inbox-events";
 import { parseValue, jsonError, jsonOk } from "@/lib/validation/helpers";
+import { createNotification } from "@/lib/notifications";
 
 /**
  * Public ingestion endpoint for inbound social events.
@@ -68,6 +69,7 @@ export async function POST(request: NextRequest) {
   if (!wsSnap.exists) {
     return jsonError(404, "Workspace not found");
   }
+  const workspaceOwnerUid = (wsSnap.data() as { ownerUid?: unknown } | undefined)?.ownerUid;
 
   try {
     if (evt.type === "comment") {
@@ -78,6 +80,18 @@ export async function POST(request: NextRequest) {
         externalId: evt.externalId,
         created,
       });
+      if (created && typeof workspaceOwnerUid === "string") {
+        await createNotification(workspaceOwnerUid, {
+          type: "inbox_comment",
+          category: "inbox",
+          title: "New inbox comment",
+          message: `${evt.authorHandle} commented: ${evt.body.slice(0, 120)}`,
+          actionUrl: "/dashboard/inbox",
+          actionLabel: "Open inbox",
+          dedupeKey: `inbox:comment:${evt.workspaceId}:${evt.accountKey ?? evt.workspaceId}:${evt.platform}:${evt.externalId}`,
+          metadata: { workspaceId: evt.workspaceId, platform: evt.platform, externalId: evt.externalId },
+        });
+      }
       return jsonOk({ type: "comment", id: comment.id, created });
     }
     const { conversationId, messageId, created } = await appendMessageFromEvent(
@@ -91,6 +105,18 @@ export async function POST(request: NextRequest) {
       conversationId,
       created,
     });
+    if (created && typeof workspaceOwnerUid === "string") {
+      await createNotification(workspaceOwnerUid, {
+        type: "inbox_message",
+        category: "inbox",
+        title: "New inbox message",
+        message: `${evt.authorHandle}: ${evt.body.slice(0, 120)}`,
+        actionUrl: "/dashboard/inbox",
+        actionLabel: "Open inbox",
+        dedupeKey: `inbox:message:${evt.workspaceId}:${evt.accountKey ?? evt.workspaceId}:${evt.platform}:${evt.externalId}`,
+        metadata: { workspaceId: evt.workspaceId, platform: evt.platform, externalId: evt.externalId, conversationId },
+      });
+    }
     return jsonOk({ type: "message", conversationId, messageId, created });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "unknown";

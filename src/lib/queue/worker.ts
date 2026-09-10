@@ -11,6 +11,7 @@ import { getUploadPostStatus, publishToUploadPost } from "@/lib/uploadpost/publi
 import { runCaptionWorkerTick } from "@/lib/queue/caption-worker";
 import { generateCaptionViaGateway } from "@/lib/ai/grok-gateway";
 import { runInboxSyncTick } from "@/lib/inbox/sync";
+import { createNotification, getWorkspaceOwnerUid } from "@/lib/notifications";
 
 const log = createLogger("queue-worker");
 
@@ -41,6 +42,11 @@ let lastResult: TickResult | null = null;
 // a bottleneck, migrate to a persistent cache (e.g., Redis or Firestore).
 const profileCache = new Map<string, { username: string; ts: number }>();
 const PROFILE_CACHE_TTL_MS = 5 * 60_000;
+
+async function resolveNotificationRecipient(workspaceId: string, directUid: unknown): Promise<string | null> {
+  if (typeof directUid === "string" && directUid) return directUid;
+  return getWorkspaceOwnerUid(workspaceId);
+}
 
 async function resolveUploadPostUsername(workspaceId: string, apiKey: string): Promise<string> {
   const cached = profileCache.get(workspaceId);
@@ -120,6 +126,7 @@ async function tickOnce(workspaceId?: string): Promise<TickResult> {
     if (!claimed) continue;
     const doc = await adminDb.doc(`workspaces/${workspaceId}/posts/${postId}`).get();
     const data = doc.data() ?? {};
+    const notificationRecipient = await resolveNotificationRecipient(workspaceId, data.authorUid);
 
     // Caption readiness check & emergency fallback
     let effectiveCaption = data.caption;
@@ -224,6 +231,18 @@ async function tickOnce(workspaceId?: string): Promise<TickResult> {
       if (uploadResult.deliveryConfirmed) {
         await markPublished(workspaceId, postId);
         result.published++;
+        if (notificationRecipient) {
+          await createNotification(notificationRecipient, {
+            type: "post_published",
+            category: "publishing",
+            title: "Post published",
+            message: "Your scheduled post was published successfully.",
+            actionUrl: "/dashboard/posts/history",
+            actionLabel: "View history",
+            dedupeKey: `post:${workspaceId}:${postId}:published`,
+            metadata: { workspaceId, postId },
+          });
+        }
         void deliverWebhook(workspaceId, {
           event: "post.published",
           workspaceId,
@@ -235,6 +254,18 @@ async function tickOnce(workspaceId?: string): Promise<TickResult> {
           .map(([platform, platformResult]) => `${platform}: ${platformResult.error || "failed"}`);
         await markFailed(workspaceId, postId, failures.join("; ") || "UploadPost did not confirm delivery");
         result.failed++;
+        if (notificationRecipient) {
+          await createNotification(notificationRecipient, {
+            type: "post_failed",
+            category: "publishing",
+            title: "Post failed to publish",
+            message: failures.join("; ") || "UploadPost did not confirm delivery.",
+            actionUrl: "/dashboard/posts/history",
+            actionLabel: "Review failure",
+            dedupeKey: `post:${workspaceId}:${postId}:failed`,
+            metadata: { workspaceId, postId, failures },
+          });
+        }
         void deliverWebhook(workspaceId, {
           event: "post.failed",
           workspaceId,
@@ -254,6 +285,18 @@ async function tickOnce(workspaceId?: string): Promise<TickResult> {
       const msg = err instanceof Error ? err.message : "unknown";
       await markFailed(workspaceId, postId, msg).catch(() => undefined);
       result.failed++;
+      if (notificationRecipient) {
+        await createNotification(notificationRecipient, {
+          type: "post_failed",
+          category: "publishing",
+          title: "Post failed to publish",
+          message: msg,
+          actionUrl: "/dashboard/posts/history",
+          actionLabel: "Review failure",
+          dedupeKey: `post:${workspaceId}:${postId}:failed`,
+          metadata: { workspaceId, postId, reason: msg },
+        });
+      }
     }
   }
 
@@ -302,6 +345,7 @@ async function reconcilePendingUploads(apiKey: string, workspaceId?: string): Pr
           platforms: post.platforms,
         });
         if (!status.final) continue;
+        const notificationRecipient = await resolveNotificationRecipient(currentWorkspaceId, post.authorUid);
         const succeeded = status.results ? Object.values(status.results).filter((entry) => entry.ok).length : 0;
         const failures = status.results
           ? Object.entries(status.results).filter(([, entry]) => !entry.ok)
@@ -309,6 +353,18 @@ async function reconcilePendingUploads(apiKey: string, workspaceId?: string): Pr
         if (status.status === "completed" && succeeded === post.platforms.length) {
           await markPublished(currentWorkspaceId, post.id);
           totals.published++;
+          if (notificationRecipient) {
+            await createNotification(notificationRecipient, {
+              type: "post_published",
+              category: "publishing",
+              title: "Post published",
+              message: "Your scheduled post was published successfully.",
+              actionUrl: "/dashboard/posts/history",
+              actionLabel: "View history",
+              dedupeKey: `post:${currentWorkspaceId}:${post.id}:published`,
+              metadata: { workspaceId: currentWorkspaceId, postId: post.id },
+            });
+          }
         } else {
           const reason = failures.length
             ? failures.map(([platform, entry]) => `${platform}: ${entry.error || "failed"}`).join("; ")
@@ -319,6 +375,18 @@ async function reconcilePendingUploads(apiKey: string, workspaceId?: string): Pr
             failureReason: reason,
           });
           totals.failed++;
+          if (notificationRecipient) {
+            await createNotification(notificationRecipient, {
+              type: "post_failed",
+              category: "publishing",
+              title: "Post failed to publish",
+              message: reason,
+              actionUrl: "/dashboard/posts/history",
+              actionLabel: "Review failure",
+              dedupeKey: `post:${currentWorkspaceId}:${post.id}:failed`,
+              metadata: { workspaceId: currentWorkspaceId, postId: post.id, reason },
+            });
+          }
         }
       } catch (err) {
         log.warn("UploadPost status reconciliation failed", { workspaceId: currentWorkspaceId, postId: post.id, err });

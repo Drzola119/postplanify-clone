@@ -2,10 +2,10 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, CheckCheck } from "lucide-react";
+import { Bell, CheckCheck, RefreshCw } from "lucide-react";
 import type { Notification, NotificationCategory } from "@/lib/notifications";
 import { NotificationItem } from "@/app/dashboard/_components/NotificationItem";
-import { markAllReadAction } from "@/app/dashboard/notifications/actions";
+import { markAllReadAction, markReadAction } from "@/app/dashboard/notifications/actions";
 
 interface NotificationsPageClientProps {
   notifications: Notification[];
@@ -37,6 +37,33 @@ export function NotificationsPageClient({
   const [unreadCount, setUnreadCount] = useState<number>(initialUnreadCount);
   const [activeTab, setActiveTab] = useState<TabType>("all");
   const [isMarkingAll, setIsMarkingAll] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+
+  const refreshNotifications = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    setRefreshError(null);
+    try {
+      const response = await fetch("/api/notifications", {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        items?: Notification[];
+        unreadCount?: number;
+        error?: string;
+      };
+      if (!response.ok) throw new Error(body.error ?? `Refresh failed (${response.status})`);
+      setItems(body.items ?? []);
+      setUnreadCount(body.unreadCount ?? 0);
+    } catch (error) {
+      setRefreshError(error instanceof Error ? error.message : "Unable to refresh notifications");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const handleMarkAllRead = async () => {
     setIsMarkingAll(true);
@@ -49,6 +76,18 @@ export function NotificationsPageClient({
       console.error("Failed to mark all read:", err);
     } finally {
       setIsMarkingAll(false);
+    }
+  };
+
+  const handleMarkRead = async (id: string) => {
+    const target = items.find((item) => item.id === id);
+    if (!target || target.read) return;
+    setItems((prev) => prev.map((item) => item.id === id ? { ...item, read: true } : item));
+    setUnreadCount((prev) => Math.max(0, prev - 1));
+    try {
+      await markReadAction(id);
+    } catch (error) {
+      console.warn("[NotificationsPage] Failed to mark notification read:", error);
     }
   };
 
@@ -99,18 +138,31 @@ export function NotificationsPageClient({
           )}
         </div>
 
-        {unreadCount > 0 && (
+        <div className="flex items-center gap-2">
+          {unreadCount > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleMarkAllRead()}
+              disabled={isMarkingAll}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-surface-offset)] transition-colors disabled:opacity-50"
+            >
+              <CheckCheck className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+              Mark all as read
+            </button>
+          )}
           <button
             type="button"
-            onClick={handleMarkAllRead}
-            disabled={isMarkingAll}
+            onClick={() => void refreshNotifications()}
+            disabled={isRefreshing}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-surface-offset)] transition-colors disabled:opacity-50"
           >
-            <CheckCheck className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-            Mark all as read
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+            Refresh
           </button>
-        )}
+        </div>
       </div>
+
+      {refreshError ? <p className="text-xs text-red-600 -mt-3">{refreshError}</p> : null}
 
       {/* Filter Tabs */}
       <div className="flex items-center gap-2 border-b border-[var(--color-border)] pb-2">
@@ -147,6 +199,17 @@ export function NotificationsPageClient({
         >
           Accounts
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("inbox")}
+          className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            activeTab === "inbox"
+              ? "bg-[var(--color-primary)] text-white"
+              : "text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-offset)]"
+          }`}
+        >
+          Inbox
+        </button>
       </div>
 
       {/* Grouped List or Empty State */}
@@ -171,7 +234,12 @@ export function NotificationsPageClient({
               </h2>
               <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-lg)] overflow-hidden shadow-xs divide-y divide-[var(--color-border)]">
                 {group.items.map((item) => (
-                  <NotificationItem key={item.id} notification={item} onDelete={handleDeleteItem} />
+                  <NotificationItem
+                    key={item.id}
+                    notification={item}
+                    onDelete={handleDeleteItem}
+                    onMarkRead={(id) => void handleMarkRead(id)}
+                  />
                 ))}
               </div>
             </div>

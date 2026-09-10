@@ -32,6 +32,7 @@ export const inboxEventSchema = z.object({
   type: z.enum(["comment", "message"]),
   postId: z.string().min(1).max(256).optional(),
   conversationId: z.string().min(1).max(128).optional(),
+  accountKey: z.string().min(1).max(256).optional(),
   externalId: z.string().min(1).max(256),
   authorHandle: z.string().min(1).max(64),
   authorName: z.string().max(128).optional(),

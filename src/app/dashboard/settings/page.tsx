@@ -654,6 +654,18 @@ export default function SettingsPage() {
   });
   const [savingNotif, setSavingNotif] = useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/settings/notifications", { credentials: "include", cache: "no-store" })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const body = (await res.json()) as { notif?: Partial<typeof notif> };
+        if (!cancelled && body.notif) setNotif((current) => ({ ...current, ...body.notif, postFailed: true }));
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
   const isDirty =
     name !== originalName ||
     profileFile !== null ||
@@ -1035,9 +1047,10 @@ export default function SettingsPage() {
                   />
                   <ToggleRow
                     label={t("settings.main.notif_post_failed")}
-                    description={t("settings.main.notif_post_failed_desc")}
+                    description={`${t("settings.main.notif_post_failed_desc")} Critical alerts are always enabled.`}
                     checked={notif.postFailed}
-                    onChange={(v) => setNotif((n) => ({ ...n, postFailed: v }))}
+                    onChange={() => undefined}
+                    disabled
                   />
                   <ToggleRow
                     label={t("settings.main.notif_new_comment")}
@@ -1279,11 +1292,13 @@ function ToggleRow({
   description,
   checked,
   onChange,
+  disabled = false,
 }: {
   label: string;
   description?: string;
   checked: boolean;
   onChange: (v: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex items-start justify-between gap-4">
@@ -1297,9 +1312,11 @@ function ToggleRow({
         type="button"
         role="switch"
         aria-checked={checked}
+        aria-disabled={disabled}
+        disabled={disabled}
         onClick={() => onChange(!checked)}
         className={cn(
-          "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-900/10",
+          "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-900/10 disabled:cursor-not-allowed disabled:opacity-60",
           checked ? "bg-zinc-900 border-zinc-900" : "bg-zinc-200 border-zinc-200"
         )}
       >

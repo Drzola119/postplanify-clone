@@ -40,6 +40,7 @@ export interface ListPostsFilters {
 export interface PostListItem {
   id: string;
   workspaceId: string;
+  authorUid?: string;
   status: PostStatus;
   caption: string;
   platforms: PlatformId[];
@@ -511,6 +512,7 @@ function serialize(workspaceId: string, id: string, data: PostDoc): PostListItem
   return {
     id,
     workspaceId,
+    authorUid: data.authorUid,
     status: data.status ?? "draft",
     caption: data.caption ?? "",
     platforms: data.platforms ?? [],

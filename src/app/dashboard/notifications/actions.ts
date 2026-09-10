@@ -1,7 +1,9 @@
 "use server";
 
-import { getCurrentUser, adminDb } from "@/lib/firebase/admin";
+import { getCurrentUser } from "@/lib/firebase/admin";
 import {
+  countUnreadNotifications,
+  listNotifications,
   markNotificationRead,
   markAllNotificationsRead,
   deleteNotification,
@@ -25,41 +27,7 @@ async function requireUser() {
  */
 export async function getNotifications(): Promise<Notification[]> {
   const user = await requireUser();
-
-  if (!adminDb) {
-    console.warn("[notifications-actions] adminDb not configured");
-    return [];
-  }
-
-  try {
-    const snap = await adminDb
-      .collection("users")
-      .doc(user.uid)
-      .collection("notifications")
-      .orderBy("createdAt", "desc")
-      .limit(50)
-      .get();
-
-    return snap.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        uid: user.uid,
-        type: data.type,
-        category: data.category,
-        title: data.title,
-        message: data.message,
-        actionUrl: data.actionUrl,
-        actionLabel: data.actionLabel,
-        metadata: data.metadata,
-        read: Boolean(data.read),
-        createdAt: data.createdAt || new Date().toISOString(),
-      } as Notification;
-    });
-  } catch (error) {
-    console.error("[notifications-actions] Error fetching notifications:", error);
-    return [];
-  }
+  return listNotifications(user.uid);
 }
 
 /**
@@ -67,24 +35,7 @@ export async function getNotifications(): Promise<Notification[]> {
  */
 export async function getUnreadCount(): Promise<number> {
   const user = await requireUser();
-
-  if (!adminDb) {
-    return 0;
-  }
-
-  try {
-    const snap = await adminDb
-      .collection("users")
-      .doc(user.uid)
-      .collection("notifications")
-      .where("read", "==", false)
-      .get();
-
-    return snap.size;
-  } catch (error) {
-    console.error("[notifications-actions] Error fetching unread count:", error);
-    return 0;
-  }
+  return countUnreadNotifications(user.uid);
 }
 
 /**

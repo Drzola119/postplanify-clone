@@ -34,6 +34,15 @@ class FakeDocumentRef {
     store.set(this.path, { ...existing, ...applyFieldSentinels(existing, data), __path__: this.path });
   }
 
+  async create(data: DocData): Promise<void> {
+    if (store.has(this.path)) {
+      const error = new Error("Already exists") as Error & { code: number };
+      error.code = 6;
+      throw error;
+    }
+    await this.set(data);
+  }
+
   async update(data: DocData): Promise<void> {
     const existing = store.get(this.path) ?? {};
     store.set(this.path, { ...existing, ...applyFieldSentinels(existing, data), __path__: this.path });

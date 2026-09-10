@@ -2,13 +2,10 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Bell } from "lucide-react";
-import { collection, query, orderBy, limit, onSnapshot } from "firebase/firestore";
-import { db } from "@/lib/firebase/config";
-import { useAuth } from "@/contexts/AuthContext";
+import { Bell, RefreshCw } from "lucide-react";
 import type { Notification } from "@/lib/notifications";
 import { NotificationItem } from "./NotificationItem";
-import { markAllReadAction } from "@/app/dashboard/notifications/actions";
+import { markAllReadAction, markReadAction } from "@/app/dashboard/notifications/actions";
 
 interface NotificationBellProps {
   initialUnreadCount?: number;
@@ -19,57 +16,12 @@ export function NotificationBell({
   initialUnreadCount = 0,
   initialNotifications = [],
 }: NotificationBellProps) {
-  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
   const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // Firestore real-time listener: maps docs directly into client state without server action re-fetches
-  useEffect(() => {
-    if (!user?.uid || !db) return;
-
-    try {
-      const notifRef = collection(db, "users", user.uid, "notifications");
-      const q = query(notifRef, orderBy("createdAt", "desc"), limit(50));
-
-      const unsubscribe = onSnapshot(
-        q,
-        (snapshot) => {
-          const items: Notification[] = snapshot.docs.map((doc) => {
-            const data = doc.data(); // DocumentData from Firestore SDK
-            return {
-              id: doc.id,
-              uid: user.uid,
-              type: data.type,
-              category: data.category,
-              title: data.title,
-              message: data.message,
-              actionUrl: data.actionUrl,
-              actionLabel: data.actionLabel,
-              metadata: data.metadata,
-              read: Boolean(data.read),
-              createdAt: data.createdAt || new Date().toISOString(),
-            };
-          });
-          setNotifications(items);
-          setUnreadCount(items.filter((i) => !i.read).length);
-        },
-        (error) => {
-          // If Firestore rules are not deployed or user has no permissions yet, fallback gracefully
-          if (process.env.NODE_ENV === "development") {
-            console.debug("[NotificationBell] Firestore notifications unavailable:", error.message);
-          }
-        }
-      );
-
-      return () => unsubscribe();
-    } catch (err) {
-      if (process.env.NODE_ENV === "development") {
-        console.debug("[NotificationBell] Setup skipped:", err);
-      }
-    }
-  }, [user?.uid]);
 
   // Click outside to close dropdown
   useEffect(() => {
@@ -84,6 +36,31 @@ export function NotificationBell({
     };
   }, []);
 
+  const refreshNotifications = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    setRefreshError(null);
+    try {
+      const response = await fetch("/api/notifications", {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        items?: Notification[];
+        unreadCount?: number;
+        error?: string;
+      };
+      if (!response.ok) throw new Error(body.error ?? `Refresh failed (${response.status})`);
+      setNotifications(body.items ?? []);
+      setUnreadCount(body.unreadCount ?? 0);
+    } catch (error) {
+      setRefreshError(error instanceof Error ? error.message : "Unable to refresh notifications");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const handleMarkAllRead = async () => {
     setUnreadCount(0);
     setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
@@ -95,16 +72,27 @@ export function NotificationBell({
   };
 
   const handleToggle = () => {
-    const nextState = !isOpen;
-    setIsOpen(nextState);
-    if (nextState && unreadCount > 0) {
-      handleMarkAllRead();
+    setIsOpen((open) => !open);
+  };
+
+  const handleMarkRead = async (id: string) => {
+    const target = notifications.find((item) => item.id === id);
+    if (!target || target.read) return;
+    setNotifications((prev) => prev.map((item) => item.id === id ? { ...item, read: true } : item));
+    setUnreadCount((prev) => Math.max(0, prev - 1));
+    try {
+      await markReadAction(id);
+    } catch (error) {
+      console.warn("[NotificationBell] Failed to mark notification read:", error);
     }
   };
 
   const handleDeleteItem = (id: string) => {
-    setNotifications((prev) => prev.filter((item) => item.id !== id));
-    setUnreadCount((prev) => Math.max(0, prev - 1));
+    setNotifications((prev) => {
+      const target = prev.find((item) => item.id === id);
+      if (target && !target.read) setUnreadCount((count) => Math.max(0, count - 1));
+      return prev.filter((item) => item.id !== id);
+    });
   };
 
   return (
@@ -131,16 +119,31 @@ export function NotificationBell({
           {/* Header Row */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] sticky top-0 z-10">
             <h3 className="font-semibold text-sm text-[var(--color-text)]">Notifications</h3>
-            {unreadCount > 0 && (
+            <div className="flex items-center gap-3">
+              {unreadCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void handleMarkAllRead()}
+                  className="text-xs text-[var(--color-primary)] hover:underline font-medium"
+                >
+                  Mark all read
+                </button>
+              )}
               <button
                 type="button"
-                onClick={handleMarkAllRead}
-                className="text-xs text-[var(--color-primary)] hover:underline font-medium"
+                onClick={() => void refreshNotifications()}
+                disabled={isRefreshing}
+                className="inline-flex items-center gap-1 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-50"
+                aria-label="Refresh notifications"
+                title="Refresh notifications"
               >
-                Mark all read
+                <RefreshCw className={`size-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+                Refresh
               </button>
-            )}
+            </div>
           </div>
+
+          {refreshError ? <p className="px-4 py-2 text-xs text-red-600 border-b border-red-100 bg-red-50">{refreshError}</p> : null}
 
           {/* List or Empty State */}
           <div className="flex-1 overflow-y-auto divide-y divide-[var(--color-border)]">
@@ -163,6 +166,7 @@ export function NotificationBell({
                   key={item.id}
                   notification={item}
                   onDelete={handleDeleteItem}
+                  onMarkRead={(id) => void handleMarkRead(id)}
                 />
               ))
             )}
