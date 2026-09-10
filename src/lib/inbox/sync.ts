@@ -167,12 +167,18 @@ export async function syncInstagramAccount(input: {
 
 /** Run due Instagram syncs for connected workspaces without touching provider
  * accounts that are disconnected or require reauthorization. */
-export async function runInboxSyncTick(apiKey: string, maxWorkspaces = 50): Promise<InboxSyncTickResult> {
+export async function runInboxSyncTick(
+  apiKey: string,
+  maxWorkspaces = 50,
+  workspaceId?: string,
+): Promise<InboxSyncTickResult> {
   const result: InboxSyncTickResult = { workspaces: 0, attempted: 0, succeeded: 0, skipped: 0, providerCalls: 0 };
   if (!adminDb) return result;
-  const workspaces = await adminDb.collection("workspaces").limit(maxWorkspaces).get();
-  result.workspaces = workspaces.docs.length;
-  for (const workspace of workspaces.docs) {
+  const workspaces: Array<{ id: string }> = workspaceId
+    ? [{ id: workspaceId }]
+    : (await adminDb.collection("workspaces").limit(maxWorkspaces).get()).docs;
+  result.workspaces = workspaces.length;
+  for (const workspace of workspaces) {
     const account = await readCachedInboxAccount(workspace.id);
     const profile = await readProfile(workspace.id).catch(() => null);
     if (!account || account.reauthRequired || !profile?.username) {

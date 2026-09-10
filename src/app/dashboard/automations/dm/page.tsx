@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Zap,
   SkipForward,
+  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -82,6 +83,7 @@ export default function AutoDmCampaignsPage() {
   const [items, setItems] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused">("all");
+  const [running, setRunning] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -104,6 +106,21 @@ export default function AutoDmCampaignsPage() {
   useEffect(() => {
     void load();
   }, [statusFilter]);
+
+  async function runNow() {
+    if (running) return;
+    setRunning(true);
+    try {
+      await fetch("/api/automations/dm/run", {
+        method: "POST",
+        credentials: "include",
+        headers: getOverrideHeaders(),
+      });
+    } finally {
+      setRunning(false);
+      await load();
+    }
+  }
 
   async function setStatus(id: string, next: "active" | "paused") {
     const res = await fetch(`/api/automations/dm/${id}`, {
@@ -147,13 +164,33 @@ export default function AutoDmCampaignsPage() {
         title={t("automations.list.page_title")}
         subtitle={t("automations.list.page_subtitle")}
         cta={
-          <Link
-            href="/dashboard/automations/dm/new"
-            className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 text-white px-3 h-9 text-sm font-medium hover:bg-zinc-800"
-          >
-            <Plus className="size-4" />
-            {t("automations.list.new_campaign")}
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void load()}
+              disabled={loading || running}
+              className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-9 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={() => void runNow()}
+              disabled={running}
+              className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 h-9 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              <RefreshCw className={`size-4 ${running ? "animate-spin" : ""}`} />
+              {running ? "Running…" : "Run now"}
+            </button>
+            <Link
+              href="/dashboard/automations/dm/new"
+              className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 text-white px-3 h-9 text-sm font-medium hover:bg-zinc-800"
+            >
+              <Plus className="size-4" />
+              {t("automations.list.new_campaign")}
+            </Link>
+          </div>
         }
       />
 

@@ -93,7 +93,6 @@ interface CapabilityPlatform {
   operations: CapabilityOp[];
 }
 
-const BROWSER_REFRESH_MS = 60_000;
 
 function platformName(id: string): string {
   return PLATFORMS.find((p) => p.id === id)?.name ?? id;
@@ -283,17 +282,6 @@ export default function InboxPage() {
     void load(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // 60s visible-tab browser refresh (reads Firestore only — zero provider cost
-  // per viewer). Paused when hidden or offline.
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      if (document.hidden) return;
-      if (!window.navigator.onLine) return;
-      void load(true);
-    }, BROWSER_REFRESH_MS);
-    return () => window.clearInterval(id);
-  }, [load]);
 
   // AutoDM status (optional panel — never blocks the core inbox).
   useEffect(() => {

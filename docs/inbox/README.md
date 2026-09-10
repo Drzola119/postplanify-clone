@@ -7,7 +7,7 @@ Insights removed · live provider verification still pending.
 ## Architecture
 
 ```
-Browser (60s visible-tab Firestore refresh, paused hidden/offline)
+Browser (manual refresh only; no background Firestore polling)
    │  GET comments/messages/capabilities/sync   POST reply / dm-send / sync / draft
    ▼
 API routes (role-gated: viewer read · editor send · admin monitors/export)

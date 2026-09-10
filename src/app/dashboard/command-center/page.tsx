@@ -57,7 +57,7 @@ interface WorkerHealth {
   lastTickAt: string | null;
   lastResult: TickResult | null;
   uploadPostConfigured: boolean;
-  intervalMs: number;
+  intervalMs?: number | null;
 }
 
 interface JobsResponse {
@@ -66,8 +66,6 @@ interface JobsResponse {
   failed: JobRow[];
   health: WorkerHealth;
 }
-
-const REFRESH_INTERVAL_MS = 60_000;
 
 function platformEmoji(platform: string): string {
   const map: Record<string, string> = {
@@ -103,7 +101,6 @@ export default function CommandCenterPage() {
   const [failed, setFailed] = useState<JobRow[]>([]);
   const [health, setHealth] = useState<WorkerHealth | null>(null);
   const [loading, setLoading] = useState(true);
-  const [autoTick, setAutoTick] = useState(true);
   const [runningTick, setRunningTick] = useState(false);
   const [lastForcedTick, setLastForcedTick] = useState<TickResult | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
@@ -134,14 +131,6 @@ export default function CommandCenterPage() {
   useEffect(() => {
     void load();
   }, []);
-
-  // Polling for live updates. Keep this deliberately conservative because the
-  // endpoint reads the publishing and failed-post result sets.
-  useEffect(() => {
-    if (!autoTick) return;
-    const id = setInterval(() => void load(), REFRESH_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [autoTick]);
 
   async function forceRunTick() {
     if (runningTick) return;
@@ -194,8 +183,7 @@ export default function CommandCenterPage() {
   }, [inflight]);
 
   const lastTick = health?.lastTickAt ? new Date(health.lastTickAt) : null;
-  const tickAgeMs = lastTick ? Date.now() - lastTick.getTime() : Infinity;
-  const workerStale = tickAgeMs > Number(process.env.WORKER_INTERVAL_MS ?? 30_000) * 3;
+  const workerStale = false;
 
   return (
     <div className="px-3 lg:px-6 pt-5 lg:pt-8 pb-3 lg:pb-6">
@@ -235,20 +223,11 @@ export default function CommandCenterPage() {
               </p>
               <p className="text-xs text-zinc-500">
                 {t("commandCenter.last_tick")} {lastTick ? formatAgo(health?.lastTickAt ?? null) : t("commandCenter.never")}
-                {health?.intervalMs ? t("commandCenter.interval", { n: Math.round(health.intervalMs / 1000) }) : ""}
+                {health ? " · Manual refresh only" : ""}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
-              <input
-                type="checkbox"
-                checked={autoTick}
-                onChange={(e) => setAutoTick(e.target.checked)}
-                className="size-3.5 rounded border-zinc-300"
-              />
-              {t("commandCenter.auto_refresh")}
-            </label>
             <button
               type="button"
               onClick={() => void load()}

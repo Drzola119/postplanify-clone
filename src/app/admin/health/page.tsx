@@ -101,8 +101,6 @@ export default function SystemHealthPage() {
 
   useEffect(() => {
     fetchHealth();
-    const interval = setInterval(fetchHealth, 30000); // Poll every 30s
-    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -206,7 +204,7 @@ export default function SystemHealthPage() {
           </div>
         </div>
       </div>
-      <p className="text-[10px] text-gray-400 text-right">Auto-polling active every 30s. Last refreshed: {lastRefreshed.toLocaleTimeString()}</p>
+      <p className="text-[10px] text-gray-400 text-right">Manual refresh only. Last refreshed: {lastRefreshed.toLocaleTimeString()}</p>
     </div>
   );
 }

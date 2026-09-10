@@ -600,7 +600,7 @@ export default function AccountsPage() {
                   Try <strong>logging out and logging back in</strong> first — this usually fixes a stale session cookie. If a fresh login still fails, the server&apos;s <code className="px-1 py-0.5 rounded bg-rose-100">FIREBASE_PRIVATE_KEY</code> env var is the placeholder text instead of a real PEM. Run <code className="px-1 py-0.5 rounded bg-rose-100">python scripts/diagnose-hpanel.py</code> — it will report <code className="px-1 py-0.5 rounded bg-rose-100">privateKeyLooksLikePlaceholder: true</code> if so, and the operator must paste the real key into the host&apos;s environment variables (see <code className="px-1 py-0.5 rounded bg-rose-100">docs/hpanel-env-paste.md</code>).
                 </p>
               )}
-              {errorStatus === 503 && (
+              {errorStatus === 503 && !/quota|RESOURCE_EXHAUSTED/i.test(error) && (
                 <p className="text-[11px] text-rose-600 mt-2">
                   The server-side Firebase Admin SDK is not configured. Paste the real <code className="px-1 py-0.5 rounded bg-rose-100">FIREBASE_PRIVATE_KEY</code> into the host environment, then redeploy. See <code className="px-1 py-0.5 rounded bg-rose-100">docs/hpanel-env-paste.md</code>.
                 </p>

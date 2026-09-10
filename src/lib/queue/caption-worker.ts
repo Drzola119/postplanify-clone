@@ -28,7 +28,6 @@ export interface CaptionTickResult {
   error?: string;
 }
 
-let interval: NodeJS.Timeout | null = null;
 let running = false;
 let lastTickAt: Date | null = null;
 let lastResult: CaptionTickResult | null = null;
@@ -217,20 +216,11 @@ export async function runCaptionWorkerTick(): Promise<CaptionTickResult> {
   return result;
 }
 
-export function startCaptionWorker(intervalMs = CAPTION_CONFIG.WORKER_POLL_INTERVAL_MS): void {
-  if (interval || running) return;
-  running = true;
-  void runCaptionWorkerTick();
-  interval = setInterval(() => {
-    void runCaptionWorkerTick();
-  }, intervalMs);
+export function startCaptionWorker(_intervalMs = CAPTION_CONFIG.WORKER_POLL_INTERVAL_MS): void {
+  log.info("automatic caption worker disabled; use the manual queue tick action");
 }
 
 export function stopCaptionWorker(): void {
-  if (interval) {
-    clearInterval(interval);
-    interval = null;
-  }
   running = false;
 }
 

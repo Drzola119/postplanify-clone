@@ -606,32 +606,17 @@ function timeAgo(iso: string | null | undefined): string {
   return `${days}d ago`;
 }
 
-// "Live · refreshing in Ns" badge. Counts down to the next auto-poll.
-// Hides when `lastFetchedAt` is null (before the first load completes).
-const LIVE_POLL_INTERVAL_MS = 60_000;
-function LivePill({ lastFetchedAt }: { lastFetchedAt: number | null }) {
-  const [now, setNow] = useState<number>(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+// Shows when the section was last refreshed. Data updates only after the user
+// clicks the visible Sync Now button.
+function ManualRefreshPill({ lastFetchedAt }: { lastFetchedAt: number | null }) {
   if (lastFetchedAt == null) return null;
-  const elapsed = now - lastFetchedAt;
-  // Negative elapsed means the next refresh is still N seconds away.
-  const sinceStart = elapsed < 0 ? LIVE_POLL_INTERVAL_MS : elapsed;
-  const sinceStartCapped = sinceStart % LIVE_POLL_INTERVAL_MS;
-  const secsToNext = LIVE_POLL_INTERVAL_MS - Math.floor(sinceStartCapped / 1000);
-  const secsToNextClamped = Math.max(0, Math.min(LIVE_POLL_INTERVAL_MS / 1000, secsToNext));
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700"
-      title="Live · auto-refreshes every 60s from upload-post.com"
+      title="Analytics update when you click Sync Now"
     >
-      <span className="relative inline-flex size-2">
-        <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-        <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
-      </span>
-      Live · next refresh in {secsToNextClamped}s
+      <CheckCircle2 className="size-3" />
+      Last refreshed {timeAgo(new Date(lastFetchedAt).toISOString())}
     </span>
   );
 }
@@ -678,47 +663,6 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
   useEffect(() => {
     fetchAnalytics();
   }, [fetchAnalytics, fetchNonce]);
-
-  // Live polling: refresh every 60s with ?fresh=1 so the server bypasses its
-  // 1-min cache and we always pull the latest from upload-post.com.
-  // Pauses when the tab is hidden to avoid silent request spam.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    let timer: ReturnType<typeof setInterval> | null = null;
-    let cancelled = false;
-
-    const tick = () => {
-      if (cancelled) return;
-      if (document.visibilityState === "visible") {
-        void fetchAnalytics({ fresh: true });
-      }
-    };
-
-    const start = () => {
-      if (timer) return;
-      timer = setInterval(tick, LIVE_POLL_INTERVAL_MS);
-    };
-    const stop = () => {
-      if (timer) { clearInterval(timer); timer = null; }
-    };
-
-    const onVis = () => {
-      if (document.visibilityState === "visible") {
-        void fetchAnalytics({ fresh: true });
-        start();
-      } else {
-        stop();
-      }
-    };
-
-    if (document.visibilityState === "visible") start();
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      cancelled = true;
-      stop();
-      document.removeEventListener("visibilitychange", onVis);
-    };
-  }, [fetchAnalytics]);
 
   // Fetch published posts + live per-post analytics.
   useEffect(() => {
@@ -962,7 +906,7 @@ function PerAccountView({ accountId, accounts }: { accountId: string; accounts: 
             <CheckCircle2 className="size-3.5" />
             {t("analytics.last_synced", { time: timeAgo(analytics.lastSyncedAt) })}
           </div>
-          <LivePill lastFetchedAt={lastFetchedAt} />
+              <ManualRefreshPill lastFetchedAt={lastFetchedAt} />
         </div>
       ) : null}
 
@@ -1256,48 +1200,6 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
     fetchOverview();
   }, [fetchOverview, fetchNonce]);
 
-  // Live polling: refresh every 60s with ?fresh=1 so the server bypasses its
-  // 1-min cache and we always pull the latest from upload-post.com.
-  // Pauses when the tab is hidden to avoid silent request spam.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    let timer: ReturnType<typeof setInterval> | null = null;
-    let cancelled = false;
-
-    const tick = () => {
-      if (cancelled) return;
-      if (document.visibilityState === "visible") {
-        void fetchOverview({ fresh: true });
-      }
-    };
-
-    const start = () => {
-      if (timer) return;
-      timer = setInterval(tick, LIVE_POLL_INTERVAL_MS);
-    };
-    const stop = () => {
-      if (timer) { clearInterval(timer); timer = null; }
-    };
-
-    const onVis = () => {
-      if (document.visibilityState === "visible") {
-        // Immediate refresh when coming back into focus.
-        void fetchOverview({ fresh: true });
-        start();
-      } else {
-        stop();
-      }
-    };
-
-    if (document.visibilityState === "visible") start();
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      cancelled = true;
-      stop();
-      document.removeEventListener("visibilitychange", onVis);
-    };
-  }, [fetchOverview]);
-
   const handleSync = async () => {
     setSyncing(true);
     try {
@@ -1407,7 +1309,7 @@ function OverviewView({ accounts }: { accounts: AccountSummary[] }) {
                 <Calendar className="size-3.5" />
                 {t("analytics.last_synced", { time: timeAgo(overview.lastSyncedAt) })}
               </div>
-              <LivePill lastFetchedAt={lastFetchedAt} />
+              <ManualRefreshPill lastFetchedAt={lastFetchedAt} />
             </div>
           ) : null}
 
@@ -1516,8 +1418,6 @@ function AnalyticsPageInner() {
         }
       }
     })();
-    // Fire-and-forget auto-sync: refresh analytics cache in the background.
-    fetch("/api/analytics/sync", { method: "POST", headers: getOverrideHeaders() }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
 

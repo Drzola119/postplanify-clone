@@ -73,7 +73,7 @@ This fixes:
 
 | Key | Effect |
 |---|---|
-| `WORKER_INTERVAL_MS` | Default 30000 (30s). How often the queue worker polls for due posts. |
+| `WORKER_INTERVAL_MS` | Legacy setting. Automatic queue polling is disabled; run pending work manually from the dashboard. |
 | `SENTRY_DSN` | Server-side Sentry DSN (for API route errors, queue-worker failures, etc.). Generated in your Sentry project settings. Optional — leave unset to disable server error reporting. |
 | `NEXT_PUBLIC_SENTRY_DSN` | Client-side Sentry DSN (for browser errors). Often the same value as `SENTRY_DSN` since Sentry projects have one DSN that works both sides. Optional. |
 | `SENTRY_TRACES_SAMPLE_RATE` | Default `0.1` (10%). Reduce to lower Sentry quota burn. Only relevant if Sentry DSN is set. |

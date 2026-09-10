@@ -29,32 +29,42 @@ import { FieldValue } from "firebase-admin/firestore";
 
 const logger = createLogger("video-render-worker");
 
-const WORKER_INTERVAL_MS = Number(process.env.VIDEO_WORKER_INTERVAL_MS ?? 15_000);
 const MAX_RETRIES = 3;
+let manualRunInProgress = false;
 
-let workerTimer: ReturnType<typeof setInterval> | null = null;
+export async function runVideoRenderTick(workspaceId?: string): Promise<{ scanned: number }> {
+  if (manualRunInProgress) return { scanned: 0 };
+  manualRunInProgress = true;
+  try {
+    return await runVideoRenderTickInternal(workspaceId);
+  } finally {
+    manualRunInProgress = false;
+  }
+}
 
-async function processPendingJobs(): Promise<void> {
+async function runVideoRenderTickInternal(workspaceId?: string): Promise<{ scanned: number }> {
   const db = adminDb;
   if (!db) {
     logger.warn("adminDb not initialised — skipping video worker tick");
-    return;
+    return { scanned: 0 };
   }
 
   let snapshot;
   try {
-    snapshot = await db
-      .collectionGroup("videoJobs")
+    const query = workspaceId
+      ? db.collection("workspaces").doc(workspaceId).collection("videoJobs")
+      : db.collectionGroup("videoJobs");
+    snapshot = await query
       .where("status", "==", "queued")
       .orderBy("createdAt", "asc")
       .limit(5)
       .get();
   } catch (err) {
     logger.error("Failed to query videoJobs", { error: err });
-    return;
+    return { scanned: 0 };
   }
 
-  if (snapshot.empty) return;
+  if (snapshot.empty) return { scanned: 0 };
 
   logger.info("Video render worker: found queued jobs", {
     count: snapshot.size,
@@ -63,6 +73,7 @@ async function processPendingJobs(): Promise<void> {
   for (const jobSnap of snapshot.docs) {
     await processJob(jobSnap.ref, jobSnap.data() as VideoJobDoc & { request: unknown; retryCount?: number });
   }
+  return { scanned: snapshot.size };
 }
 
 async function processJob(
@@ -197,27 +208,9 @@ async function dispatchWorkflow(
 }
 
 export function startVideoRenderWorker(): void {
-  if (workerTimer) return;
-
-  logger.info("Starting video render worker", {
-    intervalMs: WORKER_INTERVAL_MS,
-  });
-
-  processPendingJobs().catch((err) =>
-    logger.error("Initial video worker tick failed", { error: err })
-  );
-
-  workerTimer = setInterval(() => {
-    processPendingJobs().catch((err) =>
-      logger.error("Video worker tick failed", { error: err })
-    );
-  }, WORKER_INTERVAL_MS);
+  logger.info("automatic video worker disabled; use the manual run action");
 }
 
 export function stopVideoRenderWorker(): void {
-  if (workerTimer) {
-    clearInterval(workerTimer);
-    workerTimer = null;
-    logger.info("Video render worker stopped");
-  }
+  // Kept for API compatibility with existing operational tooling.
 }

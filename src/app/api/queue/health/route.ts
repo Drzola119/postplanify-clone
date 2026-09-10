@@ -26,6 +26,6 @@ export async function GET() {
   return NextResponse.json({
     ...status,
     uploadPostConfigured,
-    intervalMs: Number(process.env.WORKER_INTERVAL_MS ?? 30_000),
+    intervalMs: null,
   });
 }

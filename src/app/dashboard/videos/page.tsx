@@ -10,6 +10,7 @@ import { Sparkles, Zap, Home, PenTool, ArrowRight, ImageIcon, KeyRound, Wand2 } 
 import { getTranslations } from "next-intl/server";
 import { PageHeader } from "@/components/dashboard/page-header";
 import Link from "next/link";
+import { VideoWorkerRefreshButton } from "@/components/dashboard/video-worker-refresh-button";
 
 export default async function VideosPage() {
   const t = await getTranslations("videos");
@@ -62,6 +63,7 @@ export default async function VideosPage() {
       <PageHeader
         title={t("landing.title")}
         subtitle={t("landing.subtitle")}
+        cta={<VideoWorkerRefreshButton />}
       />
 
       <div className="grid gap-5 md:grid-cols-2">

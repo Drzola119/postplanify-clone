@@ -30,6 +30,6 @@ export async function GET(request: NextRequest) {
   return jsonOk({
     inflight: inflightResult.items,
     failed: failedResult.items,
-    health: { ...health, uploadPostConfigured, intervalMs: Number(process.env.WORKER_INTERVAL_MS ?? 30_000) },
+    health: { ...health, uploadPostConfigured, intervalMs: null },
   });
 }

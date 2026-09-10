@@ -68,5 +68,5 @@ conversation snapshot ≈ **≤12 provider calls**.
 | 1,000 active posts | ~1,500 | ~9,000 | ~25,000 |
 
 Assumptions: single IG account per workspace; ~5 new comments/day/post; backoff on
-429; paused/disconnected accounts cost zero. Browser refresh (60s, visible tab only)
+429; paused/disconnected accounts cost zero. Browser refresh is manual only.
 reads Firestore — zero provider cost per viewer.

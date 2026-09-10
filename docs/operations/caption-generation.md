@@ -14,7 +14,7 @@ User Bulk Schedules 100 Posts (captionGenerationMode: "automatic")
    ├─► Non-blocking: 100 captionJobs created in /captionJobs collection
    │
    ▼
-Caption Worker Loop (every 5s tick via instrumentation.ts / cron)
+Caption Worker Tick (manual queue action; no recurring browser or instrumentation timer)
    ├─► 1. Reap stuck claims (claimedAt > 5m ago)
    ├─► 2. Reconcile orphan posts (collectionGroup query)
    ├─► 3. Dynamic Lookahead Window based on queue pressure:
@@ -35,7 +35,7 @@ Caption Worker Loop (every 5s tick via instrumentation.ts / cron)
 |---|---|---|
 | `ENABLE_ASYNC_CAPTIONS` | `true` | Enables background caption job worker and queue processing |
 | `ENABLE_DISTRIBUTED_LIMITER` | `true` | Uses Firestore transaction-backed distributed limiter on `adminStats/grokRateLimiter` |
-| `CAPTION_WORKER_INTERVAL_MS` | `5000` | Worker tick polling interval (5 seconds) |
+| `CAPTION_WORKER_INTERVAL_MS` | `5000` | Legacy setting; automatic caption polling is disabled |
 | `CAPTION_TARGET_BUFFER_MINUTES` | `30` | Target time caption must be ready before scheduled post time |
 | `CAPTION_LOOKAHEAD_MINUTES` | `30` | Base lookahead window for eligible jobs |
 | `CAPTION_MAX_GLOBAL_CONCURRENCY` | `10` | Global concurrency cap across all workers |

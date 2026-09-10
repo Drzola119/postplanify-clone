@@ -26,7 +26,6 @@ interface TickResult {
   inbox?: { workspaces: number; attempted: number; succeeded: number; skipped: number; providerCalls: number };
 }
 
-let interval: NodeJS.Timeout | null = null;
 let running = false;
 let lastTickAt: Date | null = null;
 let lastResult: TickResult | null = null;
@@ -65,7 +64,7 @@ async function resolveUploadPostUsername(workspaceId: string, apiKey: string): P
   }
 }
 
-async function tickOnce(): Promise<TickResult> {
+async function tickOnce(workspaceId?: string): Promise<TickResult> {
   const result: TickResult = { scanned: 0, published: 0, failed: 0, reaped: 0 };
   if (!adminDb) return result;
 
@@ -80,7 +79,7 @@ async function tickOnce(): Promise<TickResult> {
   }
 
   try {
-    result.reaped = await resetStuckClaimsForAllWorkspaces(STUCK_CLAIM_MS);
+    result.reaped = await resetStuckClaimsForAllWorkspaces(STUCK_CLAIM_MS, workspaceId);
   } catch (err) {
     log.error(err, { step: "reap" });
   }
@@ -92,7 +91,7 @@ async function tickOnce(): Promise<TickResult> {
     log.error(err, { step: "caption-worker-tick" });
   }
 
-  const due = await collectDuePosts();
+  const due = await collectDuePosts(workspaceId);
   result.scanned = due.length;
 
   let apiKey: string;
@@ -103,14 +102,14 @@ async function tickOnce(): Promise<TickResult> {
     return result;
   }
 
-  const reconciled = await reconcilePendingUploads(apiKey).catch((err) => {
+  const reconciled = await reconcilePendingUploads(apiKey, workspaceId).catch((err) => {
     log.error(err, { step: "reconcile-uploadpost" });
     return { published: 0, failed: 0 };
   });
   result.published += reconciled.published;
   result.failed += reconciled.failed;
   try {
-    result.inbox = await runInboxSyncTick(apiKey);
+    result.inbox = await runInboxSyncTick(apiKey, workspaceId ? 1 : 50, workspaceId);
   } catch (err) {
     log.error(err, { step: "inbox-sync-tick" });
   }
@@ -268,8 +267,12 @@ async function tickOnce(): Promise<TickResult> {
   return result;
 }
 
-async function collectDuePosts(): Promise<Array<{ workspaceId: string; postId: string }>> {
+async function collectDuePosts(workspaceId?: string): Promise<Array<{ workspaceId: string; postId: string }>> {
   if (!adminDb) return [];
+  if (workspaceId) {
+    const due = await listScheduledDue(workspaceId, new Date());
+    return due.map((post) => ({ workspaceId, postId: post.id }));
+  }
   const workspacesSnap = await adminDb.collection("workspaces").limit(50).get();
   const out: Array<{ workspaceId: string; postId: string }> = [];
   for (const ws of workspacesSnap.docs) {
@@ -281,12 +284,14 @@ async function collectDuePosts(): Promise<Array<{ workspaceId: string; postId: s
   return out;
 }
 
-async function reconcilePendingUploads(apiKey: string): Promise<{ published: number; failed: number }> {
+async function reconcilePendingUploads(apiKey: string, workspaceId?: string): Promise<{ published: number; failed: number }> {
   const totals = { published: 0, failed: 0 };
   if (!adminDb) return totals;
-  const workspacesSnap = await adminDb.collection("workspaces").limit(50).get();
-  for (const workspace of workspacesSnap.docs) {
-    const pending = await listPosts(workspace.id, { status: ["publishing", "scheduled"], pageSize: 100 });
+  const workspaceIds = workspaceId
+    ? [workspaceId]
+    : (await adminDb.collection("workspaces").limit(50).get()).docs.map((workspace) => workspace.id);
+  for (const currentWorkspaceId of workspaceIds) {
+    const pending = await listPosts(currentWorkspaceId, { status: ["publishing", "scheduled"], pageSize: 100 });
     for (const post of pending.items) {
       if (!post.uploadPostRequestId && !post.uploadPostJobId) continue;
       try {
@@ -302,13 +307,13 @@ async function reconcilePendingUploads(apiKey: string): Promise<{ published: num
           ? Object.entries(status.results).filter(([, entry]) => !entry.ok)
           : [];
         if (status.status === "completed" && succeeded === post.platforms.length) {
-          await markPublished(workspace.id, post.id);
+          await markPublished(currentWorkspaceId, post.id);
           totals.published++;
         } else {
           const reason = failures.length
             ? failures.map(([platform, entry]) => `${platform}: ${entry.error || "failed"}`).join("; ")
             : `UploadPost job ended with status ${status.status}`;
-          await updatePost(workspace.id, post.id, {
+          await updatePost(currentWorkspaceId, post.id, {
             status: succeeded > 0 ? "partially_published" : "failed",
             publishedAt: succeeded > 0 ? new Date() : undefined,
             failureReason: reason,
@@ -316,15 +321,16 @@ async function reconcilePendingUploads(apiKey: string): Promise<{ published: num
           totals.failed++;
         }
       } catch (err) {
-        log.warn("UploadPost status reconciliation failed", { workspaceId: workspace.id, postId: post.id, err });
+        log.warn("UploadPost status reconciliation failed", { workspaceId: currentWorkspaceId, postId: post.id, err });
       }
     }
   }
   return totals;
 }
 
-async function resetStuckClaimsForAllWorkspaces(olderThanMs: number): Promise<number> {
+async function resetStuckClaimsForAllWorkspaces(olderThanMs: number, workspaceId?: string): Promise<number> {
   if (!adminDb) return 0;
+  if (workspaceId) return resetStuckClaims(workspaceId, olderThanMs);
   const workspacesSnap = await adminDb.collection("workspaces").limit(50).get();
   let total = 0;
   for (const ws of workspacesSnap.docs) {
@@ -333,30 +339,12 @@ async function resetStuckClaimsForAllWorkspaces(olderThanMs: number): Promise<nu
   return total;
 }
 
-export function startQueueWorker(intervalMs = DEFAULT_INTERVAL_MS): void {
-  if (interval) return;
-  const run = async () => {
-    if (running) return;
-    try {
-      await runQueueTick();
-    } catch (err) {
-      log.error(err, { step: "tick" });
-      lastResult = { scanned: 0, published: 0, failed: 0, reaped: 0, error: err instanceof Error ? err.message : "unknown" };
-    }
-  };
-  // Reconcile accepted UploadPost jobs as soon as the server boots. Waiting
-  // for the first interval left every job pending forever on short-lived hosts.
-  void run();
-  interval = setInterval(run, intervalMs);
-  interval.unref?.();
-  log.info(`started (interval=${intervalMs}ms)`);
+export function startQueueWorker(_intervalMs = DEFAULT_INTERVAL_MS): void {
+  log.info("automatic queue worker disabled; use the manual tick action");
 }
 
 export function stopQueueWorker(): void {
-  if (interval) {
-    clearInterval(interval);
-    interval = null;
-  }
+  // Kept for API compatibility with existing operational tooling.
 }
 
 export function getWorkerStatus(): {
@@ -396,7 +384,7 @@ export async function getWorkerStatusForDashboard(): Promise<ReturnType<typeof g
   }
 }
 
-export async function runQueueTick(): Promise<TickResult> {
+export async function runQueueTick(workspaceId?: string): Promise<TickResult> {
   if (running) {
     return lastResult ?? { scanned: 0, published: 0, failed: 0, reaped: 0 };
   }
@@ -407,7 +395,7 @@ export async function runQueueTick(): Promise<TickResult> {
   // "Run tick now" could still leave the dashboard showing "never ticked".
   lastTickAt = new Date();
   try {
-    lastResult = await tickOnce();
+    lastResult = await tickOnce(workspaceId);
     if (adminDb) {
       await adminDb.collection("adminStats").doc("worker").set(
         { lastTickAt: lastTickAt?.toISOString() ?? new Date().toISOString(), lastResult },

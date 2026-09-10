@@ -300,6 +300,7 @@ export default function PostingQueuePage() {
   const [rescheduleTarget, setRescheduleTarget] = useState<QueueRow | null>(null);
   const [cancelTarget, setCancelTarget] = useState<QueueRow | null>(null);
   const [pendingAction, setPendingAction] = useState<null | "pause" | "resume">(null);
+  const [runningTick, setRunningTick] = useState(false);
 
   async function reload(options: { silent?: boolean } = {}) {
     if (!options.silent) setLoading(true);
@@ -339,10 +340,22 @@ export default function PostingQueuePage() {
     }
   }
 
+  async function runPendingWork() {
+    if (runningTick) return;
+    setRunningTick(true);
+    try {
+      await fetch("/api/queue/run-tick", {
+        method: "POST",
+        credentials: "include",
+      });
+    } finally {
+      setRunningTick(false);
+      await reload();
+    }
+  }
+
   useEffect(() => {
     void reload();
-    const id = setInterval(() => void reload({ silent: true }), 60_000);
-    return () => clearInterval(id);
   }, []);
 
   const filteredRows = useMemo(() => {
@@ -591,6 +604,15 @@ export default function PostingQueuePage() {
                 <RotateCcw className={cn("size-3.5", loading && "animate-spin")} />
                 <span className="hidden sm:inline">{t("queue.refresh")}</span>
               </button>
+              <button
+                type="button"
+                onClick={() => void runPendingWork()}
+                disabled={runningTick}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-900 hover:bg-black disabled:opacity-50 text-white px-3 h-9 text-xs font-semibold shadow-sm"
+              >
+                <RotateCcw className={cn("size-3.5", runningTick && "animate-spin")} />
+                <span className="hidden sm:inline">{runningTick ? "Processing…" : "Run pending work"}</span>
+              </button>
               <Link
                 href="/dashboard/posts/create"
                 className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-900 hover:bg-black text-white px-4 h-9 text-xs font-bold shadow-sm transition-colors"
@@ -633,7 +655,7 @@ export default function PostingQueuePage() {
                 <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest border", health.running ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-zinc-100 text-zinc-600 border-zinc-200")}>
                   {health.running ? t("queue.running") : t("queue.idle")}
                 </span>
-                <span className="text-zinc-500 font-medium">{t("queue.interval", { n: Math.round(health.intervalMs / 1000) })}</span>
+                <span className="text-zinc-500 font-medium">Manual refresh only</span>
               </span>
               <span className="hidden sm:inline h-4 w-px bg-zinc-200" />
               <span className="inline-flex items-center gap-1.5">

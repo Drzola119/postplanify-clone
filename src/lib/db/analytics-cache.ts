@@ -8,9 +8,9 @@ import type {
 
 const log = createLogger("analytics-cache");
 
-// Short TTL so the UI can poll on a "live" cadence without serving 15-min-old
-// data. Polling interval (30s) + TTL (60s) gives an effective freshness window
-// of ~30-90s per user.
+// Keep cached analytics reasonably fresh when the user explicitly requests a
+// sync. The dashboard does not poll automatically, so this is not a worker
+// cadence or a background Firestore read loop.
 const CACHE_TTL_MS = 1000 * 60 * 1; // 1 minute
 const COLLECTION = "analyticsCache";
 

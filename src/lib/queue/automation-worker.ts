@@ -46,27 +46,29 @@ export interface AutomationTickResult {
   error?: string;
 }
 
-let interval: NodeJS.Timeout | null = null;
 let running = false;
 let lastTickAt: Date | null = null;
 let lastResult: AutomationTickResult | null = null;
 
-export async function runAutomationTick(): Promise<AutomationTickResult> {
+export async function runAutomationTick(workspaceId?: string): Promise<AutomationTickResult> {
+  if (running) {
+    return lastResult ?? { scanned: 0, analyzed: 0, matched: 0, sent: 0, skipped: 0 };
+  }
   const result: AutomationTickResult = { scanned: 0, analyzed: 0, matched: 0, sent: 0, skipped: 0 };
   if (!adminDb) return result;
-
-  let apiKey: string;
-  try {
-    apiKey = resolvers.groqApiKey(new Headers());
-  } catch (err) {
-    result.error = err instanceof Error ? err.message : "GROQ_API_KEY missing";
-    return result;
-  }
+  running = true;
+  lastTickAt = new Date();
 
   try {
-    const workspacesSnap = await adminDb.collection("workspaces").limit(MAX_WORKSPACES_PER_TICK).get();
-    for (const wsDoc of workspacesSnap.docs) {
-      const workspaceId = wsDoc.id;
+    let apiKey: string;
+    try {
+      apiKey = resolvers.groqApiKey(new Headers());
+    } catch (err) {
+      result.error = err instanceof Error ? err.message : "GROQ_API_KEY missing";
+      return result;
+    }
+
+    if (workspaceId) {
       try {
         const r = await processWorkspace(workspaceId, apiKey);
         result.scanned += r.scanned;
@@ -77,10 +79,28 @@ export async function runAutomationTick(): Promise<AutomationTickResult> {
       } catch (err) {
         log.warn("workspace tick failed", { workspaceId, err: (err as Error).message });
       }
+    } else {
+      const workspacesSnap = await adminDb.collection("workspaces").limit(MAX_WORKSPACES_PER_TICK).get();
+      for (const wsDoc of workspacesSnap.docs) {
+        const currentWorkspaceId = wsDoc.id;
+        try {
+          const r = await processWorkspace(currentWorkspaceId, apiKey);
+          result.scanned += r.scanned;
+          result.analyzed += r.analyzed;
+          result.matched += r.matched;
+          result.sent += r.sent;
+          result.skipped += r.skipped;
+        } catch (err) {
+          log.warn("workspace tick failed", { workspaceId: currentWorkspaceId, err: (err as Error).message });
+        }
+      }
     }
   } catch (err) {
     log.error("tick failed", { err: (err as Error).message });
     result.error = err instanceof Error ? err.message : "unknown";
+  } finally {
+    running = false;
+    lastResult = result;
   }
 
   return result;
@@ -322,30 +342,12 @@ async function countOutboundToAuthor(
   return n;
 }
 
-export function startAutomationWorker(intervalMs = DEFAULT_INTERVAL_MS): void {
-  if (interval) return;
-  interval = setInterval(async () => {
-    if (running) return;
-    running = true;
-    try {
-      lastTickAt = new Date();
-      lastResult = await runAutomationTick();
-    } catch (err) {
-      log.error(err, { step: "tick" });
-      lastResult = { scanned: 0, analyzed: 0, matched: 0, sent: 0, skipped: 0, error: (err as Error).message };
-    } finally {
-      running = false;
-    }
-  }, intervalMs);
-  interval.unref?.();
-  log.info(`started (interval=${intervalMs}ms)`);
+export function startAutomationWorker(_intervalMs = DEFAULT_INTERVAL_MS): void {
+  log.info("automatic automation worker disabled; use the manual run action");
 }
 
 export function stopAutomationWorker(): void {
-  if (interval) {
-    clearInterval(interval);
-    interval = null;
-  }
+  // Kept for API compatibility with existing operational tooling.
 }
 
 export function getAutomationWorkerStatus(): {
