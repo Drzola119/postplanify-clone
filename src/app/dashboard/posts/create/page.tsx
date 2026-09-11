@@ -953,10 +953,14 @@ export default function CreatePostPage() {
   }, [destinationOptions]);
 
   // Media kind for the advanced options panel (Feature 1).
-  // Empty state → "text"; mixed media → prefers video for the rules.
+  // Dynamically aligned with BulkContentType and current media assets.
   const composerMediaKind: MediaKind =
-    composerMode === "carousel"
-      ? (carouselItems.every((c) => c.kind === "image") ? "image" : "video")
+    contentType === "long_video" || contentType === "short_video" || contentType === "trial_reel"
+      ? "video"
+      : contentType === "document" || contentType === "text" || contentType === "community"
+      ? "text"
+      : composerMode === "carousel" || contentType === "carousel"
+      ? (carouselItems.length > 0 && carouselItems.every((c) => c.kind === "image") ? "image" : "video")
       : composerMode === "trial_reel"
       ? "video"
       : composerMode === "document"
@@ -3254,6 +3258,7 @@ export default function CreatePostPage() {
             getAdvancedOptions={getAdvancedOptions}
             setAdvancedOptions={setAdvancedOptions}
             mediaKind={composerMediaKind}
+            contentType={contentType}
             metadataRules={metadataRules}
             onMetadataRulesChange={setMetadataRules}
             rulesOpen={rulesOpen}
@@ -4573,6 +4578,7 @@ interface CaptionsCardProps {
   getAdvancedOptions: (id: PlatformId) => PlatformAdvancedOptions;
   setAdvancedOptions: (id: PlatformId, next: PlatformAdvancedOptions) => void;
   mediaKind: MediaKind;
+  contentType?: BulkContentType;
   metadataRules: MetadataRules;
   onMetadataRulesChange: (rules: MetadataRules) => void;
   rulesOpen: boolean;
@@ -4603,6 +4609,7 @@ function CaptionsCard({
   getAdvancedOptions,
   setAdvancedOptions,
   mediaKind,
+  contentType,
   metadataRules,
   onMetadataRulesChange,
   rulesOpen,
@@ -4716,6 +4723,7 @@ function CaptionsCard({
                 advancedOptions={getAdvancedOptions(platforms[0].id)}
                 onAdvancedOptionsChange={(next) => setAdvancedOptions(platforms[0].id, next)}
                 mediaKind={mediaKind}
+                contentType={contentType}
                 selectOptions={selectOptions}
               />
             </div>
@@ -4735,6 +4743,7 @@ function CaptionsCard({
                 advancedOptions={getAdvancedOptions(platforms[0].id)}
                 onAdvancedOptionsChange={(next) => setAdvancedOptions(platforms[0].id, next)}
                 mediaKind={mediaKind}
+                contentType={contentType}
                 selectOptions={selectOptions}
               />
             </div>
@@ -4758,6 +4767,7 @@ function CaptionsCard({
                   advancedOptions={getAdvancedOptions(p.id)}
                   onAdvancedOptionsChange={(next) => setAdvancedOptions(p.id, next)}
                   mediaKind={mediaKind}
+                  contentType={contentType}
                   selectOptions={selectOptions}
                 />
               ))}

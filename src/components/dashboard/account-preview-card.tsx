@@ -21,6 +21,7 @@ import { QuoteTweetInput } from "@/components/dashboard/quote-tweet-input";
 import { AdvancedOptionsPanel } from "@/components/dashboard/advanced-options-panel";
 import type { PlatformAdvancedOptions } from "@/lib/publishing/advanced-options";
 import type { MediaKind } from "@/lib/publishing/capability-matrix";
+import type { BulkContentType } from "@/lib/bulk-schedule/content-types";
 
 interface AccountPreviewCardProps {
   platform: PlatformMeta;
@@ -36,6 +37,8 @@ interface AccountPreviewCardProps {
   advancedOptions?: PlatformAdvancedOptions;
   onAdvancedOptionsChange?: (next: PlatformAdvancedOptions) => void;
   mediaKind?: MediaKind;
+  contentType?: BulkContentType;
+  excludeFieldKeys?: string[];
   selectOptions?: Partial<Record<string, Array<{ value: string; label: string }>>>;
 }
 
@@ -58,6 +61,8 @@ export function AccountPreviewCard({
   advancedOptions,
   onAdvancedOptionsChange,
   mediaKind,
+  contentType,
+  excludeFieldKeys,
   selectOptions,
 }: AccountPreviewCardProps) {
   const [focused, setFocused] = useState(false);
@@ -182,9 +187,11 @@ export function AccountPreviewCard({
             platform={platform.id}
             platformName={platform.name}
             mediaKind={mediaKind}
+            contentType={contentType}
             value={advancedOptions}
             onChange={onAdvancedOptionsChange}
             selectOptions={selectOptions}
+            excludeFieldKeys={excludeFieldKeys}
           />
         </div>
       ) : null}
