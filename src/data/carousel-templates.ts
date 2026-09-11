@@ -11,6 +11,8 @@
  * the structural decision the user has already made.
  */
 
+import type { CarouselSlideItem, CarouselStyle } from "@/lib/carousel-gen/types";
+
 export type TemplateNiche =
   | "saas"
   | "fitness"
@@ -19,7 +21,20 @@ export type TemplateNiche =
   | "ecommerce"
   | "finance"
   | "food-lifestyle"
-  | "marketing-agency";
+  | "marketing-agency"
+  | "educational"
+  | "case-study";
+
+export type TemplateCategory =
+  | "educational"
+  | "how-to"
+  | "myth-fact"
+  | "before-after"
+  | "case-study"
+  | "thought-leadership"
+  | "data-insight"
+  | "checklist"
+  | "storytelling";
 
 export interface CarouselTemplate {
   /** Stable id, used as the URL key. */
@@ -30,34 +45,140 @@ export interface CarouselTemplate {
   description: string;
   /** Niche filter bucket. */
   niche: TemplateNiche;
+  /** Category / framework archetype */
+  category?: TemplateCategory;
   /** Default slide count for the wizard. */
   slideCount: 5 | 7 | 10 | 15;
   /** Topic seed — pre-fills the wizard's topic textarea. */
   topic: string;
   /** Optional tone the LLM should match. */
   tone: string;
-  /** Optional niche tag passed to the script gen (the wizard's "Niche"
-   * field — different from the template's niche-bucket filter). */
+  /** Optional niche tag passed to the script gen */
   topicNiche: string;
   /** CTA keyword the LLM drops on the final slide. */
   ctaKeyword: string;
   /** Default output language. */
   outputLanguage: "en" | "fr" | "ar";
+  /** Optional pre-configured style definition */
+  style?: Partial<CarouselStyle>;
+  /** Optional structured slide presets */
+  slides?: Partial<CarouselSlideItem>[];
 }
 
 export const TEMPLATE_NICHES: ReadonlyArray<{ id: TemplateNiche; label: string }> = [
+  { id: "educational", label: "Educational" },
   { id: "saas", label: "SaaS" },
-  { id: "fitness", label: "Fitness" },
-  { id: "real-estate", label: "Real Estate" },
+  { id: "marketing-agency", label: "Marketing & Agency" },
   { id: "personal-branding", label: "Personal Branding" },
+  { id: "case-study", label: "Case Studies" },
+  { id: "finance", label: "Finance & Wealth" },
+  { id: "fitness", label: "Fitness & Health" },
+  { id: "real-estate", label: "Real Estate" },
   { id: "ecommerce", label: "E-commerce" },
-  { id: "finance", label: "Finance" },
   { id: "food-lifestyle", label: "Food & Lifestyle" },
-  { id: "marketing-agency", label: "Marketing Agency" },
 ];
 
+
 export const CAROUSEL_TEMPLATES: ReadonlyArray<CarouselTemplate> = [
+  // ─── Educational & Frameworks ──────────────────────────────────────────
+  {
+    id: "edu-5-step-framework",
+    name: "5-Step Mastery Framework",
+    description: "Break down complex topics into clear, digestible educational steps with crisp visual cards.",
+    niche: "educational",
+    category: "educational",
+    slideCount: 5,
+    topic: "The 5-Step Framework to Scale Any Creative Output",
+    tone: "Authoritative, educational, structured",
+    topicNiche: "Strategy & Systems",
+    ctaKeyword: "FRAMEWORK",
+    outputLanguage: "en",
+    style: {
+      colors: { primary: "#0f172a", background: "#f8fafc", accent: "#3b82f6" },
+      fonts: { display: "Outfit", body: "Inter" },
+    },
+    slides: [
+      { type: "hook", headline: "The 5-Step Framework to Scale Output", subheadline: "How top operators build leverage without burning out" },
+      { type: "stakes", headline: "The Trap: Working Harder Instead of Smarter", body: "Most creators hit a ceiling because they rely on sheer hours rather than repeatable workflows." },
+      { type: "value", headline: "Step 1: Document Every Core Action", body: "Turn your mental checklist into clear SOPs that can be automated or delegated." },
+      { type: "receipts", headline: "Step 2: Automate The Repetitive 80%", body: "Free up 15+ hours weekly by scheduling and batching production." },
+      { type: "cta", headline: "Save this carousel for your next planning session", body: "Comment 'FRAMEWORK' to get the Notion template" },
+    ],
+  },
+  {
+    id: "myth-vs-fact-breakdown",
+    name: "Myth vs. Fact Breakdown",
+    description: "Debunk popular industry misconceptions with sharp side-by-side contrast.",
+    niche: "marketing-agency",
+    category: "myth-fact",
+    slideCount: 5,
+    topic: "3 Social Media Growth Myths You Need to Stop Believing",
+    tone: "Punchy, contrarian, evidence-backed",
+    topicNiche: "Social Growth",
+    ctaKeyword: "TRUTH",
+    outputLanguage: "en",
+    style: {
+      colors: { primary: "#18181b", background: "#fafafa", accent: "#ef4444" },
+      fonts: { display: "Archivo Black", body: "Inter" },
+    },
+    slides: [
+      { type: "hook", headline: "3 Industry Myths Costing You Growth", subheadline: "What the algorithms actually reward in 2026" },
+      { type: "stakes", headline: "Myth #1: You must post 5x a day", body: "Fact: Consistency beats volume. 3 high-signal posts outperform 15 generic ones every single time." },
+      { type: "value", headline: "Myth #2: Hashtags drive reach", body: "Fact: Semantic search and topic categorization now drive 90% of non-follower discovery." },
+      { type: "receipts", headline: "Myth #3: Short captions are best", body: "Fact: Dwell time and save rates surge when you provide comprehensive, actionable breakdowns." },
+      { type: "cta", headline: "Which myth were you still following?", body: "Comment 'TRUTH' for the algorithmic ranking checklist" },
+    ],
+  },
+  {
+    id: "before-after-case-study",
+    name: "Transformation / Before & After",
+    description: "Showcase client results, workflow transformations, or product evolution with tangible proof.",
+    niche: "case-study",
+    category: "before-after",
+    slideCount: 5,
+    topic: "How We 4x'd Inbound Pipeline in 90 Days",
+    tone: "Data-driven, executive, transparent",
+    topicNiche: "B2B Marketing",
+    ctaKeyword: "CASESTUDY",
+    outputLanguage: "en",
+    style: {
+      colors: { primary: "#09090b", background: "#ffffff", accent: "#10b981" },
+      fonts: { display: "Outfit", body: "Inter" },
+    },
+    slides: [
+      { type: "hook", headline: "From 5 Leads/Mo to 38 Qualified Inbounds", subheadline: "The 90-day repositioning breakdown" },
+      { type: "stakes", headline: "The Starting State: Zero Clear Positioning", body: "Vague messaging attracted low-intent price shoppers and wasted sales capacity." },
+      { type: "value", headline: "The Pivot: High-Signal Teardowns", body: "We replaced generic advice with weekly deep dives analyzing specific customer problems." },
+      { type: "receipts", headline: "The Result: 4.2x Pipeline Surge", body: "Average deal size doubled from $4.5k to $9.2k within 3 months." },
+      { type: "cta", headline: "Want our complete positioning audit rubric?", body: "Comment 'CASESTUDY' and we'll send over the PDF" },
+    ],
+  },
+  {
+    id: "thought-leadership-manifesto",
+    name: "Thought Leadership & Perspectives",
+    description: "Establish strong point of view and industry authority with bold quotes and key takeaways.",
+    niche: "personal-branding",
+    category: "thought-leadership",
+    slideCount: 5,
+    topic: "The Future of Agency Work in the Age of Autonomous AI",
+    tone: "Visionary, articulate, provocative",
+    topicNiche: "Leadership",
+    ctaKeyword: "LEADER",
+    outputLanguage: "en",
+    style: {
+      colors: { primary: "#172554", background: "#eff6ff", accent: "#2563eb" },
+      fonts: { display: "Outfit", body: "Inter" },
+    },
+    slides: [
+      { type: "hook", headline: "The Death of Billable Hours", subheadline: "Why output-based agencies will dominate the next decade" },
+      { type: "stakes", headline: "Selling time is a race to the bottom", body: "When AI cuts production time by 80%, billing by the hour literally penalizes efficiency." },
+      { type: "value", headline: "The New Currency: Problem Ownership", body: "Clients don't buy hours; they buy guaranteed outcomes and strategic clarity." },
+      { type: "receipts", headline: "How modern teams are pricing", body: "Value-based tiers, performance bonuses, and productized workflows." },
+      { type: "cta", headline: "Where do you stand on value-based pricing?", body: "Share your perspective below or comment 'LEADER'" },
+    ],
+  },
   // ─── SaaS ────────────────────────────────────────────────────────────
+
   {
     id: "saas-churn-recovery",
     name: "SaaS Churn Recovery Playbook",

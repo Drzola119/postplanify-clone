@@ -267,3 +267,241 @@ export interface CarouselJobDoc {
   createdAt: unknown;
   updatedAt?: unknown;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Production-Ready Carousel Document & Visual Studio Model
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type CarouselAspectRatio = "1:1" | "4:5" | "9:16";
+
+export interface CanvasDimensions {
+  width: number;
+  height: number;
+}
+
+export const ASPECT_RATIO_DIMENSIONS: Record<CarouselAspectRatio, CanvasDimensions> = {
+  "1:1": { width: 1080, height: 1080 },
+  "4:5": { width: 1080, height: 1350 },
+  "9:16": { width: 1080, height: 1920 },
+};
+
+export type ExtendedSlideType =
+  | SlideType
+  | "quote"
+  | "comparison"
+  | "stats"
+  | "step"
+  | "checklist";
+
+export interface SlideLayoutFamily {
+  id: string;
+  name: string;
+  category: "cover" | "content" | "quote" | "comparison" | "stats" | "cta";
+  description: string;
+  iconName?: string;
+}
+
+export interface CarouselSlideItem {
+  /** Stable UUID for this slide — preserved across reorders & duplicates. */
+  id: string;
+  /** Current 0-based position in the deck. */
+  index: number;
+  /** Role/type of the slide */
+  type: ExtendedSlideType;
+  /** Layout identifier */
+  layoutId?: string;
+  /** Main headline text */
+  headline: string;
+  /** Optional subheadline / kicker */
+  subheadline?: string;
+  /** Body / explanation text */
+  body?: string;
+  /** For quote slides: author attribution */
+  quoteAuthor?: string;
+  /** For stats slides: large numerical value */
+  statsValue?: string;
+  /** For stats slides: label/explanation */
+  statsLabel?: string;
+  /** For comparison slides: left/right comparisons */
+  comparisonItems?: Array<{ left: string; right: string }>;
+  /** For checklist / steps */
+  bulletPoints?: string[];
+  /** Optional background image URL */
+  backgroundImageUrl?: string;
+  /** Background opacity (0-100) */
+  backgroundOpacity?: number;
+  /** Background image positioning */
+  backgroundPosition?: "center" | "top" | "bottom" | "cover" | "contain";
+  /** Per-slide color overrides (optional) */
+  backgroundColor?: string;
+  textColor?: string;
+  accentColor?: string;
+  /** Font family overrides */
+  displayFont?: string;
+  bodyFont?: string;
+  /** Text alignment */
+  textAlign?: "left" | "center" | "right";
+  /** Font size scale factor (0.8 - 1.5) */
+  fontSizeScale?: number;
+  /** Lock flag to protect slide from bulk AI changes */
+  isLocked?: boolean;
+  /** High-res rendered image URL (Bunny CDN / Firebase storage) */
+  renderedImageUrl?: string;
+  /** Legacy indicator if imported from flat image */
+  isLegacyFlat?: boolean;
+}
+
+export type CarouselReviewStatus = "none" | "in_review" | "approved" | "changes_requested";
+
+export interface CarouselReviewApproval {
+  approvedBy: string;
+  reviewerName: string;
+  approvedAt: number;
+  revisionId: string;
+  notes?: string;
+}
+
+export interface CarouselComment {
+  id: string;
+  slideId: string | null;
+  revisionId: string;
+  author: {
+    uid?: string;
+    name: string;
+    email?: string;
+    isGuest?: boolean;
+    avatarUrl?: string;
+  };
+  content: string;
+  resolved: boolean;
+  resolvedBy?: string;
+  resolvedAt?: number;
+  createdAt: number;
+}
+
+export interface CarouselRevisionSnapshot {
+  id: string;
+  carouselId: string;
+  revisionNumber: number;
+  createdAt: number;
+  createdBy: {
+    uid: string;
+    name?: string;
+  };
+  label?: string;
+  slides: CarouselSlideItem[];
+  style: CarouselStyle;
+  aspectRatio: CarouselAspectRatio;
+  caption: string;
+  renderedAssetUrls: string[];
+  reviewStatus: CarouselReviewStatus;
+  approval?: CarouselReviewApproval | null;
+}
+
+export interface CarouselSchedulingHandoff {
+  postId?: string | null;
+  scheduledAt?: number | null;
+  publishedAt?: number | null;
+  platforms: string[];
+  status: "idle" | "scheduled" | "partially_published" | "published" | "failed";
+  platformStatuses?: Record<
+    string,
+    {
+      status: "pending" | "published" | "failed";
+      error?: string;
+      publishedUrl?: string;
+    }
+  >;
+}
+
+export interface BrandKit {
+  id: string;
+  workspaceId: string;
+  name: string;
+  colors: {
+    primary: string;
+    secondary: string;
+    accent: string;
+    background: string;
+    text: string;
+    cardBg?: string;
+  };
+  fonts: {
+    display: string;
+    body: string;
+  };
+  logoUrl?: string;
+  logoDarkUrl?: string;
+  socialHandle?: string;
+  websiteUrl?: string;
+  showWatermark?: boolean;
+  showSlideNumbers?: boolean;
+  showSwipeIndicator?: boolean;
+  contrastChecked?: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CarouselFolder {
+  id: string;
+  workspaceId: string;
+  name: string;
+  color?: string;
+  icon?: string;
+  createdAt: number;
+  itemCount?: number;
+}
+
+export interface CarouselDocument {
+  id: string;
+  workspaceId: string;
+  title: string;
+  description?: string;
+  status:
+    | "draft"
+    | "in_review"
+    | "approved"
+    | "changes_requested"
+    | "scheduled"
+    | "published"
+    | "archived";
+  campaignId?: string | null;
+  folderId?: string | null;
+  tags: string[];
+  aspectRatio: CarouselAspectRatio;
+  dimensions: CanvasDimensions;
+  brandKitId?: string | null;
+  style: CarouselStyle;
+  slides: CarouselSlideItem[];
+  slideCount: number;
+  caption: string;
+  platformOverrides?: Record<string, { caption?: string }>;
+  currentRevisionId: string;
+  revisionCount: number;
+  reviewStatus: CarouselReviewStatus;
+  activeReviewToken?: string | null;
+  approval?: CarouselReviewApproval | null;
+  scheduling?: CarouselSchedulingHandoff;
+  analytics?: {
+    impressions: number;
+    reach: number;
+    likes: number;
+    comments: number;
+    shares: number;
+    saves: number;
+    engagementRate: number;
+    lastSyncedAt?: number;
+    syncStatus: "idle" | "synced" | "failed" | "stale";
+    platformMetrics?: Record<string, any>;
+  };
+  variantGroupId?: string | null;
+  variantLabel?: "A" | "B" | null;
+  variantWinner?: boolean | null;
+  costUsd?: number;
+  mediaUrls: string[];
+  createdAt: number;
+  updatedAt: number;
+  createdBy: string;
+  updatedBy?: string;
+}
+

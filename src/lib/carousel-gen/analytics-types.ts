@@ -99,7 +99,14 @@ export interface CarouselRecord {
   id: string;
   jobId: string;
   title: string;
-  status: "scheduled" | "draft" | "published";
+  status:
+    | "scheduled"
+    | "draft"
+    | "published"
+    | "in_review"
+    | "approved"
+    | "changes_requested"
+    | "archived";
   mediaUrls: string[];
   styleId: string | null;
   slideCount: number;
