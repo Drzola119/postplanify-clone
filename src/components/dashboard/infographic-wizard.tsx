@@ -7,7 +7,7 @@
 // alignment utilities. Step indicators are inline circles with no connector
 // line, so no directional connector fix was required.
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
@@ -28,6 +28,7 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { Panel, Field, Meta } from "@/components/dashboard/wizard-kit";
 import { OUTPUT_LANGUAGE_LABELS, type OutputLanguage } from "@/lib/i18n/types";
 import { ARABIC_CAPABLE_PROVIDERS } from "@/lib/image-gen/language-support";
+import { useAuth } from "@/contexts/AuthContext";
 
 /**
  * Shared wizard for both infographic tools. The only thing that
@@ -82,6 +83,8 @@ type AspectId = (typeof ASPECTS)[number]["id"];
 type SchemeId = (typeof SCHEMES)[number]["id"];
 
 interface GenerateResponse {
+  operationId?: string;
+  persistenceWarning?: string;
   provider: string;
   model: string;
   assetId: string;
@@ -141,6 +144,31 @@ export function InfographicWizard({
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<GenerateResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [operationId, setOperationId] = useState<string | null>(null);
+  const [imageHistory, setImageHistory] = useState<GenerateResponse[]>([]);
+  const generationLock = useRef(false);
+  const { user } = useAuth();
+  const operationKey = user ? `infographic-operation:${user.uid}:${tool}` : null;
+  async function refreshImageHistory() {
+    const response = await fetch(`/api/infographics/image-history?tool=${tool}`, { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message ?? "Image history is unavailable.");
+    setImageHistory(data.items);
+  }
+  useEffect(() => {
+    if (!operationKey) return;
+    void refreshImageHistory().then(() => {
+      const pending = sessionStorage.getItem(operationKey);
+      if (pending) setOperationId(pending);
+    }).catch(e => setError(e.message));
+    // Initial navigation only; subsequent history/status updates are explicit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [operationKey]);
+  useEffect(() => {
+    if (!operationKey) return;
+    if (operationId) sessionStorage.setItem(operationKey, operationId);
+    // Clearing is done only after the operation outcome is known, not on mount.
+  }, [operationId, operationKey]);
 
   const arabicCapable = ARABIC_CAPABLE_PROVIDERS.length > 0;
 
@@ -183,14 +211,16 @@ export function InfographicWizard({
 
   function canSubmit(): boolean {
     if (tool === "instant") return topic.trim().length >= 3;
-    return offerTitle.trim().length >= 2 && offerCopy.trim().length >= 0;
+    return offerTitle.trim().length >= 2 && offerCopy.trim().length > 0;
   }
 
   async function generate() {
-    if (!canSubmit()) return;
+    if (!canSubmit() || generationLock.current || operationId) return;
+    generationLock.current = true;
+    const id = crypto.randomUUID();
+    setOperationId(id);
     setGenerating(true);
     setError(null);
-    setResult(null);
     try {
       const body =
         tool === "instant"
@@ -201,7 +231,9 @@ export function InfographicWizard({
               aspectRatio: aspect,
               colorScheme: scheme,
               outputLanguage,
-              context: { styleId, campaignId: footerCta.trim() || undefined },
+              operationId: id,
+              footerCta: footerCta.trim() || undefined,
+              context: { styleId },
             }
           : {
               tool,
@@ -212,7 +244,9 @@ export function InfographicWizard({
               aspectRatio: aspect,
               colorScheme: scheme,
               outputLanguage,
-              context: { styleId, campaignId: footerCta.trim() || undefined },
+              operationId: id,
+              footerCta: footerCta.trim() || undefined,
+              context: { styleId },
             };
       const res = await fetch("/api/infographics/generate", {
         method: "POST",
@@ -229,10 +263,15 @@ export function InfographicWizard({
       }
       const data = (await res.json()) as { ok?: boolean } & GenerateResponse;
       setResult({ ...data, tool });
+      setImageHistory(prev => [{ ...data, tool }, ...prev].slice(0, 20));
+      setOperationId(null);
+      if (operationKey) sessionStorage.removeItem(operationKey);
+      if (data.persistenceWarning) setError(data.persistenceWarning);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");
     } finally {
       setGenerating(false);
+      generationLock.current = false;
     }
   }
 
@@ -241,12 +280,26 @@ export function InfographicWizard({
   }
 
   function tryDifferentStyle() {
-    setResult(null);
+    const index = styles.findIndex(s => s.id === styleId);
+    setStyleId(styles[(index + 1) % styles.length].id);
     setError(null);
   }
 
   return (
     <div className="p-6 max-w-6xl">
+      <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm">
+        <strong>AI image mode</strong> — these outputs are flattened images. <Link className="underline" href="/dashboard/infographics/studio">Open the structured editor for editable text and charts.</Link>
+        <p className="mt-2 text-xs">Review your input before generating. Existing generation usage terms apply; provider cost is not a quoted customer charge.</p>
+        {operationId && <button type="button" className="mt-3 rounded border bg-white px-3 py-2" disabled={generating} onClick={async () => {
+          try {
+            const res = await fetch(`/api/infographics/operations/${operationId}`, { cache: "no-store" });
+            const data = await res.json(); if (!res.ok) throw new Error(data.error?.message || "Status unavailable");
+            if (data.result) { setResult(data.result); setImageHistory(prev => [data.result, ...prev.filter(p => p.operationId !== data.result.operationId)].slice(0, 20)); setOperationId(null); if (operationKey) sessionStorage.removeItem(operationKey); setError(null); }
+            else if (data.status === "failed") { setOperationId(null); if (operationKey) sessionStorage.removeItem(operationKey); setError(data.error || "Generation failed. You may explicitly start another generation."); }
+            else setError("Generation is pending or interrupted. No new generation has been started.");
+          } catch (e) { setError((e as Error).message); }
+        }}>Refresh generation status</button>}
+      </div>
       <PageHeader
         title={title}
         subtitle={subtitle}
@@ -310,7 +363,7 @@ export function InfographicWizard({
             title={tool === "instant" ? t("instant.step2_title") : t("ads.step2_title")}
             subtitle={t("instant.step2_subtitle")}
           >
-            <Field label={tool === "instant" ? t("instant.provider_label") : t("ads.provider_label")}>
+            <details className="rounded-lg border p-3"><summary className="cursor-pointer text-sm font-medium">Advanced provider settings</summary><Field label={tool === "instant" ? t("instant.provider_label") : t("ads.provider_label")}>
               <select
                 value={provider}
                 onChange={(e) => setProvider(e.target.value as ProviderId)}
@@ -322,7 +375,7 @@ export function InfographicWizard({
                   </option>
                 ))}
               </select>
-            </Field>
+            </Field></details>
             <Field label={tool === "instant" ? t("instant.aspect_ratio_label") : t("ads.aspect_ratio_label")}>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {ASPECTS.map((a) => {
@@ -507,7 +560,7 @@ export function InfographicWizard({
             <button
               type="button"
               onClick={generate}
-              disabled={generating || !canSubmit()}
+              disabled={generating || !!operationId || !canSubmit()}
               className="inline-flex items-center gap-2 h-10 px-5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-semibold disabled:opacity-50"
             >
               {generating ? (
@@ -540,7 +593,7 @@ export function InfographicWizard({
                 </span>
               ) : null}
             </div>
-            <div className="mt-3 aspect-square w-full overflow-hidden rounded-xl bg-zinc-100 border border-zinc-200 grid place-items-center">
+            <div style={{ aspectRatio: (result?.aspectRatio ?? aspect).replace(":", "/") }} className="mt-3 w-full overflow-hidden rounded-xl bg-zinc-100 border border-zinc-200 grid place-items-center">
               {result ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -566,9 +619,10 @@ export function InfographicWizard({
                 <Meta label="Provider" value={`${result.provider}${result.fellBackFrom ? ` (fell back from ${result.fellBackFrom})` : ""}`} />
                 <Meta label="Ratio" value={result.aspectRatio} />
                 <Meta label="Size" value={`${result.width}×${result.height}`} />
-                <Meta label="Cost" value={`$${result.costUsd.toFixed(4)}`} />
+                <Meta label="Provider cost (not customer price)" value={`$${result.costUsd.toFixed(4)}`} />
                 <Meta label="Duration" value={`${(result.durationMs / 1000).toFixed(1)}s`} />
                 <div className="flex flex-wrap items-center gap-2 pt-2">
+                  {result.assetId && <><Link href={`/dashboard/posts/create?infographicAsset=${result.assetId}`} className="rounded-md bg-zinc-900 px-3 py-2 text-sm text-white">Create post</Link><Link href={`/dashboard/posts/create?infographicAsset=${result.assetId}&infographicIntent=schedule`} className="rounded-md border px-3 py-2 text-sm">Schedule</Link></>}
                   <Link
                     href="/dashboard/assets"
                     className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium"
@@ -579,7 +633,7 @@ export function InfographicWizard({
                   <button
                     type="button"
                     onClick={regenerate}
-                    disabled={generating}
+                    disabled={generating || !!operationId}
                     className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-zinc-200 bg-white text-sm font-medium hover:bg-zinc-50 disabled:opacity-50"
                   >
                     <RefreshCw className="size-3.5" />
@@ -599,6 +653,7 @@ export function InfographicWizard({
           </div>
 
           <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-4 text-xs text-zinc-600 space-y-1">
+            <div className="space-y-2"><p className="font-semibold">Flattened image history · latest 20</p><p className="text-xs text-zinc-500">Saved image outputs have no editable layers. History pruning never deletes library assets.</p><button className="rounded border px-3 py-1" onClick={() => void refreshImageHistory().catch(e => setError(e.message))}>Refresh image history</button>{imageHistory.map((item, i) => <div key={item.operationId ?? i} className="inline-flex gap-2 rounded border p-2"><button onClick={() => setResult(item)}>View {i + 1}. {item.styleId}</button><button onClick={async () => { try { const response = await fetch("/api/infographics/image-history", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tool, operationId: item.operationId }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error?.message ?? "Restore failed"); setResult(data.result); await refreshImageHistory(); } catch (e) { setError((e as Error).message); } }}>Restore as new version</button></div>)}</div>
             <p className="text-sm font-semibold text-zinc-700">{ts("how_billing")}</p>
             <p>
               {ts("billing_copy")}
@@ -609,4 +664,3 @@ export function InfographicWizard({
     </div>
   );
 }
-

@@ -46,6 +46,8 @@ next-env.d.ts
 coverage/
 .nyc_output/
 test-output/
+test-results/
+playwright-report/
 
 # Misc
 .turbo

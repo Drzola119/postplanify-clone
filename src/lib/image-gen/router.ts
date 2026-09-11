@@ -61,6 +61,7 @@ export async function generateInfographic(
   let lastError: Error | null = null;
 
   for (let i = 0; i < effectiveChain.length; i++) {
+    let providerSucceeded = false;
     const providerId = effectiveChain[i];
     const isFirstChoice = requested === providerId || (i === 0 && requested === undefined);
     try {
@@ -79,6 +80,7 @@ export async function generateInfographic(
 
       const provider = instantiate(providerId);
       const out = await provider.generate(input);
+      providerSucceeded = true;
 
       // Persist to Bunny + Firestore.
       const persisted = await persistGeneratedImage({
@@ -130,19 +132,16 @@ export async function generateInfographic(
 
       return finalOutput;
     } catch (err) {
+      // A storage failure after generation must never trigger another paid image.
+      if (providerSucceeded) throw err;
       const status = (err as { status?: number })?.status ?? 0;
       const message = err instanceof Error ? err.message : String(err);
       attempts.push({ provider: providerId, status, message });
       lastError = err instanceof Error ? err : new Error(message);
       const explicitRetry = (err as { retryable?: boolean })?.retryable;
-      const retryable =
-        (explicitRetry ?? false) ||
-        status === 0 ||
-        status === 408 ||
-        status === 429 ||
-        status === 502 ||
-        status === 503 ||
-        status === 504;
+      // Only explicit rejection (429) is safe to retry here. Timeouts/network
+      // failures can conceal a completed paid request, even if marked retryable.
+      const retryable = status === 429 && explicitRetry !== false;
       if (!retryable) {
         // Non-retryable (bad prompt, missing scope, etc.) — stop walking
         // the chain, this is a real bug not a transient outage.

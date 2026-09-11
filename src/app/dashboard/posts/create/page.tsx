@@ -48,6 +48,7 @@ import { needsOutpainting } from "@/lib/images/platform-ratios";
 // being decoupled from Trustiify. Normal posts must never depend on it.
 const ENABLE_OUTPAINT = process.env.NEXT_PUBLIC_ENABLE_OUTPAINT === "true";
 import { loadDraft, saveDraft, deleteDraft, newDraftId, type DraftRecord } from "@/lib/drafts";
+import { InfographicHandoff, type HandoffAsset } from "@/components/dashboard/infographic-studio/composer-handoff";
 import {
   type PlatformAdvancedOptions,
   type FieldSpec,
@@ -2716,8 +2717,21 @@ export default function CreatePostPage() {
 
   const canSaveDraft = hasAnyContent || !!draftId;
 
+  function addInfographic(asset: HandoffAsset, schedule: boolean) {
+    setMediaItems(prev => prev.some(m => m.id === asset.id) ? prev : [...prev, { id: asset.id, url: asset.url, cdnUrl: asset.url, storedPath: asset.storedPath, name: "Infographic", size: asset.size, width: asset.width, height: asset.height, kind: "image", mimeType: asset.mime, uploadStatus: "ready" }]);
+    if (schedule) setScheduleModalOpen(true);
+  }
+
   return (
     <div className="p-4 sm:p-6 max-w-[1400px] mx-auto space-y-4 sm:space-y-5">
+      <InfographicHandoff hasContent={hasAnyContent} onAdd={addInfographic} onSeparate={async (asset, schedule) => {
+        await handleSaveDraft();
+        // A separate composer tab leaves this draft and its full state intact.
+        const url = `/dashboard/posts/create?infographicAsset=${encodeURIComponent(asset.id)}${schedule ? "&infographicIntent=schedule" : ""}`;
+        const opened = window.open(url, "_blank");
+        if (!opened) throw new Error("The browser blocked the new draft tab. Allow popups or add the image to this draft.");
+        opened.opener = null;
+      }} />
       {/* ── Page Header + Top Nav Bar ── */}
       <div className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-3">

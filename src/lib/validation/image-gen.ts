@@ -32,6 +32,8 @@ export const imageGenAspectRatioSchema = z.enum(
 );
 
 const baseImageGenFields = {
+  operationId: z.string().uuid().optional(),
+  footerCta: z.string().max(160).optional(),
   provider: z.enum(["auto", ...imageGenProviderIdSchema.options]),
   prompt: z.string().min(8).max(20_000).optional(),
   structuredPrompt: z.record(z.unknown()).optional(),

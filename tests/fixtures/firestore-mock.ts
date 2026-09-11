@@ -197,6 +197,10 @@ class FakeBatch {
 }
 
 class FakeTransaction {
+  create(ref: FakeDocumentRef, data: DocData): this {
+    void ref.create(data);
+    return this;
+  }
   async get(ref: FakeDocumentRef): Promise<FakeSnapshot> {
     return ref.get();
   }

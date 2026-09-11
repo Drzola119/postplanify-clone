@@ -19,6 +19,8 @@ const TOOL_ALIASES: Record<string, string> = {
 };
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ["@resvg/resvg-js", "fontkit", "wawoff2"],
+  outputFileTracingIncludes: { "/api/infographics/**": ["./node_modules/@fontsource/noto-sans/files/*latin-400-normal.woff2", "./node_modules/@fontsource/noto-sans/files/*latin-700-normal.woff2", "./node_modules/@fontsource/noto-sans-arabic/files/*arabic-400-normal.woff2", "./node_modules/@fontsource/noto-sans-arabic/files/*arabic-700-normal.woff2", "./node_modules/@fontsource/noto-serif/files/*latin-400-normal.woff2", "./node_modules/@fontsource/noto-serif/files/*latin-700-normal.woff2", "./node_modules/wawoff2/**"] },
   output: "standalone",
   images: {
     unoptimized: true,

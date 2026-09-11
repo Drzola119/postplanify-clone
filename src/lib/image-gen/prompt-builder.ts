@@ -132,7 +132,7 @@ export function buildAdsInfographicPrompt(input: {
   const title = cleanValue(input.offerTitle, "the offer");
   const copy = cleanValue(
     input.offerCopy,
-    "(the user has not provided sales copy yet — infer a plausible, internally-consistent description of the offer from its title alone)"
+    "(no offer details supplied — do not invent benefits, prices, statistics, testimonials, or claims; use only the supplied title)"
   );
   const scheme = cleanValue(input.colorScheme, "light");
   const ratio = cleanValue(input.aspectRatio, "3:4");

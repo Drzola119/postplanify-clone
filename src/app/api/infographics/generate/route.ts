@@ -1,7 +1,8 @@
 import "server-only";
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { requireSession } from "@/lib/auth/session-context";
+import { access, claimOperation, route, db } from "@/lib/infographic-studio/server";
+import { randomUUID } from "node:crypto";
 import {
   generateInfographic,
   ImageGenExhaustedError,
@@ -36,7 +37,8 @@ const log = createLogger("infographics/generate");
  * system; see src/lib/image-gen/usage.ts.
  */
 export async function POST(request: NextRequest) {
-  const session = await requireSession();
+  return route(async () => {
+  const session = await access(true);
   if (session instanceof Response) return session;
 
   const raw = await parseBody(
@@ -65,7 +67,8 @@ export async function POST(request: NextRequest) {
   }
 
   const colorScheme = body.colorScheme ?? "light";
-  const footerCta = body.context?.campaignId;
+  const footerCta = body.footerCta ?? body.context?.campaignId;
+  if (tool === "ads" && "offerCopy" in body && !body.offerCopy.trim()) return jsonError(400, "Supply and review the offer details before generating.");
 
   // Build the prompt unless the client already supplied one. The test
   // script and a few advanced flows pass their own prompt/structuredPrompt.
@@ -120,6 +123,12 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const operationId = body.operationId ?? randomUUID();
+  const { ref, existing } = await claimOperation(session, operationId, body);
+  if (existing) {
+    if (existing.result) return jsonOk(existing.result);
+    return jsonError(409, "This generation is already pending or failed. Refresh its status; do not repeat an ambiguous request.");
+  }
   try {
     const out = await generateInfographic({
       workspaceId: session.workspaceId,
@@ -138,7 +147,9 @@ export async function POST(request: NextRequest) {
       headers: request.headers,
     });
 
-    return jsonOk({
+    const result = {
+      operationId,
+      createdAt: new Date().toISOString(),
       provider: out.provider,
       model: out.model,
       assetId: out.assetId,
@@ -151,8 +162,20 @@ export async function POST(request: NextRequest) {
       fellBackFrom: out.fellBackFrom ?? null,
       styleId: style.id,
       tool,
-    });
+    };
+    try {
+      const history = db().doc(`workspaces/${session.workspaceId}/infographicImageHistory/${session.uid}-${tool}`);
+      await db().runTransaction(async tx => {
+        const saved = await tx.get(history);
+        const items = (saved.data()?.items ?? []) as Array<{ operationId: string }>;
+        tx.set(history, { items: [result, ...items.filter(item => item.operationId !== operationId)].slice(0, 20), updatedAt: result.createdAt });
+        tx.update(ref, { status: "completed", result, completedAt: result.createdAt });
+      });
+    }
+    catch { return jsonOk({ ...result, persistenceWarning: "Image generated, but operation history could not be saved. Keep this result; do not regenerate to retry saving." }); }
+    return jsonOk(result);
   } catch (err) {
+    await ref.update({ status: "failed", error: "Generation failed or was interrupted. Check the result before starting another paid operation." }).catch(() => undefined);
     if (err instanceof ImageGenExhaustedError) {
       log.error("image-gen exhausted", {
         workspaceId: session.workspaceId,
@@ -172,4 +195,5 @@ export async function POST(request: NextRequest) {
     log.error("image-gen error", { workspaceId: session.workspaceId, message });
     return jsonError(500, message);
   }
+  });
 }
