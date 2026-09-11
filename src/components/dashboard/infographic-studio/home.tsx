@@ -64,13 +64,10 @@ export function StudioHome() {
     <main className="mx-auto max-w-7xl space-y-9 p-6 lg:p-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[.18em] text-blue-600">
-            Content studio
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight">
+          <h1 className="text-[30px] font-bold leading-[36px] tracking-tight">
             Infographics
           </h1>
-          <p className="mt-2 max-w-xl text-sm text-zinc-500">
+          <p className="mt-1 max-w-xl text-sm text-zinc-500">
             Turn a useful idea into a visual worth saving. Shape the story, make
             it yours, and share it.
           </p>
