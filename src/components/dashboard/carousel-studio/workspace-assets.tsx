@@ -3,6 +3,8 @@ import { useState } from "react";
 import type { BrandKit, CarouselFolder } from "@/lib/carousel-gen/types";
 import { studioApi } from "./client-api";
 import { checkContrastRatio } from "@/lib/carousel-gen/contrast";
+import { Dialog } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 const empty = {
   name: "New brand",
   colors: {
@@ -30,7 +32,11 @@ export function WorkspaceAssets({
     >(empty),
     [folderName, setFolderName] = useState(""),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [pendingBrandDelete, setPendingBrandDelete] = useState(false),
+    [pendingFolderDelete, setPendingFolderDelete] = useState<CarouselFolder | null>(null),
+    [renameFolderTarget, setRenameFolderTarget] = useState<CarouselFolder | null>(null),
+    [renameValue, setRenameValue] = useState("");
   async function save(url: string, body: unknown, method = "POST") {
     setBusy(true);
     setError("");
@@ -165,16 +171,7 @@ export function WorkspaceAssets({
             disabled={busy}
             className="ml-3"
             onClick={() => {
-              if (
-                confirm(
-                  "Remove this brand kit? Saved decks retain their existing brand snapshot.",
-                )
-              )
-                void save(
-                  `/api/carousels/brand-kits?id=${kit.id}`,
-                  undefined,
-                  "DELETE",
-                );
+              setPendingBrandDelete(true);
             }}
           >
             Remove brand kit
@@ -206,9 +203,8 @@ export function WorkspaceAssets({
             <button
               disabled={busy}
               onClick={() => {
-                const name = prompt("Folder name", f.name);
-                if (name)
-                  void save("/api/carousels/folders", { id: f.id, name });
+                setRenameFolderTarget(f);
+                setRenameValue(f.name);
               }}
             >
               Rename
@@ -216,16 +212,7 @@ export function WorkspaceAssets({
             <button
               disabled={busy}
               onClick={() => {
-                if (
-                  confirm(
-                    "Remove folder? Its carousels will remain in your library.",
-                  )
-                )
-                  void save(
-                    `/api/carousels/folders?id=${f.id}`,
-                    undefined,
-                    "DELETE",
-                  );
+                setPendingFolderDelete(f);
               }}
             >
               Remove
@@ -241,6 +228,35 @@ export function WorkspaceAssets({
           {error}
         </p>
       )}
+      <ConfirmDialog
+        open={pendingBrandDelete}
+        onClose={() => setPendingBrandDelete(false)}
+        onConfirm={() => { setPendingBrandDelete(false); if (kit.id) void save(`/api/carousels/brand-kits?id=${kit.id}`, undefined, "DELETE"); }}
+        title="Remove this brand kit?"
+        description="Saved decks retain their existing brand snapshot."
+        confirmLabel="Remove brand kit"
+        tone="destructive"
+      />
+      <ConfirmDialog
+        open={pendingFolderDelete !== null}
+        onClose={() => setPendingFolderDelete(null)}
+        onConfirm={() => { const folder = pendingFolderDelete; setPendingFolderDelete(null); if (folder) void save(`/api/carousels/folders?id=${folder.id}`, undefined, "DELETE"); }}
+        title="Remove this folder?"
+        description="Its carousels will remain in your library."
+        confirmLabel="Remove folder"
+        tone="destructive"
+      />
+      <Dialog
+        open={renameFolderTarget !== null}
+        onClose={() => setRenameFolderTarget(null)}
+        title="Rename folder"
+        maxWidth="sm:max-w-[440px]"
+      >
+        <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); const folder = renameFolderTarget; const name = renameValue.trim(); if (folder && name) { void save("/api/carousels/folders", { id: folder.id, name }); setRenameFolderTarget(null); } }}>
+          <input autoFocus aria-label="Folder name" className={`${input} text-zinc-900`} value={renameValue} onChange={(event) => setRenameValue(event.target.value)} />
+          <div className="flex justify-end gap-2"><button type="button" className="rounded-lg border px-3 py-2 text-sm" onClick={() => setRenameFolderTarget(null)}>Cancel</button><button type="submit" disabled={!renameValue.trim() || busy} className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Save name</button></div>
+        </form>
+      </Dialog>
     </section>
   );
 }

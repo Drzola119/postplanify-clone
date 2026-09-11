@@ -35,7 +35,17 @@ export default async function NewCarouselPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const session=await requireCarouselAccess();
-  if(session instanceof Response)redirect("/dashboard/carousels");
+  if (session instanceof Response) {
+    if (session.status === 401) redirect("/login");
+    return (
+      <main className="mx-auto max-w-2xl p-6 md:p-10">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
+          <h1 className="text-xl font-semibold text-zinc-900">Carousel access unavailable</h1>
+          <p className="mt-2 text-sm text-zinc-700">You don’t have permission to create carousels in this workspace.</p>
+        </div>
+      </main>
+    );
+  }
   const params = await searchParams;
   if(params.mode!=="images") return <CreateCarousel workspaceId={session.workspaceId}/>;
   const get = (k: string): string => {

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { studioApi } from "./client-api";
 import type { HandoffAsset } from "../infographic-studio/composer-handoff";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 export type CarouselHandoff = {
   id: string;
   carouselId: string;
@@ -20,7 +21,8 @@ export function CarouselComposerHandoff({
 }) {
   const [id, setId] = useState(""),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [confirmOpen, setConfirmOpen] = useState(false);
   useEffect(
     () =>
       setId(
@@ -41,14 +43,28 @@ export function CarouselComposerHandoff({
       <button
         disabled={busy}
         className="bg-zinc-900 text-white rounded-lg p-3"
-        onClick={async () => {
-          if (
-            hasContent &&
-            !confirm(
-              "Replace this composer’s media and caption with the carousel?",
-            )
-          )
+        onClick={() => {
+          if (hasContent) {
+            setConfirmOpen(true);
             return;
+          }
+          void loadHandoff();
+        }}
+      >
+        Add complete carousel
+      </button>
+      <ConfirmDialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={() => { setConfirmOpen(false); void loadHandoff(); }}
+        title="Replace composer content?"
+        description="This replaces the current media and caption with the carousel."
+        confirmLabel="Replace and add"
+      />
+      {error && <p role="alert">{error}</p>}
+    </section>
+  );
+  async function loadHandoff() {
           setBusy(true);
           try {
             const { handoff } = await studioApi<{ handoff: CarouselHandoff }>(
@@ -61,11 +77,5 @@ export function CarouselComposerHandoff({
           } finally {
             setBusy(false);
           }
-        }}
-      >
-        Add complete carousel
-      </button>
-      {error && <p role="alert">{error}</p>}
-    </section>
-  );
+  }
 }

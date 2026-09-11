@@ -19,6 +19,7 @@ import type {
   BrandKit,
 } from "@/lib/carousel-gen/types";
 import { Sliders, Layout } from "lucide-react";
+import { Dialog } from "@/components/ui/dialog";
 
 interface StudioContainerProps {
   initialDocument: CarouselDocument;
@@ -37,6 +38,7 @@ export function StudioContainer({
   latestDeck.current = deck;
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<"slide" | "deck">("slide");
+  const [mobilePanel, setMobilePanel] = useState<"slides" | "controls" | null>(null);
   const [showSafeZones, setShowSafeZones] = useState(false);
 
   const saving = useDraftSave(deck);
@@ -355,8 +357,20 @@ export function StudioContainer({
 
   const preflightReport = runPreflightChecks(deck);
 
+  if (!activeSlide) {
+    return (
+      <div className="min-h-[calc(100dvh-3.5rem)] bg-zinc-950 p-6 text-zinc-100">
+        <div className="mx-auto max-w-xl rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
+          <h1 className="text-lg font-semibold">This carousel has no slides</h1>
+          <p className="mt-2 text-sm text-zinc-400">Return to the carousel library and create or restore a slide before editing.</p>
+          <Link className="mt-4 inline-flex rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-zinc-950" href="/dashboard/carousels">Back to Carousel Studio</Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col overflow-hidden text-zinc-100">
+    <div className="min-h-[calc(100dvh-3.5rem)] bg-zinc-950 flex flex-col overflow-hidden text-zinc-100">
       {/* Persistent Top Toolbar */}
       <StudioToolbar
         title={deck.title}
@@ -449,9 +463,9 @@ export function StudioContainer({
         </p>
       )}
       {/* 3-Column Responsive Studio Workspace */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+      <div className="min-h-0 flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Left Column: Slide Strip / Navigator */}
-        <aside className="w-full lg:w-64 max-h-64 lg:max-h-none shrink-0 overflow-auto">
+        <aside className="hidden lg:block w-64 min-h-0 shrink-0 overflow-hidden">
           <SlideNavigator
             slides={deck.slides}
             activeSlideIndex={activeSlideIndex}
@@ -465,7 +479,7 @@ export function StudioContainer({
         </aside>
 
         {/* Center Column: Slide Canvas & Zoom Preview */}
-        <main className="flex-1 bg-zinc-900/30 flex flex-col items-center justify-center p-6 overflow-y-auto relative">
+        <main className="min-h-0 flex-1 bg-zinc-900/30 flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto relative">
           <SlideCanvas
             deck={deck}
             slide={activeSlide}
@@ -477,7 +491,21 @@ export function StudioContainer({
           />
 
           {/* Quick Mobile Navigation Bar */}
-          <div className="md:hidden flex items-center gap-2 mt-4">
+          <div className="lg:hidden flex flex-wrap items-center justify-center gap-2 mt-4">
+            <button
+              type="button"
+              onClick={() => setMobilePanel("slides")}
+              className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-xs font-semibold"
+            >
+              Slides
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobilePanel("controls")}
+              className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-xs font-semibold"
+            >
+              Controls
+            </button>
             <button
               type="button"
               disabled={activeSlideIndex === 0}
@@ -507,7 +535,7 @@ export function StudioContainer({
         </main>
 
         {/* Right Column: Contextual Inspector Panels */}
-        <aside className="w-full lg:w-80 shrink-0 flex flex-col">
+        <aside className="hidden lg:flex w-80 min-h-0 shrink-0 flex-col">
           {/* Tab Switcher */}
           <div className="grid grid-cols-2 p-1 bg-zinc-900 border-b border-zinc-800">
             <button
@@ -563,6 +591,41 @@ export function StudioContainer({
           </div>
         </aside>
       </div>
+
+      <Dialog
+        open={mobilePanel !== null}
+        onClose={() => setMobilePanel(null)}
+        title={mobilePanel === "slides" ? "Slides" : "Controls"}
+        className="bg-zinc-900 text-zinc-100 border-zinc-700 sm:max-w-xl"
+        maxWidth="sm:max-w-xl"
+      >
+        {mobilePanel === "slides" ? (
+          <div className="-m-2 max-h-[70vh] overflow-y-auto">
+            <SlideNavigator
+              slides={deck.slides}
+              activeSlideIndex={activeSlideIndex}
+              onSelectSlide={(idx) => { setActiveSlideIndex(idx); setMobilePanel(null); }}
+              onAddSlide={handleAddSlide}
+              onDuplicateSlide={handleDuplicateSlide}
+              onDeleteSlide={handleDeleteSlide}
+              onMoveSlide={handleMoveSlide}
+              onToggleLock={handleToggleLock}
+            />
+          </div>
+        ) : (
+          <div className="-m-2 max-h-[70vh] overflow-y-auto">
+            <div className="grid grid-cols-2 gap-1 bg-zinc-900 border-b border-zinc-800 p-1">
+              <button type="button" onClick={() => setActiveTab("slide")} className={`rounded-lg py-2 text-xs font-bold ${activeTab === "slide" ? "bg-zinc-800 text-white" : "text-zinc-400"}`}>Slide Controls</button>
+              <button type="button" onClick={() => setActiveTab("deck")} className={`rounded-lg py-2 text-xs font-bold ${activeTab === "deck" ? "bg-zinc-800 text-white" : "text-zinc-400"}`}>Deck Settings</button>
+            </div>
+            {activeTab === "slide" ? (
+              <SlideInspector slide={activeSlide} slideIndex={activeSlideIndex} onUpdateSlide={updateSlide} onApplyAIAction={handleApplyAIAction} />
+            ) : (
+              <DeckInspector deck={deck} brandKits={brandKits} showSafeZones={showSafeZones} onToggleSafeZones={() => setShowSafeZones((prev) => !prev)} onUpdateDeck={updateDeck} onSelectBrandKit={(kitId) => { const kit = brandKits.find((k) => k.id === kitId); updateDeck({ brandKitId: kitId || null, brandSnapshot: kit || null }); }} />
+            )}
+          </div>
+        )}
+      </Dialog>
 
       {/* Preflight Modal */}
       <PreflightModal

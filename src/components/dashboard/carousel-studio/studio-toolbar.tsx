@@ -44,7 +44,7 @@ export function StudioToolbar({
   onSchedule,
 }: StudioToolbarProps) {
   return (
-    <header className="min-h-16 py-3 flex-wrap bg-zinc-900 border-b border-zinc-800 px-4 sm:px-6 flex items-center justify-between gap-4 sticky top-0 z-30">
+    <header className="min-h-16 py-3 flex-wrap bg-zinc-900 border-b border-zinc-800 px-3 sm:px-6 flex items-center justify-between gap-3 sticky top-0 z-30">
       {/* Left: Back Link & Editable Title */}
       <div className="flex items-center gap-3 min-w-0">
         <Link
@@ -120,7 +120,7 @@ export function StudioToolbar({
       </div>
 
       {/* Right Action Buttons */}
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
         <button
           type="button"
           onClick={onOpenPreflight}
@@ -128,7 +128,7 @@ export function StudioToolbar({
           className="px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800/80 hover:bg-zinc-700 text-xs font-semibold text-zinc-200 transition flex items-center gap-1.5"
         >
           <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-          Preflight
+          <span className="hidden sm:inline">Preflight</span>
         </button>
 
         <button
@@ -138,7 +138,7 @@ export function StudioToolbar({
           className="px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800/80 hover:bg-zinc-700 text-xs font-semibold text-zinc-200 transition flex items-center gap-1.5"
         >
           <Share2 className="w-3.5 h-3.5" />
-          Review Link
+          <span className="hidden sm:inline">Review Link</span>
         </button>
 
         <button
@@ -147,7 +147,7 @@ export function StudioToolbar({
           className="px-3.5 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-white transition flex items-center gap-1.5 shadow-sm"
         >
           <Download className="w-3.5 h-3.5" />
-          Export
+          <span className="hidden sm:inline">Export</span>
         </button>
 
         <button
@@ -156,7 +156,7 @@ export function StudioToolbar({
           className="px-4 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 text-xs font-black transition flex items-center gap-1.5 shadow-md shadow-amber-500/20"
         >
           <Calendar className="w-3.5 h-3.5" />
-          Schedule
+          <span className="hidden sm:inline">Schedule</span>
         </button>
       </div>
     </header>

@@ -1,7 +1,7 @@
 import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests/browser",
-  testMatch: "infographic-studio.spec.ts",
+  testMatch: /(?:infographic-studio|carousel-studio)\.spec\.ts/,
   timeout: 90000,
   workers: 1,
   use: {

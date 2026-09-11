@@ -120,36 +120,47 @@ export function CreateCarousel({ workspaceId }: { workspaceId: string }) {
     setDraft(result.carousel);
     return result.carousel;
   }
-  const input = "w-full border rounded-lg p-3 bg-white";
+  const input = "w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20";
   return (
-    <main className="max-w-4xl mx-auto p-4 md:p-8 space-y-6">
-      <Link href="/dashboard/carousels" className="text-sm underline">
+    <main className="mx-auto max-w-5xl space-y-7 p-4 md:p-8">
+      <Link href="/dashboard/carousels" className="text-sm font-medium text-zinc-600 hover:text-zinc-950">
         Back to carousels
       </Link>
-      <h1 className="text-3xl font-semibold">Create a carousel</h1>
-      <div className="flex flex-wrap gap-3">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-600">Carousel Studio</p>
+        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-zinc-950">Create a carousel</h1>
+        <p className="mt-2 max-w-2xl text-zinc-600">Choose a starting point, shape the story, then polish every slide in the editor.</p>
+      </div>
+      <section aria-labelledby="starting-point" className="grid gap-4 md:grid-cols-3">
+        <h2 id="starting-point" className="sr-only">Choose a starting point</h2>
         <button
           disabled={busy}
-          className="border rounded-lg p-3"
+          className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50"
           onClick={() => void blank()}
         >
-          Start blank
+          <span className="text-sm font-semibold text-amber-900">Start blank</span>
+          <span className="mt-1 block text-sm text-amber-800/80">A clean editable deck for your own ideas.</span>
         </button>
         <Link
-          className="border rounded-lg p-3"
+          className="rounded-2xl border border-zinc-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md"
           href="/dashboard/carousels/templates"
         >
-          Choose a visual template
+          <span className="text-sm font-semibold text-zinc-900">Use a visual template</span>
+          <span className="mt-1 block text-sm text-zinc-600">Start from a proven story structure.</span>
         </Link>
         <Link
-          className="border rounded-lg p-3"
+          className="rounded-2xl border border-zinc-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md"
           href="/dashboard/carousels/new?mode=images"
         >
-          Generate illustrated slides
+          <span className="text-sm font-semibold text-zinc-900">Generate illustrated slides</span>
+          <span className="mt-1 block text-sm text-zinc-600">Turn a brief into an AI-image carousel.</span>
         </Link>
-      </div>
-      <section className="border rounded-xl p-5 space-y-4">
-        <h2 className="text-xl font-medium">Generate an editable outline</h2>
+      </section>
+      <section className="space-y-5 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm md:p-6">
+        <div>
+          <h2 className="text-xl font-semibold text-zinc-950">Generate an editable outline</h2>
+          <p className="mt-1 text-sm text-zinc-600">Use text or a public article as the source for your story.</p>
+        </div>
         <div className="flex gap-3">
           <button
             aria-pressed={kind === "text"}

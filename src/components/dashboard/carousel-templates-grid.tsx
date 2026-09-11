@@ -5,6 +5,8 @@ import type { CarouselTemplate } from "@/data/carousel-templates";
 import { CAROUSEL_TEMPLATES } from "@/data/carousel-templates";
 import { templateDocument } from "@/lib/carousel-gen/templates";
 import { studioApi } from "./carousel-studio/client-api";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Dialog } from "@/components/ui/dialog";
 export { CAROUSEL_TEMPLATES };
 export function CarouselTemplatesGrid({
   templates,
@@ -18,7 +20,9 @@ export function CarouselTemplatesGrid({
     [slide, setSlide] = useState(0),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [custom, setCustom] = useState<{ id: string; name: string }[]>([]);
+    [custom, setCustom] = useState<{ id: string; name: string }[]>([]),
+    [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null),
+    [failedPreviews, setFailedPreviews] = useState<Set<string>>(() => new Set());
   useEffect(() => {
     void studioApi<{ templates: { id: string; name: string }[] }>(
       "/api/carousels/templates",
@@ -48,17 +52,17 @@ export function CarouselTemplatesGrid({
   );
   return (
     <div className="space-y-5">
-      <div className="flex gap-3">
+      <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:flex-row">
         <input
           aria-label="Search templates"
-          className="border rounded-lg p-3 flex-1"
+          className="flex-1 rounded-xl border border-zinc-200 p-3 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search templates"
         />
         <select
           aria-label="Template category"
-          className="border rounded-lg p-3"
+          className="rounded-xl border border-zinc-200 p-3 text-sm"
           value={category}
           onChange={(e) => setCategory(e.target.value)}
         >
@@ -77,10 +81,10 @@ export function CarouselTemplatesGrid({
       )}
       {custom.length > 0 && (
         <section>
-          <h2 className="font-semibold">Workspace templates</h2>
+          <h2 className="font-semibold text-zinc-950">Workspace templates</h2>
           <div className="flex flex-wrap gap-3">
             {custom.map((t) => (
-              <div key={t.id} className="border rounded p-3">
+              <div key={t.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
                 <button
                   disabled={busy}
                   onClick={() => void applyTemplate(t.id, true)}
@@ -88,20 +92,8 @@ export function CarouselTemplatesGrid({
                   Use {t.name}
                 </button>
                 <button
-                  className="ml-3 text-sm"
-                  onClick={async () => {
-                    if (
-                      !confirm(
-                        "Delete this saved template? Existing decks will remain.",
-                      )
-                    )
-                      return;
-                    await studioApi("/api/carousels/templates", {
-                      action: "delete",
-                      templateId: t.id,
-                    });
-                    setCustom((c) => c.filter((x) => x.id !== t.id));
-                  }}
+                  className="text-sm text-red-700 hover:underline"
+                  onClick={() => setPendingDelete(t)}
                 >
                   Remove
                 </button>
@@ -112,7 +104,7 @@ export function CarouselTemplatesGrid({
       )}
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
         {visible.map((t) => (
-          <article key={t.id} className="border rounded-xl overflow-hidden">
+          <article key={t.id} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
             <button
               className="block w-full bg-zinc-100"
               onClick={() => {
@@ -120,12 +112,17 @@ export function CarouselTemplatesGrid({
                 setSlide(0);
               }}
             >
-              <img
-                loading="lazy"
-                className="aspect-[4/5] object-contain w-full"
-                src={`/api/carousels/thumbnail?template=${t.id}`}
-                alt={`${t.name} cover preview`}
-              />
+              {failedPreviews.has(t.id) ? (
+                <div className="flex aspect-[4/5] items-center justify-center p-6 text-center text-sm text-zinc-500">Preview unavailable</div>
+              ) : (
+                <img
+                  loading="lazy"
+                  className="aspect-[4/5] w-full object-contain"
+                  src={`/api/carousels/thumbnail?template=${t.id}`}
+                  alt={`${t.name} cover preview`}
+                  onError={() => setFailedPreviews((current) => new Set(current).add(t.id))}
+                />
+              )}
             </button>
             <div className="p-4 space-y-3">
               <h2 className="text-lg font-semibold">{t.name}</h2>
@@ -136,7 +133,7 @@ export function CarouselTemplatesGrid({
               </p>
               <button
                 disabled={busy}
-                className="border rounded px-3 py-2"
+                className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-semibold text-white hover:bg-zinc-700 disabled:opacity-50"
                 onClick={() => void applyTemplate(t.id)}
               >
                 Use template
@@ -146,28 +143,22 @@ export function CarouselTemplatesGrid({
         ))}
       </div>
       {selected && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Template preview"
-          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-5"
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setSelected(null);
-          }}
+        <Dialog
+          open
+          onClose={() => setSelected(null)}
+          title={templates.find((template) => template.id === selected)?.name || "Template preview"}
+          maxWidth="sm:max-w-lg"
         >
-          <div className="bg-white rounded-xl p-4 max-w-lg w-full max-h-[95vh] overflow-auto">
-            <button
-              autoFocus
-              className="float-right p-2"
-              onClick={() => setSelected(null)}
-            >
-              Close
-            </button>
-            <img
-              alt={`Template slide ${slide + 1}`}
-              className="w-full"
-              src={`/api/carousels/thumbnail?template=${selected}&slide=${slide}`}
-            />
+            {failedPreviews.has(`${selected}:${slide}`) ? (
+              <div className="flex aspect-[4/5] items-center justify-center text-sm text-zinc-500">Preview unavailable</div>
+            ) : (
+              <img
+                alt={`Template slide ${slide + 1}`}
+                className="w-full"
+                src={`/api/carousels/thumbnail?template=${selected}&slide=${slide}`}
+                onError={() => setFailedPreviews((current) => new Set(current).add(`${selected}:${slide}`))}
+              />
+            )}
             <div className="flex justify-between p-3">
               <button
                 disabled={slide === 0}
@@ -194,9 +185,27 @@ export function CarouselTemplatesGrid({
             >
               Create editable draft
             </button>
-          </div>
-        </div>
+        </Dialog>
       )}
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={async () => {
+          const target = pendingDelete;
+          setPendingDelete(null);
+          if (!target) return;
+          try {
+            await studioApi("/api/carousels/templates", { action: "delete", templateId: target.id });
+            setCustom((c) => c.filter((x) => x.id !== target.id));
+          } catch (e) {
+            setError(e instanceof Error ? e.message : "Could not remove template");
+          }
+        }}
+        title="Remove saved template?"
+        description="Existing carousel decks will remain unchanged."
+        confirmLabel="Remove template"
+        tone="destructive"
+      />
     </div>
   );
 }

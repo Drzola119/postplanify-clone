@@ -8,6 +8,7 @@ import type {
 } from "@/lib/carousel-gen/types";
 import { studioApi } from "./carousel-studio/client-api";
 import { WorkspaceAssets } from "./carousel-studio/workspace-assets";
+import { Dialog } from "@/components/ui/dialog";
 type Row = {
   performanceSync?: { status: string; message?: string; attemptedAt: number };
   performanceByPlatform?: Record<
@@ -37,6 +38,7 @@ type Page = {
   total: number;
   nextOffset: number | null;
 };
+type ActionTarget = Pick<Row, "id" | "title">;
 export function CarouselsHub() {
   const [page, setPage] = useState<Page>({
       items: [],
@@ -61,7 +63,11 @@ export function CarouselsHub() {
     [selected, setSelected] = useState<string[]>([]),
     [folders, setFolders] = useState<CarouselFolder[]>([]),
     [brands, setBrands] = useState<BrandKit[]>([]),
-    [manage, setManage] = useState(false);
+    [manage, setManage] = useState(false),
+    [renameTarget, setRenameTarget] = useState<ActionTarget | null>(null),
+    [renameValue, setRenameValue] = useState(""),
+    [tagTarget, setTagTarget] = useState<ActionTarget | null>(null),
+    [tagValue, setTagValue] = useState("");
   useEffect(() => {
     let active = true;
     void Promise.all([
@@ -209,13 +215,16 @@ export function CarouselsHub() {
   const control =
     "border border-zinc-200 rounded-lg px-3 py-2 bg-white text-sm";
   return (
-    <main className="max-w-7xl p-4 md:p-8 space-y-6">
-      <header className="flex flex-wrap justify-between gap-4">
+    <main className="mx-auto max-w-7xl p-4 md:p-8 space-y-6">
+      <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-600">
+            Content workspace
+          </p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-zinc-950">
             Carousel Studio
           </h1>
-          <p className="mt-2 text-zinc-600">
+          <p className="mt-2 max-w-xl text-zinc-600">
             Create, review, and publish your next carousel.
           </p>
         </div>
@@ -244,10 +253,10 @@ export function CarouselsHub() {
           onChanged={() => setVersion((v) => v + 1)}
         />
       )}
-      <div className="flex flex-wrap gap-3">
+      <div className="grid grid-cols-1 gap-3 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
         <input
           aria-label="Search carousels"
-          className={`${control} flex-1 min-w-48`}
+          className={`${control} min-w-0 sm:col-span-2 lg:col-span-2 xl:col-span-2`}
           placeholder="Search all carousels…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -299,7 +308,7 @@ export function CarouselsHub() {
           <option value="newest">Newest</option>
           <option value="engagement">Highest observed engagement</option>
         </select>
-        <label className="text-sm">
+          <label className="text-sm text-zinc-600">
           Edited from
           <input
             aria-label="Edited from"
@@ -309,7 +318,7 @@ export function CarouselsHub() {
             onChange={(e) => setFrom(e.target.value)}
           />
         </label>
-        <label className="text-sm">
+          <label className="text-sm text-zinc-600">
           Until
           <input
             aria-label="Edited until"
@@ -415,14 +424,8 @@ export function CarouselsHub() {
               disabled={busy}
               className={control}
               onClick={() => {
-                const value = prompt("Tags, separated by commas");
-                if (value !== null)
-                  void mutate(selected, {
-                    tags: value
-                      .split(",")
-                      .map((s) => s.trim())
-                      .filter(Boolean),
-                  });
+                setTagTarget({ id: "bulk", title: `${selected.length} selected carousels` });
+                setTagValue("");
               }}
             >
               Set tags
@@ -476,8 +479,12 @@ export function CarouselsHub() {
                 )
               }
               onRename={() => {
-                const name = prompt("Carousel title", row.title);
-                if (name) void mutate([row.id], { title: name });
+                setRenameTarget(row);
+                setRenameValue(row.title);
+              }}
+              onSetTags={() => {
+                setTagTarget(row);
+                setTagValue(row.tags?.join(", ") || "");
               }}
               onArchive={() =>
                 void mutate([row.id], {
@@ -509,6 +516,36 @@ export function CarouselsHub() {
           Next page
         </button>
       </footer>
+      <Dialog
+        open={renameTarget !== null}
+        onClose={() => setRenameTarget(null)}
+        title="Rename carousel"
+        description="Choose a clear name for this deck."
+        maxWidth="sm:max-w-[440px]"
+      >
+        <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); const id = renameTarget?.id; const name = renameValue.trim(); if (id && name) { void mutate([id], { title: name }); setRenameTarget(null); } }}>
+          <input autoFocus aria-label="Carousel title" className={`${control} w-full`} value={renameValue} onChange={(event) => setRenameValue(event.target.value)} maxLength={120} />
+          <div className="flex justify-end gap-2">
+            <button type="button" className={control} onClick={() => setRenameTarget(null)}>Cancel</button>
+            <button type="submit" disabled={!renameValue.trim() || busy} className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Save name</button>
+          </div>
+        </form>
+      </Dialog>
+      <Dialog
+        open={tagTarget !== null}
+        onClose={() => setTagTarget(null)}
+        title="Set carousel tags"
+        description="Separate tags with commas."
+        maxWidth="sm:max-w-[440px]"
+      >
+        <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); const ids = tagTarget?.id === "bulk" ? selected : tagTarget ? [tagTarget.id] : []; if (ids.length) { void mutate(ids, { tags: tagValue.split(",").map((tag) => tag.trim()).filter(Boolean) }); setTagTarget(null); } }}>
+          <input autoFocus aria-label="Carousel tags" className={`${control} w-full`} value={tagValue} onChange={(event) => setTagValue(event.target.value)} />
+          <div className="flex justify-end gap-2">
+            <button type="button" className={control} onClick={() => setTagTarget(null)}>Cancel</button>
+            <button type="submit" disabled={busy} className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white">Save tags</button>
+          </div>
+        </form>
+      </Dialog>
     </main>
   );
 }
@@ -518,6 +555,7 @@ function Card({
   busy,
   onSelect,
   onRename,
+  onSetTags,
   onArchive,
   onAction,
 }: {
@@ -526,20 +564,32 @@ function Card({
   busy: boolean;
   onSelect: () => void;
   onRename: () => void;
+  onSetTags: () => void;
   onArchive: () => void;
   onAction: (kind: "duplicate" | "variant" | "sync",platform?:string) => void;
 }) {
   const [slide, setSlide] = useState(0);
+  const [thumbFailed, setThumbFailed] = useState(false);
   const [metricsPlatform,setMetricsPlatform]=useState("");
+  const safeSlideCount = Math.max(1, row.slideCount || 0);
+  const safeSlide = Math.min(Math.max(0, slide), safeSlideCount - 1);
   return (
-    <li className="border border-zinc-200 rounded-xl overflow-hidden bg-white">
-      <div className="relative bg-zinc-100">
-        <img
-          loading="lazy"
-          className="w-full aspect-[4/5] object-contain"
-          alt={`${row.title}, slide ${slide + 1}`}
-          src={`/api/carousels/thumbnail?id=${row.id}&slide=${slide}&v=${row.updatedAt}`}
-        />
+    <li className="group relative overflow-visible rounded-2xl border border-zinc-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+      <div className="relative overflow-hidden rounded-t-2xl bg-zinc-100">
+        {thumbFailed ? (
+          <div className="flex aspect-[4/5] w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-zinc-100 to-zinc-200 p-6 text-center text-sm text-zinc-500">
+            <span className="text-2xl" aria-hidden>🖼️</span>
+            <span>Preview unavailable</span>
+          </div>
+        ) : (
+          <img
+            loading="lazy"
+            className="w-full aspect-[4/5] object-contain"
+            alt={`${row.title}, slide ${safeSlide + 1}`}
+            src={`/api/carousels/thumbnail?id=${row.id}&slide=${safeSlide}&v=${row.updatedAt}`}
+            onError={() => setThumbFailed(true)}
+          />
+        )}
         <input
           aria-label={`Select ${row.title}`}
           type="checkbox"
@@ -548,15 +598,15 @@ function Card({
           onChange={onSelect}
         />
         <div className="absolute bottom-3 inset-x-3 bg-white/95 rounded-lg p-2 flex justify-between text-sm">
-          <button disabled={slide === 0} onClick={() => setSlide((i) => i - 1)}>
+          <button disabled={safeSlide === 0} onClick={() => { setThumbFailed(false); setSlide((i) => Math.max(0, i - 1)); }}>
             Previous
           </button>
           <span>
-            {slide + 1} / {row.slideCount}
+            {safeSlide + 1} / {safeSlideCount}
           </span>
           <button
-            disabled={slide >= row.slideCount - 1}
-            onClick={() => setSlide((i) => i + 1)}
+            disabled={safeSlide >= safeSlideCount - 1}
+            onClick={() => { setThumbFailed(false); setSlide((i) => Math.min(safeSlideCount - 1, i + 1)); }}
           >
             Next
           </button>
@@ -608,9 +658,12 @@ function Card({
           </Link>
           <details className="relative">
             <summary className="cursor-pointer px-3">More</summary>
-            <div className="absolute right-0 bottom-8 bg-white shadow-xl border rounded-lg p-3 z-10 grid gap-3 min-w-44">
+            <div className="absolute right-0 top-full mt-2 min-w-52 rounded-xl border border-zinc-200 bg-white p-3 shadow-xl z-20 grid gap-3">
               <button disabled={busy} onClick={onRename}>
                 Rename
+              </button>
+              <button disabled={busy} onClick={onSetTags}>
+                Set tags
               </button>
               <button disabled={busy} onClick={() => onAction("duplicate")}>
                 Duplicate draft

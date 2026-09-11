@@ -2,6 +2,7 @@
 import { useState } from "react";
 import type { CarouselDocument } from "@/lib/carousel-gen/types";
 import { studioApi } from "./client-api";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 type Revision = {
   id: string;
   number: number;
@@ -23,6 +24,7 @@ export function RevisionHistory({
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState("");
+  const [pendingRestore, setPendingRestore] = useState<string | null>(null);
   async function load(more = false) {
     setBusy(true);
     setError("");
@@ -44,12 +46,6 @@ export function RevisionHistory({
     }
   }
   async function restore(revisionId: string) {
-    if (
-      !confirm(
-        "Restore this revision? Your current work will remain in revision history.",
-      )
-    )
-      return;
     setBusy(true);
     setError("");
     try {
@@ -115,7 +111,7 @@ export function RevisionHistory({
                 Revision {item.number} · {item.label} · {item.slideCount} slides
                 · {new Date(item.createdAt).toLocaleString()}
               </span>
-              <button disabled={busy} onClick={() => void restore(item.id)}>
+              <button disabled={busy} onClick={() => setPendingRestore(item.id)}>
                 Restore
               </button>
             </div>
@@ -127,6 +123,18 @@ export function RevisionHistory({
           )}
         </div>
       )}
+      <ConfirmDialog
+        open={pendingRestore !== null}
+        onClose={() => setPendingRestore(null)}
+        onConfirm={() => {
+          const revisionId = pendingRestore;
+          setPendingRestore(null);
+          if (revisionId) void restore(revisionId);
+        }}
+        title="Restore this revision?"
+        description="Your current work will remain in revision history."
+        confirmLabel="Restore revision"
+      />
     </div>
   );
 }

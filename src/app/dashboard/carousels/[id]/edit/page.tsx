@@ -23,7 +23,15 @@ export default async function CarouselEditorPage({
 }) {
   const session = await requireSession(false);
   if (session instanceof Response) {
-    redirect("/auth/login");
+    if (session.status === 401) redirect("/login");
+    return (
+      <main className="mx-auto max-w-2xl p-6 md:p-10">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
+          <h1 className="text-xl font-semibold text-zinc-900">Carousel access unavailable</h1>
+          <p className="mt-2 text-sm text-zinc-700">You don’t have permission to edit this carousel.</p>
+        </div>
+      </main>
+    );
   }
 
   const { id } = await params;
