@@ -9,7 +9,7 @@ import {
   type CarouselSlideItem,
   type CarouselAspectRatio,
 } from "@/lib/carousel-gen/types";
-import { checkContrastRatio } from "@/lib/carousel-gen/brand-kits";
+import { checkContrastRatio } from "@/lib/carousel-gen/contrast";
 
 export interface PreflightIssue {
   id: string;

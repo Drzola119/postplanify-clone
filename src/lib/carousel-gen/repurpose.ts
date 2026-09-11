@@ -6,11 +6,7 @@
  * 2. Outline generator (Hook -> Stakes -> Value -> Receipts -> CTA)
  * 3. Surgical per-slide actions: Rewrite, Shorten, Change Tone, Translate (with Arabic RTL alignment)
  */
-import "server-only";
-import { createLogger } from "@/lib/log";
 import type { CarouselSlideItem, ExtendedSlideType } from "@/lib/carousel-gen/types";
-
-const log = createLogger("lib:carousel-gen:repurpose");
 
 // SSRF Protection: Reject private / loopback IP ranges
 function isUrlSafe(targetUrl: string): boolean {
