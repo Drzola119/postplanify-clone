@@ -18,7 +18,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { FieldValue } from "firebase-admin/firestore";
 import { randomUUID } from "node:crypto";
-import { requireSession } from "@/lib/auth/session-context";
+import { requireCarouselAccess as requireSession } from "@/lib/carousel-gen/access";
 import { adminDb } from "@/lib/firebase/admin";
 import { jsonError, jsonOk, parseBody } from "@/lib/validation/helpers";
 import { createLogger } from "@/lib/log";
@@ -41,7 +41,7 @@ const createSchema = z.object({
         slideIndex: z.number().int().min(0).max(49),
         text: z.string().max(2_000),
         backgroundImageUrl: z.string().url().max(2_048).optional(),
-      })
+      }),
     )
     .min(1)
     .max(20),
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     return jsonError(
       parsed.error?.status ?? 400,
       parsed.error?.message ?? "Invalid payload",
-      parsed.error?.issues
+      parsed.error?.issues,
     );
   }
   const body = parsed.data;

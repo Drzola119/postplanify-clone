@@ -11,7 +11,7 @@
  */
 import "server-only";
 import { NextRequest } from "next/server";
-import { requireSession } from "@/lib/auth/session-context";
+import { requireCarouselAccess as requireSession } from "@/lib/carousel-gen/access";
 import { resolvers } from "@/lib/security/server-config";
 import { generateCarouselScript } from "@/lib/carousel-gen/script-gen";
 import { carouselPreviewRequestSchema } from "@/lib/validation/carousel-gen";
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     return jsonError(
       parsed.error?.status ?? 400,
       parsed.error?.message ?? "Invalid payload",
-      parsed.error?.issues
+      parsed.error?.issues,
     );
   }
 
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   if (!groqApiKey) {
     return jsonError(
       503,
-      "Script generation is not configured (GROQ_API_KEY missing server-side)."
+      "Script generation is not configured (GROQ_API_KEY missing server-side).",
     );
   }
 
@@ -48,14 +48,10 @@ export async function POST(request: NextRequest) {
         niche: parsed.data.niche,
         tone: parsed.data.tone,
         ctaKeyword: parsed.data.ctaKeyword,
-        slideCount: (parsed.data.slideCount ?? 5) as
-          | 5
-          | 7
-          | 10
-          | 15,
+        slideCount: (parsed.data.slideCount ?? 5) as 5 | 7 | 10 | 15,
         outputLanguage: parsed.data.outputLanguage ?? "en",
       },
-      groqApiKey
+      groqApiKey,
     );
 
     logger.info("Carousel preview generated", {

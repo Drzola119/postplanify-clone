@@ -1,101 +1,42 @@
-# Carousel Studio Production-Ready Implementation Checklist
+# Carousel Studio implementation and verification
 
-This checklist tracks the end-to-end upgrade of Carousel Studio into a production-ready workspace for creating, editing, reviewing, organizing, exporting, and publishing social media carousels.
+Updated 11 September 2026. This replaces the earlier checklist, whose checked boxes overstated the implementation and verification.
 
----
+## Implemented
 
-## Phase 1: Canonical Document Model, Persistence & Stable Editor Route
-- [x] Establish canonical `CarouselDocument` & `CarouselSlideItem` types with stable slide IDs.
-- [x] Implement `document-service.ts` for Firestore CRUD with optimistic concurrency control and revisions.
-- [x] Implement debounced autosave API `/api/carousels/save` and document fetch `/api/carousels/[id]`.
-- [x] Build stable editor route `/dashboard/carousels/[id]/edit`.
-- [x] Ensure backward compatibility with existing legacy flattened/image-only carousels.
-- [x] Verification & Tests: Verified draft creation, autosave, recovery after refresh, and revision creation.
+- Canonical structured drafts, stable slide IDs, legacy image preservation, Firestore-safe serialization, transactional revision checks, automatic immutable content snapshots, and approval invalidation on material edits.
+- Serialized debounced saves, visible failures, retry, local recovery, unload protection, and safeguards against overwriting edits with late AI responses.
+- Responsive Studio with slide navigation, drag and keyboard-accessible movement, add/duplicate/delete/lock, undo/redo, text editing, typography, colors, layouts, image fit/opacity, safe-zone guides, and platform captions.
+- Shared server renderer for previews, export, review, thumbnails and publishing assets; bundled fonts; actual text measurements; overflow reporting; 1080-pixel-wide 1:1, 3:4, 4:5 and 9:16 outputs.
+- Ordered PNG ZIP, individual PNG and multipage PDF export, caption metadata, incomplete-export rejection, visible export failures and partial batch-export error manifests.
+- Library search across all records, status/date/brand/folder/platform filters, counts, pagination, previews, rename, duplicate, variant creation, archive/restore, batch tags/folders/archive/export, and delivery state from linked posts.
+- Visual template previews and independent editable drafts; save/use/delete workspace templates; brand-kit and campaign-folder management.
+- Revision history with pagination and restoration as a new revision. Legacy restore now changes the actual slide document.
+- Cryptographic expiring and revocable review tokens; revision-pinned guest review, slide/deck comments, resolve/reopen, approval and change requests; stale revisions cannot be approved. Guest names are explicitly self-reported.
+- Real AI outline generation, per-slide rewrite/shorten/hook/CTA/translation and caption generation; validated model output; request coalescing and a workspace request limit. Removed the unused fake AI implementations and their misleading tests.
+- Text/Markdown file import, pasted text and public article ingestion. URL requests validate all DNS addresses, pin the destination and revalidate redirects; byte/time limits apply.
+- Full ordered publishing handoff with revision identity, captions and media metadata; composer draft persistence retains the linkage; one durable post per handoff; failed persistence blocks delivery. Existing account selection, schedule/date/timezone and publishing infrastructure remain the delivery path.
+- Editing submitted work creates a draft revision and does not replace the already-submitted post. Earlier delivery is distinguished from the current revision.
+- Workspace membership and read/write role checks on carousel routes. Brand snapshots keep saved designs independent of later kit changes.
+- Analytics pagination cap removed; missing metrics reported as unavailable; selected-platform snapshots retained; A/B comparisons are directional and do not declare statistically established winners.
 
----
+## Verified locally
 
-## Phase 2: Professional Carousel Library Redesign
-- [x] Redesign `carousels-hub.tsx` with header, search, and status tabs (All, Drafts, In review, Scheduled, Published, Archived).
-- [x] Implement brand, campaign, and platform filters with real total counts.
-- [x] Replace fixed 60-item limit with cursor-based pagination / incremental loading.
-- [x] Upgrade carousel cards: Aspect-ratio cover preview, title, slide count, status badge, platform badges, last edited time.
-- [x] Implement card action menu: Rename, Duplicate as draft, Move to folder/campaign, Tags, History, Preflight, Export, Archive/Delete.
-- [x] Implement batch action bar: Multi-select, Batch Move, Batch Tag, Batch Archive, Batch ZIP export.
-- [x] Verification & Tests: Verified search, pagination, card actions, and batch operations.
+- Full Vitest suite: **99 files, 839 tests passed**, using one worker to fit available memory.
+- Regression coverage includes stale saves, undefined Firestore values, immutable snapshots, legacy images, approval invalidation, viewer permissions, expired/revoked review links, stale-review rejection, actual translated model output, locked-slide AI rejection, and failure-before-publishing behavior.
+- Real renderer/export tests verify exact PNG dimensions for all four ratios, byte-identical ordered ZIP images, caption inclusion, two-page PDF geometry, overflow detection, and incomplete asset rejection.
+- Inspected a generated portrait PNG visually: bundled typography, padding, body text and numbering render correctly.
+- TypeScript checks passed. Final `npm run build` completed successfully, including TypeScript, page-data collection and prerendering.
+- Scoped ESLint: **0 errors**, four image-element advisories for renderer-generated previews.
+- The successful build reports existing middleware deprecation and broad file-tracing warnings involving `next.config.ts` / the chunks route.
 
----
+## Verification limits and operational notes
 
-## Phase 3: Structured Visual Editor & Slide Canvas
-- [x] Implement 3-column responsive layout (`studio-container.tsx`): Left slide navigator, Center slide canvas, Right inspector.
-- [x] Build high-fidelity rendering engine (`slide-canvas.tsx`) supporting 1:1 (Square), 4:5 (Portrait), 9:16 (Story) aspect ratios.
-- [x] Implement slide operations: Add, duplicate, reorder (drag & keyboard accessible), delete, lock elements with stable IDs.
-- [x] Implement full in-session Undo/Redo stack.
-- [x] Slide Inspector: Typography (font family, weight, size, alignment, line height), colors, background media/crop/opacity, layout presets.
-- [x] Deck Inspector: Global theme styling, brand kit applicator, safe zone guides toggle, slide numbering toggle.
-- [x] Studio Toolbar: Inline title editing, save status pill (Saved/Saving/Unsaved/Failed), Preflight check, Review, Export, Schedule actions.
-- [x] Verification & Tests: Tested slide reordering, text edits, undo/redo, and responsive panel views.
-
----
-
-## Phase 4: Visual Template Gallery & Workspace Brand Kits
-- [x] Upgrade templates (`carousel-templates.ts`) with structured slide definitions for 10 curated use cases.
-- [x] Upgrade `carousel-templates-grid.tsx` with multi-slide visual previews, category filters, and "Use Template" action.
-- [x] Build workspace Brand Kit manager (`brand-kits.ts`, `/api/carousels/brand-kits`) supporting palettes, fonts, logos, handles, and WCAG AA contrast validation.
-- [x] Support saving any deck as a custom workspace template.
-- [x] Verification & Tests: Applied brand kits to templates and verified dynamic re-skinning and WCAG contrast feedback.
-
----
-
-## Phase 5: Preflight Validation, Dimension-Exact Export & Scheduling Handoff
-- [x] Build Preflight engine (`preflight.ts`, `preflight-modal.tsx`) checking contrast ratio, mobile font size, text overflow, safe zones, missing assets, and unrendered edits.
-- [x] Build Export Service (`export-service.ts`, `export-modal.tsx`):
-  - Multi-page PDF generation with exact canvas dimensions (1:1, 4:5, 9:16).
-  - High-res PNG ZIP export with ordered filenames (`01-hook.png`, etc.).
-  - Single-slide PNG download.
-- [x] Repair and enhance scheduling handoff to `/dashboard/posts/create`:
-  - Transfer entire ordered deck of image URLs, aspect ratio, caption, and schedule timestamp.
-  - Bidirectional link updating carousel status to `scheduled` or `published` once confirmed.
-- [x] Verification & Tests: Verified PDF/PNG ZIP export dimensions and scheduler handoff payload.
-
----
-
-## Phase 6: Revision-Based Client Review & Approvals
-- [x] Build public tokenized review portal (`/review/carousel/[token]`):
-  - Read-only slide deck viewer.
-  - Slide-specific pinned comments and deck-level comments.
-  - Guest display name entry or authenticated reviewer.
-  - Approve Revision / Request Changes actions.
-- [x] Review API (`/api/carousels/review`):
-  - Generate/revoke unguessable review links.
-  - Invalidate approval when material changes are made in a new revision.
-- [x] Verification & Tests: Tested token generation, comment creation, approval submission, and edit invalidation.
-
----
-
-## Phase 7: Content Repurposing & Surgical AI Refinements
-- [x] Build Repurpose Service (`repurpose.ts`, `/api/carousels/repurpose`):
-  - Ingest pasted text, public URL (with SSRF protection), or uploaded documents.
-  - Generate an editable Outline step (Hook, Progression, Body, CTA) before slide creation.
-- [x] Per-slide surgical AI actions: Rewrite slide, Shorten text, Punch up hook, Suggest CTAs, Translate (with Arabic RTL safe zone adjustment).
-- [x] Automatic social caption generator.
-- [x] Verification & Tests: Verified URL safety, outline generation, and surgical single-slide replacement.
-
----
-
-## Phase 8: Campaigns, Folders, Bulk Operations & Analytics Rigor
-- [x] Implement Campaign & Folder service (`campaign-service.ts`, `/api/carousels/folders`): Create, rename, delete folders without losing carousels.
-- [x] Upgrade Carousel Analytics (`carousel-analytics-view.tsx`):
-  - Honest data states (Not Synced, Zero, Sync Failed, Stale timestamp).
-  - Platform-specific breakdowns.
-- [x] Upgrade A/B Variant Comparison (`carousel-ab-compare-view.tsx`, `/api/carousels/duplicate`):
-  - Duplicate carousel into variant B.
-  - Statistical significance indicators with sample size warnings.
-- [x] Verification & Tests: Verified folder filtering, analytics error handling, and A/B comparison calculations.
-
----
-
-## Phase 9: Full Verification, Polish & Git Auto-Push
-- [x] Run full typecheck (`npx tsc --noEmit` -> 0 errors).
-- [x] Run test suite (`npm run test:run` -> 95 test files passed, 807/807 tests passed).
-- [x] Stage and commit all task-related changes.
-- [x] Push commits to `origin/main`.
+- Authenticated browser testing could not run: the local browser automation runtime failed with `failed to write kernel assets` (Windows path error). Automated tests are not a substitute for that remaining browser smoke test.
+- No real customer post was published, no client message was sent, and no paid AI request was made as a test. Connected-provider delivery, configured AI credentials and live client-review flows require an authenticated environment.
+- The initial build compiled successfully but was interrupted when concurrent test workers exhausted host memory. Final build runs without test workers.
+- Document import currently supports plain `.txt` and `.md`, not PDF or Word extraction. The editor is a structured slide editor, not an arbitrary freeform object canvas.
+- Color contrast checks on backgrounds containing images require visual review. Supplied external image URLs must remain available; render/export failures are surfaced.
+- Library substring search scans lightweight metadata in bounded batches; large workspaces should eventually use a dedicated search index. No silent 60/100-record cap remains.
+- AI caption/outline content supports the configured language choices; a complete translation of every Studio interface label is not claimed.
+- Git changes are limited to this task. Unrelated video workflow edits and existing scripts are excluded from the commit.

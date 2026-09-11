@@ -1,22 +1,19 @@
 "use client";
+import { useModalFocus } from "./use-modal-focus";
 
 import { useState } from "react";
-import {
-  Download,
-  FileText,
-  Archive,
-  Image as ImageIcon,
-  Loader2,
-  CheckCircle2,
-  X,
-} from "lucide-react";
+import { Download, FileText, Archive, Loader2, X } from "lucide-react";
 import type { CarouselDocument } from "@/lib/carousel-gen/types";
-import { exportCarouselToZip, exportCarouselToPdf } from "@/lib/carousel-gen/export-service";
+import {
+  exportCarouselToZip,
+  exportCarouselToPdf,
+} from "@/lib/carousel-gen/export-service";
 
 interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
   deck: CarouselDocument;
+  activeSlideIndex?: number;
   renderSlideToDataUrl: (slideIndex: number) => Promise<string>;
 }
 
@@ -24,15 +21,21 @@ export function ExportModal({
   isOpen,
   onClose,
   deck,
+  activeSlideIndex = 0,
   renderSlideToDataUrl,
 }: ExportModalProps) {
-  const [exportingType, setExportingType] = useState<"zip" | "pdf" | "single" | null>(null);
+  const [exportingType, setExportingType] = useState<
+    "zip" | "pdf" | "single" | null
+  >(null);
+  const [error, setError] = useState("");
   const [progress, setProgress] = useState<number>(0);
 
+  const modalRef = useModalFocus(isOpen, onClose);
   if (!isOpen) return null;
 
   async function handleExportZip() {
     try {
+      setError("");
       setExportingType("zip");
       setProgress(10);
 
@@ -53,7 +56,7 @@ export function ExportModal({
       a.click();
       URL.revokeObjectURL(downloadUrl);
     } catch (err) {
-      console.error("Export failed:", err);
+      setError(err instanceof Error ? err.message : "Export failed");
     } finally {
       setExportingType(null);
       setProgress(0);
@@ -62,6 +65,7 @@ export function ExportModal({
 
   async function handleExportPdf() {
     try {
+      setError("");
       setExportingType("pdf");
       setProgress(10);
 
@@ -82,7 +86,7 @@ export function ExportModal({
       a.click();
       URL.revokeObjectURL(downloadUrl);
     } catch (err) {
-      console.error("PDF Export failed:", err);
+      setError(err instanceof Error ? err.message : "Export failed");
     } finally {
       setExportingType(null);
       setProgress(0);
@@ -90,13 +94,22 @@ export function ExportModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+    <div
+      ref={modalRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Export carousel"
+      tabIndex={-1}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+    >
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Download className="w-5 h-5 text-amber-500" />
-            <h3 className="text-sm font-bold text-white">Export Carousel Assets</h3>
+            <h3 className="text-sm font-bold text-white">
+              Export Carousel Assets
+            </h3>
           </div>
           <button
             type="button"
@@ -125,7 +138,8 @@ export function ExportModal({
                   Multi-Page PDF Document
                 </h4>
                 <p className="text-[11px] text-zinc-400 mt-0.5">
-                  Exact {deck.aspectRatio} dimensions for LinkedIn documents & client decks.
+                  Exact {deck.aspectRatio} dimensions for LinkedIn documents &
+                  client decks.
                 </p>
               </div>
             </div>
@@ -152,7 +166,8 @@ export function ExportModal({
                   High-Res PNG ZIP Archive
                 </h4>
                 <p className="text-[11px] text-zinc-400 mt-0.5">
-                  Ordered slides (01-hook.png, etc.) + caption metadata for Instagram/TikTok.
+                  Ordered slides (01-hook.png, etc.) + caption metadata for
+                  Instagram/TikTok.
                 </p>
               </div>
             </div>
@@ -163,6 +178,32 @@ export function ExportModal({
             )}
           </button>
 
+          <button
+            disabled={exportingType !== null}
+            className="w-full p-4 border rounded-xl text-left"
+            onClick={async () => {
+              setExportingType("single");
+              setError("");
+              try {
+                const url = await renderSlideToDataUrl(activeSlideIndex);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `slide-${activeSlideIndex + 1}.png`;
+                a.click();
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "Export failed");
+              } finally {
+                setExportingType(null);
+              }
+            }}
+          >
+            Download current slide as PNG
+          </button>
+          {error && (
+            <p role="alert" className="text-red-300">
+              {error}
+            </p>
+          )}
           {/* Progress bar if active */}
           {exportingType && (
             <div className="pt-2 space-y-1">

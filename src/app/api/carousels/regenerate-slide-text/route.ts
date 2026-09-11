@@ -13,7 +13,7 @@
 import "server-only";
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { requireSession } from "@/lib/auth/session-context";
+import { requireCarouselAccess as requireSession } from "@/lib/carousel-gen/access";
 import { resolvers } from "@/lib/security/server-config";
 import { callGroq, GROQ_TEXT_MODEL } from "@/lib/ai/groq";
 import { jsonError, jsonOk, parseBody } from "@/lib/validation/helpers";
@@ -50,8 +50,7 @@ const ROLE_GUIDANCE: Record<SlideType, string> = {
   receipts:
     "This is the RECEIPTS slide. One piece of real proof — a screenshot, a checkable number, a verifiable fact. " +
     "Specific, not vague. Plausible, concrete.",
-  cta:
-    "This is the CTA slide. The CTA keyword is the visual focus. No second ask, no extra links.",
+  cta: "This is the CTA slide. The CTA keyword is the visual focus. No second ask, no extra links.",
 };
 
 export async function POST(request: NextRequest) {
@@ -63,7 +62,7 @@ export async function POST(request: NextRequest) {
     return jsonError(
       parsed.error?.status ?? 400,
       parsed.error?.message ?? "Invalid payload",
-      parsed.error?.issues
+      parsed.error?.issues,
     );
   }
   const body = parsed.data;
@@ -72,7 +71,7 @@ export async function POST(request: NextRequest) {
   if (!groqApiKey) {
     return jsonError(
       503,
-      "Slide rewrite is not configured (GROQ_API_KEY missing server-side)."
+      "Slide rewrite is not configured (GROQ_API_KEY missing server-side).",
     );
   }
 
@@ -94,7 +93,9 @@ Hard rules:
     body.niche ? `Niche: ${body.niche}` : null,
     body.tone ? `Tone: ${body.tone}` : null,
     `Output language: ${body.outputLanguage}`,
-    body.slide.type === "cta" ? `CTA keyword (must appear verbatim on this slide): ${body.ctaKeyword}` : null,
+    body.slide.type === "cta"
+      ? `CTA keyword (must appear verbatim on this slide): ${body.ctaKeyword}`
+      : null,
     "",
     `Current slide copy (the rewrite should be a fresh angle on the same idea — not a typo fix):`,
     `headline: ${body.slide.headline}`,
@@ -158,7 +159,10 @@ function parseJsonObject(raw: string): Record<string, unknown> | null {
   const trimmed = raw.trim();
   const candidates: string[] = [
     trimmed,
-    trimmed.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim(),
+    trimmed
+      .replace(/^```(?:json)?/i, "")
+      .replace(/```$/, "")
+      .trim(),
   ];
   for (const c of candidates) {
     if (!c) continue;

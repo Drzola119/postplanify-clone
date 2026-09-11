@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { RevisionHistory } from "./revision-history";
 import { StudioToolbar } from "./studio-toolbar";
 import { SlideNavigator } from "./slide-navigator";
 import { SlideCanvas } from "./slide-canvas";
@@ -10,13 +12,13 @@ import { DeckInspector } from "./deck-inspector";
 import { PreflightModal } from "./preflight-modal";
 import { ExportModal } from "./export-modal";
 import { runPreflightChecks } from "@/lib/carousel-gen/preflight";
-import { applySurgicalRefinement } from "@/lib/carousel-gen/repurpose";
+import { useDraftSave, editableDocument } from "./use-draft-save";
 import type {
   CarouselDocument,
   CarouselSlideItem,
   BrandKit,
 } from "@/lib/carousel-gen/types";
-import { Sliders, Layout, Eye, Layers } from "lucide-react";
+import { Sliders, Layout } from "lucide-react";
 
 interface StudioContainerProps {
   initialDocument: CarouselDocument;
@@ -31,77 +33,57 @@ export function StudioContainer({
 
   // Document State
   const [deck, setDeck] = useState<CarouselDocument>(initialDocument);
+  const latestDeck = useRef(deck);
+  latestDeck.current = deck;
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<"slide" | "deck">("slide");
   const [showSafeZones, setShowSafeZones] = useState(false);
 
-  // Autosave State
-  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved" | "failed">("saved");
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
+  const saving = useDraftSave(deck);
+  const saveStatus = saving.status;
+  const [actionError, setActionError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [recovery, setRecovery] = useState<Partial<CarouselDocument> | null>(
+    null,
+  );
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(saving.key);
+      if (raw) setRecovery(JSON.parse(raw).document);
+    } catch {}
+  }, [saving.key]);
   // In-session Undo / Redo History
   const [history, setHistory] = useState<CarouselDocument[]>([initialDocument]);
   const [historyIndex, setHistoryIndex] = useState(0);
+  const historyIndexRef=useRef(0);
+  useEffect(()=>{setActiveSlideIndex(index=>Math.min(index,deck.slides.length-1));},[deck.slides.length]);
 
   // Modals
   const [isPreflightOpen, setIsPreflightOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
-  const [reviewToken, setReviewToken] = useState<string | null>(initialDocument.activeReviewToken || null);
+  const [reviewToken, setReviewToken] = useState<string | null>(
+    initialDocument.activeReviewToken || null,
+  );
 
   const activeSlide = deck.slides[activeSlideIndex] || deck.slides[0];
 
   // Helper to push changes to undo history
-  const pushHistory = useCallback((nextDeck: CarouselDocument) => {
-    setHistory((prev) => {
-      const upToCurrent = prev.slice(0, historyIndex + 1);
-      return [...upToCurrent, nextDeck];
-    });
-    setHistoryIndex((prev) => prev + 1);
-  }, [historyIndex]);
-
-  // Debounced Autosave Effect
-  useEffect(() => {
-    if (saveStatus === "saving" || saveStatus === "saved") return;
-
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-
-    saveTimeoutRef.current = setTimeout(async () => {
-      try {
-        setSaveStatus("saving");
-        const res = await fetch(`/api/carousels/${deck.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: deck.title,
-            description: deck.description,
-            aspectRatio: deck.aspectRatio,
-            brandKitId: deck.brandKitId,
-            campaignId: deck.campaignId,
-            folderId: deck.folderId,
-            tags: deck.tags,
-            slides: deck.slides,
-            style: deck.style,
-            caption: deck.caption,
-            reviewStatus: deck.reviewStatus,
-          }),
-        });
-        if (res.ok) {
-          setSaveStatus("saved");
-        } else {
-          setSaveStatus("failed");
-        }
-      } catch (err) {
-        setSaveStatus("failed");
-      }
-    }, 1500);
-
-    return () => {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    };
-  }, [deck, saveStatus]);
+  const pushHistory = useCallback(
+    (nextDeck: CarouselDocument) => {
+      const nextIndex=historyIndexRef.current+1;
+      historyIndexRef.current=nextIndex;
+      setHistory((prev) => {
+        const upToCurrent = prev.slice(0, nextIndex);
+        return [...upToCurrent, nextDeck];
+      });
+      setHistoryIndex(nextIndex);
+    },
+    [],
+  );
 
   // Slide CRUD & Updates
   function updateSlide(updates: Partial<CarouselSlideItem>) {
+    if (activeSlide.isLocked) return;
     const nextSlides = [...deck.slides];
     nextSlides[activeSlideIndex] = {
       ...nextSlides[activeSlideIndex],
@@ -109,20 +91,21 @@ export function StudioContainer({
     };
     const nextDeck = { ...deck, slides: nextSlides };
     setDeck(nextDeck);
-    setSaveStatus("unsaved");
+
     pushHistory(nextDeck);
   }
 
   function updateDeck(updates: Partial<CarouselDocument>) {
     const nextDeck = { ...deck, ...updates };
     setDeck(nextDeck);
-    setSaveStatus("unsaved");
+
     pushHistory(nextDeck);
   }
 
   function handleAddSlide() {
+    if (deck.slides.length >= 30) return;
     const newSlide: CarouselSlideItem = {
-      id: "sld_" + Math.random().toString(36).substring(2, 9),
+      id: "sld_" + crypto.randomUUID(),
       index: deck.slides.length,
       type: "value",
       headline: "New Key Point",
@@ -138,41 +121,56 @@ export function StudioContainer({
     };
     setDeck(nextDeck);
     setActiveSlideIndex(deck.slides.length);
-    setSaveStatus("unsaved");
+
     pushHistory(nextDeck);
   }
 
   function handleDuplicateSlide(index: number) {
+    if (deck.slides.length >= 30) return;
     const target = deck.slides[index];
     const duplicated: CarouselSlideItem = {
       ...target,
-      id: "sld_" + Math.random().toString(36).substring(2, 9),
+      id: "sld_" + crypto.randomUUID(),
       headline: `${target.headline} (Copy)`,
       index: index + 1,
     };
     const nextSlides = [...deck.slides];
     nextSlides.splice(index + 1, 0, duplicated);
     const reindexed = nextSlides.map((s, idx) => ({ ...s, index: idx }));
-    const nextDeck = { ...deck, slides: reindexed, slideCount: reindexed.length };
+    const nextDeck = {
+      ...deck,
+      slides: reindexed,
+      slideCount: reindexed.length,
+    };
     setDeck(nextDeck);
     setActiveSlideIndex(index + 1);
-    setSaveStatus("unsaved");
+
     pushHistory(nextDeck);
   }
 
   function handleDeleteSlide(index: number) {
-    if (deck.slides.length <= 2) return;
+    if (deck.slides.length <= 1 || deck.slides[index].isLocked) return;
     const nextSlides = deck.slides.filter((_, idx) => idx !== index);
     const reindexed = nextSlides.map((s, idx) => ({ ...s, index: idx }));
-    const nextDeck = { ...deck, slides: reindexed, slideCount: reindexed.length };
+    const nextDeck = {
+      ...deck,
+      slides: reindexed,
+      slideCount: reindexed.length,
+    };
     setDeck(nextDeck);
     setActiveSlideIndex(Math.max(0, index - 1));
-    setSaveStatus("unsaved");
+
     pushHistory(nextDeck);
   }
 
   function handleMoveSlide(fromIndex: number, toIndex: number) {
-    if (toIndex < 0 || toIndex >= deck.slides.length) return;
+    if (
+      toIndex < 0 ||
+      toIndex >= deck.slides.length ||
+      deck.slides[fromIndex].isLocked ||
+      deck.slides[toIndex].isLocked
+    )
+      return;
     const nextSlides = [...deck.slides];
     const [moved] = nextSlides.splice(fromIndex, 1);
     nextSlides.splice(toIndex, 0, moved);
@@ -180,7 +178,7 @@ export function StudioContainer({
     const nextDeck = { ...deck, slides: reindexed };
     setDeck(nextDeck);
     setActiveSlideIndex(toIndex);
-    setSaveStatus("unsaved");
+
     pushHistory(nextDeck);
   }
 
@@ -192,101 +190,167 @@ export function StudioContainer({
     };
     const nextDeck = { ...deck, slides: nextSlides };
     setDeck(nextDeck);
-    setSaveStatus("unsaved");
+    pushHistory(nextDeck);
   }
 
-  function handleApplyAIAction(
-    action: "shorten" | "punch_up" | "translate",
-    targetLanguage?: "ar" | "fr"
+  async function handleApplyAIAction(
+    action: "rewrite" | "shorten" | "punch_up" | "translate" | "cta",
+    targetLanguage?: "ar" | "fr",
   ) {
-    const refined = applySurgicalRefinement({
-      slide: activeSlide,
-      action,
-      targetLanguage,
-    });
-    updateSlide(refined);
+    if (busy || activeSlide.isLocked) return;
+    setBusy(true);
+    setActionError("");
+    const original = activeSlide;
+    try {
+      const response = await fetch("/api/carousels/refine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slide: original, action, targetLanguage }),
+      });
+      const result = await response.json();
+      if (!response.ok)
+        throw Error(result.error?.message || "AI action failed");
+      const current = latestDeck.current;
+      const index = current.slides.findIndex((s) => s.id === original.id);
+      if (
+        index < 0 ||
+        JSON.stringify(current.slides[index]) !== JSON.stringify(original)
+      )
+        throw Error(
+          "This slide changed while AI was working. Run the action again to preserve your edits.",
+        );
+      const next = {
+        ...current,
+        slides: current.slides.map((s, i) =>
+          i === index ? { ...s, ...result.slide, id: s.id, index: i } : s,
+        ),
+      };
+      setDeck(next);
+      pushHistory(next);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "AI action failed");
+    } finally {
+      setBusy(false);
+    }
   }
 
   // Undo / Redo
   function handleUndo() {
     if (historyIndex > 0) {
       const prevIndex = historyIndex - 1;
+      historyIndexRef.current=prevIndex;
       setHistoryIndex(prevIndex);
       setDeck(history[prevIndex]);
-      setSaveStatus("unsaved");
     }
   }
 
   function handleRedo() {
     if (historyIndex < history.length - 1) {
       const nextIndex = historyIndex + 1;
+      historyIndexRef.current=nextIndex;
       setHistoryIndex(nextIndex);
       setDeck(history[nextIndex]);
-      setSaveStatus("unsaved");
     }
   }
 
-  // Generate / View Review Link
-  async function handleOpenReview() {
-    if (!reviewToken) {
-      try {
-        const res = await fetch("/api/carousels/review", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "generate_token",
-            carouselId: deck.id,
-          }),
-        });
-        const json = await res.json();
-        if (json.data?.activeReviewToken) {
-          setReviewToken(json.data.activeReviewToken);
-          navigator.clipboard.writeText(
-            `${window.location.origin}/review/carousel/${json.data.activeReviewToken}`
-          );
-          alert("Review link copied to clipboard!");
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    } else {
-      navigator.clipboard.writeText(
-        `${window.location.origin}/review/carousel/${reviewToken}`
+  async function generateCaption() {
+    if (busy) return;
+    setBusy(true);
+    setActionError("");
+    const before = latestDeck.current.caption;
+    try {
+      const saved = await saving.flush();
+      const response = await fetch("/api/carousels/caption", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          carouselId: deck.id,
+          revisionId: saved.currentRevisionId,
+          language: /[\u0600-\u06ff]/.test(deck.slides[0]?.headline || "")
+            ? "ar"
+            : "en",
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok)
+        throw Error(result.error?.message || "Caption generation failed");
+      if (latestDeck.current.caption !== before)
+        throw Error("Your caption changed while AI was working. Try again.");
+      const next = { ...latestDeck.current, caption: result.caption };
+      setDeck(next);
+      pushHistory(next);
+      setActiveTab("deck");
+    } catch (e) {
+      setActionError(
+        e instanceof Error ? e.message : "Caption generation failed",
       );
-      alert("Review link copied to clipboard!");
+    } finally {
+      setBusy(false);
     }
   }
 
-  // Scheduling Handoff to /dashboard/posts/create
-  function handleScheduleHandoff() {
-    // Pass carousel deck details and media URLs
-    const params = new URLSearchParams({
-      carouselId: deck.id,
-      title: deck.title,
-      caption: deck.caption || "",
-      slideCount: String(deck.slides.length),
-      aspectRatio: deck.aspectRatio,
-    });
-    router.push(`/dashboard/posts/create?${params.toString()}`);
+  async function handleOpenReview() {
+    setActionError("");
+    try {
+      const saved = await saving.flush();
+      const response = await fetch("/api/carousels/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "generate_token",
+          carouselId: deck.id,
+          revisionId: saved.currentRevisionId,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok)
+        throw Error(result.error?.message || "Could not share review");
+      setReviewToken(result.activeReviewToken);
+      await navigator.clipboard.writeText(
+        `${window.location.origin}/review/carousel/${result.activeReviewToken}`,
+      );
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Sharing failed");
+    }
   }
-
-  // Fake slide render for export modal
+  async function handleScheduleHandoff() {
+    setBusy(true);
+    setActionError("");
+    try {
+      const saved = await saving.flush();
+      const response = await fetch("/api/carousels/handoff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          carouselId: deck.id,
+          revisionId: saved.currentRevisionId,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok)
+        throw Error(result.error?.message || "Could not prepare slides");
+      router.push(
+        `/dashboard/posts/create?carouselHandoff=${encodeURIComponent(result.handoffId)}`,
+      );
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Scheduling failed");
+    } finally {
+      setBusy(false);
+    }
+  }
   async function renderSlideToDataUrl(slideIndex: number): Promise<string> {
-    // Generate a clean dummy PNG canvas representation
-    const canvas = document.createElement("canvas");
-    canvas.width = 1080;
-    canvas.height = deck.aspectRatio === "1:1" ? 1080 : deck.aspectRatio === "4:5" ? 1350 : 1920;
-    const ctx = canvas.getContext("2d");
-    if (ctx) {
-      ctx.fillStyle = deck.style.colors.background || "#ffffff";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = deck.style.colors.primary || "#0f172a";
-      ctx.font = "bold 60px sans-serif";
-      ctx.fillText(deck.slides[slideIndex]?.headline || "Slide", 100, 300);
-      ctx.font = "32px sans-serif";
-      ctx.fillText(deck.slides[slideIndex]?.body || "", 100, 450);
-    }
-    return canvas.toDataURL("image/png");
+    const response = await fetch("/api/carousels/render", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deck: { ...editableDocument(deck), brandSnapshot: deck.brandSnapshot },
+        index: slideIndex,
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw Error(result.error?.message || "Rendering failed");
+    if (result.issues?.length) throw Error(result.issues.join(" "));
+    return result.dataUrl;
   }
 
   const preflightReport = runPreflightChecks(deck);
@@ -298,7 +362,7 @@ export function StudioContainer({
         title={deck.title}
         onTitleChange={(title) => updateDeck({ title })}
         saveStatus={saveStatus}
-        onRetrySave={() => setSaveStatus("unsaved")}
+        onRetrySave={() => void saving.flush().catch(() => {})}
         canUndo={historyIndex > 0}
         canRedo={historyIndex < history.length - 1}
         onUndo={handleUndo}
@@ -309,10 +373,85 @@ export function StudioContainer({
         onSchedule={handleScheduleHandoff}
       />
 
+      <RevisionHistory carouselId={deck.id} flush={saving.flush} />
+      <button
+        disabled={busy}
+        onClick={() => void generateCaption()}
+        className="text-sm p-3 text-left"
+      >
+        Generate caption with AI
+      </button>
+      {(saving.error || actionError) && (
+        <p role="alert" className="p-4 bg-red-950 text-red-100">
+          {saving.error || actionError}
+        </p>
+      )}
+      {busy && (
+        <p role="status" className="p-3">
+          Preparing your carousel…
+        </p>
+      )}
+      {recovery && (
+        <div className="p-3 bg-amber-950">
+          Unsaved changes from an earlier session are available.{" "}
+          <button
+            onClick={() => {
+              updateDeck(recovery);
+              setRecovery(null);
+            }}
+          >
+            Restore local changes
+          </button>{" "}
+          <button
+            onClick={() => {
+              localStorage.removeItem(saving.key);
+              setRecovery(null);
+            }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+      {reviewToken && (
+        <div className="p-3 flex gap-4">
+          <a
+            target="_blank"
+            rel="noreferrer"
+            href={`/review/carousel/${reviewToken}`}
+          >
+            Open review link (expires in 7 days)
+          </a>
+          <button
+            onClick={async () => {
+              const r = await fetch("/api/carousels/review", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "revoke_token",
+                  carouselId: deck.id,
+                }),
+              });
+              if (r.ok) setReviewToken(null);
+              else setActionError("Could not revoke link");
+            }}
+          >
+            Revoke link
+          </button>
+        </div>
+      )}
+      {deck.scheduling?.postId && (
+        <p className="p-3 text-sm">
+          A revision of this deck is linked to a post. Editing this draft does
+          not replace assets already scheduled or published.{" "}
+          <Link className="underline" href="/dashboard/posts">
+            View posts
+          </Link>
+        </p>
+      )}
       {/* 3-Column Responsive Studio Workspace */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Left Column: Slide Strip / Navigator */}
-        <aside className="w-64 shrink-0 hidden md:block">
+        <aside className="w-full lg:w-64 max-h-64 lg:max-h-none shrink-0 overflow-auto">
           <SlideNavigator
             slides={deck.slides}
             activeSlideIndex={activeSlideIndex}
@@ -330,6 +469,7 @@ export function StudioContainer({
           <SlideCanvas
             deck={deck}
             slide={activeSlide}
+            onEdit={(updates) => updateSlide(updates)}
             slideIndex={activeSlideIndex}
             totalSlides={deck.slides.length}
             showSafeZones={showSafeZones}
@@ -341,7 +481,9 @@ export function StudioContainer({
             <button
               type="button"
               disabled={activeSlideIndex === 0}
-              onClick={() => setActiveSlideIndex((prev) => Math.max(0, prev - 1))}
+              onClick={() =>
+                setActiveSlideIndex((prev) => Math.max(0, prev - 1))
+              }
               className="px-3 py-1 bg-zinc-800 rounded text-xs font-semibold"
             >
               Prev
@@ -352,7 +494,11 @@ export function StudioContainer({
             <button
               type="button"
               disabled={activeSlideIndex === deck.slides.length - 1}
-              onClick={() => setActiveSlideIndex((prev) => Math.min(deck.slides.length - 1, prev + 1))}
+              onClick={() =>
+                setActiveSlideIndex((prev) =>
+                  Math.min(deck.slides.length - 1, prev + 1),
+                )
+              }
               className="px-3 py-1 bg-zinc-800 rounded text-xs font-semibold"
             >
               Next
@@ -361,7 +507,7 @@ export function StudioContainer({
         </main>
 
         {/* Right Column: Contextual Inspector Panels */}
-        <aside className="w-80 shrink-0 hidden lg:flex flex-col">
+        <aside className="w-full lg:w-80 shrink-0 flex flex-col">
           {/* Tab Switcher */}
           <div className="grid grid-cols-2 p-1 bg-zinc-900 border-b border-zinc-800">
             <button
@@ -405,7 +551,13 @@ export function StudioContainer({
                 showSafeZones={showSafeZones}
                 onToggleSafeZones={() => setShowSafeZones((prev) => !prev)}
                 onUpdateDeck={updateDeck}
-                onSelectBrandKit={(kitId) => updateDeck({ brandKitId: kitId || null })}
+                onSelectBrandKit={(kitId) => {
+                  const kit = brandKits.find((k) => k.id === kitId);
+                  updateDeck({
+                    brandKitId: kitId || null,
+                    brandSnapshot: kit || null,
+                  });
+                }}
               />
             )}
           </div>
@@ -425,6 +577,7 @@ export function StudioContainer({
         isOpen={isExportOpen}
         onClose={() => setIsExportOpen(false)}
         deck={deck}
+        activeSlideIndex={activeSlideIndex}
         renderSlideToDataUrl={renderSlideToDataUrl}
       />
     </div>

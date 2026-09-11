@@ -19,6 +19,7 @@ function publishErrorStatus(message: string): number {
 
 const publishPayloadSchema = z.object({
   jobId: z.string().optional(),
+  carouselHandoffId:z.string().max(120).regex(/^[a-zA-Z0-9_-]+$/).optional(),
   uploadPostUsername: z.string().optional(),
   platforms: z.array(z.string().min(1)).min(1),
   caption: z.string().min(1),
@@ -130,8 +131,9 @@ export async function POST(request: Request) {
       sameForAll: body.sameForAll,
       advancedByPlatform: body.advancedByPlatform as Record<string, Record<string, unknown>> | undefined,
       mediaType: body.mediaType,
-    });
+    }, ...(body.carouselHandoffId ? [body.carouselHandoffId] as [string] : [] as []));
   } catch (err) {
+    if(body.carouselHandoffId)return NextResponse.json({error:err instanceof Error?err.message:'Could not save carousel post'},{status:409});
     // Firestore unavailable — fall back to stateless publish so the existing
     // composer UX still works during Hostinger env-var setup.
     log.warn("Firestore write failed; publishing stateless", { err });

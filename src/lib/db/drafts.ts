@@ -59,6 +59,7 @@ export async function saveDraft(workspaceId: string, authorUid: string, input: {
   const ref = input.id ? coll.doc(input.id) : coll.doc();
   const now = SERVER_TIMESTAMP;
   const raw: Record<string, unknown> = {
+    carouselHandoffId: input.carouselHandoffId,
     caption: input.caption ?? "",
     platforms: input.platforms ?? [],
     mediaItems: input.mediaItems ?? [],

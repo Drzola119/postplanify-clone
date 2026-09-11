@@ -272,7 +272,7 @@ export interface CarouselJobDoc {
 // Production-Ready Carousel Document & Visual Studio Model
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type CarouselAspectRatio = "1:1" | "4:5" | "9:16";
+export type CarouselAspectRatio = "1:1" | "3:4" | "4:5" | "9:16";
 
 export interface CanvasDimensions {
   width: number;
@@ -281,6 +281,7 @@ export interface CanvasDimensions {
 
 export const ASPECT_RATIO_DIMENSIONS: Record<CarouselAspectRatio, CanvasDimensions> = {
   "1:1": { width: 1080, height: 1080 },
+  "3:4": { width: 1080, height: 1440 },
   "4:5": { width: 1080, height: 1350 },
   "9:16": { width: 1080, height: 1920 },
 };
@@ -343,6 +344,9 @@ export interface CarouselSlideItem {
   textAlign?: "left" | "center" | "right";
   /** Font size scale factor (0.8 - 1.5) */
   fontSizeScale?: number;
+  fontWeight?: 400 | 700;
+  lineHeight?: number;
+  letterSpacing?: number;
   /** Lock flag to protect slide from bulk AI changes */
   isLocked?: boolean;
   /** High-res rendered image URL (Bunny CDN / Firebase storage) */
@@ -471,6 +475,10 @@ export interface CarouselDocument {
   aspectRatio: CarouselAspectRatio;
   dimensions: CanvasDimensions;
   brandKitId?: string | null;
+  brandSnapshot?: BrandKit | null;
+  showSlideNumbers?: boolean;
+  reviewExpiresAt?: number | null;
+  reviewRevisionId?: string | null;
   style: CarouselStyle;
   slides: CarouselSlideItem[];
   slideCount: number;
@@ -492,7 +500,7 @@ export interface CarouselDocument {
     engagementRate: number;
     lastSyncedAt?: number;
     syncStatus: "idle" | "synced" | "failed" | "stale";
-    platformMetrics?: Record<string, any>;
+    platformMetrics?: Record<string, unknown>;
   };
   variantGroupId?: string | null;
   variantLabel?: "A" | "B" | null;
@@ -504,4 +512,3 @@ export interface CarouselDocument {
   createdBy: string;
   updatedBy?: string;
 }
-

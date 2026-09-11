@@ -6,11 +6,10 @@
  * - PNG ZIP archive with structured zero-padded filenames (01-hook.png, etc.)
  * - Slide-by-slide image rendering
  */
-import jsPDF from "jspdf";
-import JSZip from "jszip";
+
+
 import {
   type CarouselDocument,
-  type CarouselSlideItem,
   ASPECT_RATIO_DIMENSIONS,
 } from "@/lib/carousel-gen/types";
 
@@ -18,6 +17,8 @@ export async function exportCarouselToZip(
   deck: CarouselDocument,
   slideDataUrls: string[]
 ): Promise<Blob> {
+  validateAssets(deck,slideDataUrls);
+  const {default:JSZip}=await import("jszip");
   const zip = new JSZip();
   const folder = zip.folder(deck.title.replace(/[^a-zA-Z0-9-_]/g, "_") || "carousel");
 
@@ -40,6 +41,8 @@ export async function exportCarouselToPdf(
   deck: CarouselDocument,
   slideDataUrls: string[]
 ): Promise<Blob> {
+  validateAssets(deck,slideDataUrls);
+  const {default:jsPDF}=await import("jspdf");
   const dims = ASPECT_RATIO_DIMENSIONS[deck.aspectRatio];
   const isLandscape = dims.width > dims.height;
 
@@ -59,4 +62,9 @@ export async function exportCarouselToPdf(
   });
 
   return pdf.output("blob");
+}
+
+function validateAssets(deck:CarouselDocument,urls:string[]){
+ if(urls.length!==deck.slides.length || !urls.length)throw Error('Export requires every slide in order');
+ if(urls.some(url=>!url.startsWith('data:image/png;base64,')))throw Error('Export requires PNG assets');
 }

@@ -14,7 +14,11 @@ import { adminDb, getCurrentUser } from "@/lib/firebase/admin";
 import { getCarouselStyle } from "@/lib/carousel-gen/styles";
 import { runCarouselWorkflow } from "@/lib/carousel-gen/workflow";
 import { validatePaletteContrast } from "@/lib/carousel-gen/palette-contrast";
-import type { CarouselJobDoc, CarouselJobSlideRecord, CarouselStyle } from "@/lib/carousel-gen/types";
+import type {
+  CarouselJobDoc,
+  CarouselJobSlideRecord,
+  CarouselStyle,
+} from "@/lib/carousel-gen/types";
 import { carouselGenerateRequestSchema } from "@/lib/validation/carousel-gen";
 import { jsonError, jsonOk, parseBody } from "@/lib/validation/helpers";
 import { checkQuota, recordUsage } from "@/lib/billing/quota";
@@ -45,7 +49,7 @@ export async function POST(request: NextRequest) {
     return jsonError(
       parsed.error?.status ?? 400,
       parsed.error?.message ?? "Invalid payload",
-      parsed.error?.issues
+      parsed.error?.issues,
     );
   }
   const body = parsed.data;
@@ -57,14 +61,20 @@ export async function POST(request: NextRequest) {
   if (body.styleSnapshot) {
     const warnings = validatePaletteContrast(body.styleSnapshot);
     if (warnings.length > 0) {
-      return jsonError(400, `Palette failed contrast checks: ${warnings.join(" ")}`);
+      return jsonError(
+        400,
+        `Palette failed contrast checks: ${warnings.join(" ")}`,
+      );
     }
     resolvedStyle = body.styleSnapshot;
   } else {
     try {
       resolvedStyle = getCarouselStyle(body.styleId);
     } catch (err) {
-      return jsonError(400, err instanceof Error ? err.message : "Unknown style");
+      return jsonError(
+        400,
+        err instanceof Error ? err.message : "Unknown style",
+      );
     }
   }
 
@@ -74,7 +84,7 @@ export async function POST(request: NextRequest) {
   const quota = await checkQuota(
     session.workspaceId,
     "carousel",
-    ESTIMATED_CAROUSEL_COST_USD
+    ESTIMATED_CAROUSEL_COST_USD,
   );
   if (!quota.allowed) {
     logger.warn("Carousel request rejected by quota", {
@@ -182,7 +192,9 @@ async function tryGetSession(): Promise<{
   workspaceId: string;
 } | null> {
   try {
-    const session = await (await import("@/lib/auth/session-context")).requireSession();
+    const session = await (
+      await import("@/lib/auth/session-context")
+    ).requireSession();
     if (!(session instanceof Response)) {
       return { uid: session.uid, workspaceId: session.workspaceId };
     }

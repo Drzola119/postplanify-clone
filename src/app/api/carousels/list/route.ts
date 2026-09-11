@@ -1,112 +1,173 @@
-/**
- * GET /api/carousels/list
- *
- * F9 — Carousel Studio management hub data layer. Returns the current
- * workspace's saved carousel records (post-generation, post-save),
- * newest first. Powers the cards on /dashboard/carousels and the
- * "Carousels" section of /dashboard/analytics.
- *
- * Phase 2 (Features A + C): the doc shape now also surfaces
- * `performance`, `postId`, `variantGroupId`, `variantLabel`, and
- * `variantWinner` so the hub card can render the perf row, the A/B
- * badge, and the grouped card without a second fetch.
- */
-import "server-only";
-import { requireSession } from "@/lib/auth/session-context";
 import { adminDb } from "@/lib/firebase/admin";
-import { jsonError, jsonOk } from "@/lib/validation/helpers";
-import { createLogger } from "@/lib/log";
-import type {
-  CarouselPerformance,
-  CarouselRecord,
-  CarouselVariantLabel,
-} from "@/lib/carousel-gen/analytics-types";
-import type { PlatformKey } from "@/types/analytics";
-
-const logger = createLogger("api:carousels:list");
-
-function toMillis(v: unknown): number {
-  if (!v) return 0;
+import { FieldPath } from "firebase-admin/firestore";
+import { requireCarouselAccess } from "@/lib/carousel-gen/access";
+import { jsonOk, jsonError } from "@/lib/validation/helpers";
+function millis(v: unknown): number {
   if (typeof v === "number") return v;
-  // Firestore Timestamp has toMillis() — cast for the SDK shape.
-  const ts = v as { toMillis?: () => number; _seconds?: number };
-  if (typeof ts.toMillis === "function") return ts.toMillis();
-  if (typeof ts._seconds === "number") return ts._seconds * 1000;
+  if (
+    v &&
+    typeof v === "object" &&
+    "toMillis" in v &&
+    typeof v.toMillis === "function"
+  )
+    return v.toMillis();
   return 0;
 }
-
-function parsePerformance(raw: unknown): CarouselPerformance | null {
-  if (!raw || typeof raw !== "object") return null;
-  const p = raw as Record<string, unknown>;
-  if (typeof p.likes !== "number" || typeof p.impressions !== "number") return null;
-  return {
-    likes: p.likes,
-    comments: typeof p.comments === "number" ? p.comments : 0,
-    shares: typeof p.shares === "number" ? p.shares : 0,
-    saves: typeof p.saves === "number" ? p.saves : 0,
-    impressions: p.impressions,
-    engagementRate: typeof p.engagementRate === "number" ? p.engagementRate : 0,
-    lastSyncedAt: toMillis(p.lastSyncedAt) || 0,
-    platform: typeof p.platform === "string" ? (p.platform as PlatformKey) : null,
-  };
-}
-
-function parseVariantLabel(raw: unknown): CarouselVariantLabel | null {
-  return raw === "A" || raw === "B" ? raw : null;
-}
-
-export async function GET() {
-  const session = await requireSession();
+export async function GET(request: Request) {
+  const session = await requireCarouselAccess(false);
   if (session instanceof Response) return session;
-  if (!adminDb) return jsonError(503, "Database not configured");
-
+  if (!adminDb) return jsonError(503, "Database unavailable");
   try {
-    const snap = await adminDb
-      .collection("workspaces")
-      .doc(session.workspaceId)
-      .collection("carousels")
-      .orderBy("createdAt", "desc")
-      .limit(100)
-      .get();
-
-    const items: CarouselRecord[] = snap.docs.map((d) => {
-      const data = d.data() as Record<string, unknown>;
-      return {
-        id: d.id,
-        jobId: typeof data.jobId === "string" ? data.jobId : "",
-        title: typeof data.title === "string" ? data.title : "Untitled carousel",
-        status:
-          (data.status as CarouselRecord["status"]) ?? "draft",
-        mediaUrls: Array.isArray(data.mediaUrls)
-          ? (data.mediaUrls as unknown[]).filter(
-              (u): u is string => typeof u === "string"
-            )
-          : [],
-        styleId: typeof data.styleId === "string" ? data.styleId : null,
-        slideCount:
-          typeof data.slideCount === "number" ? data.slideCount : 0,
-        costUsd: typeof data.costUsd === "number" ? data.costUsd : 0,
-        scheduledAt: data.scheduledAt ? toMillis(data.scheduledAt) : null,
-        publishedAt: data.publishedAt ? toMillis(data.publishedAt) : null,
-        createdAt: toMillis(data.createdAt) || Date.now(),
-        updatedAt: toMillis(data.updatedAt) || Date.now(),
-        postId: typeof data.postId === "string" ? data.postId : null,
-        performance: parsePerformance(data.performance),
-        variantGroupId:
-          typeof data.variantGroupId === "string" ? data.variantGroupId : null,
-        variantLabel: parseVariantLabel(data.variantLabel),
-        variantWinner:
-          typeof data.variantWinner === "boolean" ? data.variantWinner : null,
-      };
+    const p = new URL(request.url).searchParams;
+    const q = (p.get("q") || "").trim().toLowerCase();
+    const status = p.get("status") || "all";
+    const folder = p.get("folder") || "";
+    const brand = p.get("brand") || "";
+    const platform = p.get("platform") || "";
+    const from = Number(p.get("from") || 0);
+    const to = Number(p.get("to") || 0);
+    const offset = Math.max(0, Number(p.get("offset") || 0) || 0);
+    // Scan lightweight metadata in bounded batches: title substring searches and counts
+    // include legacy records without requiring a destructive search-index migration.
+    const collection = adminDb.collection(
+      `workspaces/${session.workspaceId}/carousels`,
+    );
+    const rows: Record<string, unknown>[] = [];
+    let cursor: string | undefined;
+    while (true) {
+      if (request.signal.aborted) throw Error("Request cancelled");
+      let query = collection
+        .orderBy(FieldPath.documentId())
+        .select(
+          "postId",
+          "currentRevisionId",
+          "title",
+          "status",
+          "reviewStatus",
+          "slideCount",
+          "aspectRatio",
+          "folderId",
+          "campaignId",
+          "brandKitId",
+          "tags",
+          "createdAt",
+          "updatedAt",
+          "scheduledAt",
+          "publishedAt",
+          "scheduling",
+          "performance",
+          "performanceSync",
+          "performanceByPlatform",
+          "variantGroupId",
+          "variantLabel",
+          "costUsd",
+        )
+        .limit(250);
+      if (cursor) query = query.startAfter(cursor);
+      const page = await query.get();
+      for (const d of page.docs) {
+        const v = d.data();
+        rows.push({
+          ...v,
+          id: d.id,
+          title: v.title || "Untitled carousel",
+          status:
+            v.status === "archived"
+              ? "archived"
+              : v.status === "scheduled" || v.status === "published"
+                ? v.status
+                : v.reviewStatus === "in_review" ||
+                    v.reviewStatus === "changes_requested"
+                  ? "in_review"
+                  : "draft",
+          createdAt: millis(v.createdAt),
+          updatedAt: millis(v.updatedAt),
+          slideCount: v.slideCount || 0,
+        });
+      }
+      if (page.size < 250) break;
+      cursor = page.docs.at(-1)!.id;
+    }
+    // Delivery records are the source of truth, including reconciliation writes.
+    const linked = rows.filter(
+      (r) => typeof r.postId === "string" && /^[a-zA-Z0-9_-]+$/.test(r.postId),
+    );
+    for (let i = 0; i < linked.length; i += 100) {
+      const group = linked.slice(i, i + 100);
+      const posts = await adminDb.getAll(
+        ...group.map((r) =>
+          adminDb!.doc(`workspaces/${session.workspaceId}/posts/${r.postId}`),
+        ),
+      );
+      posts.forEach((post, index) => {
+        const data = post.data();
+        if (!data) return;
+        const row = group[index];
+        const sameRevision =
+          !data.carouselRevisionId ||
+          data.carouselRevisionId === row.currentRevisionId;
+        row.deliveryStatus = sameRevision
+          ? data.status
+          : `previous_revision_${data.status}`;
+        row.perPlatformResults = data.perPlatformResults || {};
+        if (row.status !== "archived" && sameRevision) {
+          row.status =
+            data.status === "published"
+              ? "published"
+              : data.status === "scheduled"
+                ? "scheduled"
+                : row.reviewStatus === "in_review"
+                  ? "in_review"
+                  : "draft";
+        }
+      });
+    }
+    const filtered = rows.filter(
+      (r) =>
+        (!q || String(r.title).toLowerCase().includes(q)) &&
+        (!folder || r.folderId === folder) &&
+        (!brand || r.brandKitId === brand) &&
+        (!from || Number(r.updatedAt) >= from) &&
+        (!to || Number(r.updatedAt) <= to) &&
+        (!platform ||
+          JSON.stringify(r.scheduling || {}).includes(`"${platform}"`)),
+    );
+    const counts = Object.fromEntries(
+      ["all", "draft", "in_review", "scheduled", "published", "archived"].map(
+        (key) => [
+          key,
+          key === "all"
+            ? filtered.length
+            : filtered.filter((r) => r.status === key).length,
+        ],
+      ),
+    );
+    const result = filtered.filter(
+      (r) => status === "all" || r.status === status,
+    );
+    result.sort((a, b) =>
+      p.get("sort") === "engagement"
+        ? Number(
+            (b.performance as { engagementRate?: number })?.engagementRate ??
+              -1,
+          ) -
+          Number(
+            (a.performance as { engagementRate?: number })?.engagementRate ??
+              -1,
+          )
+        : Number(b[p.get("sort") === "newest" ? "createdAt" : "updatedAt"]) -
+          Number(a[p.get("sort") === "newest" ? "createdAt" : "updatedAt"]),
+    );
+    return jsonOk({
+      items: result.slice(offset, offset + 24),
+      counts,
+      total: result.length,
+      nextOffset: offset + 24 < result.length ? offset + 24 : null,
     });
-
-    return jsonOk({ items });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.error("List carousels failed", {
-      workspaceId: session.workspaceId,
-      error: message,
-    });
-    return jsonError(500, message);
+  } catch (e) {
+    return jsonError(
+      500,
+      e instanceof Error ? e.message : "Could not load carousels",
+    );
   }
 }

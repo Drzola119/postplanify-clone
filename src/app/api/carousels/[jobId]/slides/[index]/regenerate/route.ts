@@ -30,7 +30,7 @@ const ESTIMATED_REGENERATE_COST_USD = 0.25;
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ jobId: string; index: string }> }
+  { params }: { params: Promise<{ jobId: string; index: string }> },
 ) {
   try {
     const user = await getCurrentUser();
@@ -43,18 +43,24 @@ export async function POST(
     if (!jobId || !Number.isFinite(index) || index < 0 || index > 14) {
       return NextResponse.json(
         { error: "Invalid jobId or slide index (must be 0-14)" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (!adminDb) {
-      return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+      return NextResponse.json(
+        { error: "Database not configured" },
+        { status: 503 },
+      );
     }
     const userSnap = await adminDb.collection("users").doc(user.uid).get();
     const workspaceId = (userSnap.data()?.primaryWorkspaceId ??
       userSnap.data()?.workspaceId) as string | undefined;
     if (!workspaceId) {
-      return NextResponse.json({ error: "No workspace found" }, { status: 400 });
+      return NextResponse.json(
+        { error: "No workspace found" },
+        { status: 400 },
+      );
     }
 
     const jobRef = adminDb
@@ -86,7 +92,7 @@ export async function POST(
     const quota = await checkQuota(
       workspaceId,
       "carousel",
-      ESTIMATED_REGENERATE_COST_USD
+      ESTIMATED_REGENERATE_COST_USD,
     );
     if (!quota.allowed) {
       logger.warn("Carousel regenerate rejected by quota", {
@@ -111,17 +117,24 @@ export async function POST(
       void recordUsage(workspaceId, "carousel", out.costUsd);
       return NextResponse.json(
         { ok: true, slideIndex: index, ...out },
-        { status: 200 }
+        { status: 200 },
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error("Single-slide regeneration failed", { jobId, index, error: message });
+      logger.error("Single-slide regeneration failed", {
+        jobId,
+        index,
+        error: message,
+      });
       return NextResponse.json({ error: message }, { status: 500 });
     }
   } catch (err) {
     logger.error("Regenerate endpoint error", {
       error: err instanceof Error ? err.message : String(err),
     });
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

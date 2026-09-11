@@ -29,6 +29,14 @@ describe("POST /api/posts/publish caption validation", () => {
     });
   });
 
+  it("does not deliver a linked carousel when durable creation fails",async()=>{
+    mockCreatePost.mockRejectedValueOnce(new Error('This revision was already submitted'));
+    const {POST}=await import('@/app/api/posts/publish/route');
+    const res=await POST(new Request('http://localhost/api/posts/publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({platforms:['instagram'],caption:'Carousel caption',mediaUrls:['https://cdn.test/01.png','https://cdn.test/02.png'],carouselHandoffId:'handoff_1'})}) as never);
+    expect(res.status).toBe(409);
+    expect(mockPublishToUploadPost).not.toHaveBeenCalled();
+  });
+
   it("accepts valid per-platform captions", async () => {
     const { POST } = await import("@/app/api/posts/publish/route");
     const req = new Request("http://localhost/api/posts/publish", {

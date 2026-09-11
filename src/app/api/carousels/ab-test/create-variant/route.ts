@@ -24,7 +24,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { FieldValue } from "firebase-admin/firestore";
 import { randomUUID } from "node:crypto";
-import { requireSession } from "@/lib/auth/session-context";
+import { requireCarouselAccess as requireSession } from "@/lib/carousel-gen/access";
 import { adminDb } from "@/lib/firebase/admin";
 import { jsonError, jsonOk, parseBody } from "@/lib/validation/helpers";
 import { createLogger } from "@/lib/log";
@@ -41,14 +41,6 @@ const createSchema = z.object({
   title: z.string().min(1).max(200).optional(),
 });
 
-function toMillis(v: unknown): number {
-  if (!v) return 0;
-  if (typeof v === "number") return v;
-  const ts = v as { toMillis?: () => number; _seconds?: number };
-  if (typeof ts.toMillis === "function") return ts.toMillis();
-  if (typeof ts._seconds === "number") return ts._seconds * 1000;
-  return 0;
-}
 
 export async function POST(request: NextRequest) {
   const session = await requireSession();
@@ -60,7 +52,7 @@ export async function POST(request: NextRequest) {
     return jsonError(
       parsed.error?.status ?? 400,
       parsed.error?.message ?? "Invalid payload",
-      parsed.error?.issues
+      parsed.error?.issues,
     );
   }
   const { carouselId, title } = parsed.data;
@@ -75,27 +67,30 @@ export async function POST(request: NextRequest) {
     if (!sourceSnap.exists) return jsonError(404, "Source carousel not found");
     const source = sourceSnap.data() as Record<string, unknown>;
 
-    const sourceLabel = (source.variantLabel as CarouselVariantLabel | null) ?? null;
-    const sourceGroup = typeof source.variantGroupId === "string"
-      ? source.variantGroupId
-      : null;
+    const sourceLabel =
+      (source.variantLabel as CarouselVariantLabel | null) ?? null;
+    const sourceGroup =
+      typeof source.variantGroupId === "string" ? source.variantGroupId : null;
     const groupId = sourceGroup ?? randomUUID();
     const sourceVariantLabel: CarouselVariantLabel = sourceGroup
-      ? sourceLabel ?? "A"
+      ? (sourceLabel ?? "A")
       : "A";
 
     const newRef = carouselsRef.doc();
     const now = FieldValue.serverTimestamp();
     const mediaUrls = Array.isArray(source.mediaUrls)
       ? (source.mediaUrls as unknown[]).filter(
-          (u): u is string => typeof u === "string"
+          (u): u is string => typeof u === "string",
         )
       : [];
     const styleId = typeof source.styleId === "string" ? source.styleId : null;
-    const slideCount = typeof source.slideCount === "number"
-      ? source.slideCount
-      : mediaUrls.length;
-    const newTitle = title ?? `${typeof source.title === "string" ? source.title : "Carousel"} (B)`;
+    const slideCount =
+      typeof source.slideCount === "number"
+        ? source.slideCount
+        : mediaUrls.length;
+    const newTitle =
+      title ??
+      `${typeof source.title === "string" ? source.title : "Carousel"} (B)`;
 
     const variantPayload: Record<string, unknown> = {
       workspaceId: session.workspaceId,
@@ -127,7 +122,7 @@ export async function POST(request: NextRequest) {
           variantWinner: null,
           updatedAt: now,
         },
-        { merge: true }
+        { merge: true },
       );
     }
 

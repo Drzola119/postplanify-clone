@@ -21,6 +21,7 @@ export const draftCollaboratorSchema = z.object({
 });
 
 export const saveDraftSchema = z.object({
+  carouselHandoffId: z.string().regex(/^[a-zA-Z0-9_-]+$/).max(120).optional(),
   id: z.string().min(1).max(128).optional(),
   caption: optionalString,
   platforms: z.array(platformIdSchema).max(9).optional().default([]),

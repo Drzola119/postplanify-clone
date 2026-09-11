@@ -23,7 +23,7 @@ import "server-only";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { FieldValue } from "firebase-admin/firestore";
-import { requireSession } from "@/lib/auth/session-context";
+import { requireCarouselAccess as requireSession } from "@/lib/carousel-gen/access";
 import { resolvers } from "@/lib/security/server-config";
 import { adminDb } from "@/lib/firebase/admin";
 import { getPostAnalyticsByRequestId } from "@/lib/uploadpost/analytics";
@@ -39,7 +39,12 @@ import type { PlatformKey } from "@/types/analytics";
 const logger = createLogger("api:carousels:sync-performance");
 
 const syncSchema = z.object({
-  carouselId: z.string().min(1).max(64),
+  carouselId: z
+    .string()
+    .min(1)
+    .max(120)
+    .regex(/^[a-zA-Z0-9_-]+$/),
+  platform: z.string().max(40).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -52,7 +57,7 @@ export async function POST(request: NextRequest) {
     return jsonError(
       parsed.error?.status ?? 400,
       parsed.error?.message ?? "Invalid payload",
-      parsed.error?.issues
+      parsed.error?.issues,
     );
   }
   const { carouselId } = parsed.data;
@@ -70,7 +75,7 @@ export async function POST(request: NextRequest) {
   const carousel = carouselSnap.data() as Record<string, unknown>;
   const mediaUrls = Array.isArray(carousel.mediaUrls)
     ? (carousel.mediaUrls as unknown[]).filter(
-        (u): u is string => typeof u === "string"
+        (u): u is string => typeof u === "string",
       )
     : [];
 
@@ -78,13 +83,14 @@ export async function POST(request: NextRequest) {
   const postId = await resolvePostId(
     session.workspaceId,
     typeof carousel.postId === "string" ? carousel.postId : null,
-    mediaUrls
+    mediaUrls,
   );
   if (!postId) {
     const result: CarouselSyncResult = {
       ok: false,
       reason: "no-post",
-      message: "No published post found for this carousel yet. Schedule and publish it to start tracking metrics.",
+      message:
+        "No published post found for this carousel yet. Schedule and publish it to start tracking metrics.",
     };
     return jsonOk(result);
   }
@@ -110,7 +116,11 @@ export async function POST(request: NextRequest) {
     { postId?: string | null; status?: string }
   >;
   const platformEntry = Object.entries(perPlatformResults).find(
-    ([, v]) => v?.postId && v.status === "delivered"
+    ([key, v]) =>
+      v?.postId &&
+      v.status === "delivered" &&
+      (!parsed.data.platform ||
+        toInternalPlatform(key) === parsed.data.platform),
   );
   if (!platformEntry) {
     const result: CarouselSyncResult = {
@@ -141,7 +151,7 @@ export async function POST(request: NextRequest) {
     const pm = await getPostAnalyticsByRequestId(
       apiKey,
       uploadPostId,
-      platform
+      platform,
     );
     if (pm.status !== "ok") {
       const r: CarouselSyncResult = {
@@ -150,6 +160,31 @@ export async function POST(request: NextRequest) {
         message: pm.errorMessage ?? `Live metrics unavailable (${pm.status})`,
       };
       return jsonOk(r);
+    }
+    const missing = [
+      "likes",
+      "comments",
+      "shares",
+      "saves",
+      "impressions",
+    ].filter((key) => typeof pm[key as keyof typeof pm] !== "number");
+    if (missing.length) {
+      await carouselRef.set(
+        {
+          performanceSync: {
+            status: "unavailable",
+            attemptedAt: Date.now(),
+            message: `Provider did not supply ${missing.join(", ")}.`,
+            platform,
+          },
+        },
+        { merge: true },
+      );
+      return jsonOk({
+        ok: false,
+        reason: "fetch-failed",
+        message: `Provider did not supply ${missing.join(", ")}. Unavailable metrics are not treated as zero.`,
+      });
     }
     const likes = pm.likes ?? 0;
     const comments = pm.comments ?? 0;
@@ -179,10 +214,16 @@ export async function POST(request: NextRequest) {
     await carouselRef.set(
       {
         performance,
+        performanceSync: {
+          status: "synced",
+          attemptedAt: lastSyncedAt,
+          platform,
+        },
+        performanceByPlatform: { [platform]: performance },
         postId,
         updatedAt: FieldValue.serverTimestamp(),
       },
-      { merge: true }
+      { merge: true },
     );
 
     logger.info("Carousel performance synced", {
@@ -220,7 +261,7 @@ export async function POST(request: NextRequest) {
 async function resolvePostId(
   workspaceId: string,
   explicitPostId: string | null,
-  mediaUrls: string[]
+  mediaUrls: string[],
 ): Promise<string | null> {
   if (!adminDb) return null;
   if (explicitPostId) {

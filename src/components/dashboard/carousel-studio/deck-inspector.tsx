@@ -1,14 +1,5 @@
 "use client";
 
-import {
-  Palette,
-  Sparkles,
-  ShieldCheck,
-  Ratio,
-  Sliders,
-  FileText,
-  Layers,
-} from "lucide-react";
 import type {
   CarouselDocument,
   CarouselAspectRatio,
@@ -48,23 +39,29 @@ export function DeckInspector({
             Canvas Aspect Ratio
           </label>
           <div className="grid grid-cols-3 gap-1.5">
-            {(["1:1", "4:5", "9:16"] as CarouselAspectRatio[]).map((ratio) => (
-              <button
-                key={ratio}
-                type="button"
-                onClick={() => onUpdateDeck({ aspectRatio: ratio })}
-                className={`py-2 px-3 rounded-lg border text-xs font-bold transition flex flex-col items-center justify-center gap-1 ${
-                  deck.aspectRatio === ratio
-                    ? "bg-amber-500/10 border-amber-500 text-amber-400"
-                    : "bg-zinc-800/80 border-zinc-700 text-zinc-300 hover:border-zinc-600"
-                }`}
-              >
-                <span>{ratio}</span>
-                <span className="text-[9px] font-normal text-zinc-500">
-                  {ratio === "1:1" ? "Square" : ratio === "4:5" ? "Portrait" : "Story"}
-                </span>
-              </button>
-            ))}
+            {(["1:1", "3:4", "4:5", "9:16"] as CarouselAspectRatio[]).map(
+              (ratio) => (
+                <button
+                  key={ratio}
+                  type="button"
+                  onClick={() => onUpdateDeck({ aspectRatio: ratio })}
+                  className={`py-2 px-3 rounded-lg border text-xs font-bold transition flex flex-col items-center justify-center gap-1 ${
+                    deck.aspectRatio === ratio
+                      ? "bg-amber-500/10 border-amber-500 text-amber-400"
+                      : "bg-zinc-800/80 border-zinc-700 text-zinc-300 hover:border-zinc-600"
+                  }`}
+                >
+                  <span>{ratio}</span>
+                  <span className="text-[9px] font-normal text-zinc-500">
+                    {ratio === "1:1"
+                      ? "Square"
+                      : ratio === "4:5"
+                        ? "Portrait"
+                        : "Story"}
+                  </span>
+                </button>
+              ),
+            )}
           </div>
         </div>
 
@@ -78,7 +75,7 @@ export function DeckInspector({
             onChange={(e) => onSelectBrandKit(e.target.value)}
             className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500"
           >
-            <option value="">Default Brand (Zinc / Archivo)</option>
+            <option value="">Use deck style</option>
             {brandKits.map((kit) => (
               <option key={kit.id} value={kit.id}>
                 {kit.name}
@@ -99,15 +96,75 @@ export function DeckInspector({
           </div>
           <button
             type="button"
+            aria-label="Show safe zone guides"
+            aria-pressed={showSafeZones}
             onClick={onToggleSafeZones}
             className={`w-10 h-6 flex items-center rounded-full p-1 transition duration-300 ${
-              showSafeZones ? "bg-amber-500 justify-end" : "bg-zinc-700 justify-start"
+              showSafeZones
+                ? "bg-amber-500 justify-end"
+                : "bg-zinc-700 justify-start"
             }`}
           >
             <div className="bg-white w-4 h-4 rounded-full shadow-md transform transition" />
           </button>
         </div>
 
+        <div className="space-y-3">
+          {(["primary", "background", "accent"] as const).map((key) => (
+            <label key={key} className="flex justify-between text-xs">
+              Deck {key}
+              <input
+                type="color"
+                value={deck.style.colors[key]}
+                onChange={(e) =>
+                  onUpdateDeck({
+                    style: {
+                      ...deck.style,
+                      colors: { ...deck.style.colors, [key]: e.target.value },
+                    },
+                  })
+                }
+              />
+            </label>
+          ))}
+          {(["display", "body"] as const).map((key) => (
+            <label key={key} className="block text-xs">
+              {key === "display" ? "Heading font" : "Body font"}
+              <select
+                className="w-full bg-zinc-800 p-2"
+                value={deck.style.fonts[key]}
+                onChange={(e) =>
+                  onUpdateDeck({
+                    style: {
+                      ...deck.style,
+                      fonts: { ...deck.style.fonts, [key]: e.target.value },
+                    },
+                  })
+                }
+              >
+                <option>Noto Sans</option>
+                <option>Noto Serif</option>
+                <option>Noto Sans Arabic</option>
+              </select>
+            </label>
+          ))}
+          {deck.brandKitId && (
+            <p className="text-xs text-amber-300">
+              The selected brand kit overrides deck colors and fonts. Individual
+              slide settings take priority.
+            </p>
+          )}
+          <label className="flex gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={deck.showSlideNumbers !== false}
+              onChange={(e) =>
+                onUpdateDeck({ showSlideNumbers: e.target.checked })
+              }
+            />
+            Show slide numbers
+          </label>
+        </div>
         {/* Caption & Platform Overrides */}
         <div>
           <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 block mb-1.5">
@@ -121,6 +178,27 @@ export function DeckInspector({
             className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500 resize-none leading-relaxed"
           />
         </div>
+        <details>
+          <summary className="text-xs">Platform captions</summary>
+          {["instagram", "linkedin", "facebook", "tiktok"].map((platform) => (
+            <label key={platform} className="block text-xs mt-3">
+              {platform}
+              <textarea
+                className="w-full bg-zinc-800 p-2"
+                placeholder="Use main caption"
+                value={deck.platformOverrides?.[platform]?.caption || ""}
+                onChange={(e) =>
+                  onUpdateDeck({
+                    platformOverrides: {
+                      ...deck.platformOverrides,
+                      [platform]: { caption: e.target.value },
+                    },
+                  })
+                }
+              />
+            </label>
+          ))}
+        </details>
       </div>
     </div>
   );

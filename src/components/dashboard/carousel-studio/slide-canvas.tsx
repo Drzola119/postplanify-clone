@@ -1,205 +1,153 @@
 "use client";
-
-import { useMemo } from "react";
-import type {
-  CarouselDocument,
-  CarouselSlideItem,
-  CarouselAspectRatio,
+import { useEffect, useState } from "react";
+import {
+  ASPECT_RATIO_DIMENSIONS,
+  type CarouselDocument,
+  type CarouselSlideItem,
+  type BrandKit,
 } from "@/lib/carousel-gen/types";
-
-interface SlideCanvasProps {
+import { editableDocument } from "./use-draft-save";
+export function SlideCanvas({
+  deck,
+  slide,
+  slideIndex,
+  showSafeZones,
+  onEdit,
+}: {
   deck: CarouselDocument;
   slide: CarouselSlideItem;
   slideIndex: number;
   totalSlides: number;
   showSafeZones?: boolean;
-  brandKit?: any;
-}
-
-export function SlideCanvas({
-  deck,
-  slide,
-  slideIndex,
-  totalSlides,
-  showSafeZones = false,
-  brandKit,
-}: SlideCanvasProps) {
-  const isSquare = deck.aspectRatio === "1:1";
-  const isPortrait = deck.aspectRatio === "4:5";
-  const isStory = deck.aspectRatio === "9:16";
-
-  const aspectRatioClass = isSquare
-    ? "aspect-square"
-    : isPortrait
-    ? "aspect-[4/5]"
-    : "aspect-[9/16]";
-
-  const bgColor =
-    slide.backgroundColor ||
-    brandKit?.colors?.background ||
-    deck.style?.colors?.background ||
-    "#ffffff";
-
-  const textColor =
-    slide.textColor ||
-    brandKit?.colors?.primary ||
-    deck.style?.colors?.primary ||
-    "#0f172a";
-
-  const accentColor =
-    slide.accentColor ||
-    brandKit?.colors?.accent ||
-    deck.style?.colors?.accent ||
-    "#3b82f6";
-
-  const displayFont =
-    slide.displayFont ||
-    brandKit?.fonts?.display ||
-    deck.style?.fonts?.display ||
-    "Outfit";
-
-  const bodyFont =
-    slide.bodyFont ||
-    brandKit?.fonts?.body ||
-    deck.style?.fonts?.body ||
-    "Inter";
-
-  const textAlign = slide.textAlign || "left";
-
+  brandKit?: BrandKit;
+  onEdit?: (updates: Partial<CarouselSlideItem>) => void;
+}) {
+  const [url, setUrl] = useState(""),
+    [error, setError] = useState(""),
+    [editing, setEditing] = useState(false),
+    [zoom, setZoom] = useState(100),
+    [issues, setIssues] = useState<string[]>([]);
+  const digest = JSON.stringify({
+    ...editableDocument(deck),
+    brandSnapshot: deck.brandSnapshot,
+  });
+  useEffect(() => {
+    const abort = new AbortController();
+    setError("");
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch("/api/carousels/render", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deck: JSON.parse(digest), index: slideIndex }),
+          signal: abort.signal,
+        });
+        const result = await response.json();
+        if (!response.ok)
+          throw Error(result.error?.message || "Preview failed");
+        setUrl(result.dataUrl);
+        setIssues(result.issues || []);
+      } catch (e) {
+        if (!abort.signal.aborted)
+          setError(e instanceof Error ? e.message : "Preview failed");
+      }
+    }, 350);
+    return () => {
+      clearTimeout(timer);
+      abort.abort();
+    };
+  }, [digest, slideIndex]);
+  const dims = ASPECT_RATIO_DIMENSIONS[deck.aspectRatio];
   return (
-    <div
-      className={`relative w-full max-w-lg ${aspectRatioClass} rounded-2xl shadow-2xl overflow-hidden select-none border border-zinc-700/50 flex flex-col justify-between p-8 sm:p-10 transition-all`}
-      style={{ backgroundColor: bgColor }}
-    >
-      {/* Background Image Layer */}
-      {slide.backgroundImageUrl && (
-        <div
-          className="absolute inset-0 bg-cover bg-center pointer-events-none"
-          style={{
-            backgroundImage: `url(${slide.backgroundImageUrl})`,
-            opacity: (slide.backgroundOpacity ?? 20) / 100,
-          }}
+    <div className="w-full max-w-xl space-y-3">
+      <label className="flex gap-3 text-sm">
+        Preview size{" "}
+        <input
+          aria-label="Preview size"
+          type="range"
+          min="50"
+          max="100"
+          value={zoom}
+          onChange={(e) => setZoom(Number(e.target.value))}
         />
-      )}
-
-      {/* Instagram 1:1 Safe Zone Guide Overlay */}
-      {showSafeZones && isPortrait && (
-        <div className="absolute inset-x-0 top-[12.5%] bottom-[12.5%] border-2 border-dashed border-amber-400/50 pointer-events-none flex items-start justify-end p-2 z-30">
-          <span className="text-[10px] font-mono uppercase bg-amber-500 text-zinc-950 font-bold px-1.5 py-0.5 rounded shadow">
-            1:1 Profile Crop
-          </span>
-        </div>
-      )}
-
-      {/* Top Slide Header (Branding & Tag) */}
-      <div className="relative z-10 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {brandKit?.logoUrl && (
-            <img
-              src={brandKit.logoUrl}
-              alt="Logo"
-              className="h-5 w-auto object-contain"
-            />
-          )}
-          {brandKit?.socialHandle && (
-            <span
-              className="text-xs font-semibold opacity-75"
-              style={{ color: textColor, fontFamily: bodyFont }}
-            >
-              {brandKit.socialHandle}
-            </span>
-          )}
-        </div>
-
-        {/* Slide Counter */}
-        <span
-          className="text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm"
-          style={{
-            backgroundColor: `${accentColor}20`,
-            color: accentColor,
-            fontFamily: bodyFont,
-          }}
-        >
-          {slide.type || "Slide"} {slideIndex + 1}/{totalSlides}
-        </span>
-      </div>
-
-      {/* Center Main Content Area */}
+        {zoom}%
+      </label>
       <div
-        className="relative z-10 flex-1 flex flex-col justify-center my-4"
-        style={{ textAlign }}
+        className="relative mx-auto shadow-xl"
+        style={{
+          width: `${zoom}%`,
+          aspectRatio: `${dims.width}/${dims.height}`,
+        }}
       >
-        {/* Subheadline / Kicker */}
-        {slide.subheadline && (
-          <p
-            className="text-xs sm:text-sm font-semibold uppercase tracking-wider mb-3 opacity-80"
-            style={{ color: accentColor, fontFamily: bodyFont }}
-          >
-            {slide.subheadline}
-          </p>
+        {url ? (
+          <img
+            src={url}
+            alt={`Slide ${slideIndex + 1}: ${slide.headline || "Original artwork"}`}
+            className="w-full h-full"
+            onDoubleClick={() =>
+              onEdit &&
+              !slide.isLegacyFlat &&
+              !slide.isLocked &&
+              setEditing(true)
+            }
+          />
+        ) : (
+          <div role="status" className="p-8">
+            Rendering preview…
+          </div>
         )}
-
-        {/* Headline */}
-        <h2
-          className="text-2xl sm:text-3xl font-black leading-tight tracking-tight drop-shadow-sm"
-          style={{
-            color: textColor,
-            fontFamily: displayFont,
-            fontSize: slide.fontSizeScale ? `${1.875 * slide.fontSizeScale}rem` : undefined,
-          }}
-        >
-          {slide.headline || "Enter Headline..."}
-        </h2>
-
-        {/* Body Copy */}
-        {slide.body && (
-          <p
-            className="text-sm sm:text-base mt-4 leading-relaxed opacity-90"
-            style={{ color: textColor, fontFamily: bodyFont }}
-          >
-            {slide.body}
-          </p>
+        {showSafeZones && (
+          <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 aspect-square border-2 border-dashed border-fuchsia-500 pointer-events-none" />
         )}
-
-        {/* Stats Callout if stats slide */}
-        {slide.statsValue && (
-          <div className="my-4">
-            <span
-              className="text-4xl sm:text-5xl font-black block tracking-tight"
-              style={{ color: accentColor, fontFamily: displayFont }}
-            >
-              {slide.statsValue}
-            </span>
-            {slide.statsLabel && (
-              <span
-                className="text-xs sm:text-sm font-medium opacity-75"
-                style={{ color: textColor, fontFamily: bodyFont }}
-              >
-                {slide.statsLabel}
-              </span>
-            )}
+        {editing && (
+          <div className="absolute inset-4 bg-zinc-950/95 p-4 space-y-4 overflow-auto">
+            <label className="block">
+              Headline
+              <textarea
+                className="w-full bg-zinc-800 p-2"
+                value={slide.headline}
+                onChange={(e) => onEdit?.({ headline: e.target.value })}
+              />
+            </label>
+            <label className="block">
+              Body
+              <textarea
+                className="w-full bg-zinc-800 p-2"
+                rows={8}
+                value={slide.body || ""}
+                onChange={(e) => onEdit?.({ body: e.target.value })}
+              />
+            </label>
+            <button onClick={() => setEditing(false)}>Done editing</button>
           </div>
         )}
       </div>
-
-      {/* Bottom Footer (Swipe Indicator & Watermark) */}
-      <div className="relative z-10 flex items-center justify-between pt-4 border-t border-black/10">
-        <span
-          className="text-[11px] font-medium opacity-60"
-          style={{ color: textColor, fontFamily: bodyFont }}
-        >
-          {deck.title || "PostPlanify Carousel"}
-        </span>
-
-        <div className="flex items-center gap-1.5">
-          <span
-            className="text-[11px] font-bold"
-            style={{ color: accentColor, fontFamily: bodyFont }}
+      {slide.isLegacyFlat ? (
+        <p className="text-sm">
+          Original flattened artwork. Text is embedded in the image. Add a new
+          editable slide to replace it.
+        </p>
+      ) : (
+        onEdit && (
+          <button
+            disabled={slide.isLocked}
+            onClick={() => setEditing(true)}
+            className="text-sm underline"
           >
-            {slideIndex === totalSlides - 1 ? "Comment Below 💬" : "Swipe ➡️"}
-          </span>
-        </div>
-      </div>
+            Edit slide text
+          </button>
+        )
+      )}
+      {error && (
+        <p role="alert" className="text-red-300">
+          {error}
+        </p>
+      )}
+      {issues.map((issue) => (
+        <p role="alert" key={issue} className="text-amber-300">
+          {issue}
+        </p>
+      ))}
     </div>
   );
 }

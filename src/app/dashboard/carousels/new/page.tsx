@@ -8,6 +8,9 @@
  * niche, tone, slideCount so the user starts one click closer to a
  * finished carousel.
  */
+import { requireCarouselAccess } from "@/lib/carousel-gen/access";
+import { redirect } from "next/navigation";
+import { CreateCarousel } from "@/components/dashboard/carousel-studio/create-carousel";
 import { Metadata } from "next";
 import { CarouselWizard } from "@/components/dashboard/carousel-wizard";
 import { DEFAULT_CAROUSEL_STYLE } from "@/lib/carousel-gen/styles";
@@ -31,7 +34,10 @@ export default async function NewCarouselPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const session=await requireCarouselAccess();
+  if(session instanceof Response)redirect("/dashboard/carousels");
   const params = await searchParams;
+  if(params.mode!=="images") return <CreateCarousel workspaceId={session.workspaceId}/>;
   const get = (k: string): string => {
     const v = params[k];
     if (Array.isArray(v)) return v[0] ?? "";

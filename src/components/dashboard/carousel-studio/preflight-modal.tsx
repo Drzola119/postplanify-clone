@@ -1,4 +1,5 @@
 "use client";
+import { useModalFocus } from "./use-modal-focus";
 
 import {
   ShieldCheck,
@@ -23,10 +24,18 @@ export function PreflightModal({
   report,
   onSelectSlide,
 }: PreflightModalProps) {
+  const modalRef = useModalFocus(isOpen, onClose);
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+    <div
+      ref={modalRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Carousel quality checks"
+      tabIndex={-1}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+    >
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
         {/* Modal Header */}
         <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
@@ -49,7 +58,8 @@ export function PreflightModal({
                 Preflight Quality Check
               </h3>
               <p className="text-[11px] text-zinc-400">
-                Score: {report.score}/100 • {report.errorsCount} blocking errors, {report.warningsCount} warnings
+                Score: {report.score}/100 • {report.errorsCount} blocking
+                errors, {report.warningsCount} warnings
               </p>
             </div>
           </div>
@@ -85,8 +95,8 @@ export function PreflightModal({
                     isError
                       ? "bg-red-950/30 border-red-900/60"
                       : isWarning
-                      ? "bg-amber-950/30 border-amber-900/60"
-                      : "bg-blue-950/30 border-blue-900/60"
+                        ? "bg-amber-950/30 border-amber-900/60"
+                        : "bg-blue-950/30 border-blue-900/60"
                   }`}
                 >
                   <div className="flex items-start gap-2.5">

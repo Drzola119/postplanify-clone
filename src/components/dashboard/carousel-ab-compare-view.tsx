@@ -7,7 +7,7 @@
  *   - Header with both variant titles + status
  *   - Side-by-side metric tiles (likes, comments, shares, saves, eng)
  *   - Hand-rolled bar chart (one bar per metric, A vs B)
- *   - "Recompute winner" button that calls /api/carousels/ab-test/compare
+ *   - "Refresh comparison" button that calls /api/carousels/ab-test/compare
  *   - "Sync stats" buttons for each side
  *
  * The chart is hand-rolled SVG so we don't take a runtime hit on the
@@ -106,16 +106,16 @@ export function AbCompareView({ a: initialA, b: initialB }: AbCompareViewProps) 
       const data = (await res.json()) as {
         a: CarouselRecord;
         b: CarouselRecord;
-        winner: "A" | "B" | null;
+        leader: "A" | "B" | null;
       };
       setA(data.a);
       setB(data.b);
-      if (data.winner) {
-        showToast({ tone: "success", title: `Variant ${data.winner} is winning` });
+      if (data.leader) {
+        showToast({ tone: "success", title: `Variant ${data.leader} currently leads in engagement rate` });
       } else {
         showToast({
           tone: "info",
-          title: "Not enough data yet — both need 100+ impressions to declare a winner",
+          title: "No directional leader yet. More comparable data is needed.",
         });
       }
     } catch (err) {
@@ -189,7 +189,7 @@ export function AbCompareView({ a: initialA, b: initialB }: AbCompareViewProps) 
           className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-800 disabled:opacity-50"
         >
           {recomputing ? <Loader2 className="size-3 animate-spin" /> : <Trophy className="size-3" />}
-          Recompute winner
+          Refresh comparison
         </button>
       </div>
 
@@ -226,8 +226,7 @@ export function AbCompareView({ a: initialA, b: initialB }: AbCompareViewProps) 
       {/* Minimum impressions callout */}
       <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50 p-3 text-[11px] text-zinc-600">
         <Sparkles className="inline size-3 me-1" />
-        A winner is declared once both variants cross 100 impressions. Until
-        then, the comparison is directional — small samples can flip.
+        This comparison is directional. Different audiences, timing and reach can affect results; it does not establish statistical significance.
       </div>
     </div>
   );
@@ -248,7 +247,7 @@ function VariantTile({
   onSync: () => void;
   syncing: boolean;
 }) {
-  const isWinner = record.variantWinner === true;
+  const isWinner = false;
   const perf = record.performance;
   return (
     <div
@@ -258,10 +257,10 @@ function VariantTile({
     >
       <div className="grid grid-cols-[120px_1fr] gap-3 p-3">
         <div className="aspect-[3/4] overflow-hidden rounded-md bg-zinc-100">
-          {record.mediaUrls[0] ? (
+          {record.id ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={record.mediaUrls[0]}
+              src={`/api/carousels/thumbnail?id=${record.id}`}
               alt={record.title}
               className="size-full object-cover"
             />
@@ -278,7 +277,7 @@ function VariantTile({
             </span>
             {isWinner ? (
               <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-                <Trophy className="size-2.5" /> Winner
+                <Trophy className="size-2.5" /> Directional leader
               </span>
             ) : null}
             <span className="text-[10px] text-zinc-500">{record.status}</span>

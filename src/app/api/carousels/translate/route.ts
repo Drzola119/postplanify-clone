@@ -12,12 +12,15 @@
 import "server-only";
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { requireSession } from "@/lib/auth/session-context";
+import { requireCarouselAccess as requireSession } from "@/lib/carousel-gen/access";
 import { resolvers } from "@/lib/security/server-config";
 import { callGroq, GROQ_TEXT_MODEL } from "@/lib/ai/groq";
 import { jsonError, jsonOk, parseBody } from "@/lib/validation/helpers";
 import { createLogger } from "@/lib/log";
-import type { CarouselScript, CarouselSlideScript } from "@/lib/carousel-gen/types";
+import type {
+  CarouselScript,
+  CarouselSlideScript,
+} from "@/lib/carousel-gen/types";
 
 const logger = createLogger("api:carousels:translate");
 
@@ -36,7 +39,7 @@ const translateRequestSchema = z.object({
           type: z.enum(["hook", "stakes", "value", "receipts", "cta"]),
           headline: z.string().min(1).max(200),
           body: z.string().max(200).optional(),
-        })
+        }),
       )
       .min(1)
       .max(20),
@@ -67,21 +70,24 @@ export async function POST(request: NextRequest) {
     return jsonError(
       parsed.error?.status ?? 400,
       parsed.error?.message ?? "Invalid payload",
-      parsed.error?.issues
+      parsed.error?.issues,
     );
   }
   const { script, targetLanguage } = parsed.data;
 
   const targetName = LANGUAGE_NAMES[targetLanguage] ?? targetLanguage;
   if (targetLanguage === script.outputLanguage) {
-    return jsonError(400, "Target language is the same as the source language.");
+    return jsonError(
+      400,
+      "Target language is the same as the source language.",
+    );
   }
 
   const groqApiKey = resolvers.groqApiKey(request.headers);
   if (!groqApiKey) {
     return jsonError(
       503,
-      "Translation is not configured (GROQ_API_KEY missing server-side)."
+      "Translation is not configured (GROQ_API_KEY missing server-side).",
     );
   }
 
@@ -121,17 +127,19 @@ Preserve the same word-count limits and tone rules as the source:
 
     const aiSlides = parsedContent.slides as unknown[];
 
-    const translatedSlides: CarouselSlideScript[] = script.slides.map((original, i) => {
-      const r = (aiSlides[i] ?? {}) as Record<string, unknown>;
-      const headline = String(r.headline ?? original.headline).trim();
-      const body = typeof r.body === "string" ? r.body.trim() : undefined;
-      return {
-        index: original.index,
-        type: original.type,
-        headline: headline.slice(0, 200) || original.headline,
-        body: body ? body.slice(0, 200) : undefined,
-      };
-    });
+    const translatedSlides: CarouselSlideScript[] = script.slides.map(
+      (original, i) => {
+        const r = (aiSlides[i] ?? {}) as Record<string, unknown>;
+        const headline = String(r.headline ?? original.headline).trim();
+        const body = typeof r.body === "string" ? r.body.trim() : undefined;
+        return {
+          index: original.index,
+          type: original.type,
+          headline: headline.slice(0, 200) || original.headline,
+          body: body ? body.slice(0, 200) : undefined,
+        };
+      },
+    );
 
     // If the final slide is a CTA, force the keyword back in verbatim —
     // the LLM is told not to translate it but a defensive pass here means
@@ -174,7 +182,10 @@ function parseJsonObject(raw: string): Record<string, unknown> | null {
   const trimmed = raw.trim();
   const candidates: string[] = [
     trimmed,
-    trimmed.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim(),
+    trimmed
+      .replace(/^```(?:json)?/i, "")
+      .replace(/```$/, "")
+      .trim(),
   ];
   for (const c of candidates) {
     if (!c) continue;

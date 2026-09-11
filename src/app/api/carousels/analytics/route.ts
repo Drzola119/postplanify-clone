@@ -12,7 +12,7 @@
  * the list endpoint reads, so the two stay in lockstep.
  */
 import "server-only";
-import { requireSession } from "@/lib/auth/session-context";
+import { requireCarouselAccess as requireSession } from "@/lib/carousel-gen/access";
 import { adminDb } from "@/lib/firebase/admin";
 import { jsonError, jsonOk } from "@/lib/validation/helpers";
 import { createLogger } from "@/lib/log";
@@ -46,14 +46,18 @@ function lastNMonthKeys(n: number): string[] {
   const now = new Date();
   const keys: string[] = [];
   for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
-    keys.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`);
+    const d = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1),
+    );
+    keys.push(
+      `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`,
+    );
   }
   return keys;
 }
 
 export async function GET() {
-  const session = await requireSession();
+  const session = await requireSession(false);
   if (session instanceof Response) return session;
   if (!adminDb) return jsonError(503, "Database not configured");
 
@@ -66,7 +70,7 @@ export async function GET() {
       .doc(session.workspaceId)
       .collection("carousels")
       .orderBy("createdAt", "desc")
-      .limit(500)
+      .select("status", "styleId", "slideCount", "costUsd", "createdAt")
       .get();
 
     const records: CarouselRecord[] = snap.docs.map((d) => {
@@ -89,7 +93,11 @@ export async function GET() {
 
     const thisMonth = records.filter((r) => r.createdAt >= monthStart);
 
-    const byStatus: Record<string, number> = { draft: 0, scheduled: 0, published: 0 };
+    const byStatus: Record<string, number> = {
+      draft: 0,
+      scheduled: 0,
+      published: 0,
+    };
     for (const r of records) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
 
     const byStyle: Record<string, number> = {};
@@ -103,7 +111,9 @@ export async function GET() {
       .map(([styleId, count]) => ({ styleId, count }));
 
     const monthKeys = lastNMonthKeys(6);
-    const byMonth: Record<string, number> = Object.fromEntries(monthKeys.map((k) => [k, 0]));
+    const byMonth: Record<string, number> = Object.fromEntries(
+      monthKeys.map((k) => [k, 0]),
+    );
     for (const r of records) {
       if (r.createdAt === 0) continue;
       const k = monthKey(r.createdAt);

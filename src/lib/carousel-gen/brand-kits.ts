@@ -5,6 +5,7 @@
  * font pairings, logo assets, and WCAG AA contrast validation.
  */
 import "server-only";
+import { cleanDocument } from "./document-utils";
 import { adminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { createLogger } from "@/lib/log";
@@ -102,11 +103,11 @@ export async function saveBrandKit(
     updatedAt: now,
   };
 
-  await kitsRef.doc(kitId).set({
+  await kitsRef.doc(kitId).set(cleanDocument({
     ...fullKit,
     updatedAt: FieldValue.serverTimestamp(),
     ...(kit.id ? {} : { createdAt: FieldValue.serverTimestamp() }),
-  });
+  }));
 
   log.info("Brand kit saved", { workspaceId, kitId, name: kit.name });
   return fullKit;

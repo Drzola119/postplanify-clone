@@ -48,7 +48,7 @@ import {
   CarouselStylePreviewMock,
   ROLE_PREVIEW_CONFIGS,
 } from "@/components/dashboard/carousel-layout-preview";
-import { ScheduleModal } from "@/components/dashboard/schedule-modal";
+
 import { UnsplashDialog } from "@/components/dashboard/unsplash-dialog";
 import { CarouselHistoryDrawer } from "@/components/dashboard/carousel-history-drawer";
 import { useDrawer } from "@/components/dashboard/drawer-provider";
@@ -889,7 +889,7 @@ export function CarouselWizard({
                     className="inline-flex w-full items-center justify-center gap-2 h-11 rounded-md bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold"
                   >
                     <Calendar className="size-4" />
-                    Schedule this Carousel
+                    Save and open Studio
                   </button>
                   <ExportMenu
                     slides={job.slides
@@ -1008,67 +1008,12 @@ export function CarouselWizard({
         />
       ) : null}
 
-      {/* F4 — schedule modal pre-populated with the rendered deck. */}
-      {scheduleOpen && job && script ? (
-        <ScheduleModal
-          open
-          onClose={() => setScheduleOpen(false)}
-          onConfirm={async (date) => {
-            setScheduleOpen(false);
-            // Save the carousel record first so the analytics page and
-            // carousels list can pick it up, then forward to the posts
-            // composer with the rendered media URLs.
-            try {
-              const completedSlides = job.slides
-                .filter((s) => s.status === "complete")
-                .map((s) => s.assetUrl);
-              const saveRes = await fetch("/api/carousels/save", {
-                method: "POST",
-                credentials: "include",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  jobId,
-                  title: script.topic,
-                  status: "scheduled",
-                  scheduledAt: date.toISOString(),
-                  mediaUrls: completedSlides,
-                }),
-              });
-              // Phase 2 Feature B — flush pending version events now
-              // that we have a carouselId. Best-effort: the user's
-              // schedule flow is not blocked if a version write fails.
-              if (saveRes.ok) {
-                const saveData = (await saveRes
-                  .json()
-                  .catch(() => ({}))) as { carouselId?: string };
-                if (saveData.carouselId) {
-                  carouselIdRef.current = saveData.carouselId;
-                  await flushPendingVersions(saveData.carouselId);
-                }
-              }
-              // Navigate to the composer with the first slide pre-attached.
-              // The composer also reads from the user's media library, so
-              // the rest of the deck is one click away in the media tab.
-              const params = new URLSearchParams();
-              if (completedSlides[0]) {
-                params.set("mediaUrl", completedSlides[0]);
-                params.set("mediaType", "image");
-              }
-              params.set("caption", script.topic);
-              showToast({
-                tone: "success",
-                title: "Carousel saved — opening composer",
-              });
-              window.location.href = `/dashboard/posts/create?${params.toString()}`;
-            } catch (err) {
-              showToast({
-                tone: "error",
-                title: err instanceof Error ? err.message : "Schedule failed",
-              });
-            }
-          }}
-        />
-      ) : null}
+      {scheduleOpen && job && script ? <div role="dialog" aria-modal="true" aria-label="Save generated carousel" className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"><div className="bg-white rounded-xl p-6 max-w-md space-y-4"><h2 className="text-lg font-semibold">Save your generated deck</h2><p>Open every rendered slide in Studio to add captions, review, export or schedule.</p><button onClick={async()=>{try{
+        if(job.slides.some(s=>s.status!=='complete' || !s.assetUrl))throw Error('Wait for every slide to finish rendering.');
+        const response=await fetch('/api/carousels/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobId,title:script.topic,caption:script.topic,mediaUrls:job.slides.map(s=>s.assetUrl)})});
+        const data=await response.json();if(!response.ok)throw Error(data.error?.message || 'Could not save');
+        window.location.href=`/dashboard/carousels/${data.carouselId}/edit`;
+      }catch(e){showToast({tone:'error',title:e instanceof Error?e.message:'Save failed'});}}} className="bg-zinc-900 text-white rounded px-4 py-2">Save and open Studio</button><button onClick={()=>setScheduleOpen(false)} className="ml-3">Cancel</button></div></div>:null}
 
       {/* F7 — full-screen 1:1 preview modal with left/right navigation. */}
       {fullPreviewOpen && script ? (

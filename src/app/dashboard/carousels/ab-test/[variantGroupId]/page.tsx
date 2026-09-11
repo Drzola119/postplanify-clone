@@ -10,7 +10,7 @@
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { adminDb } from "@/lib/firebase/admin";
-import { requireSession } from "@/lib/auth/session-context";
+import { requireCarouselAccess as requireSession } from "@/lib/carousel-gen/access";
 import { AbCompareView } from "@/components/dashboard/carousel-ab-compare-view";
 import type {
   CarouselRecord,
@@ -92,7 +92,7 @@ export default async function AbComparePage({ params }: PageProps) {
 }
 
 async function AbLoader({ variantGroupId }: { variantGroupId: string }) {
-  const session = await requireSession();
+  const session = await requireSession(false);
   if (session instanceof Response || !adminDb) {
     return notFound();
   }

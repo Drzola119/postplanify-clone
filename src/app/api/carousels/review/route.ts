@@ -1,206 +1,234 @@
-/**
- * /api/carousels/review
- *
- * Review system endpoints:
- * - GET: Fetch public review data for a token
- * - POST: Generate token, add comment, or submit approval/change requests
- */
 import "server-only";
-import { NextRequest } from "next/server";
-import { adminDb } from "@/lib/firebase/admin";
-import { requireSession } from "@/lib/auth/session-context";
-import { getCarouselDocument, updateCarouselDocument } from "@/lib/carousel-gen/document-service";
-import { jsonError, jsonOk, parseBody } from "@/lib/validation/helpers";
-import { FieldValue } from "firebase-admin/firestore";
-import { createLogger } from "@/lib/log";
+import { randomBytes, createHash } from "node:crypto";
 import { z } from "zod";
-
-const logger = createLogger("api:carousels:review");
-
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const token = searchParams.get("token");
-  if (!token) return jsonError(400, "Missing review token");
-  if (!adminDb) return jsonError(503, "Database not configured");
-
+import { adminDb } from "@/lib/firebase/admin";
+import { requireCarouselAccess } from "@/lib/carousel-gen/access";
+import { normalizeCarousel } from "@/lib/carousel-gen/document-service";
+import { documentId } from "@/lib/carousel-gen/document-schema";
+import { cleanDocument } from "@/lib/carousel-gen/document-utils";
+import { renderCarouselSlide } from "@/lib/carousel-gen/render-document";
+import { jsonError, jsonOk } from "@/lib/validation/helpers";
+const hash = (token: string) =>
+  createHash("sha256").update(token).digest("hex");
+async function linkFor(token: string) {
+  if (!adminDb || !/^[a-f0-9]{64}$/.test(token))
+    throw Error("Invalid review link");
+  const ref = adminDb.collection("carouselReviewLinks").doc(hash(token));
+  const snap = await ref.get();
+  const link = snap.data();
+  if (!link || link.revoked || link.expiresAt < Date.now())
+    throw Error("Review link has expired or was revoked");
+  return { ref, link };
+}
+export async function GET(request: Request) {
   try {
-    const snaps = await adminDb
-      .collectionGroup("carousels")
-      .where("activeReviewToken", "==", token)
-      .limit(1)
-      .get();
-
-    if (snaps.empty) {
-      return jsonError(404, "Invalid or expired review link");
+    const params = new URL(request.url).searchParams;
+    const { link } = await linkFor(params.get("token") || "");
+    const deck = normalizeCarousel(
+      link.carouselId,
+      link.workspaceId,
+      link.snapshot,
+    );
+    if (params.has("slide")) {
+      const index = z.coerce
+        .number()
+        .int()
+        .min(0)
+        .max(deck.slides.length - 1)
+        .parse(params.get("slide"));
+      const result = await renderCarouselSlide(deck, index);
+      return new Response(new Uint8Array(result.png), {
+        headers: { "Content-Type": "image/png", "Cache-Control": "no-store" },
+      });
     }
-
-    const docSnap = snaps.docs[0];
-    const data = docSnap.data();
-    const workspaceId = data.workspaceId;
-    const carouselId = docSnap.id;
-
-    // Fetch comments for this carousel
-    const commentsSnap = await docSnap.ref
+    const comments = await adminDb!
+      .doc(`workspaces/${link.workspaceId}/carousels/${link.carouselId}`)
       .collection("comments")
-      .orderBy("createdAt", "asc")
+      .where("revisionId", "==", link.revisionId)
+      .limit(200)
       .get();
-
-    const comments = commentsSnap.docs.map((c) => ({
-      id: c.id,
-      ...c.data(),
-    }));
-
-    // Fetch active revision details
-    let currentRevision = null;
-    if (data.currentRevisionId) {
-      const revSnap = await docSnap.ref
-        .collection("revisions")
-        .doc(data.currentRevisionId)
-        .get();
-      if (revSnap.exists) {
-        currentRevision = { id: revSnap.id, ...revSnap.data() };
-      }
-    }
-
     return jsonOk({
       carousel: {
-        id: carouselId,
-        workspaceId,
-        title: data.title,
-        status: data.status,
-        aspectRatio: data.aspectRatio || "4:5",
-        slides: data.slides || [],
-        style: data.style || null,
-        caption: data.caption || "",
-        currentRevisionId: data.currentRevisionId,
-        reviewStatus: data.reviewStatus || "none",
-        approval: data.approval || null,
+        id: deck.id,
+        title: deck.title,
+        aspectRatio: deck.aspectRatio,
+        slides: deck.slides.map((s) => ({ id: s.id, headline: s.headline })),
+        caption: deck.caption,
+        currentRevisionId: link.revisionId,
       },
-      currentRevision,
-      comments,
+      expiresAt: link.expiresAt,
+      comments: comments.docs.map((d) => ({ id: d.id, ...d.data() })),
     });
-  } catch (error) {
-    logger.error("Failed to load review link", { error, token });
-    return jsonError(500, "Failed to load review data");
+  } catch (e) {
+    return jsonError(
+      400,
+      e instanceof Error ? e.message : "Review unavailable",
+    );
   }
 }
-
-const reviewActionSchema = z.object({
-  action: z.enum(["generate_token", "revoke_token", "add_comment", "resolve_comment", "approve", "request_changes"]),
-  carouselId: z.string(),
-  workspaceId: z.string().optional(),
-  token: z.string().optional(),
-  slideId: z.string().nullable().optional(),
-  content: z.string().max(2000).optional(),
-  commentId: z.string().optional(),
-  guestName: z.string().max(100).optional(),
+const actionSchema = z.object({
+  action: z.enum([
+    "generate_token",
+    "revoke_token",
+    "add_comment",
+    "resolve_comment",
+    "reopen_comment",
+    "approve",
+    "request_changes",
+  ]),
+  carouselId: documentId,
+  revisionId: z.string().max(160).optional(),
+  token: z.string().max(128).optional(),
+  slideId: documentId.nullable().optional(),
+  content: z.string().trim().min(1).max(2000).optional(),
+  commentId: documentId.optional(),
+  guestName: z.string().trim().min(1).max(100).optional(),
   guestEmail: z.string().email().optional(),
   notes: z.string().max(1000).optional(),
 });
-
-export async function POST(request: NextRequest) {
-  const parsed = await parseBody(request, reviewActionSchema);
-  if (!parsed.ok || !parsed.data) {
-    return jsonError(400, "Invalid payload", parsed.error?.issues);
-  }
-  const body = parsed.data;
-  if (!adminDb) return jsonError(503, "Database not configured");
-
-  // Handle Authenticated Actions (Token generation / Revocation / In-app comments)
-  if (body.action === "generate_token" || body.action === "revoke_token") {
-    const session = await requireSession();
-    if (session instanceof Response) return session;
-
-    const token = body.action === "generate_token"
-      ? "rev_" + Math.random().toString(36).substring(2, 15) + Date.now().toString(36)
-      : null;
-
-    await updateCarouselDocument({
-      workspaceId: session.workspaceId,
-      carouselId: body.carouselId,
-      uid: session.uid,
-      updates: {
-        activeReviewToken: token,
-        reviewStatus: token ? "in_review" : "none",
-      },
+export async function POST(request: Request) {
+  if (!adminDb) return jsonError(503, "Database unavailable");
+  try {
+    const body = actionSchema.parse(await request.json());
+    if (body.action === "generate_token" || body.action === "revoke_token") {
+      const session = await requireCarouselAccess();
+      if (session instanceof Response) return session;
+      const ref = adminDb.doc(
+        `workspaces/${session.workspaceId}/carousels/${body.carouselId}`,
+      );
+      const token = randomBytes(32).toString("hex");
+      await adminDb.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) throw Error("Carousel not found");
+        const deck = normalizeCarousel(
+          body.carouselId,
+          session.workspaceId,
+          snap.data()!,
+        );
+        if (
+          body.action === "generate_token" &&
+          body.revisionId !== deck.currentRevisionId
+        )
+          throw Error("Save your latest revision before sharing");
+        if (deck.activeReviewToken)
+          tx.set(
+            adminDb!
+              .collection("carouselReviewLinks")
+              .doc(hash(deck.activeReviewToken)),
+            { revoked: true },
+            { merge: true },
+          );
+        if (body.action === "generate_token") {
+          const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
+          tx.set(
+            adminDb!.collection("carouselReviewLinks").doc(hash(token)),
+            cleanDocument({
+              workspaceId: session.workspaceId,
+              carouselId: deck.id,
+              revisionId: deck.currentRevisionId,
+              expiresAt,
+              revoked: false,
+              snapshot: deck,
+            }),
+          );
+          tx.update(ref, {
+            activeReviewToken: token,
+            reviewRevisionId: deck.currentRevisionId,
+            reviewExpiresAt: expiresAt,
+            reviewStatus: "in_review",
+          });
+        } else
+          tx.update(ref, {
+            activeReviewToken: null,
+            reviewExpiresAt: null,
+            reviewRevisionId: null,
+          });
+      });
+      return jsonOk({
+        activeReviewToken: body.action === "generate_token" ? token : null,
+      });
+    }
+    const { ref: linkRef, link } = await linkFor(body.token || "");
+    if (
+      body.carouselId !== link.carouselId ||
+      body.revisionId !== link.revisionId
+    )
+      return jsonError(409, "Review revision does not match");
+    const carousel = adminDb.doc(
+      `workspaces/${link.workspaceId}/carousels/${link.carouselId}`,
+    );
+    if (
+      body.slideId &&
+      !link.snapshot.slides.some((s: { id: string }) => s.id === body.slideId)
+    )
+      return jsonError(400, "Slide not found");
+    const commentRef = body.commentId
+      ? carousel.collection("comments").doc(body.commentId)
+      : carousel.collection("comments").doc();
+    await adminDb.runTransaction(async (tx) => {
+      const currentLink = await tx.get(linkRef);
+      if (
+        currentLink.data()?.revoked ||
+        currentLink.data()!.expiresAt < Date.now()
+      )
+        throw Error("Review link expired");
+      const current = await tx.get(carousel);
+      if (!current.exists) throw Error("Carousel not found");
+      if (
+        ["approve", "request_changes"].includes(body.action) &&
+        current.data()!.currentRevisionId !== body.revisionId
+      )
+        throw Error(
+          "This deck has changed. Ask the creator for a new review link.",
+        );
+      if (body.action === "add_comment") {
+        if (!body.content || !body.guestName)
+          throw Error("Enter your name and comment");
+        tx.set(
+          commentRef,
+          cleanDocument({
+            slideId: body.slideId ?? null,
+            revisionId: link.revisionId,
+            author: { name: body.guestName, isGuest: true },
+            content: body.content,
+            resolved: false,
+            createdAt: Date.now(),
+          }),
+        );
+      } else if (["resolve_comment", "reopen_comment"].includes(body.action)) {
+        const comment = await tx.get(commentRef);
+        if (comment.data()?.revisionId !== link.revisionId)
+          throw Error("Comment not found");
+        tx.update(commentRef, {
+          resolved: body.action === "resolve_comment",
+          resolvedAt: Date.now(),
+        });
+      } else if (body.action === "approve") {
+        if (!body.guestName) throw Error("Enter your name");
+        const approval = {
+          approvedBy: "guest",
+          reviewerName: body.guestName,
+          approvedAt: Date.now(),
+          revisionId: link.revisionId,
+          notes: body.notes || "",
+        };
+        tx.update(carousel, { reviewStatus: "approved", approval });
+        tx.set(
+          carousel.collection("revisions").doc(link.revisionId),
+          { approval },
+          { merge: true },
+        );
+      } else if (body.action === "request_changes")
+        tx.update(carousel, {
+          reviewStatus: "changes_requested",
+          approval: null,
+        });
     });
-
-    return jsonOk({
-      success: true,
-      activeReviewToken: token,
-      reviewUrl: token ? `/review/carousel/${token}` : null,
-    });
+    return jsonOk({ success: true, commentId: commentRef.id });
+  } catch (e) {
+    return jsonError(
+      400,
+      e instanceof Error ? e.message : "Review action failed",
+    );
   }
-
-  // Handle Reviewer (Guest or Authenticated) Comments & Approvals via Token
-  if (body.token) {
-    const snaps = await adminDb
-      .collectionGroup("carousels")
-      .where("activeReviewToken", "==", body.token)
-      .limit(1)
-      .get();
-
-    if (snaps.empty) return jsonError(403, "Invalid review token");
-    const docSnap = snaps.docs[0];
-    const data = docSnap.data();
-    const carouselRef = docSnap.ref;
-
-    if (body.action === "add_comment") {
-      if (!body.content || body.content.trim().length === 0) {
-        return jsonError(400, "Comment content required");
-      }
-      const commentRef = carouselRef.collection("comments").doc();
-      const newComment = {
-        id: commentRef.id,
-        slideId: body.slideId ?? null,
-        revisionId: data.currentRevisionId || "rev_1",
-        author: {
-          name: body.guestName || "Reviewer",
-          email: body.guestEmail,
-          isGuest: true,
-        },
-        content: body.content,
-        resolved: false,
-        createdAt: FieldValue.serverTimestamp(),
-      };
-      await commentRef.set(newComment);
-      return jsonOk({ success: true, commentId: commentRef.id });
-    }
-
-    if (body.action === "resolve_comment" && body.commentId) {
-      await carouselRef.collection("comments").doc(body.commentId).update({
-        resolved: true,
-        resolvedAt: FieldValue.serverTimestamp(),
-      });
-      return jsonOk({ success: true });
-    }
-
-    if (body.action === "approve") {
-      const approval = {
-        approvedBy: body.guestEmail || "Guest Reviewer",
-        reviewerName: body.guestName || "Reviewer",
-        approvedAt: Date.now(),
-        revisionId: data.currentRevisionId || "rev_1",
-        notes: body.notes || "",
-      };
-      await carouselRef.update({
-        status: "approved",
-        reviewStatus: "approved",
-        approval,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-      return jsonOk({ success: true, approval });
-    }
-
-    if (body.action === "request_changes") {
-      await carouselRef.update({
-        status: "changes_requested",
-        reviewStatus: "changes_requested",
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-      return jsonOk({ success: true, reviewStatus: "changes_requested" });
-    }
-  }
-
-  return jsonError(400, "Unknown review action");
 }

@@ -1,16 +1,9 @@
 import { describe, it, expect } from "vitest";
-import {
-  createInitialSlides,
-} from "@/lib/carousel-gen/document-service";
+import { createInitialSlides } from "@/lib/carousel-gen/document-service";
 import { checkContrastRatio } from "@/lib/carousel-gen/brand-kits";
 import { runPreflightChecks } from "@/lib/carousel-gen/preflight";
 import {
-  generateOutlineFromSource,
-  applySurgicalRefinement,
-} from "@/lib/carousel-gen/repurpose";
-import {
   type CarouselDocument,
-  type CarouselSlideItem,
   ASPECT_RATIO_DIMENSIONS,
 } from "@/lib/carousel-gen/types";
 import { DEFAULT_CAROUSEL_STYLE } from "@/lib/carousel-gen/styles";
@@ -81,7 +74,8 @@ describe("Carousel Studio - Preflight Validation Engine", () => {
       },
     ],
     slideCount: 3,
-    caption: "The complete 90-day playbook to scale pipeline without paid ads. Comment INBOUND below!",
+    caption:
+      "The complete 90-day playbook to scale pipeline without paid ads. Comment INBOUND below!",
     currentRevisionId: "rev_1",
     revisionCount: 1,
     reviewStatus: "none",
@@ -101,15 +95,14 @@ describe("Carousel Studio - Preflight Validation Engine", () => {
   it("detects missing headline as a blocking error", () => {
     const brokenDeck: CarouselDocument = {
       ...dummyDeck,
-      slides: [
-        { ...dummyDeck.slides[0], headline: "" },
-        dummyDeck.slides[1],
-      ],
+      slides: [{ ...dummyDeck.slides[0], headline: "" }, dummyDeck.slides[1]],
     };
     const report = runPreflightChecks(brokenDeck);
     expect(report.passed).toBe(false);
     expect(report.errorsCount).toBeGreaterThan(0);
-    expect(report.issues.some((i) => i.id.includes("err-headline-empty"))).toBe(true);
+    expect(report.issues.some((i) => i.id.includes("err-headline-empty"))).toBe(
+      true,
+    );
   });
 
   it("flags short/missing caption as a warning", () => {
@@ -120,56 +113,5 @@ describe("Carousel Studio - Preflight Validation Engine", () => {
     const report = runPreflightChecks(noCapDeck);
     expect(report.warningsCount).toBeGreaterThan(0);
     expect(report.issues.some((i) => i.id === "warn-caption")).toBe(true);
-  });
-});
-
-describe("Carousel Studio - AI Repurposing & Surgical Refinements", () => {
-  it("generates an outline with hook, progression, and CTA from raw source text", () => {
-    const rawText =
-      "Building in public creates immense distribution. First, share your failures transparently so people trust your journey. Second, document your daily metrics and learnings. Third, offer free templates to build an email list. Finally, ask your audience what product they want built.";
-    const outline = generateOutlineFromSource(rawText, 5);
-    expect(outline.hook).toBeTruthy();
-    expect(outline.outlineSteps).toHaveLength(3);
-    expect(outline.suggestedCta).toBeTruthy();
-  });
-
-  it("applies surgical text shortening without touching other attributes", () => {
-    const slide: CarouselSlideItem = {
-      id: "s_test",
-      index: 0,
-      type: "hook",
-      headline: "The Extremely Long Headline That Could Be Shortened By AI To Fit Mobile",
-      body: "This is a detailed paragraph with a lot of words that can be shortened.",
-    };
-    const shortened = applySurgicalRefinement({ slide, action: "shorten" });
-    expect(shortened.headline.split(" ").length).toBeLessThanOrEqual(6);
-  });
-
-  it("respects locked slides and avoids mutating them", () => {
-    const slide: CarouselSlideItem = {
-      id: "s_locked",
-      index: 0,
-      type: "hook",
-      headline: "Locked Headline",
-      isLocked: true,
-    };
-    const unchanged = applySurgicalRefinement({ slide, action: "shorten" });
-    expect(unchanged.headline).toBe("Locked Headline");
-  });
-
-  it("adjusts text alignment to right when translating to Arabic", () => {
-    const slide: CarouselSlideItem = {
-      id: "s_ar",
-      index: 0,
-      type: "hook",
-      headline: "Introduction",
-      textAlign: "left",
-    };
-    const arSlide = applySurgicalRefinement({
-      slide,
-      action: "translate",
-      targetLanguage: "ar",
-    });
-    expect(arSlide.textAlign).toBe("right");
   });
 });

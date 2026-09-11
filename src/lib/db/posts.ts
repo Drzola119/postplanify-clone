@@ -211,7 +211,7 @@ export async function getPost(workspaceId: string, postId: string): Promise<Post
   }
 }
 
-export async function createPost(workspaceId: string, authorUid: string, data: Partial<PostDoc>): Promise<string> {
+export async function createPost(workspaceId: string, authorUid: string, data: Partial<PostDoc>, carouselHandoffId?: string): Promise<string> {
   const ref = collection(workspaceId).doc();
   const now = SERVER_TIMESTAMP;
   const scheduledAtRaw = data.scheduledAt as unknown;
@@ -250,6 +250,7 @@ export async function createPost(workspaceId: string, authorUid: string, data: P
     deletedAt: null,
   };
   const payload = stripUndefined(raw);
+  if(carouselHandoffId){const {createLinkedCarouselPost}=await import("@/lib/carousel-gen/post-link");return createLinkedCarouselPost(workspaceId,authorUid,carouselHandoffId,payload);}
   await ref.set(payload);
   return ref.id;
 }

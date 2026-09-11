@@ -1,144 +1,202 @@
 "use client";
-
-/**
- * Carousel templates grid — interactive niche filter + cards.
- *
- * F5 — Pairs with /dashboard/carousels/templates. Each card links to
- * the new-carousel wizard with a prefill query string. Niche filter is
- * a small client state so the rest of the page can stay a server
- * component.
- */
-
-import { useMemo, useState } from "react";
-import { Layers, ArrowRight } from "lucide-react";
-import {
-  CAROUSEL_TEMPLATES,
-  TEMPLATE_NICHES,
-  type CarouselTemplate,
-  type TemplateNiche,
-} from "@/data/carousel-templates";
-
-interface Props {
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { CarouselTemplate } from "@/data/carousel-templates";
+import { CAROUSEL_TEMPLATES } from "@/data/carousel-templates";
+import { templateDocument } from "@/lib/carousel-gen/templates";
+import { studioApi } from "./carousel-studio/client-api";
+export { CAROUSEL_TEMPLATES };
+export function CarouselTemplatesGrid({
+  templates,
+}: {
   templates: ReadonlyArray<CarouselTemplate>;
-}
-
-export function CarouselTemplatesGrid({ templates }: Props) {
-  const [niche, setNiche] = useState<TemplateNiche | "all">("all");
-
-  const filtered = useMemo(
-    () => (niche === "all" ? templates : templates.filter((t) => t.niche === niche)),
-    [niche, templates]
+}) {
+  const router = useRouter();
+  const [query, setQuery] = useState(""),
+    [category, setCategory] = useState("all"),
+    [selected, setSelected] = useState<string | null>(null),
+    [slide, setSlide] = useState(0),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [custom, setCustom] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    void studioApi<{ templates: { id: string; name: string }[] }>(
+      "/api/carousels/templates",
+    )
+      .then((d) => setCustom(d.templates))
+      .catch((e) => setError(e.message));
+  }, []);
+  async function applyTemplate(id: string, workspaceTemplate = false) {
+    setBusy(true);
+    setError("");
+    try {
+      const d = await studioApi<{ carouselId: string }>(
+        "/api/carousels/templates",
+        { action: "use", templateId: id, workspaceTemplate },
+      );
+      router.push(`/dashboard/carousels/${d.carouselId}/edit`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not apply template");
+    } finally {
+      setBusy(false);
+    }
+  }
+  const visible = templates.filter(
+    (t) =>
+      (category === "all" || t.category === category || t.niche === category) &&
+      `${t.name} ${t.description}`.toLowerCase().includes(query.toLowerCase()),
   );
-
   return (
-    <div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <FilterChip
-          active={niche === "all"}
-          label={`All (${templates.length})`}
-          onClick={() => setNiche("all")}
+    <div className="space-y-5">
+      <div className="flex gap-3">
+        <input
+          aria-label="Search templates"
+          className="border rounded-lg p-3 flex-1"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search templates"
         />
-        {TEMPLATE_NICHES.map((n) => {
-          const count = templates.filter((t) => t.niche === n.id).length;
-          return (
-            <FilterChip
-              key={n.id}
-              active={niche === n.id}
-              label={`${n.label} (${count})`}
-              onClick={() => setNiche(n.id)}
-            />
-          );
-        })}
+        <select
+          aria-label="Template category"
+          className="border rounded-lg p-3"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+        >
+          <option value="all">All categories</option>
+          {Array.from(new Set(templates.map((t) => t.category || t.niche))).map(
+            (c) => (
+              <option key={c}>{c}</option>
+            ),
+          )}
+        </select>
       </div>
-
-      {filtered.length === 0 ? (
-        <p className="mt-8 text-sm text-zinc-500">No templates in this niche yet.</p>
-      ) : (
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((t) => (
-            <TemplateCard key={t.id} template={t} />
-          ))}
+      {error && (
+        <p role="alert" className="text-red-700">
+          {error}
+        </p>
+      )}
+      {custom.length > 0 && (
+        <section>
+          <h2 className="font-semibold">Workspace templates</h2>
+          <div className="flex flex-wrap gap-3">
+            {custom.map((t) => (
+              <div key={t.id} className="border rounded p-3">
+                <button
+                  disabled={busy}
+                  onClick={() => void applyTemplate(t.id, true)}
+                >
+                  Use {t.name}
+                </button>
+                <button
+                  className="ml-3 text-sm"
+                  onClick={async () => {
+                    if (
+                      !confirm(
+                        "Delete this saved template? Existing decks will remain.",
+                      )
+                    )
+                      return;
+                    await studioApi("/api/carousels/templates", {
+                      action: "delete",
+                      templateId: t.id,
+                    });
+                    setCustom((c) => c.filter((x) => x.id !== t.id));
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        {visible.map((t) => (
+          <article key={t.id} className="border rounded-xl overflow-hidden">
+            <button
+              className="block w-full bg-zinc-100"
+              onClick={() => {
+                setSelected(t.id);
+                setSlide(0);
+              }}
+            >
+              <img
+                loading="lazy"
+                className="aspect-[4/5] object-contain w-full"
+                src={`/api/carousels/thumbnail?template=${t.id}`}
+                alt={`${t.name} cover preview`}
+              />
+            </button>
+            <div className="p-4 space-y-3">
+              <h2 className="text-lg font-semibold">{t.name}</h2>
+              <p className="text-sm text-zinc-600">{t.description}</p>
+              <p className="text-sm">
+                {templateDocument(t.id).slides.length} editable slides ·
+                Portrait
+              </p>
+              <button
+                disabled={busy}
+                className="border rounded px-3 py-2"
+                onClick={() => void applyTemplate(t.id)}
+              >
+                Use template
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+      {selected && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Template preview"
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-5"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setSelected(null);
+          }}
+        >
+          <div className="bg-white rounded-xl p-4 max-w-lg w-full max-h-[95vh] overflow-auto">
+            <button
+              autoFocus
+              className="float-right p-2"
+              onClick={() => setSelected(null)}
+            >
+              Close
+            </button>
+            <img
+              alt={`Template slide ${slide + 1}`}
+              className="w-full"
+              src={`/api/carousels/thumbnail?template=${selected}&slide=${slide}`}
+            />
+            <div className="flex justify-between p-3">
+              <button
+                disabled={slide === 0}
+                onClick={() => setSlide((i) => i - 1)}
+              >
+                Previous
+              </button>
+              <span>
+                {slide + 1} / {templateDocument(selected).slides.length}
+              </span>
+              <button
+                disabled={
+                  slide === templateDocument(selected).slides.length - 1
+                }
+                onClick={() => setSlide((i) => i + 1)}
+              >
+                Next
+              </button>
+            </div>
+            <button
+              disabled={busy}
+              onClick={() => void applyTemplate(selected)}
+              className="bg-zinc-900 text-white rounded p-3"
+            >
+              Create editable draft
+            </button>
+          </div>
         </div>
       )}
     </div>
   );
 }
-
-function FilterChip({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={
-        "rounded-full px-3 h-7 text-xs font-medium border transition-colors " +
-        (active
-          ? "bg-zinc-900 text-white border-zinc-900"
-          : "bg-white text-zinc-700 border-zinc-200 hover:border-zinc-300")
-      }
-    >
-      {label}
-    </button>
-  );
-}
-
-function TemplateCard({ template }: { template: CarouselTemplate }) {
-  const params = new URLSearchParams({
-    topic: template.topic,
-    niche: template.topicNiche,
-    tone: template.tone,
-    ctaKeyword: template.ctaKeyword,
-    slideCount: String(template.slideCount),
-  });
-  return (
-    <a
-      href={`/dashboard/carousels/new?${params.toString()}`}
-      className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-white p-5 transition-all hover:border-zinc-300 hover:shadow-sm"
-    >
-      <div className="flex items-start gap-3">
-        <div className="inline-flex size-9 items-center justify-center rounded-lg bg-violet-50 text-violet-700 shrink-0">
-          <Layers className="size-4" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-            {labelForNiche(template.niche)} · {template.slideCount} slides
-          </p>
-          <h3 className="mt-0.5 text-sm font-semibold tracking-tight text-zinc-900">
-            {template.name}
-          </h3>
-        </div>
-      </div>
-      <p className="mt-3 text-xs text-zinc-600 leading-relaxed line-clamp-3">
-        {template.description}
-      </p>
-      <div className="mt-3 flex items-center gap-1.5 text-[11px] text-zinc-500">
-        <span className="rounded-md bg-zinc-50 border border-zinc-200 px-1.5 py-0.5">
-          {template.tone}
-        </span>
-        <span className="rounded-md bg-zinc-50 border border-zinc-200 px-1.5 py-0.5 font-mono">
-          {template.ctaKeyword}
-        </span>
-      </div>
-      <div className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-zinc-900 group-hover:gap-2 transition-all">
-        Use Template
-        <ArrowRight className="size-3.5" />
-      </div>
-    </a>
-  );
-}
-
-function labelForNiche(n: TemplateNiche): string {
-  return TEMPLATE_NICHES.find((x) => x.id === n)?.label ?? n;
-}
-
-// Re-export the static list for tests / consumers that want the data
-// without importing the data file twice.
-export { CAROUSEL_TEMPLATES };

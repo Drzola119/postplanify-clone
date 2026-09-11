@@ -3,7 +3,6 @@
 import {
   Undo,
   Redo,
-  Save,
   CheckCircle2,
   AlertCircle,
   Loader2,
@@ -11,7 +10,6 @@ import {
   Share2,
   Download,
   Calendar,
-  Layers,
   ChevronLeft,
 } from "lucide-react";
 import Link from "next/link";
@@ -46,7 +44,7 @@ export function StudioToolbar({
   onSchedule,
 }: StudioToolbarProps) {
   return (
-    <header className="h-16 bg-zinc-900 border-b border-zinc-800 px-4 sm:px-6 flex items-center justify-between gap-4 sticky top-0 z-30">
+    <header className="min-h-16 py-3 flex-wrap bg-zinc-900 border-b border-zinc-800 px-4 sm:px-6 flex items-center justify-between gap-4 sticky top-0 z-30">
       {/* Left: Back Link & Editable Title */}
       <div className="flex items-center gap-3 min-w-0">
         <Link
@@ -61,6 +59,7 @@ export function StudioToolbar({
           <input
             type="text"
             value={title}
+            aria-label="Carousel title"
             onChange={(e) => onTitleChange(e.target.value)}
             className="bg-transparent hover:bg-zinc-800/60 focus:bg-zinc-800 px-2 py-1 rounded-lg text-sm font-bold text-white border border-transparent hover:border-zinc-700 focus:border-amber-500 focus:outline-none truncate max-w-xs sm:max-w-md transition"
           />

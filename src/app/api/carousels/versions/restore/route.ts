@@ -11,17 +11,18 @@
  * "revision history") while still giving the user a real "undo".
  */
 import "server-only";
+import {
+  getCarouselDocument,
+  updateCarouselDocument,
+} from "@/lib/carousel-gen/document-service";
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { FieldValue } from "firebase-admin/firestore";
-import { randomUUID } from "node:crypto";
-import { requireSession } from "@/lib/auth/session-context";
+import { requireCarouselAccess as requireSession } from "@/lib/carousel-gen/access";
 import { adminDb } from "@/lib/firebase/admin";
 import { jsonError, jsonOk, parseBody } from "@/lib/validation/helpers";
 import { createLogger } from "@/lib/log";
 import type {
   CarouselVersion,
-  CarouselVersionEditType,
   CarouselVersionSlide,
 } from "@/lib/carousel-gen/analytics-types";
 
@@ -41,13 +42,6 @@ function toMillis(v: unknown): number {
   return 0;
 }
 
-const VALID_EDIT_TYPES: readonly CarouselVersionEditType[] = [
-  "initial-generate",
-  "ai-regenerate",
-  "translate",
-  "manual-edit",
-];
-
 export async function POST(request: NextRequest) {
   const session = await requireSession();
   if (session instanceof Response) return session;
@@ -58,7 +52,7 @@ export async function POST(request: NextRequest) {
     return jsonError(
       parsed.error?.status ?? 400,
       parsed.error?.message ?? "Invalid payload",
-      parsed.error?.issues
+      parsed.error?.issues,
     );
   }
   const { carouselId, versionId } = parsed.data;
@@ -98,48 +92,34 @@ export async function POST(request: NextRequest) {
         : new Date(sourceCreatedAtMs).toLocaleString();
     const newLabel = `Restored from ${sourceLabel}`;
 
-    const newVersionId = randomUUID();
-    const newVersionRef = carouselRef
-      .collection("versions")
-      .doc(newVersionId);
-    const now = FieldValue.serverTimestamp();
-    await newVersionRef.set({
-      versionId: newVersionId,
-      createdAt: now,
-      editType: "manual-edit" as CarouselVersionEditType,
-      slideCount,
-      slides: sourceSlides,
-      label: newLabel,
-      // We also keep a back-pointer to the version this restore came
-      // from, so the history UI can show "← restored from vN" on the
-      // resulting row. Stored as a regular field rather than a true
-      // ref so it survives denormalisation snapshots.
-      restoredFromVersionId: versionId,
-    });
-
-    // Also rewrite the live carousel script fields if they exist on
-    // the doc — the wizard reads these when it re-opens the deck. The
-    // server doesn't know the full CarouselScript shape, so we only
-    // touch the fields we know about.
-    const sourceEditType: CarouselVersionEditType = VALID_EDIT_TYPES.includes(
-      source.editType as CarouselVersionEditType
-    )
-      ? (source.editType as CarouselVersionEditType)
-      : "manual-edit";
-    await carouselRef.set(
-      {
-        slideCount,
-        // Don't overwrite the title; restore is about copy, not naming.
-        updatedAt: now,
-        lastRestoredFrom: {
-          versionId,
-          editType: sourceEditType,
-          restoredAt: now,
-        },
+    const current = await getCarouselDocument(session.workspaceId, carouselId);
+    if (!current) return jsonError(404, "Carousel not found");
+    if (!sourceSlides.length)
+      return jsonError(422, "This legacy version has no restorable slides");
+    const restored = await updateCarouselDocument({
+      workspaceId: session.workspaceId,
+      uid: session.uid,
+      carouselId,
+      expectedRevisionId: current.currentRevisionId,
+      createRevision: true,
+      revisionLabel: newLabel,
+      updates: {
+        slides: sourceSlides.map((s, i) => ({
+          id: current.slides[i]?.id || `restored_${i}`,
+          index: i,
+          type: i === 0 ? "hook" : "value",
+          headline: s.text,
+          backgroundImageUrl: s.backgroundImageUrl,
+          backgroundOpacity: 35,
+        })),
       },
-      { merge: true }
-    );
-
+    });
+    if (!restored.success)
+      return jsonError(
+        409,
+        "The deck changed during restore. Reload and try again.",
+      );
+    const newVersionId = restored.newRevisionId!;
     logger.info("Carousel version restored", {
       workspaceId: session.workspaceId,
       uid: session.uid,

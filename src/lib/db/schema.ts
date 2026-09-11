@@ -211,6 +211,7 @@ export interface PerPlatformResult {
 }
 
 export interface DraftDoc {
+  carouselHandoffId?: string;
   authorUid: string;
   caption?: string;
   platforms: PlatformId[];

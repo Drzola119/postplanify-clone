@@ -10,6 +10,7 @@ const log = createLogger("posts/schedule");
 
 const schedulePayloadSchema = z.object({
   jobId: z.string().optional(),
+  carouselHandoffId:z.string().max(120).regex(/^[a-zA-Z0-9_-]+$/).optional(),
   platforms: z.array(z.string().min(1)).min(1),
   caption: z.string().min(1),
   hashtags: z.string().optional(),
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
       captionsByPlatform: body.captionsByPlatform,
       sameForAll: body.sameForAll,
       advancedByPlatform: body.advancedByPlatform as Record<string, Record<string, unknown>> | undefined,
-    });
+    }, ...(body.carouselHandoffId ? [body.carouselHandoffId] as [string] : [] as []));
 
     // This endpoint deliberately does not import or call UploadPost. Delivery
     // is exclusively owned by the queue worker once scheduledAt is due.

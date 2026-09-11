@@ -1,4 +1,6 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
+import { cleanDocument } from "./document-utils";
 import { adminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { createLogger } from "@/lib/log";
@@ -15,30 +17,47 @@ import { DEFAULT_CAROUSEL_STYLE } from "@/lib/carousel-gen/styles";
 const log = createLogger("lib:carousel-gen:document-service");
 
 function generateId(): string {
-  return "csl_" + Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
+  return "csl_" + randomUUID();
 }
 
 function generateSlideId(): string {
-  return "sld_" + Math.random().toString(36).substring(2, 9);
+  return "sld_" + randomUUID();
 }
 
 export function createInitialSlides(
   count: number = 5,
-  headlines?: string[]
+  headlines?: string[],
 ): CarouselSlideItem[] {
-  const types: CarouselSlideItem["type"][] = ["hook", "stakes", "value", "receipts", "cta"];
+  const types: CarouselSlideItem["type"][] = [
+    "hook",
+    "stakes",
+    "value",
+    "receipts",
+    "cta",
+  ];
   const slides: CarouselSlideItem[] = [];
 
   for (let i = 0; i < count; i++) {
-    const type = i === 0 ? "hook" : i === count - 1 ? "cta" : (types[i % types.length] ?? "value");
+    const type =
+      i === 0
+        ? "hook"
+        : i === count - 1
+          ? "cta"
+          : (types[i % types.length] ?? "value");
     slides.push({
       id: generateSlideId(),
       index: i,
       type,
       layoutId: type === "hook" ? "centered" : "split",
-      headline: headlines?.[i] ?? (i === 0 ? "How to Master Your Craft" : `Key Principle #${i}`),
-      subheadline: i === 0 ? "Swipe to discover the 5-step framework" : undefined,
-      body: i === 0 ? "" : "Here is the exact actionable insight you can apply immediately to 10x your output.",
+      headline:
+        headlines?.[i] ??
+        (i === 0 ? "How to Master Your Craft" : `Key Principle #${i}`),
+      subheadline:
+        i === 0 ? "Swipe to discover the 5-step framework" : undefined,
+      body:
+        i === 0
+          ? ""
+          : "Here is the exact actionable insight you can apply immediately to 10x your output.",
       textAlign: "left",
       backgroundOpacity: 0,
       isLocked: false,
@@ -61,6 +80,10 @@ export async function createCarouselDraft({
   campaignId,
   folderId,
   tags = [],
+  caption = "",
+  brandSnapshot = null,
+  platformOverrides = {},
+  showSlideNumbers = true,
 }: {
   workspaceId: string;
   uid: string;
@@ -72,6 +95,10 @@ export async function createCarouselDraft({
   campaignId?: string | null;
   folderId?: string | null;
   tags?: string[];
+  caption?: string;
+  brandSnapshot?: CarouselDocument["brandSnapshot"];
+  platformOverrides?: CarouselDocument["platformOverrides"];
+  showSlideNumbers?: boolean;
 }): Promise<CarouselDocument> {
   if (!adminDb) throw new Error("Firestore Admin not configured");
 
@@ -81,7 +108,11 @@ export async function createCarouselDraft({
 
   const finalSlides: CarouselSlideItem[] =
     slides && slides.length > 0
-      ? slides.map((s, idx) => ({ ...s, id: s.id || generateSlideId(), index: idx }))
+      ? slides.map((s, idx) => ({
+          ...s,
+          id: s.id || generateSlideId(),
+          index: idx,
+        }))
       : createInitialSlides(5);
 
   const docData: CarouselDocument = {
@@ -99,8 +130,10 @@ export async function createCarouselDraft({
     style,
     slides: finalSlides,
     slideCount: finalSlides.length,
-    caption: "",
-    platformOverrides: {},
+    caption,
+    brandSnapshot,
+    showSlideNumbers,
+    platformOverrides,
     currentRevisionId: revisionId,
     revisionCount: 1,
     reviewStatus: "none",
@@ -123,11 +156,15 @@ export async function createCarouselDraft({
     .collection("carousels")
     .doc(carouselId);
 
-  await docRef.set({
-    ...docData,
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+  const batch = adminDb.batch();
+  batch.set(
+    docRef,
+    cleanDocument({
+      ...docData,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }),
+  );
 
   // Record Initial Revision
   const revisionRef = docRef.collection("revisions").doc(revisionId);
@@ -145,13 +182,19 @@ export async function createCarouselDraft({
     renderedAssetUrls: [],
     reviewStatus: "none",
   };
-  await revisionRef.set({
-    ...revSnapshot,
-    createdAt: FieldValue.serverTimestamp(),
-  });
+  batch.set(
+    revisionRef,
+    cleanDocument({
+      ...docData,
+      ...revSnapshot,
+      caption,
+      createdAt: FieldValue.serverTimestamp(),
+    }),
+  );
+  await batch.commit();
 
   log.info("Created carousel draft", { workspaceId, carouselId, revisionId });
-  return docData;
+  return cleanDocument(docData);
 }
 
 /**
@@ -159,7 +202,7 @@ export async function createCarouselDraft({
  */
 export async function getCarouselDocument(
   workspaceId: string,
-  carouselId: string
+  carouselId: string,
 ): Promise<CarouselDocument | null> {
   if (!adminDb) return null;
 
@@ -172,11 +215,24 @@ export async function getCarouselDocument(
   const snap = await docRef.get();
   if (!snap.exists) return null;
 
-  const data = snap.data() as Record<string, any>;
+  return normalizeCarousel(snap.id, workspaceId, snap.data()!);
+}
+
+export function normalizeCarousel(
+  id: string,
+  workspaceId: string,
+  raw: Record<string, unknown>,
+): CarouselDocument {
+  const data = raw as Partial<CarouselDocument> & {
+    uid?: string;
+    postId?: string;
+    performance?: NonNullable<CarouselDocument["analytics"]>;
+  };
 
   // Normalize legacy and current fields
   const doc: CarouselDocument = {
-    id: snap.id,
+    ...data,
+    id,
     workspaceId: data.workspaceId || workspaceId,
     title: data.title || "Untitled Carousel",
     description: data.description || "",
@@ -185,39 +241,58 @@ export async function getCarouselDocument(
     folderId: data.folderId || null,
     tags: Array.isArray(data.tags) ? data.tags : [],
     aspectRatio: data.aspectRatio || "4:5",
-    dimensions: data.dimensions || ASPECT_RATIO_DIMENSIONS[data.aspectRatio as CarouselAspectRatio || "4:5"],
+    dimensions:
+      data.dimensions ||
+      ASPECT_RATIO_DIMENSIONS[
+        (data.aspectRatio as CarouselAspectRatio) || "4:5"
+      ],
     brandKitId: data.brandKitId || null,
     style: data.style || DEFAULT_CAROUSEL_STYLE,
-    slides: Array.isArray(data.slides) && data.slides.length > 0
-      ? data.slides.map((s: any, idx: number) => ({
-          id: s.id || `slide_${idx}`,
-          index: typeof s.index === "number" ? s.index : idx,
-          type: s.type || (idx === 0 ? "hook" : "value"),
-          layoutId: s.layoutId || "centered",
-          headline: s.headline || "",
-          subheadline: s.subheadline,
-          body: s.body,
-          quoteAuthor: s.quoteAuthor,
-          statsValue: s.statsValue,
-          statsLabel: s.statsLabel,
-          comparisonItems: s.comparisonItems,
-          bulletPoints: s.bulletPoints,
-          backgroundImageUrl: s.backgroundImageUrl || s.backgroundUrl,
-          backgroundOpacity: typeof s.backgroundOpacity === "number" ? s.backgroundOpacity : 0,
-          backgroundPosition: s.backgroundPosition || "cover",
-          backgroundColor: s.backgroundColor,
-          textColor: s.textColor,
-          accentColor: s.accentColor,
-          displayFont: s.displayFont,
-          bodyFont: s.bodyFont,
-          textAlign: s.textAlign || "left",
-          fontSizeScale: s.fontSizeScale || 1,
-          isLocked: Boolean(s.isLocked),
-          renderedImageUrl: s.renderedImageUrl || (data.mediaUrls?.[idx]),
-          isLegacyFlat: Boolean(s.isLegacyFlat || (!s.headline && data.mediaUrls?.[idx])),
-        }))
-      : createInitialSlides(data.slideCount || 5),
-    slideCount: data.slideCount || (Array.isArray(data.slides) ? data.slides.length : 5),
+    slides:
+      Array.isArray(data.slides) && data.slides.length > 0
+        ? data.slides.map((s, idx: number) => ({
+            ...s,
+            id: s.id || `slide_${idx}`,
+            index: typeof s.index === "number" ? s.index : idx,
+            type: s.type || (idx === 0 ? "hook" : "value"),
+            layoutId: s.layoutId || "centered",
+            headline: s.headline || "",
+            subheadline: s.subheadline,
+            body: s.body,
+            quoteAuthor: s.quoteAuthor,
+            statsValue: s.statsValue,
+            statsLabel: s.statsLabel,
+            comparisonItems: s.comparisonItems,
+            bulletPoints: s.bulletPoints,
+            backgroundImageUrl: s.backgroundImageUrl,
+            backgroundOpacity:
+              typeof s.backgroundOpacity === "number" ? s.backgroundOpacity : 0,
+            backgroundPosition: s.backgroundPosition || "cover",
+            backgroundColor: s.backgroundColor,
+            textColor: s.textColor,
+            accentColor: s.accentColor,
+            displayFont: s.displayFont,
+            bodyFont: s.bodyFont,
+            textAlign: s.textAlign || "left",
+            fontSizeScale: s.fontSizeScale || 1,
+            isLocked: Boolean(s.isLocked),
+            renderedImageUrl: s.renderedImageUrl || data.mediaUrls?.[idx],
+            isLegacyFlat: Boolean(
+              s.isLegacyFlat || (!s.headline && data.mediaUrls?.[idx]),
+            ),
+          }))
+        : data.mediaUrls?.length
+          ? data.mediaUrls.map((url, index) => ({
+              id: `legacy_${id}_${index}`,
+              index,
+              type: index === 0 ? ("hook" as const) : ("value" as const),
+              headline: "",
+              renderedImageUrl: url,
+              isLegacyFlat: true,
+            }))
+          : createInitialSlides(data.slideCount || 5),
+    slideCount:
+      data.slideCount || (Array.isArray(data.slides) ? data.slides.length : 5),
     caption: data.caption || "",
     platformOverrides: data.platformOverrides || {},
     currentRevisionId: data.currentRevisionId || "rev_1",
@@ -227,34 +302,43 @@ export async function getCarouselDocument(
     approval: data.approval || null,
     scheduling: data.scheduling || {
       postId: data.postId || null,
-      scheduledAt: data.scheduledAt ? new Date(data.scheduledAt).getTime() : null,
-      publishedAt: data.publishedAt ? new Date(data.publishedAt).getTime() : null,
+      scheduledAt: toMillis(raw.scheduledAt),
+      publishedAt: toMillis(raw.publishedAt),
       platforms: [],
-      status: data.status === "scheduled" ? "scheduled" : data.status === "published" ? "published" : "idle",
+      status:
+        data.status === "scheduled"
+          ? "scheduled"
+          : data.status === "published"
+            ? "published"
+            : "idle",
     },
-    analytics: data.analytics || (data.performance ? {
-      impressions: data.performance.impressions || 0,
-      reach: data.performance.reach || 0,
-      likes: data.performance.likes || 0,
-      comments: data.performance.comments || 0,
-      shares: data.performance.shares || 0,
-      saves: data.performance.saves || 0,
-      engagementRate: data.performance.engagementRate || 0,
-      lastSyncedAt: data.performance.lastSyncedAt || 0,
-      syncStatus: "synced",
-    } : undefined),
+    analytics:
+      data.analytics ||
+      (data.performance
+        ? {
+            impressions: data.performance.impressions || 0,
+            reach: data.performance.reach || 0,
+            likes: data.performance.likes || 0,
+            comments: data.performance.comments || 0,
+            shares: data.performance.shares || 0,
+            saves: data.performance.saves || 0,
+            engagementRate: data.performance.engagementRate || 0,
+            lastSyncedAt: data.performance.lastSyncedAt || 0,
+            syncStatus: "synced",
+          }
+        : undefined),
     variantGroupId: data.variantGroupId || null,
     variantLabel: data.variantLabel || null,
     variantWinner: data.variantWinner || null,
     costUsd: data.costUsd || 0,
     mediaUrls: Array.isArray(data.mediaUrls) ? data.mediaUrls : [],
-    createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : Date.now(),
-    updatedAt: data.updatedAt?.toMillis ? data.updatedAt.toMillis() : Date.now(),
+    createdAt: toMillis(raw.createdAt) || Date.now(),
+    updatedAt: toMillis(raw.updatedAt) || Date.now(),
     createdBy: data.createdBy || data.uid || "",
     updatedBy: data.updatedBy || "",
   };
 
-  return doc;
+  return cleanDocument(doc);
 }
 
 /**
@@ -268,6 +352,7 @@ export async function updateCarouselDocument({
   updates,
   createRevision = false,
   revisionLabel,
+  expectedRevisionId,
 }: {
   workspaceId: string;
   carouselId: string;
@@ -275,7 +360,13 @@ export async function updateCarouselDocument({
   updates: Partial<CarouselDocument>;
   createRevision?: boolean;
   revisionLabel?: string;
-}): Promise<{ success: boolean; document?: CarouselDocument; newRevisionId?: string; error?: string }> {
+  expectedRevisionId?: string;
+}): Promise<{
+  success: boolean;
+  document?: CarouselDocument;
+  newRevisionId?: string;
+  error?: string;
+}> {
   if (!adminDb) return { success: false, error: "Database not configured" };
 
   const docRef = adminDb
@@ -284,78 +375,83 @@ export async function updateCarouselDocument({
     .collection("carousels")
     .doc(carouselId);
 
-  const existing = await getCarouselDocument(workspaceId, carouselId);
-  if (!existing) return { success: false, error: "Carousel not found" };
-
-  let nextRevisionId = existing.currentRevisionId;
-  let nextRevisionCount = existing.revisionCount || 1;
-
-  if (createRevision) {
-    nextRevisionCount += 1;
-    nextRevisionId = `rev_${nextRevisionCount}`;
-  }
-
-  // If status was approved, and slides/styles changed, invalidate approval to changes_requested / in_review
-  let nextReviewStatus = updates.reviewStatus ?? existing.reviewStatus;
-  let nextApproval = updates.approval !== undefined ? updates.approval : existing.approval;
-  if (
-    existing.reviewStatus === "approved" &&
-    createRevision &&
-    (updates.slides || updates.style || updates.caption)
-  ) {
-    nextReviewStatus = "in_review";
-    nextApproval = null;
-  }
-
-  const mergedSlides = updates.slides
-    ? updates.slides.map((s, idx) => ({ ...s, id: s.id || generateSlideId(), index: idx }))
-    : existing.slides;
-
-  const mergedDoc: CarouselDocument = {
-    ...existing,
-    ...updates,
-    slides: mergedSlides,
-    slideCount: mergedSlides.length,
-    currentRevisionId: nextRevisionId,
-    revisionCount: nextRevisionCount,
-    reviewStatus: nextReviewStatus,
-    approval: nextApproval,
-    updatedAt: Date.now(),
-    updatedBy: uid,
-  };
-
-  const payload: Record<string, any> = {
-    ...mergedDoc,
-    updatedAt: FieldValue.serverTimestamp(),
-  };
-
-  await docRef.set(payload, { merge: true });
-
-  if (createRevision) {
-    const revRef = docRef.collection("revisions").doc(nextRevisionId);
-    const revData: CarouselRevisionSnapshot = {
-      id: nextRevisionId,
-      carouselId,
-      revisionNumber: nextRevisionCount,
-      createdAt: Date.now(),
-      createdBy: { uid },
-      label: revisionLabel || `Revision ${nextRevisionCount}`,
-      slides: mergedSlides,
-      style: mergedDoc.style,
-      aspectRatio: mergedDoc.aspectRatio,
-      caption: mergedDoc.caption,
-      renderedAssetUrls: mergedDoc.mediaUrls,
-      reviewStatus: nextReviewStatus,
-      approval: nextApproval,
-    };
-    await revRef.set({
-      ...revData,
-      createdAt: FieldValue.serverTimestamp(),
-    });
-  }
-
-  log.info("Updated carousel document", { workspaceId, carouselId, revisionId: nextRevisionId });
-  return { success: true, document: mergedDoc, newRevisionId: nextRevisionId };
+  return adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(docRef);
+    if (!snap.exists) return { success: false, error: "Carousel not found" };
+    const existing = normalizeCarousel(carouselId, workspaceId, snap.data()!);
+    if (
+      expectedRevisionId &&
+      expectedRevisionId !== existing.currentRevisionId
+    ) {
+      return { success: false, error: "conflict" };
+    }
+    const contentKeys = [
+      "title",
+      "slides",
+      "style",
+      "caption",
+      "aspectRatio",
+      "brandKitId",
+      "brandSnapshot",
+      "showSlideNumbers",
+      "platformOverrides",
+    ] as const;
+    const material = contentKeys.some(
+      (key) =>
+        key in updates &&
+        JSON.stringify(updates[key]) !== JSON.stringify(existing[key]),
+    );
+    const revise = material || createRevision;
+    const nextRevisionCount = existing.revisionCount + (revise ? 1 : 0);
+    const nextRevisionId = revise
+      ? `rev_${nextRevisionCount}_${randomUUID()}`
+      : existing.currentRevisionId;
+    const document = cleanDocument({
+      ...existing,
+      ...updates,
+      slides: (updates.slides ?? existing.slides).map((slide, index) => ({
+        ...slide,
+        index,
+      })),
+      slideCount: (updates.slides ?? existing.slides).length,
+      dimensions:
+        ASPECT_RATIO_DIMENSIONS[updates.aspectRatio ?? existing.aspectRatio],
+      status:
+        material && ["scheduled", "published"].includes(existing.status)
+          ? "draft"
+          : (updates.status ?? existing.status),
+      currentRevisionId: nextRevisionId,
+      revisionCount: nextRevisionCount,
+      reviewStatus:
+        material && existing.reviewStatus === "approved"
+          ? "in_review"
+          : existing.reviewStatus,
+      approval: material ? null : existing.approval,
+      mediaUrls: material ? [] : (updates.mediaUrls ?? existing.mediaUrls),
+      updatedAt: Date.now(),
+      updatedBy: uid,
+    } satisfies CarouselDocument);
+    tx.set(
+      docRef,
+      cleanDocument({ ...document, updatedAt: FieldValue.serverTimestamp() }),
+      { merge: true },
+    );
+    if (revise)
+      tx.set(
+        docRef.collection("revisions").doc(nextRevisionId),
+        cleanDocument({
+          ...document,
+          id: nextRevisionId,
+          carouselId,
+          revisionNumber: nextRevisionCount,
+          createdBy: { uid },
+          createdAt: FieldValue.serverTimestamp(),
+          label: revisionLabel || "Saved changes",
+          renderedAssetUrls: document.mediaUrls,
+        }),
+      );
+    return { success: true, document, newRevisionId: nextRevisionId };
+  });
 }
 
 /**
@@ -403,7 +499,9 @@ export async function duplicateCarouselDocument({
   const created = await createCarouselDraft({
     workspaceId,
     uid,
-    title: asVariantB ? `${existing.title} (Variant B)` : `${existing.title} ${titleSuffix}`,
+    title: asVariantB
+      ? `${existing.title} (Variant B)`
+      : `${existing.title} ${titleSuffix}`,
     aspectRatio: existing.aspectRatio,
     style: existing.style,
     slides: newSlides,
@@ -411,6 +509,10 @@ export async function duplicateCarouselDocument({
     campaignId: existing.campaignId,
     folderId: existing.folderId,
     tags: existing.tags,
+    caption: existing.caption,
+    brandSnapshot: existing.brandSnapshot,
+    platformOverrides: existing.platformOverrides,
+    showSlideNumbers: existing.showSlideNumbers,
   });
 
   if (asVariantB) {
@@ -428,4 +530,16 @@ export async function duplicateCarouselDocument({
   }
 
   return created;
+}
+
+function toMillis(value: unknown): number {
+  if (typeof value === "number") return value;
+  if (
+    value &&
+    typeof value === "object" &&
+    "toMillis" in value &&
+    typeof value.toMillis === "function"
+  )
+    return value.toMillis();
+  return value instanceof Date ? value.getTime() : 0;
 }

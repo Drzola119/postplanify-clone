@@ -6,7 +6,7 @@
  */
 import "server-only";
 import { NextRequest } from "next/server";
-import { requireSession } from "@/lib/auth/session-context";
+import { requireCarouselAccess as requireSession } from "@/lib/carousel-gen/access";
 import { duplicateCarouselDocument } from "@/lib/carousel-gen/document-service";
 import { jsonError, jsonOk, parseBody } from "@/lib/validation/helpers";
 import { createLogger } from "@/lib/log";
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     return jsonError(
       parsed.error?.status ?? 400,
       parsed.error?.message ?? "Invalid payload",
-      parsed.error?.issues
+      parsed.error?.issues,
     );
   }
 

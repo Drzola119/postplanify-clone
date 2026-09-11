@@ -6,7 +6,7 @@
  */
 import { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { requireSession } from "@/lib/auth/session-context";
+import { requireCarouselAccess as requireSession } from "@/lib/carousel-gen/access";
 import { getCarouselDocument } from "@/lib/carousel-gen/document-service";
 import { listBrandKits } from "@/lib/carousel-gen/brand-kits";
 import { StudioContainer } from "@/components/dashboard/carousel-studio/studio-container";
@@ -21,7 +21,7 @@ export default async function CarouselEditorPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await requireSession();
+  const session = await requireSession(false);
   if (session instanceof Response) {
     redirect("/auth/login");
   }

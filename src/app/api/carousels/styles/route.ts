@@ -17,7 +17,7 @@ import "server-only";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { adminDb } from "@/lib/firebase/admin";
-import { requireSession } from "@/lib/auth/session-context";
+import { requireCarouselAccess as requireSession } from "@/lib/carousel-gen/access";
 import { jsonError, jsonOk, parseBody } from "@/lib/validation/helpers";
 import { createLogger } from "@/lib/log";
 import { FieldValue } from "firebase-admin/firestore";
@@ -25,7 +25,14 @@ import { FieldValue } from "firebase-admin/firestore";
 const logger = createLogger("api:carousels:styles");
 
 const carouselStyleSchema = z.object({
-  id: z.string().min(1).max(64).regex(/^[a-zA-Z0-9_-]+$/, "Style id must be alphanumeric, dash, or underscore"),
+  id: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(
+      /^[a-zA-Z0-9_-]+$/,
+      "Style id must be alphanumeric, dash, or underscore",
+    ),
   label: z.string().min(1).max(80),
   colors: z.object({
     primary: z.string().regex(/^#[0-9a-fA-F]{3}$|^#[0-9a-fA-F]{6}$/),
@@ -37,11 +44,31 @@ const carouselStyleSchema = z.object({
     body: z.string().min(1).max(60),
   }),
   layouts: z.object({
-    hook: z.object({ id: z.string(), label: z.string(), description: z.string() }),
-    stakes: z.object({ id: z.string(), label: z.string(), description: z.string() }),
-    value: z.object({ id: z.string(), label: z.string(), description: z.string() }),
-    receipts: z.object({ id: z.string(), label: z.string(), description: z.string() }),
-    cta: z.object({ id: z.string(), label: z.string(), description: z.string() }),
+    hook: z.object({
+      id: z.string(),
+      label: z.string(),
+      description: z.string(),
+    }),
+    stakes: z.object({
+      id: z.string(),
+      label: z.string(),
+      description: z.string(),
+    }),
+    value: z.object({
+      id: z.string(),
+      label: z.string(),
+      description: z.string(),
+    }),
+    receipts: z.object({
+      id: z.string(),
+      label: z.string(),
+      description: z.string(),
+    }),
+    cta: z.object({
+      id: z.string(),
+      label: z.string(),
+      description: z.string(),
+    }),
   }),
   source: z.enum(["manual", "brand-analyzed", "brand-kit"]),
 });
@@ -80,7 +107,7 @@ function stylesCollection(workspaceId: string) {
 }
 
 export async function GET() {
-  const session = await requireSession();
+  const session = await requireSession(false);
   if (session instanceof Response) return session;
   if (!adminDb) return jsonError(503, "Database not configured");
 
@@ -93,7 +120,10 @@ export async function GET() {
     return jsonOk({ styles });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error("List styles failed", { workspaceId: session.workspaceId, error: message });
+    logger.error("List styles failed", {
+      workspaceId: session.workspaceId,
+      error: message,
+    });
     return jsonError(500, message);
   }
 }
@@ -108,7 +138,7 @@ export async function POST(request: NextRequest) {
     return jsonError(
       parsed.error?.status ?? 400,
       parsed.error?.message ?? "Invalid payload",
-      parsed.error?.issues
+      parsed.error?.issues,
     );
   }
   const { style } = parsed.data;
@@ -138,7 +168,10 @@ export async function POST(request: NextRequest) {
     return jsonOk({ style: { id: style.id, ...payload } });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error("Save style failed", { workspaceId: session.workspaceId, error: message });
+    logger.error("Save style failed", {
+      workspaceId: session.workspaceId,
+      error: message,
+    });
     return jsonError(500, message);
   }
 }
@@ -155,7 +188,7 @@ export async function DELETE(request: NextRequest) {
   } catch (err) {
     return jsonError(
       400,
-      err instanceof Error ? err.message : "Invalid payload"
+      err instanceof Error ? err.message : "Invalid payload",
     );
   }
 
@@ -169,7 +202,10 @@ export async function DELETE(request: NextRequest) {
     return jsonOk({ styleId: body.styleId });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error("Delete style failed", { workspaceId: session.workspaceId, error: message });
+    logger.error("Delete style failed", {
+      workspaceId: session.workspaceId,
+      error: message,
+    });
     return jsonError(500, message);
   }
 }

@@ -77,10 +77,11 @@ export async function deleteFolder(workspaceId: string, folderId: string): Promi
     .where("folderId", "==", folderId)
     .get();
 
-  const batch = adminDb.batch();
-  carouselsSnap.docs.forEach((doc) => {
-    batch.update(doc.ref, { folderId: null, updatedAt: FieldValue.serverTimestamp() });
-  });
+  for(let i=0;i<carouselsSnap.size;i+=400){
+    const batch=adminDb.batch();
+    carouselsSnap.docs.slice(i,i+400).forEach(doc=>batch.update(doc.ref,{folderId:null,updatedAt:FieldValue.serverTimestamp()}));
+    await batch.commit();
+  }
 
   const folderRef = adminDb
     .collection("workspaces")
@@ -88,8 +89,7 @@ export async function deleteFolder(workspaceId: string, folderId: string): Promi
     .collection("carouselFolders")
     .doc(folderId);
 
-  batch.delete(folderRef);
-  await batch.commit();
+  await folderRef.delete();
 
   log.info("Folder deleted and carousels unlinked", { workspaceId, folderId });
 }

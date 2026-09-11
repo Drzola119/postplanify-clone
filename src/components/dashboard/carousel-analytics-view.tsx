@@ -118,7 +118,7 @@ export function CarouselAnalyticsView() {
         />
         <Tile
           icon={<DollarSign className="size-4" />}
-          label="Spend (all time)"
+          label="Recorded image-generation spend"
           value={`$${analytics.totals.totalCostUsd.toFixed(2)}`}
           hint={`$${analytics.totals.thisMonthCostUsd.toFixed(2)} this month`}
           accent="bg-zinc-100 text-zinc-700"
@@ -165,13 +165,13 @@ export function CarouselAnalyticsView() {
                 key={c.id}
                 className="flex items-center gap-3 rounded-lg border border-zinc-200 p-2.5"
               >
-                <Thumb url={c.mediaUrls[0]} />
+                <Thumb url={`/api/carousels/thumbnail?id=${c.id}`} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-semibold text-zinc-900">
                     {c.title}
                   </p>
                   <p className="text-[11px] text-zinc-500">
-                    {c.slideCount} slides · ${c.costUsd.toFixed(2)} ·{" "}
+                    {c.slideCount} slides · ${(c.costUsd ?? 0).toFixed(2)} ·{" "}
                     <StatusBadge status={c.status} />
                   </p>
                 </div>

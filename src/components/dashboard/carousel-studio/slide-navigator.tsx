@@ -8,7 +8,6 @@ import {
   Unlock,
   MoveUp,
   MoveDown,
-  GripVertical,
 } from "lucide-react";
 import type { CarouselSlideItem } from "@/lib/carousel-gen/types";
 
@@ -42,6 +41,7 @@ export function SlideNavigator({
         </span>
         <button
           type="button"
+          disabled={slides.length >= 30}
           onClick={onAddSlide}
           className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-bold flex items-center gap-1 transition shadow-sm"
         >
@@ -57,6 +57,30 @@ export function SlideNavigator({
           return (
             <div
               key={slide.id}
+              draggable={!slide.isLocked}
+              onDragStart={(e) =>
+                e.dataTransfer.setData("text/plain", String(idx))
+              }
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const from = Number(e.dataTransfer.getData("text/plain"));
+                if (Number.isInteger(from) && from >= 0 && from < slides.length)
+                  onMoveSlide(from, idx);
+              }}
+              tabIndex={0}
+              role="button"
+              aria-label={`Select slide ${idx + 1}`}
+              aria-pressed={isActive}
+              onKeyDown={(e) => {
+                if (
+                  e.target === e.currentTarget &&
+                  (e.key === "Enter" || e.key === " ")
+                ) {
+                  e.preventDefault();
+                  onSelectSlide(idx);
+                }
+              }}
               onClick={() => onSelectSlide(idx)}
               className={`group relative p-2.5 rounded-xl border transition cursor-pointer ${
                 isActive
@@ -82,7 +106,7 @@ export function SlideNavigator({
                 </div>
 
                 {/* Quick Slide Actions */}
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                <div className="flex items-center gap-1 opacity-100 transition">
                   <button
                     type="button"
                     title={slide.isLocked ? "Unlock slide" : "Lock slide"}
@@ -94,7 +118,11 @@ export function SlideNavigator({
                       slide.isLocked ? "text-amber-400" : "text-zinc-400"
                     }`}
                   >
-                    {slide.isLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                    {slide.isLocked ? (
+                      <Lock className="w-3 h-3" />
+                    ) : (
+                      <Unlock className="w-3 h-3" />
+                    )}
                   </button>
 
                   <button
@@ -131,7 +159,7 @@ export function SlideNavigator({
               </p>
 
               {/* Reorder arrows */}
-              <div className="flex items-center justify-end gap-1 mt-2 pt-1 border-t border-zinc-800/60 opacity-0 group-hover:opacity-100 transition">
+              <div className="flex items-center justify-end gap-1 mt-2 pt-1 border-t border-zinc-800/60 opacity-100 transition">
                 <button
                   type="button"
                   disabled={idx === 0}

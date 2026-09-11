@@ -39,6 +39,7 @@ export interface DraftMediaItem {
 }
 
 export interface DraftRecord {
+  carouselHandoffId?: string;
   id: string;
   createdAt: number; // unix ms
   updatedAt: number; // unix ms
@@ -136,6 +137,7 @@ async function syncToServer(record: DraftRecord, idToken: string | null): Promis
     const caption = primaryCaption(record);
     const payload = {
       id: record.id,
+      carouselHandoffId: record.carouselHandoffId,
       caption,
       platforms: record.selected,
       mediaItems: record.mediaItems

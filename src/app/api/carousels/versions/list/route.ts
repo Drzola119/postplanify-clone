@@ -6,7 +6,7 @@
  */
 import "server-only";
 import { NextRequest } from "next/server";
-import { requireSession } from "@/lib/auth/session-context";
+import { requireCarouselAccess as requireSession } from "@/lib/carousel-gen/access";
 import { adminDb } from "@/lib/firebase/admin";
 import { jsonError, jsonOk } from "@/lib/validation/helpers";
 import { createLogger } from "@/lib/log";
@@ -35,7 +35,7 @@ function toMillis(v: unknown): number {
 }
 
 export async function GET(request: NextRequest) {
-  const session = await requireSession();
+  const session = await requireSession(false);
   if (session instanceof Response) return session;
   if (!adminDb) return jsonError(503, "Database not configured");
 
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
     const items: CarouselVersion[] = snap.docs.map((d) => {
       const data = d.data() as Record<string, unknown>;
       const editType = VALID_EDIT_TYPES.includes(
-        data.editType as CarouselVersionEditType
+        data.editType as CarouselVersionEditType,
       )
         ? (data.editType as CarouselVersionEditType)
         : "manual-edit";
@@ -69,8 +69,7 @@ export async function GET(request: NextRequest) {
         ? (data.slides as unknown[]).map((raw, i) => {
             const s = (raw ?? {}) as Record<string, unknown>;
             const slide: CarouselVersionSlide = {
-              slideIndex:
-                typeof s.slideIndex === "number" ? s.slideIndex : i,
+              slideIndex: typeof s.slideIndex === "number" ? s.slideIndex : i,
               text: typeof s.text === "string" ? s.text : "",
             };
             if (typeof s.backgroundImageUrl === "string") {

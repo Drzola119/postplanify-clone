@@ -48,6 +48,7 @@ import { needsOutpainting } from "@/lib/images/platform-ratios";
 // being decoupled from Trustiify. Normal posts must never depend on it.
 const ENABLE_OUTPAINT = process.env.NEXT_PUBLIC_ENABLE_OUTPAINT === "true";
 import { loadDraft, saveDraft, deleteDraft, newDraftId, type DraftRecord } from "@/lib/drafts";
+import { CarouselComposerHandoff } from "@/components/dashboard/carousel-studio/composer-handoff";
 import { InfographicHandoff, type HandoffAsset } from "@/components/dashboard/infographic-studio/composer-handoff";
 import {
   type PlatformAdvancedOptions,
@@ -298,6 +299,7 @@ export default function CreatePostPage() {
               const caption = (d.caption as string | undefined) ?? "";
               record = {
                 id: (d.id as string) ?? id,
+                carouselHandoffId: typeof d.carouselHandoffId === "string" ? d.carouselHandoffId : undefined,
                 createdAt: Date.parse((d.createdAt as string) ?? "") || Date.now(),
                 updatedAt: Date.parse((d.updatedAt as string) ?? "") || Date.now(),
                 captions: caption ? { __all: caption } : {},
@@ -364,6 +366,7 @@ export default function CreatePostPage() {
           endDate: r.endDate ?? "",
         });
       }
+      setCarouselHandoffId(record.carouselHandoffId);
       if (record.composerMode) setComposerMode(record.composerMode);
       if (record.documentTitle) setDocumentTitle(record.documentTitle);
       if (record.trialMode) setTrialMode(record.trialMode as TrialReelMode);
@@ -697,6 +700,7 @@ export default function CreatePostPage() {
 
   // Media
   const [mediaTab, setMediaTab] = useState<MediaTab>("media");
+  const [carouselHandoffId,setCarouselHandoffId]=useState<string | undefined>(undefined);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [activeMedia, setActiveMedia] = useState(0);
   const [zoom, setZoom] = useState(300);
@@ -1087,6 +1091,7 @@ export default function CreatePostPage() {
   }
 
   function startOver() {
+    setCarouselHandoffId(undefined);
     // Revoke any leftover object URLs to avoid memory leaks.
     for (const m of mediaItems) if (m.url) URL.revokeObjectURL(m.url);
     for (const c of carouselItems) if (c.previewUrl) URL.revokeObjectURL(c.previewUrl);
@@ -1134,6 +1139,7 @@ export default function CreatePostPage() {
     }
     const id = draftId ?? newDraftId();
     const record: DraftRecord = {
+      carouselHandoffId,
       id,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -1443,6 +1449,7 @@ export default function CreatePostPage() {
           captionsByPlatform,
           sameForAll,
           mediaUrls: readyMediaUrls,
+          carouselHandoffId,
           scheduledAt: scheduledAt ? scheduledAt.toISOString() : null,
           advancedByPlatform: platformOptions,
           firstComment: sameForAll ? (firstCommentByPlatform.__all ?? undefined) : undefined,
@@ -2728,6 +2735,13 @@ export default function CreatePostPage() {
 
   return (
     <div className="p-4 sm:p-6 max-w-[1400px] mx-auto space-y-4 sm:space-y-5">
+      <CarouselComposerHandoff hasContent={hasAnyContent} onAdd={handoff=>{
+        setCarouselHandoffId(handoff.id);
+        setMediaItems(handoff.assets.map(asset=>({id:asset.id,url:asset.url,cdnUrl:asset.url,storedPath:asset.storedPath,name:handoff.title,size:asset.size,width:asset.width,height:asset.height,kind:"image",mimeType:asset.mime,uploadStatus:"ready"})));
+        setCarouselItems([]);setComposerMode("standard");setContentType("carousel");
+        setCaptions({__all:handoff.caption,...Object.fromEntries(Object.entries(handoff.platformOverrides).map(([p,v])=>[p,v.caption || handoff.caption]))});
+        setSameForAll(Object.keys(handoff.platformOverrides).length===0);
+      }}/>
       <InfographicHandoff hasContent={hasAnyContent} onAdd={addInfographic} onSeparate={async (asset, schedule) => {
         await handleSaveDraft();
         // A separate composer tab leaves this draft and its full state intact.

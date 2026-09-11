@@ -6,8 +6,6 @@
  */
 import {
   type CarouselDocument,
-  type CarouselSlideItem,
-  type CarouselAspectRatio,
 } from "@/lib/carousel-gen/types";
 import { checkContrastRatio } from "@/lib/carousel-gen/contrast";
 
@@ -48,7 +46,7 @@ export function runPreflightChecks(deck: CarouselDocument): PreflightReport {
       id: "warn-slide-max",
       type: "warning",
       title: "High slide count",
-      description: "Decks with >15 slides may experience drop-off on Instagram/LinkedIn.",
+      description: "Check the selected destination’s slide limit before publishing.",
     });
   }
 
@@ -67,13 +65,14 @@ export function runPreflightChecks(deck: CarouselDocument): PreflightReport {
       id: "warn-caption",
       type: "warning",
       title: "Missing or short post caption",
-      description: "Social algorithms favor carousels paired with high-context captions and hook keywords.",
+      description: "Add context and a clear next step for readers before publishing.",
       actionLabel: "Generate Caption",
     });
   }
 
   // Check 3: Per-Slide Checks
   deck.slides.forEach((slide, idx) => {
+    if(slide.isLegacyFlat)return;
     // 3.1 Headline Empty
     if (!slide.headline || slide.headline.trim().length === 0) {
       issues.push({
@@ -113,8 +112,8 @@ export function runPreflightChecks(deck: CarouselDocument): PreflightReport {
     }
 
     // 3.4 Color Contrast
-    const fg = slide.textColor || deck.style.colors.primary;
-    const bg = slide.backgroundColor || deck.style.colors.background;
+    const fg = slide.textColor || deck.brandSnapshot?.colors.text || deck.style.colors.primary;
+    const bg = slide.backgroundColor || deck.brandSnapshot?.colors.background || deck.style.colors.background;
     const contrast = checkContrastRatio(fg, bg);
     if (!contrast.passesAA) {
       issues.push({
@@ -128,6 +127,8 @@ export function runPreflightChecks(deck: CarouselDocument): PreflightReport {
       });
     }
 
+    if((slide.fontSizeScale ?? 1)*34<28)issues.push({id:`warn-size-${idx}`,type:'warning',slideIndex:idx,slideId:slide.id,title:`Slide ${idx+1}: Small body text`,description:'Body text is below 28 pixels on a 1080-pixel canvas. Check mobile readability.'});
+    if(slide.backgroundImageUrl)issues.push({id:`info-image-${idx}`,type:'info',slideIndex:idx,slideId:slide.id,title:`Slide ${idx+1}: Check image contrast`,description:'Solid-color contrast checks do not account for the image behind text. Inspect the rendered preview.'});
     // 3.5 Safe-Zone Violations on First Slide (Cover / Thumbnail crop)
     if (idx === 0 && deck.aspectRatio === "4:5") {
       // Safe zone note for Instagram profile grid square crop (1080x1080 inside 1080x1350)

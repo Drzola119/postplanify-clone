@@ -25,7 +25,7 @@ export default function CarouselTemplatesPage() {
     <div className="p-6 max-w-6xl">
       <PageHeader
         title="Carousel Templates"
-        subtitle="Pick a template, click Use Template, and the wizard opens with the right topic, tone, and slide count."
+        subtitle="Preview each slide, create a draft, then apply your brand in the editor."
       />
       <CarouselTemplatesGrid templates={CAROUSEL_TEMPLATES} />
     </div>

@@ -11,8 +11,11 @@
  */
 import "server-only";
 import { NextRequest } from "next/server";
-import { requireSession } from "@/lib/auth/session-context";
-import { analyzeBrand, analyzeBrandFromImage } from "@/lib/carousel-gen/brand-analyzer";
+import { requireCarouselAccess as requireSession } from "@/lib/carousel-gen/access";
+import {
+  analyzeBrand,
+  analyzeBrandFromImage,
+} from "@/lib/carousel-gen/brand-analyzer";
 import { DEFAULT_CAROUSEL_STYLE } from "@/lib/carousel-gen/styles";
 import { validatePaletteContrast } from "@/lib/carousel-gen/palette-contrast";
 import type { CarouselStyle } from "@/lib/carousel-gen/types";
@@ -31,7 +34,7 @@ export async function POST(request: NextRequest) {
     return jsonError(
       parsed.error?.status ?? 400,
       parsed.error?.message ?? "Invalid payload",
-      parsed.error?.issues
+      parsed.error?.issues,
     );
   }
 
@@ -58,11 +61,13 @@ export async function POST(request: NextRequest) {
     label: "Brand-analyzed style",
     colors: {
       primary: result.analysis.primary ?? DEFAULT_CAROUSEL_STYLE.colors.primary,
-      background: result.analysis.background ?? DEFAULT_CAROUSEL_STYLE.colors.background,
+      background:
+        result.analysis.background ?? DEFAULT_CAROUSEL_STYLE.colors.background,
       accent: result.analysis.accent ?? DEFAULT_CAROUSEL_STYLE.colors.accent,
     },
     fonts: {
-      display: result.analysis.displayFont ?? DEFAULT_CAROUSEL_STYLE.fonts.display,
+      display:
+        result.analysis.displayFont ?? DEFAULT_CAROUSEL_STYLE.fonts.display,
       body: result.analysis.bodyFont ?? DEFAULT_CAROUSEL_STYLE.fonts.body,
     },
     source: "brand-analyzed",
