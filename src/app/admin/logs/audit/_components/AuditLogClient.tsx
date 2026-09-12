@@ -17,8 +17,6 @@ const ACTION_LABELS: Record<string, string> = {
   retry_post: "Retry Post",
   retry_all_failed_posts: "Retry All Failed",
   delete_post: "Delete Post",
-  mark_commission_paid: "Mark Commission Paid",
-  suspend_affiliate: "Suspend Affiliate",
   toggle_feature_flag: "Toggle Feature Flag",
   create_feature_flag: "Create Feature Flag",
   create_announcement: "Create Announcement",

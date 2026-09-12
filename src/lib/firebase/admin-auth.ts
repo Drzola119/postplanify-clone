@@ -49,7 +49,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   owner: ["*"],
   admin: [
     "users.read", "users.write", "billing.read", "billing.write",
-    "content.moderate", "affiliates.manage", "platform.settings",
+    "content.moderate", "platform.settings",
     "security.manage",
   ],
   support: ["users.read", "content.moderate"],

@@ -70,8 +70,6 @@ const BREADCRUMB_MAP: Record<string, string> = {
   "/admin/posts": "All Posts",
   "/admin/posts/queue": "Scheduled Queue",
   "/admin/posts/failed": "Failed Posts",
-  "/admin/affiliates": "Affiliates",
-  "/admin/affiliates/commissions": "Commissions",
   "/admin/settings/flags": "Feature Flags",
   "/admin/settings/announcements": "Announcements",
   "/admin/settings/email": "Email Broadcasts",
@@ -209,13 +207,6 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "All Posts", href: "/admin/posts", icon: FileText },
       { label: "Scheduled Queue", href: "/admin/posts/queue", icon: Clock },
       { label: "Failed Posts", href: "/admin/posts/failed", icon: AlertOctagon },
-    ],
-  },
-  {
-    title: "AFFILIATES",
-    items: [
-      { label: "Affiliates", href: "/admin/affiliates", icon: Share2 },
-      { label: "Commissions", href: "/admin/affiliates/commissions", icon: DollarSign },
     ],
   },
   {

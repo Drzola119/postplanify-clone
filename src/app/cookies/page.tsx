@@ -32,7 +32,6 @@ const CATEGORIES = [
     title: "Marketing cookies",
     required: false,
     items: [
-      { name: "_pp_attribution", purpose: "First-touch attribution for affiliate links", expiry: "30 days" },
     ],
   },
 ];

@@ -15,7 +15,6 @@ const STATIC_ROUTES = [
   "/alternatives",
   "/login",
   "/signup",
-  "/affiliates",
   "/tools",
   "/compare",
 ];

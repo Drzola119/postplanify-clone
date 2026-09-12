@@ -35,7 +35,6 @@ const QUICK_LINKS = [
   { label: "FAQ", href: "/#faq" },
   { label: "Blog", href: "https://postplanify.com/blog" },
   { label: "Help Center", href: "/help" },
-  { label: "Affiliates (40% Lifetime)", href: "https://postplanify.com/affiliates" },
   { label: "Free Tools", href: "https://postplanify.com/tools" },
   { label: "Templates", href: "https://postplanify.com/templates" },
   { label: "Integrations", href: "https://postplanify.com/integrations" },

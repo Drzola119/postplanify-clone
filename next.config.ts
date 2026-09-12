@@ -54,6 +54,11 @@ const nextConfig: NextConfig = {
       { source: "/dashboard/media", destination: "/dashboard/assets", permanent: true },
       { source: "/dashboard/workspaces", destination: "/dashboard/brands", permanent: true },
       { source: "/dashboard/posting-queue", destination: "/dashboard/queue", permanent: true },
+      // The affiliate program has been retired; keep old bookmarks from
+      // landing on a dead page while removing the program UI and routes.
+      { source: "/affiliates", destination: "/", permanent: true },
+      { source: "/admin/affiliates", destination: "/admin", permanent: true },
+      { source: "/admin/affiliates/commissions", destination: "/admin", permanent: true },
     ];
   },
   async rewrites() {

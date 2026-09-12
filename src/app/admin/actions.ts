@@ -102,10 +102,6 @@ interface PostRow {
   id: string; userEmail: string; platforms: string[]; status: string;
   scheduledAt: string; publishedAt: string | null; caption: string; errorMessage: string | null;
 }
-interface AffiliateRow {
-  id: string; name: string; email: string; referralCode: string; totalReferrals: number;
-  activeSubs: number; earned: string; paidOut: string; pending: string; status: string;
-}
 interface FeatureFlagRow {
   id: string; name: string; description: string; enabled: boolean; rollout: number;
 }
@@ -192,7 +188,6 @@ export async function getDashboardOverviewData() {
   let postsPublishedToday = 0;
   let postsScheduled = 0;
   let failedPostsLast24h = 0;
-  let activeAffiliates = 0;
   let recentSignups: RecentSignupRow[] = [];
   let recentStripeEvents: StripeEventRow[] = [];
   let mrrCents = 0;
@@ -263,12 +258,6 @@ export async function getDashboardOverviewData() {
       console.warn("Error fetching posts for overview:", e);
     }
 
-    try {
-      const affSnap = await adminDb.collection("affiliates").where("status", "==", "active").get();
-      activeAffiliates = affSnap.size;
-    } catch {
-      // ignore
-    }
   }
 
   // Stripe MRR & Subs calculation
@@ -320,8 +309,6 @@ export async function getDashboardOverviewData() {
       postsPublishedToday: postsPublishedToday || 89,
       postsScheduled: postsScheduled || 34,
       failedPostsLast24h: failedPostsLast24h || 1,
-      activeAffiliates: activeAffiliates || 12,
-      affiliateRevenue: "$1,240.00",
     },
     signupsChart:
       signupsChartData.length > 0
@@ -854,85 +841,6 @@ export async function deletePostAction(postId: string) {
   }
   await logAdminAudit("delete_post", postId);
   revalidatePath("/admin/posts");
-  return { success: true };
-}
-
-// ==========================================
-// AFFILIATES ACTIONS (Fix #10 — real Firestore read)
-// ==========================================
-export async function getAffiliatesData() {
-  await requireAdmin();
-  let affiliates: AffiliateRow[] = [];
-
-  if (adminDb) {
-    try {
-      const snap = await adminDb.collection("affiliates").get();
-      affiliates = snap.docs.map((doc) => ({
-        id: doc.id,
-        name: doc.data().name || "Unknown",
-        email: doc.data().email || "",
-        referralCode: doc.data().referralCode || doc.id,
-        totalReferrals: doc.data().totalReferrals || 0,
-        activeSubs: doc.data().activeSubs || 0,
-        earned: doc.data().earned || "$0.00",
-        paidOut: doc.data().paidOut || "$0.00",
-        pending: doc.data().pending || "$0.00",
-        status: doc.data().status || "active",
-      }));
-    } catch (e) {
-      console.warn("Failed to read affiliates collection", e);
-    }
-  }
-
-  if (affiliates.length === 0) {
-    affiliates = [
-      {
-        id: "aff_1",
-        name: "Jack Miller",
-        email: "jack@growthhackers.com",
-        referralCode: "JACK20",
-        totalReferrals: 45,
-        activeSubs: 28,
-        earned: "$1,890.00",
-        paidOut: "$1,400.00",
-        pending: "$490.00",
-        status: "active",
-      },
-      {
-        id: "aff_2",
-        name: "Sophia Martinez",
-        email: "sophia@influencerhub.io",
-        referralCode: "SOPHIA10",
-        totalReferrals: 32,
-        activeSubs: 19,
-        earned: "$1,250.00",
-        paidOut: "$1,000.00",
-        pending: "$250.00",
-        status: "active",
-      },
-    ];
-  }
-
-  return affiliates;
-}
-
-export async function markCommissionPaidAction(commissionId: string, reference: string) {
-  await requireAdmin();
-  if (adminDb) {
-    await adminDb.collection("commissions").doc(commissionId).set({ status: "paid", payoutRef: reference, paidAt: new Date().toISOString() }, { merge: true });
-  }
-  await logAdminAudit("mark_commission_paid", commissionId, { reference });
-  revalidatePath("/admin/affiliates");
-  return { success: true };
-}
-
-export async function suspendAffiliateAction(affiliateId: string) {
-  await requireAdmin();
-  if (adminDb) {
-    await adminDb.collection("affiliates").doc(affiliateId).set({ status: "suspended" }, { merge: true });
-  }
-  await logAdminAudit("suspend_affiliate", affiliateId);
-  revalidatePath("/admin/affiliates");
   return { success: true };
 }
 

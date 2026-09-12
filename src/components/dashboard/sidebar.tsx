@@ -18,7 +18,6 @@ import {
   Tag,
   Settings,
   LifeBuoy,
-  DollarSign,
   Link2,
   Key,
   ChevronDown,
@@ -172,7 +171,6 @@ export function DashboardSidebar() {
 
   const OTHER: NavItem[] = [
     { label: t("nav.get_support"), href: "mailto:support@postplanify.com", icon: LifeBuoy },
-    { label: t("nav.earn_referral"), href: "/affiliates", icon: DollarSign },
     { label: t("nav.link_in_bio"), href: "/dashboard/link-in-bio", icon: Link2 },
     { label: t("nav.api_keys"), href: "/dashboard/api-keys", icon: Key, badge: 6 },
   ];

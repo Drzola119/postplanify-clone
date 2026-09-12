@@ -9,8 +9,6 @@ import {
   CheckCircle,
   Clock,
   AlertTriangle,
-  Share2,
-  DollarSign,
   ArrowUpRight,
   ArrowDownRight,
   UserPlus,
@@ -43,8 +41,6 @@ interface DashboardData {
     postsPublishedToday: number;
     postsScheduled: number;
     failedPostsLast24h: number;
-    activeAffiliates: number;
-    affiliateRevenue: string;
   };
   signupsChart: { date: string; count: number }[];
   mrrChart: { month: string; mrr: number }[];
@@ -106,22 +102,6 @@ export function DashboardOverviewClient({ data, alertCounts }: { data: Dashboard
       isAlert: stats.failedPostsLast24h > 0,
       icon: AlertTriangle,
       color: stats.failedPostsLast24h > 0 ? "from-rose-500 to-red-600" : "from-emerald-500 to-teal-600",
-    },
-    {
-      title: "Active Affiliates",
-      value: stats.activeAffiliates.toLocaleString(),
-      change: "+3 this month",
-      isPositive: true,
-      icon: Share2,
-      color: "from-violet-500 to-purple-600",
-    },
-    {
-      title: "Affiliate Revenue",
-      value: stats.affiliateRevenue,
-      change: "Current month",
-      isPositive: true,
-      icon: DollarSign,
-      color: "from-sky-500 to-blue-600",
     },
   ];
 

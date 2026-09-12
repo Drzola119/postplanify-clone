@@ -100,7 +100,6 @@ const RESOURCE_LINKS = [
   { label: "FAQ", href: "/#faq" },
   { label: "Blog", href: "/blog" },
   { label: "Help Center", href: "/help" },
-  { label: "Affiliates (40% Lifetime)", href: "/affiliates" },
   { label: "Free Tools", href: "/tools" },
   { label: "Templates", href: "/templates" },
   { label: "Integrations", href: "/integrations" },
