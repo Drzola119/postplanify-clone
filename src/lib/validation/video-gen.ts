@@ -69,6 +69,23 @@ const cartoonRequestSchema = baseVideoRequestSchema.extend({
 
 const realEstateLanguageSchema = z.enum(["fr", "en", "ar"]);
 
+const whiteboardScriptSchema = z.object({
+  topic: z.string().min(1).max(300),
+  totalSec: z.number().int().positive().max(120),
+  clipCount: z.number().int().positive().max(30),
+  clipDurationSec: z.number().positive().max(30),
+  phases: z.array(z.object({
+    index: z.number().int().min(0).max(29),
+    label: z.string().max(120),
+    startSec: z.number().nonnegative().max(120),
+    endSec: z.number().positive().max(120),
+    durationSec: z.number().positive().max(30),
+    voiceover: z.string().max(1000),
+    onScreenText: z.string().max(200),
+    visualDirection: z.string().max(2000),
+  })).min(1).max(30),
+});
+
 const realEstateAiGeneratedSchema = baseVideoRequestSchema.extend({
   workflow: z.literal("real-estate"),
   mode: z.literal("ai-generated"),
@@ -101,6 +118,8 @@ const whiteboardRequestSchema = baseVideoRequestSchema.extend({
   durationSec: z.union([z.literal(30), z.literal(60)]),
   aspectRatio: z.enum(["9:16", "16:9", "1:1"]),
   qualityPreference: z.enum(["budget", "quality"]).default("budget"),
+  /** Optional reviewed script returned by the preview endpoint. */
+  script: whiteboardScriptSchema.optional(),
 });
 
 const viralRequestSchema = baseVideoRequestSchema.extend({

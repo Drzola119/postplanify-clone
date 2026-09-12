@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
 
     const provider = resolveProvider(body.provider, body.qualityPreference);
     const clipSpec = resolveClipSpec(provider, body.durationSec);
-    const script = await generateWhiteboardScript(body, clipSpec, groqApiKey);
+    const script = body.script ?? await generateWhiteboardScript(body, clipSpec, groqApiKey);
 
     const jobRef = db
       .collection("workspaces")

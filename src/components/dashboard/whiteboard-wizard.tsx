@@ -241,6 +241,7 @@ export function WhiteboardWizard({ title, subtitle }: WhiteboardWizardProps) {
           durationSec,
           aspectRatio,
           cta: cta.trim() || undefined,
+          script: scriptPreview,
         }),
       });
       if (!res.ok) {
