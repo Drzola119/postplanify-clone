@@ -58,6 +58,7 @@ export async function POST(request: Request) {
       if (!projectSnap.exists) throw new Error("Video project not found");
       const project = projectSnap.data()!;
       if (project.reviewRevisionId !== link.revisionId) throw new Error("This review revision is no longer active");
+      if (body.variantId && (!Array.isArray(link.variantIds) || !link.variantIds.includes(body.variantId))) throw new Error("Variant is not part of this review package");
       if (body.action === "add_comment") {
         if (!body.content) throw new Error("A comment is required");
         tx.set(commentRef, { revisionId: link.revisionId, approverId: link.approverId, authorName: link.approverName, content: body.content, timestampMs: body.timestampMs ?? null, sceneId: body.sceneId ?? null, variantId: body.variantId ?? null, resolved: false, createdAt: FieldValue.serverTimestamp() });
