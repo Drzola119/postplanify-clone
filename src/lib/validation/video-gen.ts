@@ -110,6 +110,7 @@ const viralRequestSchema = baseVideoRequestSchema.extend({
   pacing: z.enum(["fast-cut", "single-take"]).default("fast-cut"),
   captionStyle: z.enum(["bold", "none"]).default("bold"),
   voiceoverMode: z.enum(["none", "auto"]).default("none"),
+  durationSec: z.union([z.literal(5), z.literal(8), z.literal(10), z.literal(15), z.literal(30), z.literal(60)]).default(15),
 });
 
 // ─── Main union ────────────────────────────────────────────────────────────────

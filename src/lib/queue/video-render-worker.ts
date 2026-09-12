@@ -24,7 +24,7 @@ import type {
   VideoJobDoc,
   VideoWorkflow,
 } from "../video-gen/types";
-import type { CartoonRequest } from "../validation/video-gen";
+import type { CartoonRequest, ViralRequest } from "../validation/video-gen";
 import { FieldValue } from "firebase-admin/firestore";
 
 const logger = createLogger("video-render-worker");
@@ -202,6 +202,27 @@ async function dispatchWorkflow(
     };
 
     return generateVideo(input);
+  }
+
+  if (workflow === "viral") {
+    const req = request as ViralRequest;
+    const prompt = [
+      `Create a ${req.pacing === "fast-cut" ? "fast-cut" : "single-take"} short-form social video for ${req.platformTarget}.`,
+      `Open immediately with this hook: "${req.hookLine}".`,
+      req.captionStyle === "bold" ? "Use bold, high-contrast caption moments." : "Do not add on-screen captions.",
+      req.voiceoverMode === "auto" ? "Include a clear, energetic voiceover." : "Use visual storytelling without voiceover.",
+      "No watermarks or logos.",
+    ].join(" ");
+    return generateVideo({
+      workspaceId: job.workspaceId,
+      provider: req.provider,
+      mode: "text-to-video",
+      prompt,
+      durationSec: req.durationSec,
+      aspectRatios: req.aspectRatios as VideoGenerateInput["aspectRatios"],
+      generateAudio: req.voiceoverMode === "auto",
+      context: { workflow: "viral", styleId: req.styleId, jobGroupId: jobId },
+    });
   }
 
   throw new Error(`Workflow "${workflow}" is not yet supported`);

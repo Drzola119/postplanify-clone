@@ -30,7 +30,7 @@ export async function GET() {
         label: "Whiteboard Explainer",
         description:
           "Turn a script or topic into a hand-drawn-style explainer video.",
-        available: false, // M4
+        available: true,
         styles: [],
       },
       {
@@ -38,7 +38,7 @@ export async function GET() {
         label: "Viral / Trend Short",
         description:
           "Generate a fast-cut, caption-driven short for TikTok, Reels, or YouTube Shorts.",
-        available: false, // M2
+        available: true,
         styles: [],
       },
     ],
