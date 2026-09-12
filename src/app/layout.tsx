@@ -7,6 +7,7 @@ import { getLocaleLang, getLocaleDir } from "@/lib/i18n/types";
 import { ToastProvider } from "@/components/ui/toast";
 import { AuthProvider } from "@/contexts/AuthContext";
 import CookieBanner from "@/components/CookieBanner";
+import { ThemeProvider } from "@/components/theme/theme-provider";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -46,6 +47,7 @@ export default async function RootLayout({
     <html
       lang={getLocaleLang(locale)}
       dir={getLocaleDir(locale)}
+      suppressHydrationWarning
       className={`${inter.variable} ${notoArabic.variable} h-full antialiased`}
     >
       <head>
@@ -191,14 +193,15 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col">
         <NextIntlClientProvider locale={locale} messages={messages}>
           <AuthProvider>
-            <ToastProvider>
-              {children}
-              <CookieBanner />
-            </ToastProvider>
+            <ThemeProvider>
+              <ToastProvider>
+                {children}
+                <CookieBanner />
+              </ToastProvider>
+            </ThemeProvider>
           </AuthProvider>
         </NextIntlClientProvider>
       </body>
     </html>
   );
 }
-

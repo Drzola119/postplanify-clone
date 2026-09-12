@@ -13,7 +13,7 @@ export const PPInput = React.forwardRef<HTMLInputElement, PPInputProps>(
     return (
       <div className="w-full">
         {label && (
-          <label htmlFor={inputId} className="block text-xs font-semibold text-zinc-500 mb-1.5">
+          <label htmlFor={inputId} className="block text-xs font-semibold text-muted-foreground mb-1.5">
             {label}
           </label>
         )}
@@ -21,12 +21,12 @@ export const PPInput = React.forwardRef<HTMLInputElement, PPInputProps>(
           ref={ref}
           id={inputId}
           className={cn(
-            "w-full rounded-md border border-zinc-200 bg-white px-3 h-9 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-300",
+            "w-full rounded-md border border-input bg-background px-3 h-9 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring",
             className
           )}
           {...props}
         />
-        {hint && <p className="text-xs text-zinc-500 mt-1.5">{hint}</p>}
+        {hint && <p className="text-xs text-muted-foreground mt-1.5">{hint}</p>}
       </div>
     );
   }
@@ -45,7 +45,7 @@ export const PPTextarea = React.forwardRef<HTMLTextAreaElement, PPTextareaProps>
     return (
       <div className="w-full">
         {label && (
-          <label htmlFor={inputId} className="block text-xs font-semibold text-zinc-500 mb-1.5">
+          <label htmlFor={inputId} className="block text-xs font-semibold text-muted-foreground mb-1.5">
             {label}
           </label>
         )}
@@ -53,12 +53,12 @@ export const PPTextarea = React.forwardRef<HTMLTextAreaElement, PPTextareaProps>
           ref={ref}
           id={inputId}
           className={cn(
-            "w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-300 resize-y",
+            "w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring resize-y",
             className
           )}
           {...props}
         />
-        {hint && <p className="text-xs text-zinc-500 mt-1.5">{hint}</p>}
+        {hint && <p className="text-xs text-muted-foreground mt-1.5">{hint}</p>}
       </div>
     );
   }

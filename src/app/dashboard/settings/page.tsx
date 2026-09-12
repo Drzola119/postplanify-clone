@@ -38,6 +38,7 @@ import {
    ============================================================ */
 
 import { BrandIcons } from "@/components/dashboard/brand-icons";
+import { ThemeSwitcher } from "@/components/theme/theme-switcher";
 
 function CanvaLogo({ className }: { className?: string }) {
   return <BrandIcons.canva size={48} className={className} />;
@@ -774,6 +775,15 @@ export default function SettingsPage() {
 
       {/* Main */}
       <div className="space-y-4">
+        <section className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="font-semibold text-foreground">Appearance</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Choose Light, Dark, or System. Your preference syncs across signed-in devices.
+            </p>
+          </div>
+          <ThemeSwitcher />
+        </section>
         {/* Tabs */}
         <div
           role="tablist"

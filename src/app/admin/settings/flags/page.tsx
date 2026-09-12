@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Flag, Plus, Check, X } from "lucide-react";
-import { toggleFeatureFlag, createFeatureFlag } from "@/app/admin/actions";
+import { getFeatureFlags, toggleFeatureFlag, createFeatureFlag } from "@/app/admin/actions";
 import { useToast } from "@/components/ui/toast";
 
 export default function FeatureFlagsPage() {
@@ -10,10 +10,23 @@ export default function FeatureFlagsPage() {
     { id: "ai_video_gen", name: "AI Video Generation", description: "Enable AI script-to-video workflow", enabled: true, rollout: 50 },
     { id: "threads_auto_reply", name: "Threads Auto-Reply", description: "Auto respond to comments on Threads", enabled: false, rollout: 0 },
     { id: "multi_brand_workspace", name: "Multi-Brand Workspaces", description: "Allow clients to create up to 10 brand sub-accounts", enabled: true, rollout: 100 },
+    { id: "dark_mode_admin", name: "Dark Mode — Admin", description: "Enable dark mode for administrator surfaces", enabled: true, rollout: 100 },
+    { id: "dark_mode_product", name: "Dark Mode — Product", description: "Enable dark mode for signed-in product surfaces", enabled: true, rollout: 100 },
+    { id: "dark_mode_public", name: "Dark Mode — Public", description: "Enable dark mode for public and marketing surfaces", enabled: true, rollout: 100 },
   ]);
   const [showModal, setShowModal] = useState(false);
   const [newFlag, setNewFlag] = useState({ id: "", name: "", description: "", rollout: 100 });
   const { toast } = useToast();
+
+  useEffect(() => {
+    let cancelled = false;
+    void getFeatureFlags().then((rows) => {
+      if (!cancelled && rows.length > 0) setFlags(rows);
+    }).catch(() => {
+      // Keep the safe local defaults when the admin database is unavailable.
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const handleToggle = async (flagId: string, currentEnabled: boolean, rollout: number) => {
     const nextEnabled = !currentEnabled;
@@ -65,7 +78,25 @@ export default function FeatureFlagsPage() {
                   <p className="text-[10px] text-gray-400 font-mono">{f.id}</p>
                 </td>
                 <td className="px-6 py-4 text-xs text-gray-600">{f.description}</td>
-                <td className="px-6 py-4 text-xs font-bold text-teal-700">{f.rollout}% Users</td>
+                <td className="px-6 py-4">
+                  <label className="sr-only" htmlFor={`rollout-${f.id}`}>Rollout percentage for {f.name}</label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      id={`rollout-${f.id}`}
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={f.rollout}
+                      onChange={(e) => {
+                        const rollout = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                        setFlags((prev) => prev.map((row) => row.id === f.id ? { ...row, rollout } : row));
+                      }}
+                      onBlur={() => void toggleFeatureFlag(f.id, f.enabled, f.rollout)}
+                      className="w-16 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+                    />
+                    <span className="text-xs font-bold text-teal-700">%</span>
+                  </div>
+                </td>
                 <td className="px-6 py-4">
                   {f.enabled ? (
                     <span className="px-2.5 py-0.5 text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full">Active</span>

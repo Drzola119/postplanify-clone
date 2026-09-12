@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { PPInput } from "@/components/ui/pp-input";
 import { useToast } from "@/components/ui/toast";
+import { ThemeSwitcher } from "@/components/theme/theme-switcher";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -85,7 +86,8 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-12">
+    <div className="relative min-h-screen flex items-center justify-center bg-background px-4 py-12">
+      <ThemeSwitcher compact className="absolute right-4 top-4" />
       <div className="w-full max-w-sm rounded-xl border border-border bg-card p-8 shadow-sm">
         <h1 className="text-2xl font-semibold tracking-tight">Create your account</h1>
         <p className="mt-2 text-sm text-muted-foreground">

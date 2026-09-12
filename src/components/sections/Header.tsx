@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useState } from "react";
 import { Menu, X, ChevronDown, ChevronRight } from "lucide-react";
 import { Container } from "@/components/ui/container";
+import { ThemeSwitcher } from "@/components/theme/theme-switcher";
 
 const TOP_LINKS = [
   { label: "Pricing", href: "/pricing" },
@@ -213,6 +214,7 @@ export function Header() {
 
         {/* Auth buttons (desktop) */}
         <div className="hidden lg:flex items-center gap-2">
+          <ThemeSwitcher compact />
           <Link href="/login" className="inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium transition-colors hover:bg-accent">
             Login
           </Link>
@@ -278,6 +280,7 @@ export function Header() {
                 </Link>
               ))}
               <div className="mt-2 pt-2 border-t flex flex-col gap-1">
+                <div className="px-3 py-2"><ThemeSwitcher /></div>
                 <Link
                   href="/login"
                   onClick={() => setOpen(false)}

@@ -20,16 +20,16 @@ export function SelectPill({ label, size = "md", active, leading, trailing, clas
     <button
       type="button"
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border bg-white font-medium hover:bg-zinc-50 transition-colors",
+        "inline-flex items-center gap-1.5 rounded-md border bg-background font-medium hover:bg-muted transition-colors",
         heights,
-        active ? "border-zinc-900 bg-zinc-50 text-zinc-900" : "border-zinc-200 text-zinc-700",
+        active ? "border-primary bg-muted text-foreground" : "border-border text-foreground",
         className
       )}
       {...props}
     >
       {leading}
       <span className="truncate">{label}</span>
-      {trailing ?? <ChevronDown className="size-3.5 text-zinc-500 shrink-0" />}
+      {trailing ?? <ChevronDown className="size-3.5 text-muted-foreground shrink-0" />}
     </button>
   );
 }

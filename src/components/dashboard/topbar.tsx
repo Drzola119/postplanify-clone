@@ -10,6 +10,7 @@ import { useHelpSystem } from "@/components/dashboard/help/help-system";
 import { useAuth } from "@/contexts/AuthContext";
 import { isAdminUser } from "@/lib/firebase/admin-email";
 import { NotificationBell } from "@/app/dashboard/_components/NotificationBell";
+import { ThemeSwitcher } from "@/components/theme/theme-switcher";
 
 function usePageTitle(t: (key: string) => string): string {
   const path = usePathname();
@@ -67,6 +68,7 @@ export function DashboardTopbar({ notificationSlot }: DashboardTopbarProps) {
           </Link>
         )}
         <LocaleSwitcher />
+        <ThemeSwitcher compact />
         <button
           type="button"
           onClick={() => openLearn()}

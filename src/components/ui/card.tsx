@@ -31,7 +31,7 @@ export function Card({
   return (
     <Tag
       className={`${RADIUS[radius]} bg-card ${
-        bordered ? "border border-zinc-200/70 dark:border-zinc-800" : ""
+        bordered ? "border border-border" : ""
       } ${hover ? "transition-shadow hover:shadow-sm" : ""} ${className ?? ""}`}
     >
       {children}

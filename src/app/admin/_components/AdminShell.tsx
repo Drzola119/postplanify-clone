@@ -51,6 +51,7 @@ import {
   Settings,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { ThemeSwitcher } from "@/components/theme/theme-switcher";
 
 // Fix #7 — map every known path to its display title
 const BREADCRUMB_MAP: Record<string, string> = {
@@ -427,6 +428,7 @@ export function AdminShell({ children, unreadNotifications = 0, adminProfile }: 
             </form>
 
             {/* Fix #6 — Notification Bell with dropdown panel */}
+            <ThemeSwitcher compact />
             <div className="relative">
               <button
                 onClick={() => {

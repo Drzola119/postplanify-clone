@@ -22,9 +22,9 @@ interface DataTableProps<T> {
 export function DataTable<T>({ columns, rows, rowKey, emptyMessage, rowClassName, onRowClick }: DataTableProps<T>) {
   const gridCols = columns.map((c) => c.width ?? "1fr").join(" ");
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden">
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div
-        className="grid gap-3 px-5 py-3 border-b border-zinc-200 bg-zinc-50 text-xs font-semibold text-zinc-500 uppercase tracking-wide"
+        className="grid gap-3 px-5 py-3 border-b border-border bg-muted/50 text-xs font-semibold text-muted-foreground uppercase tracking-wide"
         style={{ gridTemplateColumns: gridCols }}
       >
         {columns.map((c) => (
@@ -34,15 +34,15 @@ export function DataTable<T>({ columns, rows, rowKey, emptyMessage, rowClassName
         ))}
       </div>
       {rows.length === 0 ? (
-        <div className="px-5 py-12 text-center text-sm text-zinc-500">{emptyMessage ?? "No data yet."}</div>
+        <div className="px-5 py-12 text-center text-sm text-muted-foreground">{emptyMessage ?? "No data yet."}</div>
       ) : (
-        <div className="divide-y divide-zinc-100">
+        <div className="divide-y divide-border">
           {rows.map((row, i) => (
             <div
               key={rowKey(row, i)}
               className={cn(
                 "grid gap-3 px-5 py-3 items-center text-sm transition-colors",
-                onRowClick && "cursor-pointer hover:bg-zinc-50",
+                onRowClick && "cursor-pointer hover:bg-muted/50",
                 rowClassName
               )}
               style={{ gridTemplateColumns: gridCols }}

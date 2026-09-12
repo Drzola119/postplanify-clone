@@ -62,10 +62,10 @@ function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
     info: Info,
   };
   const toneMap = {
-    success: "bg-emerald-50 text-emerald-900 border-emerald-200",
-    error: "bg-red-50 text-red-900 border-red-200",
-    warning: "bg-amber-50 text-amber-900 border-amber-200",
-    info: "bg-blue-50 text-blue-900 border-blue-200",
+    success: "bg-[var(--status-success-bg)] text-[var(--status-success-fg)] border-emerald-300/40",
+    error: "bg-[var(--status-error-bg)] text-[var(--status-error-fg)] border-red-300/40",
+    warning: "bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)] border-amber-300/40",
+    info: "bg-[var(--status-info-bg)] text-[var(--status-info-fg)] border-blue-300/40",
   };
   const iconTone = {
     success: "text-emerald-600",

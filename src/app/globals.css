@@ -7,6 +7,16 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-bg: var(--background);
+  --color-text: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-inset: var(--surface-inset);
+  --color-surface-offset: var(--surface-inset);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-text-muted: var(--text-tertiary);
+  --color-border-subtle: var(--border-subtle);
   --font-sans: var(--font-inter), "Inter Fallback", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
   --font-heading: var(--font-sans);
@@ -54,6 +64,12 @@
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
+  --surface: oklch(1 0 0);
+  --surface-raised: oklch(0.995 0 0);
+  --surface-inset: oklch(0.97 0 0);
+  --text-secondary: oklch(0.38 0 0);
+  --text-tertiary: oklch(0.50 0 0);
+  --border-subtle: oklch(0.95 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
@@ -87,17 +103,31 @@
   /* PostPlanify brand colors (extracted from newsletter section gradient) */
   --brand-blue: #1e56d6;
   --brand-blue-light: #4a82f0;
+  --status-success-bg: oklch(0.96 0.04 155);
+  --status-success-fg: oklch(0.35 0.12 155);
+  --status-warning-bg: oklch(0.97 0.05 85);
+  --status-warning-fg: oklch(0.40 0.12 75);
+  --status-error-bg: oklch(0.96 0.04 25);
+  --status-error-fg: oklch(0.42 0.16 25);
+  --status-info-bg: oklch(0.96 0.04 245);
+  --status-info-fg: oklch(0.38 0.14 245);
 }
 
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
+  --surface: oklch(0.19 0.018 255);
+  --surface-raised: oklch(0.225 0.02 255);
+  --surface-inset: oklch(0.115 0.012 255);
+  --text-secondary: oklch(0.78 0.01 255);
+  --text-tertiary: oklch(0.65 0.015 255);
+  --border-subtle: oklch(1 0 0 / 7%);
   --card: oklch(0.205 0 0);
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
+  --primary: #4a82f0;
+  --primary-foreground: #ffffff;
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -108,11 +138,11 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --chart-1: #79a6ff;
+  --chart-2: #5dd6b0;
+  --chart-3: #c59cff;
+  --chart-4: #ffb86b;
+  --chart-5: #ff7f9c;
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -121,6 +151,14 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --status-success-bg: oklch(0.25 0.07 155);
+  --status-success-fg: oklch(0.82 0.12 155);
+  --status-warning-bg: oklch(0.27 0.07 80);
+  --status-warning-fg: oklch(0.88 0.12 85);
+  --status-error-bg: oklch(0.28 0.08 25);
+  --status-error-fg: oklch(0.88 0.12 25);
+  --status-info-bg: oklch(0.25 0.07 245);
+  --status-info-fg: oklch(0.82 0.12 245);
 }
 
 @layer base {
@@ -129,11 +167,56 @@
   }
   body {
     @apply bg-background text-foreground;
+    transition: background-color 180ms ease, color 180ms ease;
   }
   html {
     @apply font-sans;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+::selection {
+  background: color-mix(in srgb, var(--primary) 28%, transparent);
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--background); }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--foreground) 22%, transparent);
+  border: 3px solid var(--background);
+  border-radius: 999px;
+}
+
+/* Compatibility layer for existing Tailwind utility usage. New UI should use
+   semantic tokens; these aliases keep the existing platform readable while
+   route-by-route migration is completed. */
+.dark .bg-white { background-color: var(--surface) !important; }
+.dark .bg-gray-50, .dark .bg-zinc-50, .dark .bg-slate-50 { background-color: var(--surface-inset) !important; }
+.dark .bg-gray-100, .dark .bg-zinc-100, .dark .bg-slate-100 { background-color: var(--surface-raised) !important; }
+.dark .bg-gray-200, .dark .bg-zinc-200, .dark .bg-slate-200 { background-color: color-mix(in srgb, var(--foreground) 14%, var(--background)) !important; }
+.dark .bg-gray-900, .dark .bg-zinc-900, .dark .bg-slate-900 { background-color: var(--surface-inset) !important; }
+.dark .text-gray-900, .dark .text-zinc-900, .dark .text-slate-900 { color: var(--foreground) !important; }
+.dark .text-gray-800, .dark .text-zinc-800, .dark .text-slate-800 { color: var(--foreground) !important; }
+.dark .text-gray-700, .dark .text-zinc-700, .dark .text-slate-700 { color: var(--text-secondary) !important; }
+.dark .text-gray-600, .dark .text-zinc-600, .dark .text-slate-600 { color: var(--text-secondary) !important; }
+.dark .text-gray-500, .dark .text-zinc-500, .dark .text-slate-500 { color: var(--text-tertiary) !important; }
+.dark .text-gray-400, .dark .text-zinc-400, .dark .text-slate-400 { color: color-mix(in srgb, var(--foreground) 55%, transparent) !important; }
+.dark .text-white { color: #fff !important; }
+.dark .border-gray-100, .dark .border-zinc-100, .dark .border-slate-100,
+.dark .border-gray-200, .dark .border-zinc-200, .dark .border-slate-200,
+.dark .border-gray-300, .dark .border-zinc-300, .dark .border-slate-300 { border-color: var(--border) !important; }
+.dark .divide-gray-100 > :not(:last-child), .dark .divide-zinc-100 > :not(:last-child) { border-color: var(--border) !important; }
+.dark .hover\:bg-white:hover { background-color: var(--surface-raised) !important; }
+.dark .hover\:bg-gray-50:hover, .dark .hover\:bg-zinc-50:hover, .dark .hover\:bg-slate-50:hover { background-color: var(--surface-raised) !important; }
+.dark .placeholder\:text-gray-400::placeholder, .dark .placeholder\:text-zinc-400::placeholder { color: var(--text-tertiary) !important; }
 
 :lang(ar) {
   font-family: var(--font-arabic), system-ui, sans-serif;

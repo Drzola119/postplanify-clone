@@ -953,6 +953,9 @@ export async function getFeatureFlags() {
       { id: "ai_video_gen", name: "AI Video Generation", description: "Enable AI script-to-video workflow", enabled: true, rollout: 50 },
       { id: "threads_auto_reply", name: "Threads Auto-Reply", description: "Auto respond to comments on Threads", enabled: false, rollout: 0 },
       { id: "multi_brand_workspace", name: "Multi-Brand Workspaces", description: "Allow clients to create up to 10 brand sub-accounts", enabled: true, rollout: 100 },
+      { id: "dark_mode_admin", name: "Dark Mode — Admin", description: "Enable dark mode for administrator surfaces", enabled: true, rollout: 100 },
+      { id: "dark_mode_product", name: "Dark Mode — Product", description: "Enable dark mode for signed-in product surfaces", enabled: true, rollout: 100 },
+      { id: "dark_mode_public", name: "Dark Mode — Public", description: "Enable dark mode for public and marketing surfaces", enabled: true, rollout: 100 },
     ];
   }
   return flags;
