@@ -21,8 +21,10 @@ export async function createVideoProjectForJob(args: {
   jobId: string;
 }): Promise<string> {
   const ref = args.db.collection(`workspaces/${args.workspaceId}/videoProjects`).doc();
+  const revisionRef = ref.collection("revisions").doc("rev_1");
   const now = FieldValue.serverTimestamp();
-  await ref.set({
+  const batch = args.db.batch();
+  batch.set(ref, {
     workspaceId: args.workspaceId,
     ownerUid: args.uid,
     creatorUid: args.uid,
@@ -35,12 +37,24 @@ export async function createVideoProjectForJob(args: {
     reviewStatus: "none",
     publishingStatus: "not_published",
     variants: [],
-    revisionCount: 0,
+    currentRevisionId: "rev_1",
+    revisionCount: 1,
     legacyJobId: args.jobId,
     createdAt: now,
     updatedAt: now,
     lastOpenedAt: now,
   });
+  batch.set(revisionRef, {
+    projectId: ref.id,
+    revisionNumber: 1,
+    label: "Initial generation",
+    snapshot: { inputs: args.request, scenes: [], aspectRatios: args.request.aspectRatios ?? ["9:16"] },
+    variants: [],
+    reviewStatus: "none",
+    createdBy: args.uid,
+    createdAt: now,
+  });
+  await batch.commit();
   return ref.id;
 }
 
@@ -53,17 +67,22 @@ export async function syncVideoProjectFromJob(args: { db: FirestoreLike; jobRef:
   if (!projectId) return;
   const status = String(job.status ?? "queued");
   const renderStatus = status === "complete" ? "complete" : status === "failed" ? "failed" : status === "queued" ? "queued" : "rendering";
-  await args.db.doc(`workspaces/${job.workspaceId}/videoProjects/${projectId}`).set({
+  const projectRef = args.db.doc(`workspaces/${job.workspaceId}/videoProjects/${projectId}`);
+  const variants = Array.isArray(job.finalAssets)
+    ? job.finalAssets.map((asset: { aspectRatio?: string; assetId?: string; assetUrl?: string }, index: number) => ({
+        id: `${jobSnap.id}_${index}`,
+        aspectRatio: asset.aspectRatio ?? "9:16",
+        assetId: asset.assetId,
+        assetUrl: asset.assetUrl,
+        status: "complete",
+      }))
+    : [];
+  await projectRef.set({
     renderStatus,
-    variants: Array.isArray(job.finalAssets)
-      ? job.finalAssets.map((asset: { aspectRatio?: string; assetId?: string; assetUrl?: string }, index: number) => ({
-          id: `${jobSnap.id}_${index}`,
-          aspectRatio: asset.aspectRatio ?? "9:16",
-          assetId: asset.assetId,
-          assetUrl: asset.assetUrl,
-          status: "complete",
-        }))
-      : [],
+    variants,
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
+  const projectData = (await projectRef.get()).data();
+  const revisionId = typeof projectData?.currentRevisionId === "string" ? projectData.currentRevisionId : null;
+  if (revisionId) await projectRef.collection("revisions").doc(revisionId).set({ variants }, { merge: true });
 }
