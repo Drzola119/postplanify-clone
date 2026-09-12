@@ -81,6 +81,34 @@ service cloud.firestore {
         allow update, delete: if isEditor(workspaceId);
       }
 
+      match /videoProjects/{projectId} {
+        allow read: if isMember(workspaceId);
+        allow create, update: if isEditor(workspaceId);
+        allow delete: if isOwnerOrAdmin(workspaceId);
+
+        match /revisions/{revisionId} {
+          allow read: if isMember(workspaceId);
+          allow create, update: if isEditor(workspaceId);
+          allow delete: if false;
+        }
+
+        match /comments/{commentId} {
+          allow read: if isMember(workspaceId);
+          allow create, update: if isEditor(workspaceId);
+          allow delete: if false;
+        }
+      }
+
+      match /videoJobs/{jobId} {
+        allow read: if isMember(workspaceId);
+        allow create, update: if isEditor(workspaceId);
+        allow delete: if isOwnerOrAdmin(workspaceId);
+      }
+
+      match /videoReviewLinks/{linkId} {
+        allow read, write: if false;
+      }
+
       match /drafts/{draftId} {
         allow create: if isMember(workspaceId)
                       && request.resource.data.authorUid == uid();
