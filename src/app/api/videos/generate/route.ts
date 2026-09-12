@@ -9,6 +9,7 @@ import { videoGenerateRequestSchema } from "@/lib/validation/video-gen";
 import { createLogger } from "@/lib/log";
 import { FieldValue } from "firebase-admin/firestore";
 import { checkQuota } from "@/lib/billing/quota";
+import { createVideoProjectForJob } from "@/lib/video-gen/project-service";
 
 const logger = createLogger("api:videos:generate");
 const ESTIMATED_VIDEO_COST_USD = 0.5;
@@ -76,6 +77,16 @@ export async function POST(req: NextRequest) {
       updatedAt: FieldValue.serverTimestamp(),
     });
 
+    const projectId = await createVideoProjectForJob({
+      db,
+      workspaceId,
+      uid: user.uid,
+      workflow: body.workflow,
+      request: body,
+      jobId,
+    });
+    await jobRef.update({ projectId });
+
     logger.info("Video job queued", {
       jobId,
       workspaceId,
@@ -86,6 +97,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         jobId,
+        projectId,
         status: "queued",
         workspaceId,
         workflow: body.workflow,

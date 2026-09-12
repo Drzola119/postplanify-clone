@@ -23,6 +23,7 @@ import { buildShotPlanFromPhotos } from "@/lib/video-gen/real-estate/shot-plan";
 import type { PropertyShotPlan } from "@/lib/video-gen/real-estate/types";
 import { createLogger } from "@/lib/log";
 import { checkQuota } from "@/lib/billing/quota";
+import { createVideoProjectForJob } from "@/lib/video-gen/project-service";
 
 const logger = createLogger("api:videos:real-estate");
 const ESTIMATED_VIDEO_COST_USD = 0.5;
@@ -166,6 +167,15 @@ export async function POST(req: NextRequest) {
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
+    const projectId = await createVideoProjectForJob({
+      db,
+      workspaceId,
+      uid: user.uid,
+      workflow: "real-estate",
+      request: body as unknown as Record<string, unknown>,
+      jobId: jobRef.id,
+    });
+    await jobRef.update({ projectId });
 
     logger.info("Real Estate job queued", {
       jobId: jobRef.id,
@@ -176,7 +186,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json(
-      { jobId: jobRef.id, status: "queued", shotPlan: plan },
+      { jobId: jobRef.id, projectId, status: "queued", shotPlan: plan },
       { status: 202 }
     );
   } catch (err) {

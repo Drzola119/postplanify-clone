@@ -14,6 +14,7 @@ import { resolveProvider, resolveClipSpec } from "@/lib/video-gen/whiteboard/cli
 import { generateWhiteboardScript } from "@/lib/video-gen/whiteboard/script-gen";
 import { createLogger } from "@/lib/log";
 import { checkQuota } from "@/lib/billing/quota";
+import { createVideoProjectForJob } from "@/lib/video-gen/project-service";
 
 const logger = createLogger("api:videos:whiteboard");
 const ESTIMATED_VIDEO_COST_USD = 0.5;
@@ -89,6 +90,15 @@ export async function POST(req: NextRequest) {
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
+    const projectId = await createVideoProjectForJob({
+      db,
+      workspaceId,
+      uid: user.uid,
+      workflow: "whiteboard",
+      request: body,
+      jobId: jobRef.id,
+    });
+    await jobRef.update({ projectId });
 
     logger.info("Whiteboard job queued", {
       jobId: jobRef.id,
@@ -99,7 +109,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json(
-      { jobId: jobRef.id, status: "queued", script, clipSpec },
+      { jobId: jobRef.id, projectId, status: "queued", script, clipSpec },
       { status: 202 }
     );
   } catch (err) {

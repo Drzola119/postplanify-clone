@@ -26,6 +26,7 @@ import type {
 } from "../video-gen/types";
 import type { CartoonRequest, ViralRequest } from "../validation/video-gen";
 import { FieldValue } from "firebase-admin/firestore";
+import { syncVideoProjectFromJob } from "../video-gen/project-service";
 
 const logger = createLogger("video-render-worker");
 
@@ -80,6 +81,7 @@ async function processJob(
   jobRef: FirebaseFirestore.DocumentReference,
   job: VideoJobDoc & { request: unknown; retryCount?: number }
 ): Promise<void> {
+  const db = jobRef.firestore;
   const jobId = jobRef.id;
   const retryCount = job.retryCount ?? 0;
 
@@ -99,6 +101,7 @@ async function processJob(
       //   queued → generating_clips → waiting_compose
       // The FFmpeg worker takes over from `waiting_compose`.
       await runWhiteboardWorkflow({ jobRef, job });
+      await syncVideoProjectFromJob({ db, jobRef });
       logger.info("Whiteboard job handed off to FFmpeg composer", { jobId });
       return;
     }
@@ -111,6 +114,7 @@ async function processJob(
       // so we pass undefined — the worker falls back to env-only resolution
       // (production-safe). The ElevenLabs key is provisioned in env.
       await runRealEstateWorkflow({ jobRef, job });
+      await syncVideoProjectFromJob({ db, jobRef });
       logger.info("Real Estate job handed off to FFmpeg composer", { jobId });
       return;
     }
@@ -119,6 +123,7 @@ async function processJob(
       status: "generating_clips",
       updatedAt: FieldValue.serverTimestamp(),
     });
+    await syncVideoProjectFromJob({ db, jobRef });
 
     const output = await dispatchWorkflow(job.workflow, job.request, job, jobId);
 
@@ -151,6 +156,7 @@ async function processJob(
       totalCostUsd: output.costUsd,
       updatedAt: FieldValue.serverTimestamp(),
     });
+    await syncVideoProjectFromJob({ db, jobRef });
 
     logger.info("Video job completed", {
       jobId,
