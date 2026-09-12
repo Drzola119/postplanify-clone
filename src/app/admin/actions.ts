@@ -957,6 +957,15 @@ export async function getFeatureFlags() {
       { id: "dark_mode_product", name: "Dark Mode — Product", description: "Enable dark mode for signed-in product surfaces", enabled: true, rollout: 100 },
       { id: "dark_mode_public", name: "Dark Mode — Public", description: "Enable dark mode for public and marketing surfaces", enabled: true, rollout: 100 },
     ];
+  } else {
+    const known = new Set(flags.map((flag) => flag.id));
+    for (const flag of [
+      { id: "dark_mode_admin", name: "Dark Mode — Admin", description: "Enable dark mode for administrator surfaces", enabled: true, rollout: 100 },
+      { id: "dark_mode_product", name: "Dark Mode — Product", description: "Enable dark mode for signed-in product surfaces", enabled: true, rollout: 100 },
+      { id: "dark_mode_public", name: "Dark Mode — Public", description: "Enable dark mode for public and marketing surfaces", enabled: true, rollout: 100 },
+    ]) {
+      if (!known.has(flag.id)) flags.push(flag);
+    }
   }
   return flags;
 }

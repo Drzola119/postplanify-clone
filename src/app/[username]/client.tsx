@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { BioRenderer } from "@/components/dashboard/link-in-bio/bio-renderer";
+import { ThemeSwitcher } from "@/components/theme/theme-switcher";
 import {
   Bio,
   getBio,
@@ -136,6 +137,7 @@ export default function LinkInBioPublicClient({ username }: Props) {
 
   return (
     <div className="min-h-screen w-full flex flex-col">
+      <div className="fixed top-3 left-3 z-50"><ThemeSwitcher compact /></div>
       <main className="flex-1 w-full">
         <LinkInterceptor username={username} bio={bio} />
       </main>
